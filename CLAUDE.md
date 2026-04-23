@@ -10,8 +10,8 @@ If you're a user *consuming* datatree as an MCP plugin, see [README.md](README.m
 
 - **Owner / sole copyright holder**: Anish Trivedi.
 - **License**: Datatree Community License v1.0. See [LICENSE](LICENSE). Source-available; use freely for your own work; no selling, hosting as a service, deriving competing MCPs, or training AI models.
-- **Status**: alpha; full source generated 2026-04-23 in a single firestart session.
-- **Architecture**: F++++++ multi-process (Rust supervisor + Bun TS MCP + Bun TS Vision app + Python multimodal sidecar). Full design in [`docs/design/2026-04-23-datatree-design.md`](docs/design/2026-04-23-datatree-design.md). See addenda for resource-policy, UX mandate, and knowledge-worker mandate.
+- **Status**: alpha — actively being iterated.
+- **Architecture**: multi-process (Rust supervisor + Bun TS MCP + Bun TS Vision app + Python multimodal sidecar). Architecture overview in [`docs/architecture.md`](docs/architecture.md).
 
 ---
 

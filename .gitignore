@@ -70,3 +70,10 @@ api-docs/
 .~*
 desktop.ini
 Thumbs.db
+
+# Internal build / status / design notes — never upload
+STATUS.md
+TEST_RUN.md
+VERIFICATION.md
+docs/design/
+.claude/
