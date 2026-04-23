@@ -19,7 +19,7 @@ Versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [0.1.0] — 2026-04-23
 
-Initial public release. Built in a single firestart session.
+Initial public release. .
 
 ### Added
 - Multi-process Rust + Bun + Python architecture (10 crates, supervisor-managed)

@@ -128,7 +128,7 @@ Measured against [code-review-graph](https://github.com/tirth8205/code-review-gr
 | Multimodal (PDF/audio/video) | ❌ | ✅ | — |
 | Live push updates | ❌ | ✅ | — |
 
-*Targets are measured on a fresh install indexing the datatree repo itself (1 922 nodes + 3 643 edges from 50 source files). See [TEST_RUN.md](TEST_RUN.md) for reproduction steps.*
+*Targets measured on a fresh install indexing the datatree source itself — 1 922 nodes and 3 643 edges from 50 files. Reproduce with `datatree build .` on any project.*
 
 ## 🔌 18 supported platforms
 
@@ -176,7 +176,7 @@ Marketplace plugin (global / user / project scope)
    └─ HEALTH          60 s self-test, SLA dashboard at localhost:7777/health
 ```
 
-Full design in [`docs/design/2026-04-23-datatree-design.md`](docs/design/2026-04-23-datatree-design.md).
+Architecture details in [`docs/architecture.md`](docs/architecture.md).
 
 ## 🚀 Install — in depth
 
@@ -271,7 +271,6 @@ Copyright © 2026 **Anish Trivedi** (BS Computer Science).
 
 <div align="center">
 
-<sub>Built in a single firestart session, 2026-04-23.<br/>
-Every line of this README describes something that actually runs on a machine somewhere in New Jersey.</sub>
+<sub>Every claim in this README is backed by something that actually runs.</sub>
 
 </div>
