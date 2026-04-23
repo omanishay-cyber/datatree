@@ -690,6 +690,6 @@ mod tests {
         let starting = "";
         let merged = merge_mcp_toml(starting).unwrap();
         assert!(merged.contains("[mcp_servers.mneme]"));
-        assert!(merged.contains("command = mneme\""));
+        assert!(merged.contains("command = \"mneme\""));
     }
 }

@@ -95,8 +95,12 @@ fn config_default_layout_has_all_workers() {
     // CLI (see cli::commands::graphify). No supervised child.
     assert!(names.iter().any(|n| *n == "brain-worker"));
     assert!(names.iter().any(|n| *n == "livebus-worker"));
-    assert!(names.iter().any(|n| *n == "mcp-server"));
-    assert!(names.iter().any(|n| *n == "vision-server"));
+    // mcp-server and vision-server are intentionally NOT in the supervisor's
+    // default layout — mcp-server is spawned per-Claude-Code-window via
+    // `mneme mcp stdio`, and vision-server launches from `mneme view` or
+    // the Tauri app. See `config.rs` line ~190 for the design rationale.
+    assert!(!names.iter().any(|n| *n == "mcp-server"));
+    assert!(!names.iter().any(|n| *n == "vision-server"));
 }
 
 #[test]

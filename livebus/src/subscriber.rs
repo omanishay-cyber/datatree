@@ -229,8 +229,51 @@ impl SubscriberManager {
             dropped_count: Some(self.inner.evicted.load(Ordering::Relaxed)),
         });
         let ev = Event::from_typed("system.degraded_mode", None, None, payload);
-        // Best-effort; if the bus is closed there's nothing we can do.
-        let _ = self.inner.bus.publish(ev);
+        // Publish to the broadcast bus (for raw subscribers + HTTP SSE).
+        let _ = self.inner.bus.publish(ev.clone());
+        // Also fan out through the subscriber manager so topic-filtered
+        // subscribers registered via `register()` receive it on their
+        // bounded channel — `bus.publish` alone only reaches raw receivers.
+        // Avoid recursion: evictions from this dispatch are silently ignored
+        // because the registry has already been mutated for the current id.
+        self.dispatch_internal(&ev, /* recursion_guard */ true);
+    }
+
+    /// Internal dispatch that mirrors `dispatch()` but with optional recursion
+    /// guard. When `guard` is true, subscribers that fail to send are NOT
+    /// evicted (they'll be cleaned up on the next real dispatch pass).
+    fn dispatch_internal(&self, event: &Event, guard: bool) {
+        let snapshot: Vec<Arc<Subscriber>> =
+            self.read_registry().values().cloned().collect();
+        let mut to_evict: Vec<(String, String)> = Vec::new();
+        for sub in snapshot {
+            if !sub.matches(&event.topic) {
+                continue;
+            }
+            match sub.tx.try_send(event.clone()) {
+                Ok(()) => {
+                    sub.lag.store(0, Ordering::Relaxed);
+                    sub.delivered.fetch_add(1, Ordering::Relaxed);
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    let lag = sub.lag.fetch_add(1, Ordering::Relaxed) + 1;
+                    if !guard && lag as usize >= BACKPRESSURE_WINDOW {
+                        to_evict.push((
+                            sub.id.clone(),
+                            format!("lag {lag} >= backpressure window {BACKPRESSURE_WINDOW}"),
+                        ));
+                    }
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    if !guard {
+                        to_evict.push((sub.id.clone(), "channel closed".into()));
+                    }
+                }
+            }
+        }
+        for (id, reason) in to_evict {
+            self.evict(&id, &reason);
+        }
     }
 
     /// Current registry size and lifetime eviction count.
