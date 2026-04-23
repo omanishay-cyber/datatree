@@ -1,0 +1,61 @@
+[package]
+name = "datatree-supervisor"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78"
+license = "MIT"
+authors = ["Anish Trivedi"]
+description = "Datatree master supervisor: spawns and watches all worker child processes."
+
+[[bin]]
+name = "datatree-supervisor"
+path = "src/main.rs"
+
+[lib]
+name = "datatree_supervisor"
+path = "src/lib.rs"
+
+[dependencies]
+# Workspace deps (resolved from root Cargo.toml [workspace.dependencies] block)
+tokio = { version = "1.40", features = ["full"] }
+tokio-util = "0.7"
+futures = "0.3"
+async-trait = "0.1"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+thiserror = "1.0"
+anyhow = "1.0"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+chrono = { version = "0.4", features = ["serde"] }
+
+interprocess = { version = "2.2", features = ["tokio"] }
+sysinfo = "0.32"
+axum = "0.7"
+tokio-stream = "0.1"
+
+num_cpus = "1.16"
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Local workspace member
+# `common` crate is referenced via path; Cargo will resolve relative to this Cargo.toml.
+common = { path = "../common", package = "datatree-common" }
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal", "process"] }
+
+[features]
+default = []
+with-common = []
+
+[dev-dependencies]
+tokio = { version = "1.40", features = ["full", "test-util", "macros"] }
+tempfile = "3.10"

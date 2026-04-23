@@ -1,0 +1,61 @@
+[package]
+name = "datatree-livebus"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78"
+license = "MIT"
+authors = ["Anish Trivedi"]
+description = "Datatree Live Bus: local SSE/WebSocket fan-out of worker events for Claude Code, vision app, and multi-agent sessions."
+
+[[bin]]
+name = "datatree-livebus"
+path = "src/main.rs"
+
+[lib]
+name = "datatree_livebus"
+path = "src/lib.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-util = "0.7"
+futures = "0.3"
+async-trait = "0.1"
+
+# HTTP / SSE / WebSocket
+axum = { version = "0.7", features = ["ws", "macros"] }
+
+# Fan-out broadcast channel (lossy, suitable for backpressure-aware broadcast)
+async-broadcast = "0.7"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Errors / logging
+thiserror = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# IPC for accepting events from sibling worker processes
+interprocess = { version = "2.2", features = ["tokio"] }
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Local workspace member (kept optional for standalone builds)
+common = { path = "../common", package = "datatree-common" }
+
+[features]
+default = []
+with-common = []
+
+[dev-dependencies]
+tokio = { version = "1.40", features = ["full", "test-util", "macros"] }
+reqwest = { version = "0.12", features = ["stream", "json"] }
+tempfile = "3.10"

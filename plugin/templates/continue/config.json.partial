@@ -1,0 +1,15 @@
+{
+  "$comment": "datatree-marker v1.0 — Continue uses an ARRAY of mcpServers. The install command merges this entry into the existing array, deduplicating by name.",
+  "mcpServers": [
+    {
+      "name": "datatree",
+      "command": "bun",
+      "args": ["{{datatree_root}}/mcp/index.ts"],
+      "transport": "stdio",
+      "env": {
+        "DATATREE_HOME": "{{datatree_home}}",
+        "DATATREE_PROJECT_ROOT": "{{project_root}}"
+      }
+    }
+  ]
+}

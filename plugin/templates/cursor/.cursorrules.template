@@ -1,0 +1,41 @@
+<!-- datatree-start v1.0 -->
+# Datatree (Cursor — legacy .cursorrules)
+
+> NOTE: This is the legacy single-file format. Cursor 0.45+ prefers
+> `.cursor/rules/*.mdc` (also installed by datatree). When both exist,
+> the .mdc files win. This file is kept for backward compatibility.
+
+Datatree is a persistent, incrementally-updated knowledge graph of this
+project, exposed to Cursor via the `datatree` MCP server (see
+`.cursor/mcp.json`). A per-user daemon (`datatree-supervisor`) keeps the
+graph fresh in the background.
+
+## Tool usage rules
+
+**Use datatree MCP tools BEFORE Cursor's built-in code search, file
+read, or @-symbol lookup** for structural or semantic questions about
+this codebase. Use built-in tools only when datatree suggests them or
+to read a specific file datatree returned.
+
+On every task:
+
+1. `datatree.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate via `datatree.query`, `datatree.impact`, `datatree.search`
+   with `detail_level="minimal"`.
+3. Only then read files; budget <= 5 calls and <= 800 tokens per task.
+4. Edits trigger incremental graph updates via the afterFileEdit hook.
+
+## Step ledger
+
+Steps stream to `~/.datatree/projects/<id>/steps.jsonl`. Recover with
+`datatree.last_steps(n=10)` after any context loss.
+
+## Drift detection
+
+Datatree flags symbol/doc/test drift. Address all flags before done.
+
+## Compaction resilience
+
+If Cursor truncates the conversation, re-prime with one
+`datatree.minimal_context(...)` call. State lives in the graph, not chat.
+<!-- datatree-end -->

@@ -1,0 +1,89 @@
+[package]
+name = "brain"
+version = "0.1.0"
+edition = "2021"
+description = "datatree BRAIN — local-only embeddings, Leiden clustering, concept extraction"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "brain"
+path = "src/main.rs"
+
+[lib]
+name = "brain"
+path = "src/lib.rs"
+
+[features]
+default = []
+# Optional local LLM (Phi-3-mini-4k Q4_K_M via llama.cpp).
+# Enabling pulls in a native build of llama.cpp; disabled by default to keep
+# the workspace buildable in fully offline / no-toolchain environments.
+llm = ["dep:llama-cpp-2"]
+
+[dependencies]
+# Workspace sibling — provides shared types (NodeId, EdgeKind, etc.).
+# Marked optional via path-only so build can proceed even before `common`
+# crate lands; downstream code is gated with `cfg(feature = "with-common")`
+# only where strictly necessary. See src/lib.rs for the local fallback.
+common = { path = "../common", package = "datatree-common" }
+
+# Async runtime + channel primitives
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "time",
+    "fs",
+    "io-util",
+    "signal",
+] }
+
+# v0.1 ships a pure-Rust hashing-trick embedder (see src/embeddings.rs).
+# No native ONNX runtime. v0.2 will swap in candle-transformers for real
+# BGE-small weights; keep the import line ready:
+# candle-core = { version = "0.8", default-features = false }
+# candle-nn = { version = "0.8", default-features = false }
+# candle-transformers = { version = "0.8", default-features = false }
+
+# HuggingFace tokenizers (pure-Rust; no network at load time when given a
+# local tokenizer.json path).
+tokenizers = { version = "0.20", default-features = false, features = [
+    "onig",
+] }
+
+# Graph + numerics
+petgraph = { version = "0.6", features = ["serde-1"] }
+ndarray = { version = "0.15", features = ["serde"] }
+
+# Serde + IO
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1.3"
+
+# Error handling + logging
+thiserror = "1"
+anyhow = "1"
+tracing = "0.1"
+
+# Lazy globals + small utils
+once_cell = "1"
+parking_lot = "0.12"
+rand = "0.8"
+rand_chacha = "0.3"
+sha2 = "0.10"
+hex = "0.4"
+regex = "1"
+dashmap = "5"
+memmap2 = "0.9"
+dirs = "5"
+
+# Local LLM (feature-gated)
+llama-cpp-2 = { version = "0.1.79", optional = true, default-features = false }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
+
+[package.metadata.docs.rs]
+all-features = false
+no-default-features = true

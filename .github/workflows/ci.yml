@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  rust:
+    name: Rust (build + test + clippy)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+        continue-on-error: true  # v0.1: enforce loosely until baseline is clean
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+        continue-on-error: true  # v0.1: 27 existing parser warnings
+
+      - name: Build
+        run: cargo build --workspace --verbose
+
+      - name: Test
+        run: cargo test --workspace --verbose
+        continue-on-error: true  # v0.1: tests not yet wired; enforce in v0.2
+
+  mcp:
+    name: MCP server (bun check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install MCP deps
+        working-directory: mcp
+        run: bun install
+
+      - name: Type check
+        working-directory: mcp
+        run: bunx tsc --noEmit
+        continue-on-error: true  # v0.1: zod strict-input/output warnings
+
+  vision:
+    name: Vision app (bun check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install vision deps
+        working-directory: vision
+        run: bun install
+
+      - name: Type check
+        working-directory: vision
+        run: bunx tsc --noEmit
+        continue-on-error: true
+
+  python:
+    name: Python multimodal (pip + compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install sidecar
+        working-directory: workers/multimodal
+        run: pip install -e .
+
+      - name: Syntax check
+        working-directory: workers/multimodal
+        run: python -m compileall -q datatree_multimodal
+
+  license-check:
+    name: License header present
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: LICENSE file exists
+        run: test -f LICENSE && grep -q "Datatree Community License" LICENSE

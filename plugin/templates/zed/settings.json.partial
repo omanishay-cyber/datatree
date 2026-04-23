@@ -1,0 +1,18 @@
+{
+  "$comment": "datatree-marker v1.0 — merged into Zed settings.json. Existing context_servers entries are preserved.",
+  "context_servers": {
+    "datatree": {
+      "command": {
+        "path": "bun",
+        "args": ["{{datatree_root}}/mcp/index.ts"],
+        "env": {
+          "DATATREE_HOME": "{{datatree_home}}",
+          "DATATREE_PROJECT_ROOT": "{{project_root}}"
+        }
+      },
+      "settings": {
+        "transport": "stdio"
+      }
+    }
+  }
+}

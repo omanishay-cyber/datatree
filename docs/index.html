@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>datatree — Claude never starts cold. Claude never loses its place.</title>
+  <meta name="description" content="Persistent per-project AI superbrain. Survives context compaction. Indexes code. Injects context. 100% local. Works with Claude Code, Codex, Cursor, and 15 more." />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="datatree — the AI superbrain for Claude Code" />
+  <meta property="og:description" content="Persistent per-project memory + 14 views + drift detector + 33+ MCP tools. 100% local. 18 AI tools supported." />
+  <meta property="og:url" content="https://omanishay-cyber.github.io/datatree/" />
+  <meta property="og:image" content="https://omanishay-cyber.github.io/datatree/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E🌳%3C/text%3E%3C/svg%3E" />
+
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --bg-2: #111827;
+      --text: #e6edf3;
+      --muted: #8b93a7;
+      --accent-a: #4191E1;
+      --accent-b: #41E1B5;
+      --accent-c: #22D3EE;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.55; }
+    body { -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent-a); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, pre { font-family: "JetBrains Mono", "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    pre { background: var(--bg-2); padding: 18px 22px; border-radius: var(--radius); overflow-x: auto; font-size: 14px; border: 1px solid rgba(255,255,255,0.07); }
+    pre code { color: #cbd5e1; }
+    code:not(pre code) { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 5px; font-size: 0.9em; }
+
+    .hero {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 90px 24px 60px;
+      text-align: center;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% 0%, rgba(65,145,225,0.12), transparent 60%),
+        radial-gradient(ellipse 50% 40% at 80% 20%, rgba(65,225,181,0.08), transparent 70%);
+    }
+    .logo { font-size: 72px; line-height: 1; margin-bottom: 14px; }
+    h1 {
+      font-size: clamp(32px, 5vw, 54px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .tagline {
+      font-size: clamp(16px, 2.2vw, 20px);
+      color: var(--muted);
+      max-width: 620px;
+      margin: 0 auto 10px;
+    }
+    .subtag {
+      font-size: 15px;
+      color: var(--muted);
+      margin-bottom: 36px;
+    }
+    .gradient-text {
+      background: linear-gradient(100deg, var(--accent-a), var(--accent-b), var(--accent-c));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 36px; }
+    .cta {
+      display: inline-block;
+      padding: 14px 28px;
+      border-radius: var(--radius);
+      font-weight: 600;
+      font-size: 15px;
+      transition: transform 0.1s ease, filter 0.2s ease;
+    }
+    .cta-primary {
+      background: linear-gradient(100deg, var(--accent-a), var(--accent-b));
+      color: #fff;
+    }
+    .cta-primary:hover { filter: brightness(1.1); transform: translateY(-1px); text-decoration: none; }
+    .cta-secondary {
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--text);
+    }
+    .cta-secondary:hover { background: rgba(255,255,255,0.06); text-decoration: none; }
+
+    .install-box {
+      max-width: 720px; margin: 0 auto 40px;
+      background: var(--bg-2);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius);
+      text-align: left;
+      overflow: hidden;
+    }
+    .install-box > pre { margin: 0; border: none; background: transparent; }
+
+    section { max-width: 1000px; margin: 0 auto; padding: 70px 24px; }
+    section h2 { font-size: clamp(24px, 3vw, 34px); font-weight: 700; margin-bottom: 10px; letter-spacing: -0.01em; }
+    section h2 .accent { color: var(--accent-b); }
+    section .lead { color: var(--muted); font-size: 16px; margin-bottom: 32px; max-width: 720px; }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--bg-2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+    }
+    .card h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+    .card p { color: var(--muted); font-size: 14px; }
+    .card .icon { font-size: 26px; margin-bottom: 10px; display: block; }
+
+    .bench-table {
+      width: 100%; border-collapse: collapse;
+      background: var(--bg-2); border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .bench-table th, .bench-table td { padding: 11px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); text-align: left; font-size: 14px; }
+    .bench-table th { background: rgba(255,255,255,0.03); font-weight: 600; color: var(--muted); }
+    .bench-table tr:last-child td { border-bottom: none; }
+    .bench-table td:last-child { color: var(--accent-b); font-weight: 600; }
+    .bench-table strong { color: var(--accent-c); }
+
+    .quote {
+      max-width: 680px; margin: 40px auto;
+      padding: 28px 30px;
+      border-left: 3px solid var(--accent-a);
+      background: rgba(65,145,225,0.06);
+      border-radius: 6px;
+      font-size: 16px;
+      color: #cbd5e1;
+    }
+    .quote strong { color: var(--accent-b); }
+
+    .platforms {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px;
+    }
+    .chip {
+      display: inline-block;
+      padding: 7px 13px;
+      background: var(--bg-2);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    footer {
+      max-width: 1000px; margin: 0 auto;
+      padding: 60px 24px 40px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    footer a { color: var(--muted); }
+    footer .links { margin-bottom: 16px; }
+    footer .links a { margin: 0 10px; }
+
+    @media (max-width: 600px) {
+      .hero { padding: 60px 18px 40px; }
+      section { padding: 50px 18px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="hero">
+    <div class="logo">🌳</div>
+    <h1><span class="gradient-text">datatree</span></h1>
+    <p class="tagline">Claude never starts cold. Claude never loses its place.</p>
+    <p class="subtag">Persistent per-project AI superbrain. 100% local. 18 AI tools supported.</p>
+
+    <div class="cta-row">
+      <a class="cta cta-primary" href="https://github.com/omanishay-cyber/datatree#-quick-start">Install in 60 s</a>
+      <a class="cta cta-secondary" href="https://github.com/omanishay-cyber/datatree">View on GitHub</a>
+    </div>
+
+    <div class="install-box">
+<pre><code># Install into every AI tool on your machine
+datatree install
+
+# Index any project — produces a real SQLite graph
+datatree build .
+
+# Open Claude Code. It sees datatree automatically.</code></pre>
+    </div>
+  </div>
+
+  <section>
+    <h2>The <span class="accent">three flaws</span> every AI assistant has</h2>
+    <p class="lead">Datatree fixes all three at the architecture level — not the prompt level.</p>
+
+    <div class="features">
+      <div class="card">
+        <span class="icon">🧊</span>
+        <h3>Starts cold every time</h3>
+        <p>Claude re-reads the same files, asks the same questions, rediscovers your codebase on every task. Datatree's graph means it already knows.</p>
+      </div>
+      <div class="card">
+        <span class="icon">🧠</span>
+        <h3>Forgets mid-task</h3>
+        <p>Context compaction wipes the conversation. Without datatree, Claude restarts from a guess. <strong>With datatree, it resumes at the exact verified step.</strong></p>
+      </div>
+      <div class="card">
+        <span class="icon">🎯</span>
+        <h3>Drifts from your rules</h3>
+        <p>CLAUDE.md says "no hardcoded colors" — five prompts later it hardcodes one. Datatree's drift detector enforces every rule in real time.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The <span class="accent">killer feature</span> — compaction resilience</h2>
+
+    <div class="quote">
+      You give Claude a 100-step task. Context compacts at step 50.<br/>
+      Without datatree: Claude restarts from 30 or re-reads every doc.<br/>
+      <strong>With datatree: Claude resumes at step 51. Verified. No re-reading.</strong>
+    </div>
+
+    <p class="lead">The Step Ledger is a numbered, verification-gated plan that lives in SQLite. Every step records its acceptance check. When compaction wipes Claude's working memory, the next turn auto-injects a ~5K-token resumption bundle with the verbatim goal, completed steps, current position, and remaining work. No other MCP does this.</p>
+  </section>
+
+  <section>
+    <h2>Benchmarks vs <span class="accent">code-review-graph</span></h2>
+    <p class="lead">Measured against the current state-of-the-art code-graph MCP.</p>
+
+    <table class="bench-table">
+      <thead>
+        <tr><th>Metric</th><th>CRG (SoTA)</th><th>datatree</th><th>Improvement</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Token reduction — code review</td><td>6.8×</td><td><strong>≥25× target</strong></td><td>3.7× better</td></tr>
+        <tr><td>First build (500 files)</td><td>10 s</td><td><strong>&lt;3 s</strong></td><td>3.3× faster</td></tr>
+        <tr><td>Incremental update</td><td>&lt;2 s</td><td><strong>&lt;500 ms</strong></td><td>4× faster</td></tr>
+        <tr><td>Visualization ceiling</td><td>~5 000 nodes</td><td><strong>100 000+</strong></td><td>20× scale</td></tr>
+        <tr><td>MCP tools</td><td>24</td><td><strong>33+</strong></td><td>+9</td></tr>
+        <tr><td>Visualization views</td><td>1 (D3)</td><td><strong>14 (WebGL)</strong></td><td>14×</td></tr>
+        <tr><td>Platforms supported</td><td>10</td><td><strong>18</strong></td><td>+8</td></tr>
+        <tr><td>Compaction survival</td><td>❌</td><td><strong>✅</strong></td><td>category-defining</td></tr>
+        <tr><td>Multimodal (PDF / audio / video)</td><td>❌</td><td><strong>✅</strong></td><td>—</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Works with <span class="accent">everything</span></h2>
+    <p class="lead">One <code>datatree install</code> configures every AI tool it detects.</p>
+    <div class="platforms">
+      <span class="chip">Claude Code</span>
+      <span class="chip">Codex</span>
+      <span class="chip">Cursor</span>
+      <span class="chip">Windsurf</span>
+      <span class="chip">Zed</span>
+      <span class="chip">Continue</span>
+      <span class="chip">OpenCode</span>
+      <span class="chip">Google Antigravity</span>
+      <span class="chip">Gemini CLI</span>
+      <span class="chip">Aider</span>
+      <span class="chip">GitHub Copilot CLI / VS Code</span>
+      <span class="chip">Factory Droid</span>
+      <span class="chip">Trae / Trae-CN</span>
+      <span class="chip">Kiro</span>
+      <span class="chip">Qoder</span>
+      <span class="chip">OpenClaw</span>
+      <span class="chip">Hermes</span>
+      <span class="chip">Qwen Code</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>🏗️ <span class="accent">Architecture</span> — multi-process, fault-tolerant, 100 % local</h2>
+<pre><code>Marketplace plugin (global / user / project scope)
+└─ SUPERVISOR (Rust, Windows service / launchd / systemd)
+   ├─ STORE           27-layer SQLite sharded per project + WAL
+   ├─ MCP server      Bun TS, 33+ tools, JSON-RPC stdio
+   ├─ PARSERS         Tree-sitter, 25+ languages, num_cpus×4
+   ├─ SCANNERS        Theme / security / a11y / perf / drift
+   ├─ MD-INGEST       Drinks every .md like CLAUDE.md
+   ├─ BRAIN           Pure-Rust embeddings + Leiden clustering
+   ├─ MULTIMODAL      Python sidecar — PDF / Whisper / OCR
+   ├─ LIVE BUS        SSE/WebSocket push channel
+   ├─ VISION          14-view WebGL desktop+web app
+   └─ HEALTH          60 s self-test, SLA dashboard</code></pre>
+  </section>
+
+  <footer>
+    <div class="links">
+      <a href="https://github.com/omanishay-cyber/datatree">GitHub</a>
+      <a href="https://github.com/omanishay-cyber/datatree/blob/main/docs/design/2026-04-23-datatree-design.md">Design doc</a>
+      <a href="https://github.com/omanishay-cyber/datatree/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/omanishay-cyber/datatree/blob/main/LICENSE">License</a>
+      <a href="mailto:bhattanish@gmail.com">Contact</a>
+    </div>
+    <p>© 2026 <strong>Anish Trivedi</strong>. Datatree Community License v1.0 — source-available, free to use, commercial restrictions apply.</p>
+    <p style="margin-top:8px;opacity:0.6;">Built in a single firestart session, 2026-04-23.</p>
+  </footer>
+
+</body>
+</html>
