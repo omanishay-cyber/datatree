@@ -73,6 +73,8 @@ enum Command {
     Install(commands::install::InstallArgs),
     /// Reverse of `install`.
     Uninstall(commands::uninstall::UninstallArgs),
+    /// Manage local models (embeddings, optional LLM).
+    Models(commands::models::ModelsArgs),
     /// Initial full project ingest.
     Build(commands::build::BuildArgs),
     /// Incremental update.
@@ -157,6 +159,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
     match cli.cmd {
         Command::Install(args) => commands::install::run(args).await,
         Command::Uninstall(args) => commands::uninstall::run(args).await,
+        Command::Models(args) => commands::models::run(args),
         Command::Build(args) => commands::build::run(args, socket_override).await,
         Command::Update(args) => commands::update::run(args, socket_override).await,
         Command::Status(args) => commands::status::run(args, socket_override).await,

@@ -16,6 +16,7 @@ pub mod log_ring;
 pub mod manager;
 pub mod service;
 pub mod watchdog;
+pub mod watcher;
 
 #[cfg(test)]
 mod tests;
@@ -28,6 +29,7 @@ pub use ipc::{ControlCommand, ControlResponse, IpcServer};
 pub use log_ring::{LogEntry, LogLevel, LogRing};
 pub use manager::ChildManager;
 pub use watchdog::Watchdog;
+pub use watcher::{run_watcher, WatcherStats, WatcherStatsHandle, DEFAULT_DEBOUNCE};
 
 use std::sync::Arc;
 use tokio::sync::Notify;

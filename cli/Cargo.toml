@@ -57,6 +57,7 @@ console = "0.15"
 datatree-common = { path = "../common" }
 datatree-store = { path = "../store" }
 parsers = { path = "../parsers" }
+brain = { path = "../brain", optional = true }
 rusqlite = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
@@ -73,3 +74,8 @@ default = []
 # Enables linking the workspace `common` crate. Optional so this crate
 # compiles standalone while the workspace is still being assembled.
 with-common = []
+# Wires `datatree models install` through to `brain::install_default_model`,
+# which triggers fastembed to download BGE-Small-En-v1.5 into ~/.datatree/llm/.
+# Off by default so the workspace builds without a C++ toolchain; release
+# builds enable it.
+fastembed-install = ["dep:brain", "brain/fastembed"]

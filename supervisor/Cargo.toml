@@ -42,9 +42,17 @@ tokio-stream = "0.1"
 num_cpus = "1.16"
 clap = { version = "4.5", features = ["derive", "env"] }
 
-# Local workspace member
+# Filesystem watching (incremental reindex on save).
+notify = "6.1"
+walkdir = "2.5"
+parking_lot = "0.12"
+dunce = "1.0"
+
+# Local workspace members
 # `common` crate is referenced via path; Cargo will resolve relative to this Cargo.toml.
 common = { path = "../common", package = "datatree-common" }
+datatree-store = { path = "../store" }
+parsers = { path = "../parsers" }
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.7"

@@ -15,7 +15,7 @@ Thanks for the interest. Short rules, long explanation below.
    cd mcp && bun test
    ```
 5. **No new native DLL deps** for the Rust side without discussion. datatree stays Windows-friendly and statically linkable.
-6. **LICENSE-compatible contributions only.** By submitting a PR you agree your contribution is licensed under the [Datatree Community License](LICENSE).
+6. **LICENSE-compatible contributions only.** By submitting a PR you agree your contribution is licensed under the [Apache-2.0](LICENSE).
 
 ## What we welcome
 

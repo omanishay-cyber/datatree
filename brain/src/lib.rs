@@ -26,6 +26,7 @@ pub mod error;
 pub mod job;
 pub mod leiden;
 pub mod summarize;
+pub mod wiki;
 pub mod worker;
 
 #[cfg(feature = "llm")]
@@ -70,11 +71,12 @@ impl std::fmt::Display for NodeId {
 pub use cluster_runner::ClusterRunner;
 pub use concept::{Concept, ConceptExtractor};
 pub use embed_store::{EmbedStore, NearestHit};
-pub use embeddings::{Embedder, EMBEDDING_DIM};
+pub use embeddings::{install_default_model, Embedder, EMBEDDING_DIM};
 pub use error::{BrainError, BrainResult as BrainOutcome};
 pub use job::{BrainJob, BrainResult, JobId};
 pub use leiden::{Community, LeidenConfig, LeidenSolver};
 pub use summarize::Summarizer;
+pub use wiki::{CommunityInput, WikiBuilder, WikiPage, WikiSymbol};
 pub use worker::{spawn_worker, WorkerHandle};
 
 #[cfg(feature = "llm")]

@@ -10,6 +10,7 @@
 
 use crate::error::SupervisorError;
 use crate::manager::{ChildManager, ChildSnapshot};
+use crate::watcher::WatcherStatsHandle;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -39,6 +40,25 @@ pub struct SlaSnapshot {
     pub cache_hit_rate: f64,
     /// Disk usage, free bytes, total bytes for the datatree root.
     pub disk: DiskUsage,
+    /// File watcher percentiles (save-to-graph latency, ms).
+    pub watcher: WatcherMetrics,
+}
+
+/// Watcher metrics surfaced on `/health` and `/metrics`.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct WatcherMetrics {
+    /// Total files reindexed since boot.
+    pub total_reindexed: u64,
+    /// Total delete events processed.
+    pub total_deletes: u64,
+    /// Files dropped because they matched the ignore list.
+    pub total_ignored: u64,
+    /// p50 latency in milliseconds.
+    pub p50_ms: u64,
+    /// p95 latency in milliseconds (SLO = 500ms).
+    pub p95_ms: u64,
+    /// p99 latency in milliseconds.
+    pub p99_ms: u64,
 }
 
 /// Disk usage summary used by [`SlaSnapshot`].
@@ -56,18 +76,39 @@ pub struct DiskUsage {
 struct AppState {
     manager: Arc<ChildManager>,
     started: Instant,
+    watcher_stats: WatcherStatsHandle,
 }
 
 /// HTTP server hosting the SLA dashboard.
 pub struct HealthServer {
     manager: Arc<ChildManager>,
     port: u16,
+    watcher_stats: WatcherStatsHandle,
 }
 
 impl HealthServer {
     /// Construct a new health server.
     pub fn new(manager: Arc<ChildManager>, port: u16) -> Self {
-        Self { manager, port }
+        Self {
+            manager,
+            port,
+            watcher_stats: WatcherStatsHandle::new(),
+        }
+    }
+
+    /// Construct a new health server with a shared watcher-stats handle.
+    /// Call this flavor when the supervisor embeds a watcher so the SLA
+    /// dashboard can surface save-to-graph latency.
+    pub fn with_watcher_stats(
+        manager: Arc<ChildManager>,
+        port: u16,
+        watcher_stats: WatcherStatsHandle,
+    ) -> Self {
+        Self {
+            manager,
+            port,
+            watcher_stats,
+        }
     }
 
     /// Run the server until `shutdown.notified()`.
@@ -75,6 +116,7 @@ impl HealthServer {
         let state = AppState {
             manager: self.manager,
             started: Instant::now(),
+            watcher_stats: self.watcher_stats,
         };
 
         let app = Router::new()
@@ -181,6 +223,16 @@ async fn build_snapshot(state: &AppState) -> Result<SlaSnapshot, SupervisorError
 
     let disk = compute_disk_usage(state.manager.config().root_dir.as_path());
 
+    let ws = state.watcher_stats.snapshot();
+    let watcher = WatcherMetrics {
+        total_reindexed: ws.total_reindexed,
+        total_deletes: ws.total_deletes,
+        total_ignored: ws.total_ignored,
+        p50_ms: ws.p50_ms,
+        p95_ms: ws.p95_ms,
+        p99_ms: ws.p99_ms,
+    };
+
     Ok(SlaSnapshot {
         timestamp: Utc::now(),
         supervisor_uptime_s,
@@ -188,6 +240,7 @@ async fn build_snapshot(state: &AppState) -> Result<SlaSnapshot, SupervisorError
         overall_uptime_percent: overall_uptime_percent.min(100.0),
         cache_hit_rate: 0.0, // populated when the store-worker reports back
         disk,
+        watcher,
     })
 }
 

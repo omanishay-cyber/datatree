@@ -15,6 +15,7 @@ pub mod graphify;
 pub mod history;
 pub mod inject;
 pub mod install;
+pub mod models;
 pub mod post_tool;
 pub mod pre_tool;
 pub mod rebuild;

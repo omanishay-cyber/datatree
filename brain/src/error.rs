@@ -14,6 +14,9 @@ pub enum BrainError {
     #[error("ONNX runtime error: {0}")]
     Onnx(String),
 
+    #[error("embedding error: {0}")]
+    Embedding(String),
+
     #[error("tokenizer error: {0}")]
     Tokenizer(String),
 

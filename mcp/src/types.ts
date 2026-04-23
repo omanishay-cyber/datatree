@@ -44,6 +44,9 @@ export const DbLayerEnum = z.enum([
   "telemetry",
   "corpus",
   "multimodal",
+  "refactors",
+  "wiki",
+  "architecture",
 ]);
 export type DbLayer = z.infer<typeof DbLayerEnum>;
 
@@ -553,6 +556,148 @@ export const RebuildInput = z.object({
 export const RebuildOutput = z.object({
   rebuilt: z.array(z.string()),
   duration_ms: z.number(),
+});
+
+// ---------------------------------------------------------------------------
+// Tool I/O — Refactor (closes CRG gap)
+// ---------------------------------------------------------------------------
+
+export const RefactorProposal = z.object({
+  proposal_id: z.string(),
+  kind: z.enum([
+    "unused-import",
+    "unreachable-function",
+    "unreferenced-type",
+    "rename-function",
+    "rename-variable",
+    "rename-type",
+  ]),
+  file: z.string(),
+  line_start: z.number().int().nonnegative(),
+  line_end: z.number().int().nonnegative(),
+  column_start: z.number().int().nonnegative(),
+  column_end: z.number().int().nonnegative(),
+  symbol: z.string().nullable(),
+  original_text: z.string(),
+  replacement_text: z.string(),
+  rationale: z.string(),
+  severity: SeverityEnum,
+  confidence: z.number().min(0).max(1),
+});
+export type RefactorProposal = z.infer<typeof RefactorProposal>;
+
+export const RefactorSuggestInput = z.object({
+  scope: z.enum(["project", "file"]).default("project"),
+  file: z.string().optional(),
+  kinds: z.array(z.string()).optional(),
+  limit: z.number().int().positive().max(500).default(100),
+});
+
+export const RefactorSuggestOutput = z.object({
+  proposals: z.array(RefactorProposal),
+  scanned_files: z.number().int(),
+  duration_ms: z.number(),
+});
+
+export const RefactorApplyInput = z.object({
+  proposal_id: z.string().min(1),
+  dry_run: z.boolean().default(false),
+});
+
+export const RefactorApplyOutput = z.object({
+  proposal_id: z.string(),
+  applied: z.boolean(),
+  backup_path: z.string().nullable(),
+  diff_summary: z.string(),
+  bytes_written: z.number().int().nonnegative(),
+});
+
+// ---------------------------------------------------------------------------
+// Tool I/O — Wiki (closes CRG gap)
+// ---------------------------------------------------------------------------
+
+export const WikiGenerateInput = z.object({
+  project: z.string().optional(),
+  force: z.boolean().default(false),
+});
+
+export const WikiPageSummary = z.object({
+  slug: z.string(),
+  title: z.string(),
+  community_id: z.number().int(),
+  risk_score: z.number(),
+  file_count: z.number().int(),
+  entry_point_count: z.number().int(),
+});
+
+export const WikiGenerateOutput = z.object({
+  pages: z.array(WikiPageSummary),
+  total_pages: z.number().int(),
+  duration_ms: z.number(),
+});
+
+export const WikiPageInput = z.object({
+  slug: z.string().min(1),
+  version: z.number().int().positive().optional(),
+});
+
+export const WikiPageOutput = z.object({
+  slug: z.string(),
+  title: z.string(),
+  community_id: z.number().int(),
+  version: z.number().int(),
+  markdown: z.string(),
+  risk_score: z.number(),
+  generated_at: z.string(),
+});
+
+// ---------------------------------------------------------------------------
+// Tool I/O — Architecture Overview (closes CRG gap)
+// ---------------------------------------------------------------------------
+
+export const ArchitectureOverviewInput = z.object({
+  project: z.string().optional(),
+  refresh: z.boolean().default(false),
+  top_k: z.number().int().positive().max(50).default(10),
+});
+
+export const CouplingCell = z.object({
+  from_community: z.number().int(),
+  to_community: z.number().int(),
+  edge_count: z.number().int(),
+  density: z.number(),
+});
+
+export const CommunityRiskEntry = z.object({
+  community_id: z.number().int(),
+  total_callers: z.number().int(),
+  avg_criticality: z.number(),
+  security_hits: z.number().int(),
+  risk_index: z.number(),
+  top_symbols: z.array(z.string()),
+});
+
+export const BridgeNodeEntry = z.object({
+  qualified_name: z.string(),
+  community_id: z.number().int(),
+  betweenness: z.number(),
+});
+
+export const HubNodeEntry = z.object({
+  qualified_name: z.string(),
+  community_id: z.number().int(),
+  degree: z.number().int(),
+});
+
+export const ArchitectureOverviewOutput = z.object({
+  community_count: z.number().int(),
+  node_count: z.number().int(),
+  edge_count: z.number().int(),
+  coupling_matrix: z.array(CouplingCell),
+  risk_index: z.array(CommunityRiskEntry),
+  bridge_nodes: z.array(BridgeNodeEntry),
+  hub_nodes: z.array(HubNodeEntry),
+  captured_at: z.string(),
 });
 
 // ---------------------------------------------------------------------------
