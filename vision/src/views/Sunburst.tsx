@@ -1,82 +1,98 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
-import { fetchGraph } from "../api";
+import { fetchFileTree, type FileTreeNode } from "../api/graph";
 
-interface SunburstNode {
-  name: string;
-  value?: number;
-  children?: SunburstNode[];
-}
+type Status = "loading" | "empty" | "ready" | "error";
 
-function toTree(nodes: { id: string; label?: string; size?: number }[]): SunburstNode {
-  // Group nodes by the slash-segmented label to get a folder-ish hierarchy.
-  const root: SunburstNode = { name: "root", children: [] };
-  for (const n of nodes) {
-    const segments = (n.label ?? n.id).split(/[/\\]/).filter(Boolean);
-    let cursor = root;
-    for (let i = 0; i < segments.length; i += 1) {
-      const seg = segments[i] ?? "";
-      cursor.children = cursor.children ?? [];
-      let child = cursor.children.find((c) => c.name === seg);
-      if (!child) {
-        child = { name: seg, children: [] };
-        cursor.children.push(child);
-      }
-      if (i === segments.length - 1) {
-        child.value = (child.value ?? 0) + (n.size ?? 1);
-      }
-      cursor = child;
-    }
-  }
-  return root;
+function leafCount(node: FileTreeNode): number {
+  if (!node.children || node.children.length === 0) return 1;
+  return node.children.reduce((sum, c) => sum + leafCount(c), 0);
 }
 
 export function Sunburst(): JSX.Element {
   const ref = useRef<SVGSVGElement | null>(null);
+  const [status, setStatus] = useState<Status>("loading");
+  const [error, setError] = useState<string | null>(null);
+  const [fileCount, setFileCount] = useState(0);
 
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
-    fetchGraph("sunburst", { signal: ac.signal }).then((payload) => {
-      if (cancelled || !ref.current) return;
-      const data = toTree(payload.nodes);
-      const width = 720;
-      const radius = width / 2;
 
-      const root = d3
-        .hierarchy<SunburstNode>(data)
-        .sum((d) => d.value ?? 0)
-        .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+    (async (): Promise<void> => {
+      try {
+        const res = await fetchFileTree(ac.signal, 4000);
+        if (cancelled || !ref.current) return;
+        if (res.error) {
+          setError(res.error);
+          setStatus("error");
+          return;
+        }
+        const tree = res.tree;
+        const count = leafCount(tree);
+        if (!tree.children || tree.children.length === 0 || count <= 1) {
+          setStatus("empty");
+          return;
+        }
+        setFileCount(count);
 
-      const partition = d3.partition<SunburstNode>().size([2 * Math.PI, radius]);
-      partition(root);
+        const width = 720;
+        const radius = width / 2;
 
-      const arc = d3
-        .arc<d3.HierarchyRectangularNode<SunburstNode>>()
-        .startAngle((d) => d.x0)
-        .endAngle((d) => d.x1)
-        .innerRadius((d) => d.y0)
-        .outerRadius((d) => d.y1 - 1);
+        const root = d3
+          .hierarchy<FileTreeNode>(tree)
+          .sum((d) => d.value ?? 0)
+          .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
 
-      const color = d3.scaleOrdinal(d3.quantize(d3.interpolateRainbow, root.children?.length ?? 8));
+        d3.partition<FileTreeNode>().size([2 * Math.PI, radius])(root);
 
-      const svg = d3.select(ref.current).attr("viewBox", `${-radius} ${-radius} ${width} ${width}`);
-      svg.selectAll("*").remove();
+        const arc = d3
+          .arc<d3.HierarchyRectangularNode<FileTreeNode>>()
+          .startAngle((d) => d.x0)
+          .endAngle((d) => d.x1)
+          .innerRadius((d) => d.y0)
+          .outerRadius((d) => d.y1 - 1);
 
-      svg
-        .selectAll("path")
-        .data(root.descendants().filter((d) => d.depth > 0) as d3.HierarchyRectangularNode<SunburstNode>[])
-        .join("path")
-        .attr("d", arc)
-        .attr("fill", (d) => {
-          let p: d3.HierarchyNode<SunburstNode> = d;
-          while (p.depth > 1 && p.parent) p = p.parent;
-          return color(p.data.name);
-        })
-        .attr("opacity", 0.85)
-        .append("title")
-        .text((d) => `${d.ancestors().map((a) => a.data.name).reverse().join(" / ")} — ${d.value ?? 0}`);
-    });
+        const childCount = root.children?.length ?? 8;
+        const color = d3.scaleOrdinal(d3.quantize(d3.interpolateRainbow, Math.max(childCount, 3)));
+
+        const svg = d3
+          .select(ref.current)
+          .attr("viewBox", `${-radius} ${-radius} ${width} ${width}`);
+        svg.selectAll("*").remove();
+
+        svg
+          .selectAll("path")
+          .data(
+            root.descendants().filter((d) => d.depth > 0) as d3.HierarchyRectangularNode<FileTreeNode>[],
+          )
+          .join("path")
+          .attr("d", arc)
+          .attr("fill", (d) => {
+            let p: d3.HierarchyNode<FileTreeNode> = d;
+            while (p.depth > 1 && p.parent) p = p.parent;
+            return color(p.data.name);
+          })
+          .attr("opacity", 0.85)
+          .append("title")
+          .text(
+            (d) =>
+              `${d
+                .ancestors()
+                .map((a) => a.data.name)
+                .reverse()
+                .join(" / ")} - ${(d.value ?? 0).toLocaleString()} LoC`,
+          );
+
+        setStatus("ready");
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        if (!cancelled) {
+          setError((err as Error).message);
+          setStatus("error");
+        }
+      }
+    })();
     return () => {
       cancelled = true;
       ac.abort();
@@ -86,6 +102,24 @@ export function Sunburst(): JSX.Element {
   return (
     <div className="vz-view vz-view--sunburst">
       <svg ref={ref} className="vz-view-canvas" />
+      {status === "loading" && (
+        <div className="vz-view-hint" role="status">
+          loading graph.db file tree...
+        </div>
+      )}
+      {status === "empty" && (
+        <div className="vz-view-error" role="status">
+          no files in shard -- run <code>mneme build .</code> to index the project
+        </div>
+      )}
+      {status === "error" && error && (
+        <div className="vz-view-error" role="alert">
+          sunburst error: {error}
+        </div>
+      )}
+      {status === "ready" && (
+        <p className="vz-view-hint">{fileCount.toLocaleString()} files - weighted by LoC</p>
+      )}
     </div>
   );
 }
