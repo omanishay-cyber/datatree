@@ -1,31 +1,89 @@
 <div align="center">
 
-<!-- Animated gradient wave header — matches the profile README -->
-<img src="https://capsule-render.vercel.app/api?type=waving&height=220&color=gradient&customColorList=6,11,20&text=Mneme&fontSize=72&fontAlignY=40&desc=Claude%20never%20starts%20cold.%20Claude%20never%20loses%20its%20place.&descSize=16&descAlignY=62&animation=fadeIn" width="100%"/>
+<!-- ==================================================================== -->
+<!--   Hero — social-preview image as inline banner                        -->
+<!-- ==================================================================== -->
+
+<a href="https://omanishay-cyber.github.io/mneme/">
+  <img src="docs/og.png" alt="Mneme — the persistent memory layer for AI coding" width="100%"/>
+</a>
+
+<br/>
+
+<!-- ==================================================================== -->
+<!--   Call to action — big, gradient, unmissable                          -->
+<!-- ==================================================================== -->
 
 <p>
-  <a href="#-quick-start"><img src="https://img.shields.io/badge/Install-60%20seconds-4191E1?style=for-the-badge" alt="Install in 60 seconds"/></a>
-  <a href="https://github.com/omanishay-cyber/mneme/releases"><img src="https://img.shields.io/badge/version-v0.2.0-41E1B5?style=for-the-badge" alt="Version"/></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-22D3EE?style=for-the-badge" alt="License"/></a>
-  <a href="https://github.com/omanishay-cyber/mneme/actions"><img src="https://img.shields.io/badge/CI-green-brightgreen?style=for-the-badge" alt="CI"/></a>
-  <a href="https://github.com/omanishay-cyber/mneme/issues"><img src="https://img.shields.io/badge/Issues-on%20GitHub-a78bfa?style=for-the-badge" alt="Issues"/></a>
+  <a href="#-quick-start"><img src="https://img.shields.io/badge/%E2%9C%A8%20Install-60%20seconds-4191E1?style=for-the-badge&labelColor=0b0f19" alt="Install in 60 seconds"/></a>
+  <a href="https://github.com/omanishay-cyber/mneme/releases/latest"><img src="https://img.shields.io/badge/%F0%9F%93%A6%20Release-v0.2.0-41E1B5?style=for-the-badge&labelColor=0b0f19" alt="Latest release"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/%E2%9A%96%EF%B8%8F%20License-Apache%202.0-22D3EE?style=for-the-badge&labelColor=0b0f19" alt="License"/></a>
+  <a href="https://github.com/omanishay-cyber/mneme/actions"><img src="https://img.shields.io/badge/%E2%9C%85%20CI-green-brightgreen?style=for-the-badge&labelColor=0b0f19" alt="CI"/></a>
 </p>
+
+<h3>Claude never starts cold. Claude never loses its place.</h3>
 
 <p>
   <strong>The persistent memory layer for AI coding.</strong><br/>
-  Survives context compaction. Indexes your code. Injects the right 1–3K tokens every turn.<br/>
-  100% local. No telemetry. Works with Claude Code, Codex, Cursor, Windsurf, Zed, and 13 more.
+  Survives context compaction · indexes your code · injects the right 1–3 K tokens every turn.<br/>
+  100 % local · no telemetry · no API keys · works with <em>18 AI tools</em> out of the box.
 </p>
 
+<!-- ==================================================================== -->
+<!--   Stats grid — the numbers that matter, at a glance                   -->
+<!-- ==================================================================== -->
+
+<table>
+<tr>
+  <td align="center" width="14%">
+    <sub>MCP TOOLS</sub><br/>
+    <strong><span style="font-size: 1.5em;">55+</span></strong>
+  </td>
+  <td align="center" width="14%">
+    <sub>LANGUAGES</sub><br/>
+    <strong><span style="font-size: 1.5em;">29</span></strong>
+  </td>
+  <td align="center" width="14%">
+    <sub>SQLITE SHARDS</sub><br/>
+    <strong><span style="font-size: 1.5em;">22</span></strong>
+  </td>
+  <td align="center" width="14%">
+    <sub>LIVE VIEWS</sub><br/>
+    <strong><span style="font-size: 1.5em;">14</span></strong>
+  </td>
+  <td align="center" width="14%">
+    <sub>SCANNERS</sub><br/>
+    <strong><span style="font-size: 1.5em;">10</span></strong>
+  </td>
+  <td align="center" width="14%">
+    <sub>AI PLATFORMS</sub><br/>
+    <strong><span style="font-size: 1.5em;">18</span></strong>
+  </td>
+  <td align="center" width="14%">
+    <sub>NETWORK CALLS</sub><br/>
+    <strong><span style="font-size: 1.5em;">0</span></strong>
+  </td>
+</tr>
+</table>
+
+<!-- ==================================================================== -->
+<!--   Tech stack chips                                                    -->
+<!-- ==================================================================== -->
+
 <p>
-  <img src="https://img.shields.io/badge/built%20with-Rust-CE422B?style=flat&logo=rust&logoColor=white" alt="Rust"/>
-  <img src="https://img.shields.io/badge/built%20with-Bun-000000?style=flat&logo=bun&logoColor=white" alt="Bun"/>
-  <img src="https://img.shields.io/badge/built%20with-TypeScript-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript"/>
-  <img src="https://img.shields.io/badge/platform-Win%20%7C%20macOS%20%7C%20Linux-4191E1?style=flat" alt="Platforms"/>
-  <img src="https://img.shields.io/badge/MCP-2024--11--05-41E1B5?style=flat" alt="MCP"/>
-  <img src="https://img.shields.io/badge/local--only-%E2%9C%93-22D3EE?style=flat" alt="Local only"/>
-  <img src="https://img.shields.io/badge/Apache--2.0-open%20source-a78bfa?style=flat" alt="Apache 2.0"/>
+  <img src="https://img.shields.io/badge/Rust-CE422B?style=flat&logo=rust&logoColor=white" alt="Rust"/>
+  <img src="https://img.shields.io/badge/Bun-000000?style=flat&logo=bun&logoColor=white" alt="Bun"/>
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript"/>
+  <img src="https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white" alt="SQLite"/>
+  <img src="https://img.shields.io/badge/Tree--sitter-5D3A9B?style=flat" alt="Tree-sitter"/>
+  <img src="https://img.shields.io/badge/Tauri-FFC131?style=flat&logo=tauri&logoColor=black" alt="Tauri"/>
+  <img src="https://img.shields.io/badge/MCP-2024--11--05-success?style=flat" alt="MCP"/>
+  <img src="https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-4191E1?style=flat" alt="Platforms"/>
 </p>
+
+<!-- ==================================================================== -->
+<!--   Nav                                                                  -->
+<!-- ==================================================================== -->
 
 <p>
   <strong>
@@ -38,6 +96,8 @@
     &nbsp;·&nbsp; <a href="docs/">Docs</a>
   </strong>
 </p>
+
+<sub>🌳 Named after <strong>Mneme</strong>, the Greek muse of memory. Because "remembering" is the hardest problem in AI coding.</sub>
 
 </div>
 
