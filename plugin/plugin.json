@@ -1,6 +1,6 @@
 {
   "name": "mneme",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "Mneme — The AI Superbrain",
   "description": "Persistent per-project SQLite memory + 14-view live graph + drift detector + 30+ MCP tools. Claude never starts cold, never loses its place.",
   "author": "Anish Trivedi",

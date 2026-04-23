@@ -3,7 +3,7 @@
   "name": "mneme",
   "displayName": "mneme — the AI superbrain",
   "description": "Persistent per-project memory that survives context compaction. 27-layer SQLite shard, 33+ MCP tools, 14 visualization views, drift detector, compaction-resilient Step Ledger. 100% local.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Anish Trivedi",
   "homepage": "https://omanishay-cyber.github.io/mneme/",
   "repository": "https://github.com/omanishay-cyber/mneme",
@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "mneme",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "description": "AI superbrain MCP — persistent memory, blast-radius queries, drift detection, Step Ledger that survives compaction.",
       "source": {
         "type": "github",

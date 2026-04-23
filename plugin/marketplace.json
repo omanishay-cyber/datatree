@@ -10,7 +10,7 @@
     {
       "name": "mneme",
       "git": "https://github.com/anishtrivedi/mneme",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "description": "Per-user code knowledge graph daemon + MCP server. Installs across Claude Code, Codex, Cursor, Windsurf, Zed, Continue, OpenCode, Antigravity, Gemini CLI, Aider, GitHub Copilot, Factory Droid, Trae, Kiro, Qoder, OpenClaw, Hermes, and Qwen Code.",
       "homepage": "https://github.com/anishtrivedi/mneme",
       "license": "MIT",
