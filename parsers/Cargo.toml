@@ -73,6 +73,12 @@ camino = "1.1"
 # Time measurement
 ahash = "0.8"
 
+# tree-sitter 0.25 returns `QueryMatches<'_, _, ...>` that implements the
+# trait from this crate (not a built-in one). The trait is re-exported by
+# tree-sitter but only as an opaque bound; to call `.next()` we need the
+# real trait in scope.
+streaming-iterator = "0.1"
+
 # ---------------------------------------------------------------------------
 # Tree-sitter language grammars
 #
