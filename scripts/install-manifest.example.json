@@ -1,7 +1,7 @@
 {
   "$comment": "mneme install manifest -- example shape. Lives at ~/.mneme/install-manifest.json. Updated on every install/uninstall run. Single source of truth for what mneme installed vs. what was already on the machine.",
 
-  "datatree_version": "0.1.0",
+  "mneme_version": "0.2.0",
   "installed_at": "2026-04-23T15:00:00Z",
 
   "installed_by_datatree": [

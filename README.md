@@ -13,7 +13,7 @@
 <p>
   <a href="#quick-start"><img src="https://img.shields.io/badge/install-in%2060%20seconds-4191E1?style=for-the-badge" alt="Install in 60 seconds"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-41E1B5?style=for-the-badge" alt="License"/></a>
-  <a href="#"><img src="https://img.shields.io/badge/status-v0.1.0%20operational-22D3EE?style=for-the-badge" alt="Status"/></a>
+  <a href="#"><img src="https://img.shields.io/badge/status-v0.2.0%20operational-22D3EE?style=for-the-badge" alt="Status"/></a>
 </p>
 
 <p>
@@ -149,25 +149,25 @@ The **Step Ledger** is a numbered, verification-gated plan that lives in SQLite.
 
 ## 📊 Benchmarks
 
-Measured against [code-review-graph](https://github.com/tirth8205/code-review-graph), the state-of-the-art code-graph MCP:
+Measured against [code-review-graph](https://github.com/tirth8205/code-review-graph), the state-of-the-art code-graph MCP. Mneme numbers come from the `bench_retrieval bench-all` harness at [`benchmarks/`](benchmarks/BENCHMARKS.md); CRG numbers are from their public README. The first measured-on-Mneme row is populated by the weekly CI workflow into [`bench-history.csv`](bench-history.csv); rows we cannot yet measure honestly are marked `TBD (v0.3)`.
 
-| | CRG (the current SoTA) | **mneme** | Ratio |
+| | CRG (the current SoTA) | **mneme (measured)** | Notes |
 |---|---|---|---|
-| Token reduction — code review | 6.8× | **≥25× target** | **3.7× better** |
-| Token reduction — live coding | 14.1× | **≥40× target** | **2.8× better** |
-| First build (500 files) | 10 s | **<3 s** | **3.3× faster** |
-| Incremental update | <2 s | **<500 ms** | **4× faster** |
-| Visualization ceiling | ~5 000 nodes | **100 000+** | **20× scale** |
-| Storage layers | 1 | **27** | **27×** |
-| MCP tools | 24 | **33+** | **+9** |
-| Visualization views | 1 (D3 force) | **14** (WebGL) | **14×** |
-| Languages | 23 | **25+** | **+2** |
-| Platforms supported | 10 | **18** | **+8** |
-| Compaction survival | ❌ | ✅ **category-defining** | — |
-| Multimodal (PDF/audio/video) | ❌ | ✅ | — |
-| Live push updates | ❌ | ✅ | — |
+| Token reduction — code review | 6.8× | **TBD (v0.3)** | Measured by `bench-token-reduction`; real number emitted to `bench-run.csv` |
+| Token reduction — live coding | 14.1× | **TBD (v0.3)** | Same harness, driven from per-turn corpus |
+| First build (500 files) | 10 s | **TBD (v0.3)** | `bench-first-build` cold run on a pinned fixture |
+| Incremental update | <2 s | **TBD (v0.3)** | `bench-incremental` p95 |
+| Visualization ceiling | ~5 000 nodes | **100 000+** (design) | Tauri WebGL renderer; not yet auto-benchmarked |
+| Storage layers | 1 | **22** | Sharded SQLite, see [`docs/architecture.md`](docs/architecture.md) |
+| MCP tools | 24 | **35** | Count from `mcp/src/tools/` at current HEAD |
+| Visualization views | 1 (D3 force) | **14** (WebGL) | `vision/` app |
+| Languages | 23 | **29** | Tree-sitter grammars, see [`parsers/Cargo.toml`](parsers/Cargo.toml) |
+| Platforms supported | 10 | **18** | [plugin manifests](plugin/templates/) |
+| Compaction survival | ❌ | ✅ **category-defining** | Step Ledger, §7 design doc |
+| Multimodal (PDF/audio/video) | ❌ | ✅ | `workers/multimodal/` Python sidecar |
+| Live push updates | ❌ | ✅ | `livebus/` SSE+WebSocket |
 
-*Targets measured on a fresh install indexing the mneme source itself — 1 922 nodes and 3 643 edges from 50 files. Reproduce with `mneme build .` on any project.*
+*Performance numbers are populated by the weekly [`bench-weekly.yml`](.github/workflows/bench-weekly.yml) CI workflow on `ubuntu-latest` and committed to [`bench-history.csv`](bench-history.csv). Run the full suite locally with `just bench-all .` or `cargo run --release -p benchmarks --bin bench_retrieval -- bench-all .`. See [`benchmarks/BENCHMARKS.md`](benchmarks/BENCHMARKS.md) for the CSV schema and per-metric methodology.*
 
 ## 🔌 18 supported platforms
 
