@@ -1,0 +1,68 @@
+{
+  "_": "Retrieval queries against the Django source tree. Tests Mneme's ability to navigate a mature Python framework (~300k LOC).",
+  "queries": [
+    {
+      "q": "where is ORM model Meta class processed?",
+      "expect_top_k": [
+        "django/db/models/base.py",
+        "django/db/models/options.py"
+      ]
+    },
+    {
+      "q": "middleware request processing chain",
+      "expect_top_k": [
+        "django/core/handlers/base.py",
+        "django/middleware/"
+      ]
+    },
+    {
+      "q": "PBKDF2 password hasher",
+      "expect_top_k": [
+        "django/contrib/auth/hashers.py"
+      ]
+    },
+    {
+      "q": "CSRF token middleware",
+      "expect_top_k": [
+        "django/middleware/csrf.py"
+      ]
+    },
+    {
+      "q": "URL reverse resolver",
+      "expect_top_k": [
+        "django/urls/resolvers.py"
+      ]
+    },
+    {
+      "q": "QuerySet lazy evaluation",
+      "expect_top_k": [
+        "django/db/models/query.py"
+      ]
+    },
+    {
+      "q": "template autoescape",
+      "expect_top_k": [
+        "django/template/defaulttags.py",
+        "django/template/base.py"
+      ]
+    },
+    {
+      "q": "session backend database",
+      "expect_top_k": [
+        "django/contrib/sessions/backends/db.py"
+      ]
+    },
+    {
+      "q": "admin autodiscover",
+      "expect_top_k": [
+        "django/contrib/admin/__init__.py"
+      ]
+    },
+    {
+      "q": "migration autodetector",
+      "expect_top_k": [
+        "django/db/migrations/autodetector.py"
+      ]
+    }
+  ]
+}
