@@ -155,61 +155,124 @@ Every AI coding assistant has the same three flaws:
 
 ## ⚡ Quick start
 
-```bash
-# One command — installs into every AI tool it detects (Claude Code, Codex, Cursor, …)
-mneme install
-
-# Index any project — produces a real SQLite graph of your code
-mneme build .
-
-# That's it. Open Claude Code in that project. It sees mneme automatically.
-```
-
-Verified on **Windows 11 / macOS 14+ / Ubuntu 22.04+**. Rust 1.78+, Bun 1.3+, Python 3.10+ required.
-
-## 🪄 What it does
-
 <table>
 <tr>
-<td width="50%" valign="top">
+<td width="33%" valign="top">
 
-### For coders
-- **Blast radius** — "what breaks if I rename this?"
-- **Drift detector** — enforces your CLAUDE.md rules in real time
-- **Compaction-resilient steps** — 100-step plans survive context collapse
-- **Per-project memory** — every decision you ever made, recallable
-- **18 AI tools supported** — one install, works everywhere
+**🐧 Linux / macOS**
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/omanishay-cyber/mneme/main/scripts/install.sh \
+  | sh
+```
 
 </td>
-<td width="50%" valign="top">
+<td width="34%" valign="top">
 
-### For writers / researchers / students
-- **Every `.md` drunk as context** — your notes become Claude's memory
-- **PDFs, screenshots, audio, video** — one graph, all your references
-- **"Find the paragraph where I argued X 3 weeks ago"** — instant recall
-- **God-nodes** — the most-connected ideas in your corpus
-- **Surprising connections** — links between your notes you didn't see
+**🪟 Windows (PowerShell)**
+```powershell
+iwr -useb `
+  https://raw.githubusercontent.com/omanishay-cyber/mneme/main/scripts/install.ps1 `
+  | iex
+```
+
+</td>
+<td width="33%" valign="top">
+
+**🤖 Claude Code plugin**
+```
+/plugin marketplace add \
+  github:omanishay-cyber/mneme
+/plugin install mneme
+```
 
 </td>
 </tr>
 </table>
 
-## 🎯 The killer feature
+Then, in any project:
+
+```bash
+mneme-daemon start                 # spin up the supervisor (40 workers, 7777/health)
+mneme build .                      # index the project → ~/.mneme/projects/<sha>/
+mneme recall "where is auth?"      # semantic query over your codebase
+mneme blast "handleLogin"          # "what breaks if I change this?"
+mneme doctor                       # verify everything's wired
+```
+
+**That's it.** Claude Code auto-discovers Mneme on its next invocation. No configuration, no API keys, no cloud. Tested on **Windows 11**, **macOS 14+ (Apple Silicon)**, **Ubuntu 22.04+**.
+
+---
+
+## 🪄 Before Mneme vs. After Mneme
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+<h3>❌ Before</h3>
+
+> **You**: Add Argon2id as an option alongside PBKDF2.
+>
+> **Claude**: Sure. Can you show me the current auth code?
+>
+> **You**: *pastes 400 lines*
+>
+> **Claude**: Got it. Should I put the new option in `authStore.ts`?
+>
+> **You**: No, it goes in `crypto/kdf.rs` — we refactored last week.
+>
+> **Claude**: I don't have that context. Can you show me `crypto/kdf.rs`?
+>
+> *(closes laptop, loses faith in AI)*
+
+</td>
+<td width="50%" valign="top">
+
+<h3>✅ After</h3>
+
+> **You**: Add Argon2id as an option alongside PBKDF2.
+>
+> **Claude (via Mneme context)**: Per Session #67, PBKDF2 lives in `crypto/kdf.rs`. The `KdfAlgorithm` enum is ready to extend. Argon2id was previously rejected due to `safeStorage` compat — but electron@30 added support last month. Adding to `kdf.rs` now. Tests go in `kdf.test.ts`. 3 files affected.
+>
+> *(the difference is felt in the first 30 seconds — that's the sell)*
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🎯 The killer feature — compaction-resilient Step Ledger
 
 > You give Claude a 100-step task. Context compacts at step 50.
-> Without mneme: Claude restarts from 30 or re-reads every doc.
-> **With mneme: Claude resumes at step 51. Verified. No re-reading.**
+> Without Mneme: Claude restarts from step 30 or re-reads every doc.
+> **With Mneme: Claude resumes at step 51. Verified. No re-reading.**
 
-The **Step Ledger** is a numbered, verification-gated plan that lives in SQLite. Every step records its acceptance check. When compaction wipes Claude's working memory, the next turn auto-injects a ~5K-token resumption bundle with:
+```
+┌─── session #1 ──────────────────────┐    ┌─── session #2 (post-compaction) ───┐
+│  step 1  ✓ initial plan            │    │                                    │
+│  step 2  ✓ schema additions        │    │  <mneme-resume>                    │
+│  step 3  ✓ migration written       │    │    original goal: "refactor auth"  │
+│  …                                  │    │    completed: 50 steps + proofs   │
+│  step 49 ✓ backfill finished       │    │    YOU ARE HERE: step 51           │
+│  step 50 ✓ acceptance check pass   │    │    next: 49 steps remain           │
+│                                     │    │    constraints: no hardcoded keys │
+│  💥 context hits the wall           │    │  </mneme-resume>                   │
+│                                     │    │  step 51  → (resumes cleanly)     │
+└─────────────────────────────────────┘    └────────────────────────────────────┘
+```
 
-- The verbatim original goal (as you first typed it)
-- The goal stack (main task → subtask → sub-subtask)
-- Completed steps + their proof artefacts
-- Current step + where Claude left off
-- Remaining steps with acceptance checks
-- Active constraints (must-honor rules)
+The **Step Ledger** is a numbered, verification-gated plan that lives in SQLite. Every step records its acceptance check. When compaction wipes Claude's working memory, the next turn auto-injects a ~5 K-token resumption bundle containing:
 
-**No other MCP does this.**
+- 🎯 The verbatim original goal (as you first typed it)
+- 🗂️ The goal stack (main task → subtask → sub-subtask)
+- ✅ Completed steps + their proof artefacts
+- 📍 Current step + where Claude left off
+- 🔜 Remaining steps with acceptance checks
+- 🛡️ Active constraints (must-honor rules)
+
+**No other MCP does this.** CRG, Graphify, Cursor memory, Claude Projects — all four lose state at compaction. Mneme is the only system that survives it architecturally.
 
 ## 📊 Benchmarks
 
@@ -265,21 +328,42 @@ One `mneme install` command configures every AI tool it detects:
 ## 🏗️ Architecture
 
 ```
-Marketplace plugin (global / user / project scope)
-└─ SUPERVISOR (Rust, Windows service / launchd / systemd)
-   ├─ STORE           27-layer SQLite sharded per project + WAL + snapshots
-   ├─ MCP server      Bun TS, 33+ tools, JSON-RPC over stdio, hot-reload
-   ├─ PARSERS         Tree-sitter, 25+ languages, num_cpus×4 workers
-   ├─ SCANNERS        Theme / security / a11y / perf / drift / secrets
-   ├─ MD-INGEST       Drinks every .md like CLAUDE.md
-   ├─ BRAIN           Pure-Rust embeddings + Leiden clustering (local)
-   ├─ MULTIMODAL      Python sidecar — PDF / Whisper / OCR
-   ├─ LIVE BUS        SSE/WebSocket push channel, multi-agent pubsub
-   ├─ VISION          14-view WebGL desktop+web app + Command Center UI
-   └─ HEALTH          60 s self-test, SLA dashboard at localhost:7777/health
+  ┌────────────────────────────────────────────────────────────────────────┐
+  │  Claude Code · Codex · Cursor · Windsurf · Zed · Gemini · 12 more…    │
+  └─────────────────────────┬──────────────────────────────────────────────┘
+                            │ MCP (JSON-RPC over stdio)
+                            ▼
+  ┌────────────────────────────────────────────────────────────────────────┐
+  │   MCP SERVER (Bun TS) — 55+ tools, hot-reload, zod-validated           │
+  └─────────────────────────┬──────────────────────────────────────────────┘
+                            │ IPC (named pipe / unix socket)
+                            ▼
+  ┌────────────────────────────────────────────────────────────────────────┐
+  │                      SUPERVISOR (Rust, daemon)                         │
+  │                  watchdog · restart loop · health /7777                │
+  └────┬──────────┬──────────┬──────────┬──────────┬──────────┬────────────┘
+       ▼          ▼          ▼          ▼          ▼          ▼
+   ┌──────┐  ┌────────┐  ┌────────┐  ┌───────┐  ┌──────────┐  ┌────────┐
+   │ STORE│  │PARSERS │  │SCANNERS│  │ BRAIN │  │MULTIMODAL│  │LIVEBUS │
+   │ 22 DB│  │ 29     │  │ 10     │  │BGE +  │  │ PDF/IMG/ │  │SSE/WS  │
+   │ shrds│  │ langs  │  │audits  │  │Leiden │  │Whisper   │  │pubsub  │
+   └──┬───┘  └────────┘  └────────┘  └───────┘  └──────────┘  └────────┘
+      ▼
+   ~/.mneme/projects/<sha>/
+     graph.db · history.db · semantic.db · findings.db ·
+     tasks.db · memory.db · wiki.db · architecture.db · …
+                            │
+                            ▼
+                ┌───────────────────────┐
+                │ VISION (Tauri + React)│  14 live views
+                │ localhost:7777        │  ForceGalaxy · Treemap · Sankey
+                │                       │  Sunburst · Chord · Timeline · …
+                └───────────────────────┘
 ```
 
-Architecture details in [`docs/architecture.md`](docs/architecture.md).
+Design principles: **100% local-first** · **single-writer-per-shard** · **append-only schemas** · **fault-isolated workers** · **hot-reload MCP tools** · **graceful degrade on missing shards**.
+
+Full architecture deep-dive → [`ARCHITECTURE.md`](ARCHITECTURE.md) · Per-module notes → [`docs/architecture.md`](docs/architecture.md)
 
 ## 🚀 Install — in depth
 
@@ -362,7 +446,42 @@ This project is **Apache-2.0** licensed (see [LICENSE](LICENSE)). In plain Engli
 
 [Apache-2.0](LICENSE) — permissive open-source. Commercial use, redistribution, and hosted derivatives all permitted.
 
-Copyright © 2026 **Anish Trivedi** (BS Computer Science).
+Copyright © 2026 **Anish Trivedi**.
+
+---
+
+<div align="center">
+
+<br/>
+
+### If Mneme saves you tokens, give it a star ⭐
+
+<br/>
+
+<p>
+  <a href="https://github.com/omanishay-cyber/mneme"><img src="https://img.shields.io/github/stars/omanishay-cyber/mneme?style=for-the-badge&color=4191E1&labelColor=0b0f19&logo=github" alt="Stars"/></a>
+  <a href="https://github.com/omanishay-cyber/mneme/issues"><img src="https://img.shields.io/github/issues/omanishay-cyber/mneme?style=for-the-badge&color=41E1B5&labelColor=0b0f19&logo=github" alt="Issues"/></a>
+  <a href="https://github.com/omanishay-cyber/mneme/discussions"><img src="https://img.shields.io/badge/discussions-join-22D3EE?style=for-the-badge&labelColor=0b0f19&logo=github" alt="Discussions"/></a>
+  <a href="https://github.com/omanishay-cyber"><img src="https://img.shields.io/badge/profile-%40omanishay--cyber-a78bfa?style=for-the-badge&labelColor=0b0f19&logo=github" alt="Profile"/></a>
+</p>
+
+<br/>
+
+<sub>
+  Built with obsessive care by <a href="https://github.com/omanishay-cyber"><strong>Anish Trivedi</strong></a>.<br/>
+  Because the hardest problem in AI coding is remembering, not generating.
+</sub>
+
+<br/><br/>
+
+<em>"Memory is the engine of creativity."</em><br/>
+<sub>— the idea behind Mneme, named after the Greek muse of memory</sub>
+
+<br/><br/>
+
+<img src="https://komarev.com/ghpvc/?username=omanishay-cyber&repo=mneme&style=flat&color=4191E1&label=Repo+views" alt="Repo views"/>
+
+</div>
 
 ## 💬 Contact
 
