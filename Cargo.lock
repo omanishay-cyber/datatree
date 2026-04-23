@@ -2673,6 +2673,7 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "serde_json",
+ "streaming-iterator",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",

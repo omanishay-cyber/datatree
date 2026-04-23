@@ -12,10 +12,12 @@ use crate::job::{
 use crate::language::Language;
 use crate::query_cache::{get_query, QueryKind};
 use std::path::{Path, PathBuf};
+use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node as TsNode, QueryCursor, Range, Tree};
-// `StreamingIterator` was provided by an external crate in pre-0.23 ABI;
-// in tree-sitter 0.23 the QueryCursor::matches API returns a regular
-// Iterator and we use `.next()` directly.
+// `QueryCursor::matches` returns a `StreamingIterator` as of tree-sitter
+// 0.25 (the lending-iterator rewrite). The trait lives in the external
+// `streaming-iterator` crate — tree-sitter accepts it as the return type
+// but does not re-export it.
 
 /// Combined output of [`Extractor::extract`].
 #[derive(Debug, Clone, Default)]
