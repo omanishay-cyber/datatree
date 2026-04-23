@@ -191,6 +191,6 @@ All file writes are marker-wrapped (`<!-- mneme-start v1.0 -->` / `<!-- mneme-en
 ## Next steps
 
 - Read [docs/architecture.md](docs/architecture.md) to understand the system
-- Read [docs/mcp-tools.md](docs/mcp-tools.md) for the 33+ MCP tool reference
+- Read [docs/mcp-tools.md](docs/mcp-tools.md) for the 46 MCP tool reference
 - Read [docs/faq.md](docs/faq.md) for common questions
 - Open an [Issue](https://github.com/omanishay-cyber/mneme/issues) or a [Discussion](https://github.com/omanishay-cyber/mneme/discussions) if you hit something not covered here

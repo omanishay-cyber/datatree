@@ -25,7 +25,7 @@ Initial public release. .
 - Multi-process Rust + Bun + Python architecture (10 crates, supervisor-managed)
 - **Compaction-resilient Step Ledger** — numbered, verification-gated plans that survive context compaction
 - **27 storage layers** per project (code graph, conversation history, decisions, tool cache, todos, errors, findings, multimodal corpus, telemetry, …)
-- **33+ MCP tools** — `blast_radius`, `recall_concept`, `health` wired to real data; 30+ follow the same pattern
+- **46 MCP tools** — `blast_radius`, `recall_concept`, `health` wired to real data; 30+ follow the same pattern
 - **14 visualization view modes** (source written; WebGL renderer targets 100 000+ nodes)
 - **18-platform installer** — auto-detects Claude Code, Codex, Cursor, Windsurf, Zed, Continue, OpenCode, Antigravity, Gemini CLI, Aider, Copilot CLI/VS Code, Factory Droid, Trae, Trae-CN, Kiro, Qoder, OpenClaw, Hermes, Qwen
 - **Per-project SQLite graph** built in-process by `mneme build .` via Tree-sitter → extractor → `store::inject` pipeline

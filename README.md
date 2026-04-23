@@ -37,11 +37,11 @@
 <tr>
   <td align="center" width="14%">
     <sub>MCP TOOLS</sub><br/>
-    <strong><span style="font-size: 1.5em;">55+</span></strong>
+    <strong><span style="font-size: 1.5em;">46</span></strong>
   </td>
   <td align="center" width="14%">
     <sub>LANGUAGES</sub><br/>
-    <strong><span style="font-size: 1.5em;">29</span></strong>
+    <strong><span style="font-size: 1.5em;">27</span></strong>
   </td>
   <td align="center" width="14%">
     <sub>SQLITE SHARDS</sub><br/>
@@ -53,7 +53,7 @@
   </td>
   <td align="center" width="14%">
     <sub>SCANNERS</sub><br/>
-    <strong><span style="font-size: 1.5em;">10</span></strong>
+    <strong><span style="font-size: 1.5em;">11</span></strong>
   </td>
   <td align="center" width="14%">
     <sub>AI PLATFORMS</sub><br/>
@@ -65,6 +65,8 @@
   </td>
 </tr>
 </table>
+
+<sub>Counts audited against HEAD: <code>mcp/src/tools/*.ts</code> = 46 · Language enum variants = 27 · <code>common::DbLayer</code> shards = 22 · <code>vision/src/views/*.tsx</code> = 14 · <code>scanners/src/scanners/*.rs</code> = 11 · platform adapters in <code>cli/src/platforms/</code> = 18.</sub>
 
 <!-- ==================================================================== -->
 <!--   Tech stack chips                                                    -->
@@ -113,10 +115,10 @@ Honest head-to-head against the two closest projects in the AI-code-context spac
 | Capability | **Mneme** | CRG | graphify |
 |---|---|---|---|
 | **Compaction recovery (Step Ledger)** | ✅ numbered, verification-gated, SQLite-persisted | ❌ | ❌ |
-| **Drift detector enforcing CLAUDE.md rules live** | ✅ 10 scanners incl. drift + md-drift + secrets | partial (lint-style) | ❌ |
-| **Built-in scanners** | ✅ 10 (theme, types, security, a11y, perf, drift, ipc, md-drift, secrets, refactor) | 1 (review-oriented) | ❌ |
-| **Tree-sitter grammars** | ✅ 29 (Tier 1 + community) | 23 | 5-ish (per-input) |
-| **MCP tools** | ✅ 35 (full `mcp/src/tools/` surface) | 24 | n/a (not an MCP) |
+| **Drift detector enforcing CLAUDE.md rules live** | ✅ 11 scanners incl. drift + md-drift + secrets | partial (lint-style) | ❌ |
+| **Built-in scanners** | ✅ 11 (theme, types, security, a11y, perf, drift, ipc, md-drift, secrets, refactor, architecture) | 1 (review-oriented) | ❌ |
+| **Tree-sitter grammars** | ✅ 27 (18 Tier-1 + 8 Tier-2 + more via extension-only) | 23 | 5-ish (per-input) |
+| **MCP tools** | ✅ 46 (full `mcp/src/tools/` surface) | 24 | n/a (not an MCP) |
 | **Multi-process Rust supervisor** | ✅ watchdog + WAL + restart + health HTTP | ❌ (single-process Python) | ❌ (single-process Python) |
 | **Real local embeddings** | ✅ pure-Rust hashing-trick default, opt-in bge-small from local path | ❌ | partial (sentence-transformers, network-pullable) |
 | **Storage layers** | ✅ 22 sharded SQLite DBs + global meta.db | 1 | 1-2 JSON + HTML |
@@ -286,9 +288,9 @@ Measured against [code-review-graph](https://github.com/tirth8205/code-review-gr
 | Incremental update | <2 s | **TBD (v0.3)** | `bench-incremental` p95 |
 | Visualization ceiling | ~5 000 nodes | **100 000+** (design) | Tauri WebGL renderer; not yet auto-benchmarked |
 | Storage layers | 1 | **22** | Sharded SQLite, see [`docs/architecture.md`](docs/architecture.md) |
-| MCP tools | 24 | **35** | Count from `mcp/src/tools/` at current HEAD |
-| Visualization views | 1 (D3 force) | **14** (WebGL) | `vision/` app |
-| Languages | 23 | **29** | Tree-sitter grammars, see [`parsers/Cargo.toml`](parsers/Cargo.toml) |
+| MCP tools | 24 | **46** | Counted from `mcp/src/tools/*.ts` at HEAD |
+| Visualization views | 1 (D3 force) | **14** (WebGL) | `vision/src/views/*.tsx` |
+| Languages | 23 | **27** | 18 Tier-1 + 8 Tier-2 + Vue stub; `parsers/src/language.rs` |
 | Platforms supported | 10 | **18** | [plugin manifests](plugin/templates/) |
 | Compaction survival | ❌ | ✅ **category-defining** | Step Ledger, §7 design doc |
 | Multimodal (PDF/audio/video) | ❌ | ✅ | `workers/multimodal/` Python sidecar |
@@ -347,22 +349,22 @@ Every arrow is **bidirectional** — MCP is JSON-RPC (request/response), supervi
   │                      SUPERVISOR (Rust, daemon)                         │
   │     watchdog · restart loop · health /7777 · per-worker SLA counters   │
   │     Routes calls to the right worker pool, returns response to MCP     │
-  └────▲──────────▲──────────▲──────────▲──────────▲──────────▲────────────┘
-       │          │          │          │          │          │
-   req │ ▲ resp   │ ▲        │ ▲        │ ▲        │ ▲        │ ▲
-       ▼ │        ▼ │        ▼ │        ▼ │        ▼ │        ▼ │
-   ┌──────┐  ┌────────┐  ┌────────┐  ┌───────┐  ┌──────────┐  ┌────────┐
-   │ STORE│  │PARSERS │  │SCANNERS│  │ BRAIN │  │MULTIMODAL│  │LIVEBUS │
-   │ 22 DB│  │ 29     │  │ 10     │  │BGE +  │  │ PDF/IMG/ │  │SSE/WS  │
-   │ shrds│  │ langs  │  │audits  │  │Leiden │  │Whisper   │  │pubsub  │
-   └──▲───┘  └────────┘  └────────┘  └───────┘  └──────────┘  └────▲───┘
-      │                                                              │
-  R/W │                                                              │ push
-      ▼                                                              ▼
-   ~/.mneme/projects/<sha>/                                  Vision app
-     graph.db · history.db · semantic.db · findings.db ·   (Tauri + React)
-     tasks.db · memory.db · wiki.db · architecture.db …    14 live views
-                                                           on localhost:7777
+  └────▲──────────▲──────────▲──────────▲──────────▲────────────────────────┘
+       │          │          │          │          │
+   req │ ▲ resp   │ ▲        │ ▲        │ ▲        │ ▲
+       ▼ │        ▼ │        ▼ │        ▼ │        ▼ │
+   ┌──────┐  ┌────────┐  ┌────────┐  ┌───────┐  ┌────────┐
+   │ STORE│  │PARSERS │  │SCANNERS│  │ BRAIN │  │LIVEBUS │         ┌──────────────┐
+   │ 22 DB│  │ 27     │  │ 11     │  │BGE +  │  │SSE/WS  │         │ MULTIMODAL   │
+   │ shrds│  │ langs  │  │audits  │  │Leiden │  │pubsub  │         │ in-process   │
+   └──▲───┘  └────────┘  └────────┘  └───────┘  └────▲───┘         │ in mneme CLI │
+      │                                                │           │ (PDF · IMG · │
+  R/W │                                            push│           │  Whisper ·   │
+      ▼                                                ▼           │  ffmpeg)     │
+   ~/.mneme/projects/<sha>/                     Vision app         └──────▲───────┘
+     graph.db · history.db · semantic.db ·     (Tauri + React)            │ writes
+     findings.db · tasks.db · memory.db ·      14 live views      media.db (store)
+     wiki.db · architecture.db · multimodal.db localhost:7777
 ```
 
 **One concrete round-trip — `blast_radius("handleLogin")`:**
