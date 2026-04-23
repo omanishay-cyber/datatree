@@ -1,17 +1,17 @@
 [package]
-name = "parsers"
-version = "0.1.0"
+name = "mneme-parsers"
+version = "0.2.0"
 edition = "2021"
-description = "datatree PARSERS — Tree-sitter worker pool: 25+ languages, incremental, parser-per-worker"
-license = "MIT OR Apache-2.0"
+description = "Mneme PARSERS — Tree-sitter worker pool: 25+ languages, incremental, parser-per-worker"
+license = "Apache-2.0"
 publish = false
 
 [[bin]]
-name = "datatree-parsers"
+name = "mneme-parsers"
 path = "src/main.rs"
 
 [lib]
-name = "parsers"
+name = "mneme_parsers"
 path = "src/lib.rs"
 
 # ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ path = "src/lib.rs"
 # Datatree shared types (Node/Edge/Confidence) — sibling crate.
 # Falls back to in-tree definitions when the workspace doesn't yet include it
 # (common has not been generated yet — see brain/ for the future location).
-common = { path = "../common", package = "datatree-common" }
+common = { path = "../common", package = "mneme-common" }
 
 # Async runtime — multi-threaded with macros for #[tokio::main]
 tokio = { version = "1.40", features = [

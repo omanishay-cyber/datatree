@@ -38,7 +38,7 @@ pub struct SlaSnapshot {
     pub overall_uptime_percent: f64,
     /// Cache hit rate (placeholder until store-worker reports back).
     pub cache_hit_rate: f64,
-    /// Disk usage, free bytes, total bytes for the datatree root.
+    /// Disk usage, free bytes, total bytes for the mneme root.
     pub disk: DiskUsage,
     /// File watcher percentiles (save-to-graph latency, ms).
     pub watcher: WatcherMetrics,
@@ -64,7 +64,7 @@ pub struct WatcherMetrics {
 /// Disk usage summary used by [`SlaSnapshot`].
 #[derive(Debug, Clone, Serialize)]
 pub struct DiskUsage {
-    /// Total bytes of the volume holding `~/.datatree`.
+    /// Total bytes of the volume holding `~/.mneme`.
     pub total_bytes: u64,
     /// Free bytes.
     pub free_bytes: u64,
@@ -170,15 +170,15 @@ async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     };
     let mut body = String::new();
     body.push_str(&format!(
-        "# TYPE datatree_supervisor_uptime_seconds counter\ndatatree_supervisor_uptime_seconds {}\n",
+        "# TYPE datatree_supervisor_uptime_seconds countermneme_supervisor_uptime_seconds {}\n",
         snap.supervisor_uptime_s
     ));
     body.push_str(&format!(
-        "# TYPE datatree_overall_uptime_percent gauge\ndatatree_overall_uptime_percent {}\n",
+        "# TYPE datatree_overall_uptime_percent gaugemneme_overall_uptime_percent {}\n",
         snap.overall_uptime_percent
     ));
     body.push_str(&format!(
-        "# TYPE datatree_cache_hit_rate gauge\ndatatree_cache_hit_rate {}\n",
+        "# TYPE datatree_cache_hit_rate gaugemneme_cache_hit_rate {}\n",
         snap.cache_hit_rate
     ));
     for c in &snap.children {

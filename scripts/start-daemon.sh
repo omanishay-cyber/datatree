@@ -4,10 +4,10 @@
 # fallback when no init system is available.
 set -eu
 
-DATATREE_HOME="${DATATREE_HOME:-$HOME/.datatree}"
-BIN="$DATATREE_HOME/bin/datatree-supervisor"
-LOG_DIR="$DATATREE_HOME/logs"
-PID_FILE="$DATATREE_HOME/supervisor.pid"
+MNEME_HOME="${MNEME_HOME:-$HOME/.datatree}"
+BIN="$MNEME_HOME/bin/datatree-supervisor"
+LOG_DIR="$MNEME_HOME/logs"
+PID_FILE="$MNEME_HOME/supervisor.pid"
 
 [ -x "$BIN" ] || { echo "datatree-supervisor not installed at $BIN" >&2; exit 1; }
 mkdir -p "$LOG_DIR"

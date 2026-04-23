@@ -1,6 +1,6 @@
 #!/bin/sh
 # Uninstall datatree binaries + service registrations.
-# KEEPS user data ($DATATREE_HOME/projects, /cache, /models) by default.
+# KEEPS user data ($MNEME_HOME/projects, /cache, /models) by default.
 # Pass --purge to also delete user data.
 set -eu
 
@@ -20,8 +20,8 @@ for arg in "$@"; do
     esac
 done
 
-DATATREE_HOME="${DATATREE_HOME:-$HOME/.datatree}"
-BIN_DIR="$DATATREE_HOME/bin"
+MNEME_HOME="${MNEME_HOME:-$HOME/.datatree}"
+BIN_DIR="$MNEME_HOME/bin"
 
 # stop daemon first
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -59,16 +59,16 @@ if [ -d "$BIN_DIR" ]; then
 fi
 
 # logs are state-ish — remove them, they re-create on next install
-rm -rf "$DATATREE_HOME/logs" 2>/dev/null || true
-rm -f  "$DATATREE_HOME/supervisor.pid" 2>/dev/null || true
+rm -rf "$MNEME_HOME/logs" 2>/dev/null || true
+rm -f  "$MNEME_HOME/supervisor.pid" 2>/dev/null || true
 
 if [ "$PURGE" -eq 1 ]; then
-    echo "WARNING: --purge will delete $DATATREE_HOME/projects, /cache, /models"
-    rm -rf "$DATATREE_HOME/projects" "$DATATREE_HOME/cache" "$DATATREE_HOME/models"
-    rmdir  "$DATATREE_HOME" 2>/dev/null || true
+    echo "WARNING: --purge will delete $MNEME_HOME/projects, /cache, /models"
+    rm -rf "$MNEME_HOME/projects" "$MNEME_HOME/cache" "$MNEME_HOME/models"
+    rmdir  "$MNEME_HOME" 2>/dev/null || true
     echo "User data purged"
 else
-    echo "User data preserved at $DATATREE_HOME (projects/, cache/, models/)"
+    echo "User data preserved at $MNEME_HOME (projects/, cache/, models/)"
     echo "Run 'uninstall.sh --purge' to delete it."
 fi
 exit 0

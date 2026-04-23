@@ -1,8 +1,8 @@
-//! Local sentence embedding for datatree.
+//! Local sentence embedding for mneme.
 //!
 //! # Two-tier backend strategy
 //!
-//! Datatree embeds code/text into 384-dim vectors for semantic recall. The
+//! Mneme embeds code/text into 384-dim vectors for semantic recall. The
 //! quality of those vectors directly controls retrieval hit-rate (`recall_concept`,
 //! `blast_radius` secondary ranking, `find_references` across renames, etc).
 //!
@@ -13,7 +13,7 @@
 //! Runtime under the hood). The upgrade is transparent:
 //!
 //! 1. On first call, [`Embedder::new`] tries to load BGE from
-//!    `~/.datatree/llm/bge-small/` (or the default `fastembed` cache dir).
+//!    `~/.mneme/llm/bge-small/` (or the default `fastembed` cache dir).
 //! 2. If the model is present, all subsequent `embed*` calls go through the
 //!    real transformer and produce semantically meaningful vectors.
 //! 3. If the model is missing (fresh machine, offline), the backend falls
@@ -25,11 +25,11 @@
 //!
 //! # Offline-first
 //!
-//! Datatree never makes unsolicited network calls. The BGE model is fetched
+//! Mneme never makes unsolicited network calls. The BGE model is fetched
 //! exactly once, by an explicit user action:
 //!
 //! ```text
-//! $ datatree models install        # ~130 MB download to ~/.datatree/llm/
+//! $ mneme models install        # ~130 MB download to ~/.mneme/llm/
 //! ```
 //!
 //! After that, everything is local.
@@ -82,7 +82,7 @@ impl std::fmt::Debug for Embedder {
 }
 
 impl Embedder {
-    /// Build an embedder from the default `~/.datatree/llm/bge-small/` path.
+    /// Build an embedder from the default `~/.mneme/llm/bge-small/` path.
     pub fn from_default_path() -> BrainResult<Self> {
         let base = default_model_dir();
         Self::new(&base.join("model.onnx"), &base.join("tokenizer.json"))
@@ -109,7 +109,7 @@ impl Embedder {
                     Backend::Fallback(_) => warn!(
                         model = %model_path.display(),
                         "BGE model missing — embedder running in fallback mode. \
-                         Run `datatree models install` for full retrieval quality."
+                         Run `mneme models install` for full retrieval quality."
                     ),
                     Backend::Uninitialized => unreachable!(),
                 }
@@ -263,7 +263,7 @@ impl RealBackend {
         use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 
         // fastembed caches models under cache_dir. Point it at our own path so
-        // the same model dir works whether loaded via `datatree models install`
+        // the same model dir works whether loaded via `mneme models install`
         // or explicitly specified.
         let cache_dir = model_path
             .parent()
@@ -463,18 +463,18 @@ fn l2_normalise(v: &mut [f32]) {
     }
 }
 
-/// Default model directory, e.g. `~/.datatree/llm/bge-small/`.
+/// Default model directory, e.g. `~/.mneme/llm/bge-small/`.
 pub fn default_model_dir() -> PathBuf {
     if let Some(home) = dirs::home_dir() {
-        home.join(".datatree").join("llm").join("bge-small")
+        home.join(".mneme").join("llm").join("bge-small")
     } else {
-        PathBuf::from(".datatree/llm/bge-small")
+        PathBuf::from(".mneme/llm/bge-small")
     }
 }
 
-/// Explicit model-install entry point, used by `datatree models install`.
+/// Explicit model-install entry point, used by `mneme models install`.
 ///
-/// This is the ONE network call datatree is allowed to make, and only when
+/// This is the ONE network call mneme is allowed to make, and only when
 /// the user asks for it. It initialises fastembed with `show_download_progress
 /// = true` so the CLI can stream a progress bar.
 ///
@@ -487,7 +487,7 @@ pub fn install_default_model() -> BrainResult<()> {
     let cache_dir = default_model_dir()
         .parent()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from(".datatree/llm"));
+        .unwrap_or_else(|| PathBuf::from(".mneme/llm"));
 
     std::fs::create_dir_all(&cache_dir).ok();
 
@@ -508,6 +508,6 @@ pub fn install_default_model() -> BrainResult<()> {
 #[cfg(not(feature = "fastembed"))]
 pub fn install_default_model() -> BrainResult<()> {
     Err(BrainError::Embedding(
-        "this datatree build was compiled without the `fastembed` feature".into(),
+        "this mneme build was compiled without the `fastembed` feature".into(),
     ))
 }

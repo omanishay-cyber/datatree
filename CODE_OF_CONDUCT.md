@@ -23,8 +23,8 @@ who reports in good faith is itself a violation.
 
 ## Scope
 
-Applies in the GitHub repo, Discussions, Issues, PRs, any datatree-branded
+Applies in the GitHub repo, Discussions, Issues, PRs, any mneme-branded
 chat room, and at any event (online or in-person) where you're representing
-datatree.
+mneme.
 
 — Anish Trivedi

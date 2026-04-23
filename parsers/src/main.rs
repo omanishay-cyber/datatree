@@ -1,4 +1,4 @@
-//! `parse-worker` binary — the long-lived process the datatree supervisor
+//! `parse-worker` binary — the long-lived process the mneme supervisor
 //! spawns (one instance, internally hosting N parser workers).
 //!
 //! Behaviour:
@@ -10,9 +10,9 @@
 //!
 //! In production the supervisor talks to this process over IPC framed as
 //! length-prefixed bytes; the JSON-over-stdio path here is identical in
-//! contract and is what the integration tests in `datatree/tests/` drive.
+//! contract and is what the integration tests in `mneme/tests/` drive.
 
-use parsers::{
+use mneme_parsers::{
     incremental::IncrementalParser, parser_pool::ParserPool, query_cache, worker::Worker,
     ParseJob, ParserError,
 };
@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(workers = worker_count, "spawning parser workers");
 
     let (tx_results, mut rx_results) =
-        mpsc::channel::<Result<parsers::ParseResult, ParserError>>(1024);
+        mpsc::channel::<Result<mneme_parsers::ParseResult, ParserError>>(1024);
     let mut job_senders = Vec::with_capacity(worker_count);
 
     for id in 0..worker_count {
@@ -117,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn init_tracing() {
     use tracing_subscriber::{fmt, EnvFilter};
-    let filter = EnvFilter::try_from_env("DATATREE_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_env("MNEME_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
     fmt()
         .with_env_filter(filter)
         .with_target(false)
@@ -133,7 +133,7 @@ fn init_tracing() {
 #[derive(serde::Deserialize)]
 struct JobWire {
     file_path: std::path::PathBuf,
-    language: parsers::Language,
+    language: mneme_parsers::Language,
     /// UTF-8 source. Binary content is rejected at the supervisor layer.
     content: String,
     #[serde(default)]

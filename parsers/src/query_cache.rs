@@ -12,7 +12,7 @@ use once_cell::sync::Lazy;
 use std::sync::Arc;
 use tree_sitter::Query;
 
-/// One of the seven canonical query patterns datatree tracks per language.
+/// One of the seven canonical query patterns mneme tracks per language.
 ///
 /// Adding a new variant requires updating [`pattern_for`] for every supported
 /// language (or returning `""` to opt out).

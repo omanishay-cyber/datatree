@@ -1,4 +1,4 @@
-//! Extractor — turns a parsed `tree_sitter::Tree` into datatree
+//! Extractor — turns a parsed `tree_sitter::Tree` into mneme
 //! [`Node`]s and [`Edge`]s.
 //!
 //! Per §25.10 we ALWAYS query the ERROR/MISSING patterns and tag adjacent

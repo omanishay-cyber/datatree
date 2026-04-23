@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{error, info, warn};
 
-use datatree_common::{
+use common::{
     error::DtResult,
     ids::ProjectId,
     layer::DbLayer,
@@ -53,11 +53,11 @@ pub async fn run_listener(store: Arc<Store>) -> DtResult<()> {
     use interprocess::local_socket::tokio::prelude::*;
     use interprocess::local_socket::{ListenerOptions, GenericFilePath, ToFsName};
     let name = socket_path.to_fs_name::<GenericFilePath>()
-        .map_err(|e| datatree_common::error::DtError::Internal(e.to_string()))?;
+        .map_err(|e| common::error::DtError::Internal(e.to_string()))?;
     let listener = ListenerOptions::new()
         .name(name)
         .create_tokio()
-        .map_err(|e| datatree_common::error::DtError::Internal(e.to_string()))?;
+        .map_err(|e| common::error::DtError::Internal(e.to_string()))?;
 
     loop {
         let conn = match listener.accept().await {
@@ -164,7 +164,7 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
             Err(e) => err(e.to_string()),
         },
         Request::Restore { project, snapshot } => {
-            let id = datatree_common::ids::SnapshotId::from_str(snapshot);
+            let id = common::ids::SnapshotId::from_str(snapshot);
             match store.lifecycle.restore(&project, id).await {
                 Ok(()) => ok(serde_json::Value::Null),
                 Err(e) => err(e.to_string()),
@@ -193,7 +193,7 @@ fn err(msg: String) -> WireResponse {
     WireResponse { success: false, data: serde_json::Value::Null, error: Some(msg) }
 }
 
-fn wire_from_response<T: Serialize>(r: datatree_common::response::Response<T>) -> WireResponse {
+fn wire_from_response<T: Serialize>(r: common::response::Response<T>) -> WireResponse {
     if r.success {
         WireResponse {
             success: true,

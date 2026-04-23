@@ -1,7 +1,7 @@
 //! Supervisor configuration.
 //!
 //! Configuration is loaded from a single TOML file (default
-//! `~/.datatree/supervisor.toml`). The CLI `--config <path>` flag overrides the
+//! `~/.mneme/supervisor.toml`). The CLI `--config <path>` flag overrides the
 //! default location. If the file is missing the supervisor falls back to
 //! [`SupervisorConfig::default_layout`] so a fresh install still boots.
 
@@ -14,9 +14,9 @@ use std::time::Duration;
 /// Top-level supervisor configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SupervisorConfig {
-    /// Root directory for datatree state (`~/.datatree`).
+    /// Root directory for mneme state (`~/.mneme`).
     pub root_dir: PathBuf,
-    /// Directory holding child binaries (`~/.datatree/bin`).
+    /// Directory holding child binaries (`~/.mneme/bin`).
     pub bin_dir: PathBuf,
     /// Directory for crash dumps and logs.
     pub log_dir: PathBuf,
@@ -104,7 +104,7 @@ impl SupervisorConfig {
     /// tree from §3.1 of the design doc.
     pub fn default_layout() -> Self {
         let home = home_dir();
-        let root = home.join(".datatree");
+        let root = home.join(".mneme");
         let bin = root.join("bin");
 
         let parser_pool_size = num_cpus::get().max(1);
@@ -114,7 +114,7 @@ impl SupervisorConfig {
 
         children.push(ChildSpec {
             name: "store-worker".into(),
-            command: bin.join("datatree-store").to_string_lossy().into(),
+            command: bin.join("mneme-store").to_string_lossy().into(),
             args: vec![],
             env: vec![],
             restart: RestartStrategy::Permanent,
@@ -126,7 +126,7 @@ impl SupervisorConfig {
         for i in 0..parser_pool_size {
             children.push(ChildSpec {
                 name: format!("parser-worker-{i}"),
-                command: bin.join("datatree-parsers").to_string_lossy().into(),
+                command: bin.join("mneme-parsers").to_string_lossy().into(),
                 args: vec!["--worker-id".into(), i.to_string()],
                 env: vec![],
                 restart: RestartStrategy::Permanent,
@@ -139,7 +139,7 @@ impl SupervisorConfig {
         for i in 0..scanner_pool_size {
             children.push(ChildSpec {
                 name: format!("scanner-worker-{i}"),
-                command: bin.join("datatree-scanners").to_string_lossy().into(),
+                command: bin.join("mneme-scanners").to_string_lossy().into(),
                 args: vec!["--worker-id".into(), i.to_string()],
                 env: vec![],
                 restart: RestartStrategy::Permanent,
@@ -151,7 +151,7 @@ impl SupervisorConfig {
 
         children.push(ChildSpec {
             name: "md-ingest-worker".into(),
-            command: bin.join("datatree-md-ingest").to_string_lossy().into(),
+            command: bin.join("mneme-md-ingest").to_string_lossy().into(),
             args: vec![],
             env: vec![],
             restart: RestartStrategy::Permanent,
@@ -161,12 +161,12 @@ impl SupervisorConfig {
         });
 
         // v0.1: multimodal-bridge excluded from default children. It spawns
-        // on demand via `datatree graphify` / `datatree multimodal`. Leaving
+        // on demand via `mneme graphify` / `mneme multimodal`. Leaving
         // it out of the default supervisor spec so the daemon stays green.
 
         children.push(ChildSpec {
             name: "brain-worker".into(),
-            command: bin.join("datatree-brain").to_string_lossy().into(),
+            command: bin.join("mneme-brain").to_string_lossy().into(),
             args: vec![],
             env: vec![],
             restart: RestartStrategy::Permanent,
@@ -177,7 +177,7 @@ impl SupervisorConfig {
 
         children.push(ChildSpec {
             name: "livebus-worker".into(),
-            command: bin.join("datatree-livebus").to_string_lossy().into(),
+            command: bin.join("mneme-livebus").to_string_lossy().into(),
             args: vec![],
             env: vec![],
             restart: RestartStrategy::Permanent,
@@ -188,8 +188,8 @@ impl SupervisorConfig {
 
         // v0.1: mcp-server and vision-server are SPAWNED ON DEMAND, not
         // supervised. The real MCP server is started by Claude Code itself
-        // when it runs `datatree mcp stdio` — one instance per Claude-Code
-        // window. The vision server launches via `datatree view` / the
+        // when it runs `mneme mcp stdio` — one instance per Claude-Code
+        // window. The vision server launches via `mneme view` / the
         // Tauri app. Running them under the supervisor is redundant, and
         // they exit cleanly when stdin closes, which the supervisor reads
         // as "failed." Excluded from default children to keep every other
@@ -217,9 +217,9 @@ fn default_ipc_path(_root: &Path) -> PathBuf {
     // Named pipes linger briefly after the owning process dies, which
     // causes "Access denied" on rebind. We append the current PID so
     // a fresh supervisor always binds cleanly. CLI clients discover the
-    // active pipe via `~/.datatree/supervisor.pipe-name` (written at boot).
+    // active pipe via `~/.mneme/supervisor.pipe-name` (written at boot).
     PathBuf::from(format!(
-        r"\\.\pipe\datatree-supervisor-{}",
+        r"\\.\pipe\mneme-supervisor-{}",
         std::process::id()
     ))
 }
@@ -256,7 +256,7 @@ fn default_ipc_path(root: &Path) -> PathBuf {
 }
 
 fn home_dir() -> PathBuf {
-    if let Some(h) = std::env::var_os("DATATREE_HOME") {
+    if let Some(h) = std::env::var_os("MNEME_HOME") {
         return PathBuf::from(h);
     }
     #[cfg(windows)]

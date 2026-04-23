@@ -1,17 +1,17 @@
-//! `datatree install` — provision datatree into one or more AI platforms.
+//! `mneme install` — provision mneme into one or more AI platforms.
 //!
 //! Behaviour
 //! =========
 //!
-//! - `datatree install` (no args)            → auto-detect every installed
+//! - `mneme install` (no args)            → auto-detect every installed
 //!                                              platform and configure each
-//! - `datatree install --platform=cursor`    → configure exactly one
-//! - `datatree install --dry-run`            → print what would change, do
+//! - `mneme install --platform=cursor`    → configure exactly one
+//! - `mneme install --dry-run`            → print what would change, do
 //!                                              not write anything
-//! - `datatree install --scope=project`      → write into the active project
+//! - `mneme install --scope=project`      → write into the active project
 //!                                              (default: user)
-//! - `datatree install --force`              → overwrite even if the user
-//!                                              edited datatree's marker block
+//! - `mneme install --force`              → overwrite even if the user
+//!                                              edited mneme's marker block
 //!
 //! Per design §21.4.1 / §25.5: every write is marker-wrapped (idempotent),
 //! every config write makes a `.bak` first, and the operation is safe to
@@ -28,7 +28,7 @@ use crate::platforms::{
     AdapterContext, InstallScope, Platform, PlatformDetector,
 };
 
-/// CLI args for `datatree install`.
+/// CLI args for `mneme install`.
 #[derive(Debug, Args)]
 pub struct InstallArgs {
     /// Restrict installation to a single platform (id from the matrix in
@@ -49,7 +49,7 @@ pub struct InstallArgs {
     #[arg(long)]
     pub project: Option<PathBuf>,
 
-    /// Overwrite datatree's marker block even if the user has hand-edited it.
+    /// Overwrite mneme's marker block even if the user has hand-edited it.
     #[arg(long)]
     pub force: bool,
 
@@ -131,7 +131,7 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
 }
 
 /// Run one platform's adapter. Order matters: manifest first (so the user
-/// sees datatree even if MCP/hook write fails), then MCP, then hooks.
+/// sees mneme even if MCP/hook write fails), then MCP, then hooks.
 fn install_one(
     platform: Platform,
     ctx: &AdapterContext,

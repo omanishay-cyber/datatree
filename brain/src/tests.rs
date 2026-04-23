@@ -22,8 +22,8 @@ use std::path::PathBuf;
 #[test]
 fn embed_determinism_same_text_same_vector() {
     // Use a path guaranteed to NOT exist so the embedder enters degraded mode.
-    let bogus_model = PathBuf::from("/nonexistent/datatree/model.onnx");
-    let bogus_tok = PathBuf::from("/nonexistent/datatree/tokenizer.json");
+    let bogus_model = PathBuf::from("/nonexistent/mneme/model.onnx");
+    let bogus_tok = PathBuf::from("/nonexistent/mneme/tokenizer.json");
     let e = Embedder::new(&bogus_model, &bogus_tok).expect("embedder build");
     assert!(!e.is_ready(), "expected degraded mode");
 
@@ -217,7 +217,7 @@ fn load_model_from_disk(path: &Path) -> Result<()> {
 #[test]
 fn concept_extraction_handles_pure_markdown() {
     let text = r#"
-# Datatree Design
+# Mneme Design
 ## Embedding Pipeline
 The pipeline produces 384-dim vectors.
 "#;

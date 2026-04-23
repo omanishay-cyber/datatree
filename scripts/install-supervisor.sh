@@ -1,6 +1,6 @@
 #!/bin/sh
 # datatree supervisor installer (POSIX)
-# Installs datatree-supervisor binary to ~/.datatree/bin/ and registers it
+# Installs datatree-supervisor binary to ~/.mneme/bin/ and registers it
 # with the OS service manager (launchd on macOS, systemd --user on Linux).
 #
 # Idempotent: re-running will not duplicate entries. Existing files are
@@ -18,9 +18,9 @@ set -eu
 QUIET=0
 BINARY_PATH=""
 SOURCE_DIR=""
-DATATREE_HOME="${DATATREE_HOME:-$HOME/.datatree}"
-BIN_DIR="$DATATREE_HOME/bin"
-LOG_DIR="$DATATREE_HOME/logs"
+MNEME_HOME="${MNEME_HOME:-$HOME/.datatree}"
+BIN_DIR="$MNEME_HOME/bin"
+LOG_DIR="$MNEME_HOME/logs"
 MARKER_VERSION="v1.0"
 
 log() {
@@ -89,12 +89,12 @@ fi
 [ -r "$BINARY_PATH" ] || die "Binary not readable: $BINARY_PATH"
 
 # --- prepare directories ------------------------------------------------------
-log "Creating $DATATREE_HOME"
+log "Creating $MNEME_HOME"
 mkdir -p "$BIN_DIR"
 mkdir -p "$LOG_DIR"
-mkdir -p "$DATATREE_HOME/projects"
-mkdir -p "$DATATREE_HOME/cache"
-mkdir -p "$DATATREE_HOME/models"
+mkdir -p "$MNEME_HOME/projects"
+mkdir -p "$MNEME_HOME/cache"
+mkdir -p "$MNEME_HOME/models"
 
 # --- install binary -----------------------------------------------------------
 DEST="$BIN_DIR/datatree-supervisor"
@@ -138,7 +138,7 @@ register_launchd() {
     <key>StandardErrorPath</key><string>${LOG_DIR}/supervisor.err.log</string>
     <key>EnvironmentVariables</key>
     <dict>
-      <key>DATATREE_HOME</key><string>${DATATREE_HOME}</string>
+      <key>MNEME_HOME</key><string>${MNEME_HOME}</string>
     </dict>
   </dict>
 </plist>
@@ -170,7 +170,7 @@ Type=simple
 ExecStart=${DEST} --daemon
 Restart=on-failure
 RestartSec=3
-Environment=DATATREE_HOME=${DATATREE_HOME}
+Environment=MNEME_HOME=${MNEME_HOME}
 StandardOutput=append:${LOG_DIR}/supervisor.out.log
 StandardError=append:${LOG_DIR}/supervisor.err.log
 

@@ -205,7 +205,7 @@ pub fn is_concrete_topic(topic: &str) -> bool {
 ///
 /// Examples:
 /// ```
-/// use datatree_livebus::topic_matches;
+/// use mneme_livebus::topic_matches;
 /// assert!(topic_matches("project.*.file_changed", "project.abc.file_changed"));
 /// assert!(topic_matches("project.abc.#",         "project.abc.file_changed"));
 /// assert!(topic_matches("project.abc.#",         "project.abc.test_status"));

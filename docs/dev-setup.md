@@ -1,6 +1,6 @@
 # Developer setup
 
-You want to work on datatree itself (not just use it). Here's the ~20-minute setup.
+You want to work on mneme itself (not just use it). Here's the ~20-minute setup.
 
 ## Prereqs
 
@@ -20,8 +20,8 @@ Nice-to-haves:
 ## Clone
 
 ```bash
-git clone https://github.com/omanishay-cyber/datatree
-cd datatree
+git clone https://github.com/omanishay-cyber/mneme
+cd mneme
 ```
 
 ## One-time build
@@ -46,11 +46,11 @@ cd workers/multimodal && pip install -e . && cd ../..
 
 ```bash
 # Foreground (Ctrl+C to stop):
-cargo run --bin datatree-supervisor -- start
+cargo run --bin mneme-supervisor -- start
 
 # Or use the built binary directly:
-./target/debug/datatree-supervisor.exe start   # Windows
-./target/debug/datatree-supervisor start       # macOS/Linux
+./target/debug/mneme-supervisor.exe start   # Windows
+./target/debug/mneme-supervisor start       # macOS/Linux
 ```
 
 The supervisor spawns 40 workers and binds `http://127.0.0.1:7777/health`. Hit it:
@@ -62,14 +62,14 @@ curl http://127.0.0.1:7777/health
 
 ```bash
 # In another terminal, with the daemon running:
-cargo run --bin datatree -- build .
+cargo run --bin mneme -- build .
 
 # You should see:
 # walked:  374 files
 # indexed: 50+
 # nodes:   1000+
 # edges:   2000+
-# shard:   ~/.datatree/projects/<sha>/
+# shard:   ~/.mneme/projects/<sha>/
 ```
 
 ## Development loop
@@ -96,7 +96,7 @@ cargo run --bin datatree -- build .
 1. Create `scanners/src/scanners/your_rule.rs` — copy `theme.rs` as a template
 2. Implement the `Scanner` trait: `name()`, `applies_to(file)`, `scan(file, content, ast)`
 3. Register in `scanners/src/registry.rs`
-4. `cargo build -p datatree-scanners`
+4. `cargo build -p mneme-scanners`
 
 ### Add a new vision view
 
@@ -108,10 +108,10 @@ cargo run --bin datatree -- build .
 
 ```bash
 # Find the shard directory
-ls ~/.datatree/projects/
+ls ~/.mneme/projects/
 
 # Open graph.db with the sqlite3 CLI
-sqlite3 ~/.datatree/projects/<sha>/graph.db
+sqlite3 ~/.mneme/projects/<sha>/graph.db
 
 sqlite> SELECT COUNT(*) FROM nodes;
 sqlite> SELECT kind, COUNT(*) FROM nodes GROUP BY kind;
@@ -138,13 +138,13 @@ v0.1.0 ships with skeleton tests; rigorous test expansion is ongoing.
 
 ```bash
 # Maximum verbosity
-DATATREE_LOG=trace cargo run --bin datatree-supervisor -- start
+MNEME_LOG=trace cargo run --bin mneme-supervisor -- start
 
 # Single-subsystem trace
-DATATREE_LOG=datatree_store=trace,info cargo run --bin datatree-supervisor -- start
+MNEME_LOG=datatree_store=trace,info cargo run --bin mneme-supervisor -- start
 
 # Inspect the daemon's log ring over IPC
-cargo run --bin datatree -- daemon logs
+cargo run --bin mneme -- daemon logs
 ```
 
 ## CI
@@ -167,8 +167,8 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full rules. Summary:
 
 ## Where to ask
 
-- [GitHub Issues](https://github.com/omanishay-cyber/datatree/issues) — bugs
-- [GitHub Discussions](https://github.com/omanishay-cyber/datatree/discussions) — design questions, "is this a good idea?"
+- [GitHub Issues](https://github.com/omanishay-cyber/mneme/issues) — bugs
+- [GitHub Discussions](https://github.com/omanishay-cyber/mneme/discussions) — design questions, "is this a good idea?"
 
 ---
 

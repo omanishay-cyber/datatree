@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Continue'
 function Write-Log([string]$msg) { if (-not $Quiet) { Write-Host "[datatree-uninstall] $msg" } }
 
 $ServiceName  = 'DatatreeDaemon'
-$DatatreeHome = if ($env:DATATREE_HOME) { $env:DATATREE_HOME } else { Join-Path $env:USERPROFILE '.datatree' }
+$DatatreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $env:USERPROFILE '.datatree' }
 $BinDir       = Join-Path $DatatreeHome 'bin'
 
 # stop first

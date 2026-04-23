@@ -1,7 +1,7 @@
-//! `datatree-store` binary — long-running store-worker process supervised
-//! by `datatree-supervisor`. Listens on the supervisor IPC socket and
+//! `mneme-store` binary — long-running store-worker process supervised
+//! by `mneme-supervisor`. Listens on the supervisor IPC socket and
 //! serves the 7-sub-layer Database Operations Layer for every other
-//! datatree worker.
+//! mneme worker.
 
 use std::sync::Arc;
 
@@ -9,14 +9,14 @@ use clap::Parser;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
-use datatree_common::paths::PathManager;
-use datatree_store::Store;
+use common::paths::PathManager;
+use mneme_store::Store;
 
 #[derive(Debug, Parser)]
-#[command(name = "datatree-store", about = "Datatree storage daemon")]
+#[command(name = "mneme-store", about = "Mneme storage daemon")]
 struct Cli {
-    /// Override the datatree home directory (default: ~/.datatree).
-    #[arg(long, env = "DATATREE_HOME")]
+    /// Override the mneme home directory (default: ~/.mneme).
+    #[arg(long, env = "MNEME_HOME")]
     home: Option<std::path::PathBuf>,
 
     /// Disable IPC and run as a one-shot health probe (exit 0 / 1).
@@ -27,7 +27,7 @@ struct Cli {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_env("DATATREE_LOG").unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_env_filter(EnvFilter::try_from_env("MNEME_LOG").unwrap_or_else(|_| EnvFilter::new("info")))
         .json()
         .init();
 
@@ -37,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
         Some(p) => PathManager::with_root(p),
         None => PathManager::default_root(),
     };
-    info!(home = %paths.root().display(), "datatree-store booting");
+    info!(home = %paths.root().display(), "mneme-store booting");
 
     if cli.health_check {
         let exists = paths.meta_db().exists();
@@ -56,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
     let shutdown = tokio::signal::ctrl_c();
 
     tokio::select! {
-        res = datatree_store::ipc::run_listener(store.clone()) => {
+        res = mneme_store::ipc::run_listener(store.clone()) => {
             if let Err(e) = res {
                 warn!(error = ?e, "ipc listener exited");
             }

@@ -1,6 +1,6 @@
-//! datatree — `brain` crate.
+//! mneme — `brain` crate.
 //!
-//! Local-only intelligence layer for the datatree daemon. Exposes:
+//! Local-only intelligence layer for the mneme daemon. Exposes:
 //!   * [`embeddings`]   — bge-small-en-v1.5 ONNX embedder
 //!   * [`embed_store`]  — disk-backed nearest-neighbour store
 //!   * [`leiden`]       — pure-Rust Leiden community detection
@@ -42,7 +42,7 @@ mod tests;
 // regardless of feature flags) we re-export a thin local definition that
 // matches the shape used by the `common` crate.
 
-/// Stable identifier for any node in the datatree graph.
+/// Stable identifier for any node in the mneme graph.
 ///
 /// 128-bit ULID-style identifier serialised as the lower-cased hex of a
 /// SHA-256 prefix in degraded mode. Mirrors `common::NodeId`.

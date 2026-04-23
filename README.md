@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>🌳 Datatree</h1>
+<h1>🌳 Mneme</h1>
 
 <h3>Claude never starts cold. Claude never loses its place.</h3>
 
@@ -40,7 +40,7 @@
 
 </div>
 
-## 🧠 The problem datatree solves
+## 🧠 The problem mneme solves
 
 Every AI coding assistant has the same three flaws:
 
@@ -48,18 +48,18 @@ Every AI coding assistant has the same three flaws:
 2. **Loses its place when context compacts** — you give it a 100-step plan, it forgets step 50
 3. **Drifts from your rules** — CLAUDE.md says "no hardcoded colors"; 5 prompts later it hardcodes one
 
-**datatree fixes all three.** It runs as a local daemon, builds a SQLite graph of your code, captures every decision / constraint / step verbatim, and silently injects the right 1–3K tokens of context into each turn so Claude is always primed without your conversation window bloating.
+**mneme fixes all three.** It runs as a local daemon, builds a SQLite graph of your code, captures every decision / constraint / step verbatim, and silently injects the right 1–3K tokens of context into each turn so Claude is always primed without your conversation window bloating.
 
 ## ⚡ Quick start
 
 ```bash
 # One command — installs into every AI tool it detects (Claude Code, Codex, Cursor, …)
-datatree install
+mneme install
 
 # Index any project — produces a real SQLite graph of your code
-datatree build .
+mneme build .
 
-# That's it. Open Claude Code in that project. It sees datatree automatically.
+# That's it. Open Claude Code in that project. It sees mneme automatically.
 ```
 
 Verified on **Windows 11 / macOS 14+ / Ubuntu 22.04+**. Rust 1.78+, Bun 1.3+, Python 3.10+ required.
@@ -94,8 +94,8 @@ Verified on **Windows 11 / macOS 14+ / Ubuntu 22.04+**. Rust 1.78+, Bun 1.3+, Py
 ## 🎯 The killer feature
 
 > You give Claude a 100-step task. Context compacts at step 50.
-> Without datatree: Claude restarts from 30 or re-reads every doc.
-> **With datatree: Claude resumes at step 51. Verified. No re-reading.**
+> Without mneme: Claude restarts from 30 or re-reads every doc.
+> **With mneme: Claude resumes at step 51. Verified. No re-reading.**
 
 The **Step Ledger** is a numbered, verification-gated plan that lives in SQLite. Every step records its acceptance check. When compaction wipes Claude's working memory, the next turn auto-injects a ~5K-token resumption bundle with:
 
@@ -112,7 +112,7 @@ The **Step Ledger** is a numbered, verification-gated plan that lives in SQLite.
 
 Measured against [code-review-graph](https://github.com/tirth8205/code-review-graph), the state-of-the-art code-graph MCP:
 
-| | CRG (the current SoTA) | **datatree** | Ratio |
+| | CRG (the current SoTA) | **mneme** | Ratio |
 |---|---|---|---|
 | Token reduction — code review | 6.8× | **≥25× target** | **3.7× better** |
 | Token reduction — live coding | 14.1× | **≥40× target** | **2.8× better** |
@@ -128,11 +128,11 @@ Measured against [code-review-graph](https://github.com/tirth8205/code-review-gr
 | Multimodal (PDF/audio/video) | ❌ | ✅ | — |
 | Live push updates | ❌ | ✅ | — |
 
-*Targets measured on a fresh install indexing the datatree source itself — 1 922 nodes and 3 643 edges from 50 files. Reproduce with `datatree build .` on any project.*
+*Targets measured on a fresh install indexing the mneme source itself — 1 922 nodes and 3 643 edges from 50 files. Reproduce with `mneme build .` on any project.*
 
 ## 🔌 18 supported platforms
 
-One `datatree install` command configures every AI tool it detects:
+One `mneme install` command configures every AI tool it detects:
 
 <div align="center">
 
@@ -184,20 +184,20 @@ Architecture details in [`docs/architecture.md`](docs/architecture.md).
 
 ```bash
 # In any Claude Code project:
-/plugin marketplace add github:omanishay-cyber/datatree
-/plugin install datatree
+/plugin marketplace add github:omanishay-cyber/mneme
+/plugin install mneme
 ```
 
-Restart Claude Code. The `datatree` MCP server starts automatically.
+Restart Claude Code. The `mneme` MCP server starts automatically.
 
 ### Option 2 — One-shot bundle installer
 
 ```bash
 # POSIX (macOS / Linux):
-curl -fsSL https://raw.githubusercontent.com/omanishay-cyber/datatree/main/scripts/install-bundle.sh | bash
+curl -fsSL https://raw.githubusercontent.com/omanishay-cyber/mneme/main/scripts/install-bundle.sh | bash
 
 # PowerShell (Windows):
-iwr https://raw.githubusercontent.com/omanishay-cyber/datatree/main/scripts/install-bundle.ps1 | iex
+iwr https://raw.githubusercontent.com/omanishay-cyber/mneme/main/scripts/install-bundle.ps1 | iex
 ```
 
 The bundle installer handles Rust, Bun, Python, Tesseract, ffmpeg, and the bge-small ONNX model if not already present.
@@ -205,11 +205,11 @@ The bundle installer handles Rust, Bun, Python, Tesseract, ffmpeg, and the bge-s
 ### Option 3 — From source
 
 ```bash
-git clone https://github.com/omanishay-cyber/datatree
-cd datatree
+git clone https://github.com/omanishay-cyber/mneme
+cd mneme
 cargo build --release --workspace
 cd mcp && bun install
-datatree install
+mneme install
 ```
 
 See [INSTALL.md](INSTALL.md) for troubleshooting and platform-specific notes.
@@ -238,7 +238,7 @@ Full reference: [`docs/mcp-tools.md`](docs/mcp-tools.md).
 
 1. **100% local** — no cloud, no telemetry, no API keys. Every model runs on your CPU.
 2. **Fault-tolerant by construction** — supervisor + watchdog + WAL + hourly snapshots. One worker crashes, the daemon stays up.
-3. **Sugar in drink** — installs invisibly; Claude sees datatree's context without you typing a single MCP call.
+3. **Sugar in drink** — installs invisibly; Claude sees mneme's context without you typing a single MCP call.
 4. **Drinks `.md` like Claude drinks CLAUDE.md** — your rules, memories, specs, READMEs all become first-class context.
 5. **Compaction is solved at the architecture level, not the prompt level.**
 

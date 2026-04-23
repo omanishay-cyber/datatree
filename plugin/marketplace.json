@@ -1,18 +1,18 @@
 {
   "$schema": "https://claude.ai/schemas/plugin-marketplace.json",
-  "name": "datatree-marketplace",
-  "description": "Datatree — persistent, incrementally-updated knowledge graph for token-efficient code work across 18 AI coding platforms.",
+  "name": "mneme-marketplace",
+  "description": "Mneme — persistent, incrementally-updated knowledge graph for token-efficient code work across 18 AI coding platforms.",
   "owner": {
     "name": "Anish Trivedi",
     "url": "https://github.com/anishtrivedi"
   },
   "plugins": [
     {
-      "name": "datatree",
-      "git": "https://github.com/anishtrivedi/datatree",
+      "name": "mneme",
+      "git": "https://github.com/anishtrivedi/mneme",
       "version": "0.1.0",
       "description": "Per-user code knowledge graph daemon + MCP server. Installs across Claude Code, Codex, Cursor, Windsurf, Zed, Continue, OpenCode, Antigravity, Gemini CLI, Aider, GitHub Copilot, Factory Droid, Trae, Kiro, Qoder, OpenClaw, Hermes, and Qwen Code.",
-      "homepage": "https://github.com/anishtrivedi/datatree",
+      "homepage": "https://github.com/anishtrivedi/mneme",
       "license": "MIT",
       "keywords": [
         "knowledge-graph",

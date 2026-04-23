@@ -2,8 +2,8 @@
 # Stop the datatree supervisor daemon.
 set -eu
 
-DATATREE_HOME="${DATATREE_HOME:-$HOME/.datatree}"
-PID_FILE="$DATATREE_HOME/supervisor.pid"
+MNEME_HOME="${MNEME_HOME:-$HOME/.datatree}"
+PID_FILE="$MNEME_HOME/supervisor.pid"
 
 OS="$(uname -s)"
 case "$OS" in

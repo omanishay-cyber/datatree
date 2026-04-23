@@ -1,4 +1,4 @@
-# Contributing to datatree
+# Contributing to mneme
 
 Thanks for the interest. Short rules, long explanation below.
 
@@ -6,7 +6,7 @@ Thanks for the interest. Short rules, long explanation below.
 
 1. **Open an issue first** for anything bigger than a typo fix. Lets us avoid duplicated work.
 2. **One PR = one concern.** Don't mix a bug fix, a refactor, and a new feature.
-3. **Match existing patterns.** Datatree's crates have strong conventions (single-writer-per-shard in store, MPSC for cross-worker IPC, pure-Rust-where-possible for portability). Grep before you invent.
+3. **Match existing patterns.** Mneme's crates have strong conventions (single-writer-per-shard in store, MPSC for cross-worker IPC, pure-Rust-where-possible for portability). Grep before you invent.
 4. **Run the checks** before you push:
    ```bash
    cargo build --workspace
@@ -14,19 +14,19 @@ Thanks for the interest. Short rules, long explanation below.
    cargo test --workspace
    cd mcp && bun test
    ```
-5. **No new native DLL deps** for the Rust side without discussion. datatree stays Windows-friendly and statically linkable.
+5. **No new native DLL deps** for the Rust side without discussion. mneme stays Windows-friendly and statically linkable.
 6. **LICENSE-compatible contributions only.** By submitting a PR you agree your contribution is licensed under the [Apache-2.0](LICENSE).
 
 ## What we welcome
 
-- ⭐ **Bug reports** — reproducible > everything. Include OS, Rust version, Bun version, and the exact `datatree --verbose` output.
+- ⭐ **Bug reports** — reproducible > everything. Include OS, Rust version, Bun version, and the exact `mneme --verbose` output.
 - ⭐ **New MCP tools** — if you see a gap in the 33+ tools, propose one. Pattern: add a new `.ts` file in `mcp/src/tools/`, add helper in `mcp/src/store.ts` if new DB query shape.
 - ⭐ **New scanners** — theme / security / a11y drift rules live in `scanners/src/scanners/*.rs`. Each scanner is one file, one regex ruleset, easy to add.
 - ⭐ **New Tree-sitter language grammars** — see `parsers/src/language.rs`. Add the crate dep to `parsers/Cargo.toml` behind a feature flag, register in `Language::ALL`, add queries to `query_cache.rs`.
 - ⭐ **Vision views** — the 14 view modes in `vision/src/views/` each follow a pattern. Add a 15th by copying one and adjusting the rendering.
 - ⭐ **Platform installers** — adding support for a new AI tool (e.g., a new editor plugin) means one new file under `cli/src/platforms/` and one template under `plugin/templates/`.
 - ⭐ **Documentation** — the docs/design/ folder captures architecture intent. README improvements, install guides, troubleshooting entries, FAQ additions all welcome.
-- ⭐ **Benchmarks** — if you index a large codebase with datatree and want to share numbers, PRs to the README's benchmark table are welcome.
+- ⭐ **Benchmarks** — if you index a large codebase with mneme and want to share numbers, PRs to the README's benchmark table are welcome.
 
 ## What to open an issue about first (don't just PR)
 
@@ -41,8 +41,8 @@ Thanks for the interest. Short rules, long explanation below.
 
 ```bash
 # Clone
-git clone https://github.com/omanishay-cyber/datatree
-cd datatree
+git clone https://github.com/omanishay-cyber/mneme
+cd mneme
 
 # Rust workspace (the heavy parts)
 cargo build --workspace
@@ -57,11 +57,11 @@ cd vision && bun install && cd ..
 cd workers/multimodal && pip install -e . && cd ../..
 
 # Run the daemon for the first time
-cargo run --bin datatree-supervisor -- start
+cargo run --bin mneme-supervisor -- start
 
 # From another terminal
-cargo run --bin datatree -- build .
-cargo run --bin datatree -- status
+cargo run --bin mneme -- build .
+cargo run --bin mneme -- status
 ```
 
 Need more? See [`docs/dev-setup.md`](docs/dev-setup.md).
@@ -120,6 +120,6 @@ See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Be kind, be specific, be generous 
 
 ---
 
-Thanks again. Every contribution makes datatree better for everyone who uses it.
+Thanks again. Every contribution makes mneme better for everyone who uses it.
 
 — Anish Trivedi

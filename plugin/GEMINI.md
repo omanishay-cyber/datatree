@@ -1,19 +1,19 @@
-<!-- datatree-start v1.0 -->
-# Datatree — Gemini CLI Manifest
+<!-- mneme-start v1.0 -->
+# Mneme — Gemini CLI Manifest
 
-> This file is consumed by **Gemini CLI** as a project context file. Datatree
+> This file is consumed by **Gemini CLI** as a project context file. Mneme
 > works identically in Gemini sessions; the rules below are tuned for
 > Gemini's tool-use model.
 
-This project has the **datatree** local daemon installed. Datatree gives
+This project has the **mneme** local daemon installed. Mneme gives
 Gemini CLI a persistent SQLite memory, live code graph, drift detector,
 step ledger, and 30+ MCP tools — all stored locally under
-`~/.datatree/projects/`.
+`~/.mneme/projects/`.
 
 ## Gemini-specific Tool Routing
 
 Gemini CLI's strongest pattern is "ask one tool, get structured JSON, decide
-next." Datatree returns deterministic JSON for every tool, so chain like:
+next." Mneme returns deterministic JSON for every tool, so chain like:
 
 ```
 recall_file(path) → if hash unchanged && summary present, skip the read
@@ -24,7 +24,7 @@ blast_radius(target) → know what you'll affect before you edit
 Prefer these over `read_file` / `glob` / `search_file_content` whenever
 the structural answer is sufficient.
 
-## Datatree MCP Tool Catalog (relevant subset)
+## Mneme MCP Tool Catalog (relevant subset)
 
 | Category | Tools |
 |---|---|
@@ -45,13 +45,13 @@ current step — do not restart.
 ## Drift Redirects
 
 If two consecutive responses drift from the active goal, the next prompt
-will be prefixed with `<datatree-redirect>`. Treat it as a hard signal:
+will be prefixed with `<mneme-redirect>`. Treat it as a hard signal:
 re-anchor before doing more work.
 
 ## Local Only
 
-Datatree makes zero outbound network calls. No remote LLMs (uses llama.cpp
+Mneme makes zero outbound network calls. No remote LLMs (uses llama.cpp
 for any local inference), no embeddings APIs (bge-small ONNX), no
 telemetry, no cloud sync.
 
-<!-- datatree-end v1.0 -->
+<!-- mneme-end v1.0 -->

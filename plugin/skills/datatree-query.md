@@ -1,12 +1,12 @@
 ---
-name: datatree-query
-description: "Query the local datatree knowledge graph and project memory. Use when the user asks about files, decisions, blast radius, references, architecture, or anything 'what does X do' / 'where is Y used' / 'why did we pick Z'."
+name: mneme-query
+description: "Query the local mneme knowledge graph and project memory. Use when the user asks about files, decisions, blast radius, references, architecture, or anything 'what does X do' / 'where is Y used' / 'why did we pick Z'."
 trigger: /dt-recall
 ---
 
 # /dt-recall
 
-Search the local datatree knowledge graph + persistent project memory for
+Search the local mneme knowledge graph + persistent project memory for
 the answer to a question — without re-reading any files.
 
 ## Usage
@@ -21,7 +21,7 @@ the answer to a question — without re-reading any files.
 
 ## What this skill does
 
-1. Picks the right datatree MCP tool for the question.
+1. Picks the right mneme MCP tool for the question.
 2. Calls it via the stdio MCP server (already running locally).
 3. Returns a concise, structured answer.
 4. Cites the source rows (with `source_location`) when quoting.
@@ -42,7 +42,7 @@ Triggered by `/dt-recall`, but also use proactively when:
 
 ### Step 1 — Pick the tool
 
-Map the question to the matching datatree MCP tool:
+Map the question to the matching mneme MCP tool:
 
 | Question pattern | Tool |
 |---|---|
@@ -58,17 +58,17 @@ Map the question to the matching datatree MCP tool:
 ### Step 2 — Call the tool
 
 Invoke via the stdio MCP server (the harness has already auto-registered
-datatree from `plugin.json`).
+mneme from `plugin.json`).
 
 ### Step 3 — Render the answer
 
 - Quote the most relevant 1–3 results with their `source_location` (file:line).
 - Keep the response under 800 tokens.
-- Suggest the **single** most useful follow-up datatree tool call.
+- Suggest the **single** most useful follow-up mneme tool call.
 
 ## Honesty Rules
 
-- Never invent results. If datatree returns an empty array, say so.
+- Never invent results. If mneme returns an empty array, say so.
 - Always quote `source_location` when citing a specific fact.
 - If a recall returns nothing useful, fall back to Grep/Glob — but only
-  after datatree returned empty.
+  after mneme returned empty.

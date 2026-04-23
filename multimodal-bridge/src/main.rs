@@ -18,22 +18,22 @@ use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Parser)]
-#[command(name = "datatree-multimodal-bridge")]
+#[command(name = "mneme-multimodal-bridge")]
 struct Cli {
     /// Path to the Python interpreter to use. Defaults to bundled
-    /// `~/.datatree/runtime/python/bin/python` if present, else `python3`.
+    /// `~/.mneme/runtime/python/bin/python` if present, else `python3`.
     #[arg(long, env = "DATATREE_PYTHON")]
     python: Option<PathBuf>,
 
-    /// Override the datatree home (default: ~/.datatree).
-    #[arg(long, env = "DATATREE_HOME")]
+    /// Override the mneme home (default: ~/.mneme).
+    #[arg(long, env = "MNEME_HOME")]
     home: Option<PathBuf>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_env("DATATREE_LOG").unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_env_filter(EnvFilter::try_from_env("MNEME_LOG").unwrap_or_else(|_| EnvFilter::new("info")))
         .json()
         .init();
 
@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
 
     let python = cli.python.unwrap_or_else(|| {
         let home = cli.home.clone().unwrap_or_else(|| {
-            dirs::home_dir().expect("no home dir").join(".datatree")
+            dirs::home_dir().expect("no home dir").join(".mneme")
         });
         let bundled = home.join("runtime/python/bin/python");
         if bundled.exists() { bundled } else { PathBuf::from("python3") }

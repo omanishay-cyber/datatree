@@ -1,6 +1,6 @@
-//! Shared types for datatree.
+//! Shared types for mneme.
 //!
-//! Every datatree crate depends on this. Types defined here are the
+//! Every mneme crate depends on this. Types defined here are the
 //! lingua franca between supervisor, store, parsers, scanners, brain,
 //! livebus, multimodal-bridge, and cli.
 

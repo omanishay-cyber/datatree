@@ -1,4 +1,4 @@
-//! `datatree history <query> [--since=...]` — search the conversation log.
+//! `mneme history <query> [--since=...]` — search the conversation log.
 
 use clap::Args;
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use crate::commands::build::{handle_response, make_client};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree history`.
+/// CLI args for `mneme history`.
 #[derive(Debug, Args)]
 pub struct HistoryArgs {
     /// Free-form query.

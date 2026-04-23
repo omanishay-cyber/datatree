@@ -30,12 +30,12 @@ impl PlatformAdapter for Kiro {
                 .project_root
                 .join(".kiro")
                 .join("steering")
-                .join("datatree.md"),
+                .join("mneme.md"),
             InstallScope::User | InstallScope::Global => ctx
                 .home
                 .join(".kiro")
                 .join("steering")
-                .join("datatree.md"),
+                .join("mneme.md"),
         }
     }
 
@@ -67,11 +67,11 @@ impl PlatformAdapter for Kiro {
             std::fs::create_dir_all(&hooks_dir)
                 .map_err(|e| crate::error::CliError::io(&hooks_dir, e))?;
         }
-        let hook_path = hooks_dir.join("datatree.kiro.hook");
+        let hook_path = hooks_dir.join("mneme.kiro.hook");
         let body = json!({
-            "name": "datatree",
+            "name": "mneme",
             "events": ["onSessionStart", "onFileEdited", "onTurnEnd"],
-            "command": "datatree",
+            "command": "mneme",
             "argTemplate": ["session-prime"]
         });
         let serialized = serde_json::to_string_pretty(&body)? + "\n";

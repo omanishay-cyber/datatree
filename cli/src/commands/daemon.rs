@@ -1,9 +1,9 @@
-//! `datatree daemon <op>` — start/stop/restart/status/logs subcommands for
+//! `mneme daemon <op>` — start/stop/restart/status/logs subcommands for
 //! the supervisor process.
 //!
 //! `start` and `restart` shell out to the supervisor binary (which lives
-//! in the same directory as `datatree`, or on PATH as
-//! `datatree-supervisor`). `stop`, `status`, and `logs` go over the IPC
+//! in the same directory as `mneme`, or on PATH as
+//! `mneme-supervisor`). `stop`, `status`, and `logs` go over the IPC
 //! socket so we never have to know the supervisor's PID.
 
 use clap::Args;
@@ -16,7 +16,7 @@ use crate::commands::build::{handle_response, make_client};
 use crate::error::{CliError, CliResult};
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree daemon`.
+/// CLI args for `mneme daemon`.
 #[derive(Debug, Args)]
 pub struct DaemonArgs {
     /// Sub-op: `start` | `stop` | `restart` | `status` | `logs`.
@@ -54,7 +54,7 @@ fn start_daemon(bin: Option<PathBuf>) -> CliResult<()> {
     info!(path = %path.display(), "spawning supervisor");
     if !path.exists() {
         return Err(CliError::Other(format!(
-            "supervisor binary not found at {}; install datatree first or pass --bin",
+            "supervisor binary not found at {}; install mneme first or pass --bin",
             path.display()
         )));
     }
@@ -103,10 +103,10 @@ async fn logs_daemon(socket_override: Option<PathBuf>, lines: usize) -> CliResul
 }
 
 fn default_supervisor_binary() -> PathBuf {
-    // Look for `datatree-supervisor` next to the current binary first.
+    // Look for `mneme-supervisor` next to the current binary first.
     if let Ok(this) = std::env::current_exe() {
         if let Some(parent) = this.parent() {
-            let mut candidate = parent.join("datatree-supervisor");
+            let mut candidate = parent.join("mneme-supervisor");
             if cfg!(windows) {
                 candidate.set_extension("exe");
             }
@@ -115,7 +115,7 @@ fn default_supervisor_binary() -> PathBuf {
             }
         }
     }
-    let mut p = PathBuf::from("datatree-supervisor");
+    let mut p = PathBuf::from("mneme-supervisor");
     if cfg!(windows) {
         p.set_extension("exe");
     }

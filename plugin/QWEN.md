@@ -1,22 +1,22 @@
-<!-- datatree-start v1.0 -->
-# Datatree — Qwen-Code Manifest
+<!-- mneme-start v1.0 -->
+# Mneme — Qwen-Code Manifest
 
 > This file is consumed by **Qwen-Code** (Alibaba's Qwen-coder CLI) as a
-> project context file. Datatree integrates via stdio MCP, identically to
+> project context file. Mneme integrates via stdio MCP, identically to
 > Claude Code.
 
-This project has the **datatree** local daemon installed. Datatree gives
+This project has the **mneme** local daemon installed. Mneme gives
 Qwen-Code persistent SQLite memory, a live code graph, drift detection, a
 compaction-resilient step ledger, and 30+ MCP tools.
 
 ## Qwen-specific Tool Routing
 
-Qwen tends to over-Read large files. Datatree's `recall_file` returns the
+Qwen tends to over-Read large files. Mneme's `recall_file` returns the
 hash + summary in <5ms — use it first and skip the Read entirely if the
 file is unchanged since you last saw it.
 
 For large refactors, ALWAYS run `blast_radius(target)` first. Qwen's wide
-context can hide impact; datatree makes it explicit.
+context can hide impact; mneme makes it explicit.
 
 ## Tool Catalog
 
@@ -41,8 +41,8 @@ includes the verification gate for the current step — pass it before
 
 ## Local Only
 
-Datatree never calls Qwen's cloud or any other remote service. All
+Mneme never calls Qwen's cloud or any other remote service. All
 inference is local (llama.cpp + Phi-3-mini for any text inference;
 bge-small for embeddings).
 
-<!-- datatree-end v1.0 -->
+<!-- mneme-end v1.0 -->

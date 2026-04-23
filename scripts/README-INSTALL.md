@@ -1,6 +1,6 @@
-# datatree :: install lifecycle
+# mneme :: install lifecycle
 
-This document explains how datatree installs, where things land on disk, and
+This document explains how mneme installs, where things land on disk, and
 how to back out cleanly. The install scripts are deliberately small and
 boring -- you should be able to read every one of them in a couple of
 minutes.
@@ -27,10 +27,10 @@ That single command will:
 2. Run a read-only health check (`check-runtime`).
 3. If anything required is missing, ask before installing it via your
    platform's package manager.
-4. Install the datatree supervisor.
+4. Install the mneme supervisor.
 5. Download/copy the required ONNX models (only `bge-small` is required;
    ~33 MB).
-6. Start the datatree daemon.
+6. Start the mneme daemon.
 7. Print the next step (install the OpenCode/Claude Code plugin).
 
 If you want a dry run, just run `check-runtime` first -- it never modifies
@@ -51,13 +51,13 @@ pwsh .\scripts\check-runtime.ps1
 | Python 3            | OS package manager default                            | OS package manager   |
 | Tesseract           | OS package manager default                            | OS package manager   |
 | ffmpeg              | OS package manager default                            | OS package manager   |
-| SQLite              | bundled into `datatree-store` (rusqlite `bundled`)    | datatree binary      |
-| Models (ONNX)       | `~/.datatree/llm/<model>/`                            | datatree             |
-| Supervisor binary   | `~/.datatree/bin/datatree-supervisor`                 | datatree             |
-| Logs                | `~/.datatree/logs/install.log`                        | datatree             |
-| Install manifest    | `~/.datatree/install-manifest.json`                   | datatree             |
+| SQLite              | bundled into `mneme-store` (rusqlite `bundled`)    | mneme binary      |
+| Models (ONNX)       | `~/.mneme/llm/<model>/`                            | mneme             |
+| Supervisor binary   | `~/.mneme/bin/mneme-supervisor`                 | mneme             |
+| Logs                | `~/.mneme/logs/install.log`                        | mneme             |
+| Install manifest    | `~/.mneme/install-manifest.json`                   | mneme             |
 
-`DATATREE_HOME` overrides the default `~/.datatree` location for everything
+`MNEME_HOME` overrides the default `~/.mneme` location for everything
 except deps installed by the OS package manager.
 
 ---
@@ -102,14 +102,14 @@ except deps installed by the OS package manager.
 
 ## Offline / air-gapped install (`--from <dir>`)
 
-datatree never reaches the internet on its own. With `--from <dir>` it
+mneme never reaches the internet on its own. With `--from <dir>` it
 also avoids invoking the package manager for things you've pre-downloaded.
 
 1. On a network-connected machine, mirror the artifacts you need into a
    single folder, e.g.
 
    ```
-   /mnt/usb/datatree-mirror/
+   /mnt/usb/mneme-mirror/
      bun                       # Bun binary or installer
      bun.tar.gz
      tesseract-installer.exe
@@ -122,8 +122,8 @@ also avoids invoking the package manager for things you've pre-downloaded.
 3. Run the bundle with `--from`:
 
    ```sh
-   sh   scripts/install-bundle.sh   --from /mnt/usb/datatree-mirror
-   pwsh .\scripts\install-bundle.ps1 -From C:\mirror\datatree
+   sh   scripts/install-bundle.sh   --from /mnt/usb/mneme-mirror
+   pwsh .\scripts\install-bundle.ps1 -From C:\mirror\mneme
    ```
 
 The runtime installer will look for `<dep>` / `<dep>.tar.gz` / `<dep>.exe`
@@ -136,7 +136,7 @@ installed.
 
 ## Uninstall
 
-To reverse everything datatree installed (and optionally leave shared
+To reverse everything mneme installed (and optionally leave shared
 tools alone):
 
 ```sh
@@ -144,16 +144,16 @@ sh   scripts/uninstall-runtime.sh   --keep-shared
 pwsh .\scripts\uninstall-runtime.ps1 -KeepShared
 ```
 
-`--keep-shared` reads `~/.datatree/install-manifest.json` and skips
+`--keep-shared` reads `~/.mneme/install-manifest.json` and skips
 removing any tool listed under `preexisting`. Without that flag, every
-runtime dep that was installed *by datatree* is removed via the package
+runtime dep that was installed *by mneme* is removed via the package
 manager. The manifest is updated as items are removed.
 
-To wipe the datatree state directory entirely (models, logs, manifest):
+To wipe the mneme state directory entirely (models, logs, manifest):
 
 ```sh
-rm -rf ~/.datatree                       # Unix
-Remove-Item $env:USERPROFILE\.datatree -Recurse -Force   # Windows
+rm -rf ~/.mneme                       # Unix
+Remove-Item $env:USERPROFILEmneme -Recurse -Force   # Windows
 ```
 
 To uninstall the supervisor and stop the daemon, use the existing
@@ -170,14 +170,14 @@ To uninstall the supervisor and stop the daemon, use the existing
 | Tesseract install succeeds but `tesseract --version` fails  | UB-Mannheim install dir missing from `PATH`            | Add `C:\Program Files\Tesseract-OCR` to `PATH`, or open a new shell                      |
 | `apt-get: command not found`                                | You're on a non-Debian distro                          | The script auto-detects -- if it failed to, file an issue with `/etc/os-release` content |
 | Whisper inference is slow                                   | ffmpeg missing or wrong CPU codec path                 | Re-run `check-runtime` -- if ffmpeg shows OK, the issue is model size; try `tiny`        |
-| Model file present but `check-runtime` shows missing        | Model in wrong dir                                     | Models must live in `~/.datatree/llm/<name>/model.onnx`                                  |
+| Model file present but `check-runtime` shows missing        | Model in wrong dir                                     | Models must live in `~/.mneme/llm/<name>/model.onnx`                                  |
 | `sudo: a password is required` mid-install                  | Non-interactive shell                                  | Re-run from an interactive terminal, or pre-cache sudo with `sudo -v` first              |
 | Install hangs on macOS at "fetching formula"                | Homebrew first-run network init                        | Cancel, run `brew update` once manually, then re-run                                     |
 | `install-bundle` exits at step 4                            | Supervisor build failed (Rust toolchain)               | Install the Rust toolchain (`rustup`), then re-run                                       |
 | Two Pythons on PATH (system + Homebrew)                     | macOS default Python 3.9 collides with brew 3.12       | The script accepts either; explicit `python3.12` from brew is preferred                  |
 
 If something fails, the full transcript is in
-`~/.datatree/logs/install.log`. That log is the first thing to check.
+`~/.mneme/logs/install.log`. That log is the first thing to check.
 
 ---
 

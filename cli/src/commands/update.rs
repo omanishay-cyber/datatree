@@ -1,4 +1,4 @@
-//! `datatree update` — incremental update sweep against the active project.
+//! `mneme update` — incremental update sweep against the active project.
 //!
 //! Triggers the supervisor to walk the file watcher's pending queue, parse
 //! changed files, and re-run scanners over the affected blast radius.
@@ -10,7 +10,7 @@ use crate::commands::build::{handle_response, make_client, resolve_project};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree update`.
+/// CLI args for `mneme update`.
 #[derive(Debug, Args)]
 pub struct UpdateArgs {
     /// Path to the project root. Defaults to CWD.

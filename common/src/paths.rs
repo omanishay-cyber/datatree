@@ -4,7 +4,7 @@ use crate::ids::{ProjectId, SnapshotId};
 use crate::layer::DbLayer;
 use crate::time::Timestamp;
 
-/// Single source of truth for every datatree path. No other module
+/// Single source of truth for every mneme path. No other module
 /// constructs paths manually.
 #[derive(Debug, Clone)]
 pub struct PathManager {
@@ -12,11 +12,11 @@ pub struct PathManager {
 }
 
 impl PathManager {
-    /// Default install root: `~/.datatree/`.
+    /// Default install root: `~/.mneme/`.
     pub fn default_root() -> Self {
         let home = dirs::home_dir().expect("no home dir");
         PathManager {
-            root: home.join(".datatree"),
+            root: home.join(".mneme"),
         }
     }
 
@@ -96,7 +96,7 @@ impl PathManager {
         #[cfg(windows)]
         {
             // Named pipe path; interprocess crate maps appropriately.
-            PathBuf::from(r"\\.\pipe\datatree-supervisor")
+            PathBuf::from(r"\\.\pipe\mneme-supervisor")
         }
         #[cfg(not(windows))]
         {
@@ -107,7 +107,7 @@ impl PathManager {
     pub fn livebus_socket(&self) -> PathBuf {
         #[cfg(windows)]
         {
-            PathBuf::from(r"\\.\pipe\datatree-livebus")
+            PathBuf::from(r"\\.\pipe\mneme-livebus")
         }
         #[cfg(not(windows))]
         {

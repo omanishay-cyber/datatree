@@ -2,7 +2,7 @@
 //!
 //! Storage layout (binary, little-endian):
 //! ```text
-//! ~/.datatree/cache/embed/index.bin
+//! ~/.mneme/cache/embed/index.bin
 //!   [u32  magic   = 0x44544231 ("DTB1")]
 //!   [u32  dim     = 384]
 //!   [u64  count   = N]
@@ -69,7 +69,7 @@ impl std::fmt::Debug for EmbedStore {
 }
 
 impl EmbedStore {
-    /// Open at the default `~/.datatree/cache/embed/` directory.
+    /// Open at the default `~/.mneme/cache/embed/` directory.
     pub fn open_default() -> BrainResult<Self> {
         Self::open(&default_dir())
     }
@@ -309,11 +309,11 @@ fn load_file(path: &Path) -> BrainResult<State> {
     })
 }
 
-/// Default cache directory: `~/.datatree/cache/embed/`.
+/// Default cache directory: `~/.mneme/cache/embed/`.
 pub fn default_dir() -> PathBuf {
     if let Some(home) = dirs::home_dir() {
-        home.join(".datatree").join("cache").join("embed")
+        home.join(".mneme").join("cache").join("embed")
     } else {
-        PathBuf::from(".datatree/cache/embed")
+        PathBuf::from(".mneme/cache/embed")
     }
 }

@@ -126,7 +126,7 @@ mod windows_impl {
             .map_err(|e| SupervisorError::Other(format!("current_exe: {e}")))?;
         let info = ServiceInfo {
             name: OsString::from(SERVICE_NAME),
-            display_name: OsString::from("Datatree Daemon"),
+            display_name: OsString::from("Mneme Daemon"),
             service_type: SERVICE_TYPE,
             start_type: ServiceStartType::AutoStart,
             error_control: ServiceErrorControl::Normal,
@@ -157,9 +157,9 @@ mod windows_impl {
     }
 
     fn default_config_path() -> String {
-        std::env::var("DATATREE_CONFIG").unwrap_or_else(|_| {
+        std::env::var("MNEME_CONFIG").unwrap_or_else(|_| {
             let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".into());
-            format!("{home}\\.datatree\\supervisor.toml")
+            format!("{home}\\.mneme\\supervisor.toml")
         })
     }
 }

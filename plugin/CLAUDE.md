@@ -1,18 +1,18 @@
-<!-- datatree-start v1.0 -->
-# Datatree — Persistent Project Memory + Live Code Graph
+<!-- mneme-start v1.0 -->
+# Mneme — Persistent Project Memory + Live Code Graph
 
-This project has the **datatree** plugin installed. Datatree is a local,
+This project has the **mneme** plugin installed. Mneme is a local,
 no-internet daemon that gives Claude Code a persistent SQLite memory, a
 live code graph, a drift detector, a step ledger that survives compaction,
 and 30+ MCP tools.
 
 ## Tool Usage Rules (always follow before Grep/Glob/Read)
 
-When investigating code, **always** use datatree MCP tools first. They are
+When investigating code, **always** use mneme MCP tools first. They are
 faster, cheaper (fewer tokens), and surface structural context (callers,
 dependents, tests, decisions, drift findings) that file-scanning cannot.
 
-| Question | Use this datatree tool first | Fallback |
+| Question | Use this mneme tool first | Fallback |
 |---|---|---|
 | "Where is X used?" | `find_references(symbol)` | Grep |
 | "What breaks if I change X?" | `blast_radius(target)` | manual trace |
@@ -26,7 +26,7 @@ dependents, tests, decisions, drift findings) that file-scanning cannot.
 | "Are there cycles?" | `cyclic_deps()` | manual check |
 
 Target: **<= 5 tool calls per task**, **<= 800 tokens of graph context**.
-Fall back to Grep/Glob/Read **only** when datatree doesn't cover what you need.
+Fall back to Grep/Glob/Read **only** when mneme doesn't cover what you need.
 
 ## Step Ledger (compaction-resilient task tracking)
 
@@ -49,7 +49,7 @@ Never combine fixes. **One fix = one step.** This is non-negotiable.
 
 ## Drift Detection
 
-Datatree continuously scans changed files for rule violations. Findings are
+Mneme continuously scans changed files for rule violations. Findings are
 tagged red (critical) / yellow (should-fix) / green (info).
 
 - Before commit: `audit(scope='diff')` — see what's wrong with your changes
@@ -61,7 +61,7 @@ tagged red (critical) / yellow (should-fix) / green (info).
 - Accessibility: `audit_a11y(file=...)`
 
 Drift redirects: if your responses diverge from the active goal for **2+
-consecutive turns**, datatree prepends a `<datatree-redirect>` block to your
+consecutive turns**, mneme prepends a `<mneme-redirect>` block to your
 next prompt. **Take it seriously** — re-anchor to the active step before
 continuing.
 
@@ -70,7 +70,7 @@ continuing.
 When you sense context approaching its limit, the user's harness will compact
 automatically. **You do not need to do anything special.** After compaction:
 
-1. The hook auto-injects a `<datatree-resume>` block on the next turn.
+1. The hook auto-injects a `<mneme-resume>` block on the next turn.
 2. It contains: original goal, completed steps with proofs, YOU ARE HERE,
    planned steps, active constraints, and the verification gate for the
    current step.
@@ -89,12 +89,12 @@ it manually.
 | `audit*`, `drift_findings` | 50–500ms | before commit, on demand |
 | `graphify_corpus` | seconds–minutes | once per major change |
 
-If a tool is slow (>1s), datatree's `health()` will be yellow/red. Tell the
+If a tool is slow (>1s), mneme's `health()` will be yellow/red. Tell the
 user — do not silently retry.
 
-## What datatree captures (privacy)
+## What mneme captures (privacy)
 
-Everything stays local on this machine. Datatree captures:
+Everything stays local on this machine. Mneme captures:
 
 - Tool calls, their parameters, and their results (history.db)
 - File hashes + summaries (semantic.db)
@@ -104,7 +104,7 @@ Everything stays local on this machine. Datatree captures:
 - Drift findings (findings.db)
 
 It does **not** make outbound network calls. No telemetry. No remote LLMs.
-No cloud sync. See `<repo>/.claude/datatree.json` for per-project tuning.
+No cloud sync. See `<repo>/.claude/mneme.json` for per-project tuning.
 
 ## Quick Commands
 
@@ -117,4 +117,4 @@ No cloud sync. See `<repo>/.claude/datatree.json` for per-project tuning.
 /dt-doctor           full self-test
 ```
 
-<!-- datatree-end v1.0 -->
+<!-- mneme-end v1.0 -->

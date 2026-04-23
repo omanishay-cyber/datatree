@@ -1,6 +1,6 @@
 //! Supported languages and the mapping from filesystem paths to grammars.
 //!
-//! The enum lists every language datatree v1.0 plans to support (§21.3.1).
+//! The enum lists every language mneme v1.0 plans to support (§21.3.1).
 //! Variants whose grammars are gated behind cargo features still appear in
 //! the enum — but [`Language::tree_sitter_language`] returns
 //! [`ParserError::LanguageNotEnabled`] when the matching feature is off.
@@ -10,7 +10,7 @@ use crate::error::ParserError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Every language datatree can parse.
+/// Every language mneme can parse.
 ///
 /// The variants are ordered by tier (1 = always built, 2 = community / opt-in).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

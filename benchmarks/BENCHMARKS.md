@@ -1,6 +1,6 @@
-# Datatree Benchmarks
+# Mneme Benchmarks
 
-Retrieval-quality and token-reduction harness for the `datatree` graph
+Retrieval-quality and token-reduction harness for the `mneme` graph
 relative to a cold Claude baseline (approximated by a naive grep over
 the repo). Everything runs 100% local: no daemon, no network, no API
 keys, no telemetry.
@@ -11,7 +11,7 @@ keys, no telemetry.
    edges) for a full ingest of a project.
 2. **Retrieval latency** — per-query time for `blast_radius`,
    `recall_file`, and `find_references`.
-3. **Token reduction** — total bytes of file payload datatree returns
+3. **Token reduction** — total bytes of file payload mneme returns
    divided by 4 (the common English-plus-code rule of thumb), vs the
    same estimator applied to the cold baseline's top-5 files.
 4. **Precision\@5** — integer count of expected files present in the
@@ -33,7 +33,7 @@ cargo build --release --workspace
 
 # One-off query against an existing shard.
 ./target/release/bench_retrieval query \
-  ~/.datatree/projects/<project_id>/graph.db \
+  ~/.mneme/projects/<project_id>/graph.db \
   "PathManager"
 ```
 
@@ -69,7 +69,7 @@ Each fixture entry has the shape:
 
 ### Totals
 
-| Metric          | Datatree | Cold baseline |
+| Metric          | Mneme | Cold baseline |
 |-----------------|----------|---------------|
 | Tokens (sum)    | ...      | ...           |
 | Wall time (ms)  | ...      | ...           |

@@ -23,8 +23,8 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DATATREE_HOME="${DATATREE_HOME:-${HOME}/.datatree}"
-LOG_DIR="${DATATREE_HOME}/logs"
+MNEME_HOME="${MNEME_HOME:-${HOME}/.datatree}"
+LOG_DIR="${MNEME_HOME}/logs"
 LOG_FILE="${LOG_DIR}/install.log"
 
 ASSUME_YES=0

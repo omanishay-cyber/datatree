@@ -9,7 +9,7 @@ use rusqlite::{backup::Backup, Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use datatree_common::{
+use common::{
     error::{DbError, DtError, DtResult},
     ids::{ProjectId, SnapshotId},
     layer::DbLayer,

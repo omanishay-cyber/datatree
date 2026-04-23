@@ -41,8 +41,8 @@ impl PlatformAdapter for Windsurf {
         McpFormat::JsonObject
     }
 
-    /// Drop a workflow file that wraps `datatree status` so users can
-    /// invoke datatree from Windsurf's workflow palette.
+    /// Drop a workflow file that wraps `mneme status` so users can
+    /// invoke mneme from Windsurf's workflow palette.
     fn write_hooks(&self, ctx: &AdapterContext) -> CliResult<Option<PathBuf>> {
         let workflows_dir = match ctx.scope {
             InstallScope::Project => ctx.project_root.join(".windsurf").join("workflows"),
@@ -54,9 +54,9 @@ impl PlatformAdapter for Windsurf {
             std::fs::create_dir_all(&workflows_dir)
                 .map_err(|e| crate::error::CliError::io(&workflows_dir, e))?;
         }
-        let workflow_path = workflows_dir.join("datatree.md");
-        let body = "# Datatree Quick Status\n\n\
-                    Run `datatree status` from this workflow to refresh the cached \
+        let workflow_path = workflows_dir.join("mneme.md");
+        let body = "# Mneme Quick Status\n\n\
+                    Run `mneme status` from this workflow to refresh the cached \
                     project graph and surface drift findings without leaving Windsurf.\n";
         if !ctx.dry_run {
             std::fs::write(&workflow_path, body)

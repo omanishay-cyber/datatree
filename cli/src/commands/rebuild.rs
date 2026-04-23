@@ -1,4 +1,4 @@
-//! `datatree rebuild` — drop everything and re-parse from scratch.
+//! `mneme rebuild` — drop everything and re-parse from scratch.
 //!
 //! Last-resort recovery; per design §13 / §5.7 (`rebuild(scope?)`).
 
@@ -9,7 +9,7 @@ use crate::commands::build::{handle_response, make_client, resolve_project};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree rebuild`.
+/// CLI args for `mneme rebuild`.
 #[derive(Debug, Args)]
 pub struct RebuildArgs {
     /// Project root. Defaults to CWD.

@@ -1,12 +1,12 @@
 ---
 name: /dt-step
-description: View, verify, complete, or resume the datatree Step Ledger. The compaction-resilient task tracker.
-command: datatree step
+description: View, verify, complete, or resume the mneme Step Ledger. The compaction-resilient task tracker.
+command: mneme step
 ---
 
 # /dt-step
 
-Interact with the datatree Step Ledger — the compaction-resilient task
+Interact with the mneme Step Ledger — the compaction-resilient task
 tracker that survives context resets.
 
 ## Usage
@@ -43,5 +43,5 @@ contains the original goal, completed steps with proofs, the current
 step (YOU ARE HERE), planned steps, active constraints, and the
 verification gate.
 
-See also: the `datatree-resume` skill, and the `datatree-step-verifier`
+See also: the `mneme-resume` skill, and the `mneme-step-verifier`
 sub-agent that runs your acceptance commands.

@@ -1,5 +1,5 @@
 [package]
-name = "datatree-scanners"
+name = "mneme-scanners"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.78"
@@ -8,16 +8,16 @@ authors = ["Anish Trivedi"]
 description = "Datatree scanner worker pool: applies drift / theme / security / a11y / perf / ipc / markdown / secrets / types rules and writes findings to findings.db via the store IPC."
 
 [[bin]]
-name = "datatree-scanners"
+name = "mneme-scanners"
 path = "src/main.rs"
 
 [lib]
-name = "datatree_scanners"
+name = "mneme_scanners"
 path = "src/lib.rs"
 
 [dependencies]
 # Workspace local
-common = { path = "../common", package = "datatree-common" }
+common = { path = "../common", package = "mneme-common" }
 
 # Async runtime + concurrency primitives
 tokio = { version = "1.40", features = ["full"] }

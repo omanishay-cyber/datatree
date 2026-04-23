@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
 
-const DATATREE_HOME = join(homedir(), ".datatree");
+const MNEME_HOME = join(homedir(), ".datatree");
 
 /**
  * Hash an absolute project path to its ProjectId (matches Rust
@@ -46,7 +46,7 @@ export function findProjectRoot(start: string): string | null {
 
 /**
  * Resolve the active shard root: uses cwd by default, falls back to env,
- * then scans `~/.datatree/projects/*` and returns the newest one if only
+ * then scans `~/.mneme/projects/*` and returns the newest one if only
  * one exists.
  */
 export function resolveShardRoot(cwdOverride?: string): string | null {
@@ -54,11 +54,11 @@ export function resolveShardRoot(cwdOverride?: string): string | null {
   const fromCwd = findProjectRoot(cwd);
   if (fromCwd) {
     const id = projectIdForPath(fromCwd);
-    const dir = join(DATATREE_HOME, "projects", id);
+    const dir = join(MNEME_HOME, "projects", id);
     if (existsSync(dir)) return dir;
   }
   // Fallback: if exactly one project exists, use it.
-  const projectsDir = join(DATATREE_HOME, "projects");
+  const projectsDir = join(MNEME_HOME, "projects");
   if (existsSync(projectsDir)) {
     try {
       const { readdirSync } = require("node:fs");

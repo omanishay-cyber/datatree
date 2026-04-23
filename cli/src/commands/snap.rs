@@ -1,4 +1,4 @@
-//! `datatree snap` — manual snapshot of the active shard.
+//! `mneme snap` — manual snapshot of the active shard.
 
 use clap::Args;
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use crate::commands::build::{handle_response, make_client};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree snap`.
+/// CLI args for `mneme snap`.
 #[derive(Debug, Args)]
 pub struct SnapArgs {
     /// Optional project path. Defaults to CWD.

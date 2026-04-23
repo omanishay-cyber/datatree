@@ -1,21 +1,21 @@
 {
   "$schema": "https://claude.ai/claude-code/plugin-marketplace-schema.json",
-  "name": "datatree",
-  "displayName": "datatree — the AI superbrain",
+  "name": "mneme",
+  "displayName": "mneme — the AI superbrain",
   "description": "Persistent per-project memory that survives context compaction. 27-layer SQLite shard, 33+ MCP tools, 14 visualization views, drift detector, compaction-resilient Step Ledger. 100% local.",
   "version": "0.1.0",
   "author": "Anish Trivedi",
-  "homepage": "https://omanishay-cyber.github.io/datatree/",
-  "repository": "https://github.com/omanishay-cyber/datatree",
+  "homepage": "https://omanishay-cyber.github.io/mneme/",
+  "repository": "https://github.com/omanishay-cyber/mneme",
   "license": "Apache-2.0",
   "plugins": [
     {
-      "name": "datatree",
+      "name": "mneme",
       "version": "0.1.0",
       "description": "AI superbrain MCP — persistent memory, blast-radius queries, drift detection, Step Ledger that survives compaction.",
       "source": {
         "type": "github",
-        "repository": "omanishay-cyber/datatree",
+        "repository": "omanishay-cyber/mneme",
         "ref": "main",
         "path": "plugin"
       },

@@ -1,8 +1,8 @@
-# CLAUDE.md — Working on the datatree project itself
+# CLAUDE.md — Working on the mneme project itself
 
-This file tells Claude Code (and any AI tool that reads `CLAUDE.md`) how to navigate **the datatree codebase** when developing or maintaining datatree itself.
+This file tells Claude Code (and any AI tool that reads `CLAUDE.md`) how to navigate **the mneme codebase** when developing or maintaining mneme itself.
 
-If you're a user *consuming* datatree as an MCP plugin, see [README.md](README.md) instead. This file is for working on datatree's source.
+If you're a user *consuming* mneme as an MCP plugin, see [README.md](README.md) instead. This file is for working on mneme's source.
 
 ---
 
@@ -38,7 +38,7 @@ If you're a user *consuming* datatree as an MCP plugin, see [README.md](README.m
 - All extractors implement the `Extractor` interface. Failure must return an `ExtractionResult` with `success=False`, never raise to the supervisor.
 
 ### Local-only invariant (project-wide)
-- Datatree must NEVER make outbound network calls during normal operation. The only exceptions are user-initiated `datatree models install --from <local-mirror>` (still local) or, with explicit opt-in, `datatree update --check` (polls a single user-configured URL).
+- Mneme must NEVER make outbound network calls during normal operation. The only exceptions are user-initiated `mneme models install --from <local-mirror>` (still local) or, with explicit opt-in, `mneme update --check` (polls a single user-configured URL).
 - Section 22 of the design doc has the full ban list. Any new feature that contemplates network access is auto-rejected unless explicitly approved by Anish.
 
 ### Resource policy
@@ -46,13 +46,13 @@ If you're a user *consuming* datatree as an MCP plugin, see [README.md](README.m
 
 ---
 
-## Working on datatree without a real Cargo / Bun toolchain
+## Working on mneme without a real Cargo / Bun toolchain
 
 If you're modifying source code:
 
 1. **Foundation crates (`common/`, `store/`)** are the most architecturally sensitive. Changes here ripple through every other crate. Always read the consumer crates before changing a public type in `common/`.
 2. **Tree-sitter grammars** must match the version pinned in workspace `Cargo.toml`. Do not casually upgrade.
-3. **Plugin manifests** in `plugin/templates/` use marker-based idempotent injection (`<!-- datatree-start v1.0 --> ... <!-- datatree-end -->`). Preserve the markers.
+3. **Plugin manifests** in `plugin/templates/` use marker-based idempotent injection (`<!-- mneme-start v1.0 --> ... <!-- mneme-end -->`). Preserve the markers.
 4. **`store/src/schema.rs`** is append-only. Never drop or rename a column. To rename conceptually: add a new column, stop writing the old one, leave the old in place forever.
 
 ---
@@ -69,7 +69,7 @@ If you're modifying source code:
 | `brain/` | Embeddings + Leiden + concept extraction | agent-generated |
 | `livebus/` | SSE/WebSocket push channel | agent-generated |
 | `multimodal-bridge/` | Rust shim for Python sidecar | hand-written |
-| `cli/` | `datatree` CLI (install/build/audit/recall/step/etc.) | agent-generated |
+| `cli/` | `mneme` CLI (install/build/audit/recall/step/etc.) | agent-generated |
 | `workers/multimodal/` | Python sidecar (PDF/Whisper/OCR) | agent-generated |
 | `mcp/` | Bun TS MCP server (33+ tools, 6 hooks) | agent-generated |
 | `vision/` | Tauri + Bun TS app (14 views + Command Center) | agent-generated |
@@ -79,9 +79,9 @@ If you're modifying source code:
 
 ---
 
-## Datatree's own MCP tools — use them on datatree itself
+## Mneme's own MCP tools — use them on mneme itself
 
-Once datatree is installed and indexed on its own source:
+Once mneme is installed and indexed on its own source:
 
 ```
 /dt-recall "compaction recovery"     → finds the Step Ledger §7 design + impl
@@ -91,7 +91,7 @@ Once datatree is installed and indexed on its own source:
 /dt-doctor                           → SLA + storage health
 ```
 
-When working on datatree itself, prefer these MCP tools over Grep/Read/Glob — that's the whole point of datatree.
+When working on mneme itself, prefer these MCP tools over Grep/Read/Glob — that's the whole point of mneme.
 
 ---
 

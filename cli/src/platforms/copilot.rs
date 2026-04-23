@@ -2,7 +2,7 @@
 //!
 //! Manifest: `.github/copilot-instructions.md`
 //! MCP: `.vscode/mcp.json` or `~/.config/github-copilot/mcp.json`
-//! Hooks: VS Code task hooks (no datatree-managed file).
+//! Hooks: VS Code task hooks (no mneme-managed file).
 
 use std::path::PathBuf;
 

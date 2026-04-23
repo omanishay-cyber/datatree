@@ -3,14 +3,14 @@
 //! Handlers should bubble these via `?` and let `main.rs` map them to a
 //! process exit code. We deliberately use `thiserror` rather than `anyhow`
 //! at the boundary so callers (including the supervisor when it shells out
-//! to `datatree`) can pattern-match on a stable variant set.
+//! to `mneme`) can pattern-match on a stable variant set.
 
 use std::path::PathBuf;
 
 /// Result alias used throughout the crate.
 pub type CliResult<T> = std::result::Result<T, CliError>;
 
-/// Every failure mode the `datatree` CLI can hit.
+/// Every failure mode the `mneme` CLI can hit.
 ///
 /// The variants are intentionally coarse — granular structured info lives in
 /// the `source` chain, surfaced via `Display` when `main.rs` prints the error

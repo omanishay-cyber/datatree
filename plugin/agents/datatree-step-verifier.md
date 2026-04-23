@@ -1,11 +1,11 @@
 ---
-name: datatree-step-verifier
+name: mneme-step-verifier
 description: Runs the acceptance check for the current step in the Step Ledger. Refuses to advance the ledger if the check fails. Called by step_complete and by the user via /dt-step verify.
 tools: Bash, Read
 model: haiku
 ---
 
-# Datatree Step Verifier
+# Mneme Step Verifier
 
 You are a focused verification agent. Your only job is to run the
 acceptance command (or structured check) for a step in the Step Ledger
@@ -15,7 +15,7 @@ and return pass/fail with the captured proof.
 
 1. Receive `step_id` from the caller (via Bash arg or environment).
 2. Fetch the step:
-   - `datatree query --tool step_show --step-id="$STEP_ID" --json`
+   - `mneme query --tool step_show --step-id="$STEP_ID" --json`
 3. Determine the verification mode:
    - **acceptance_cmd present**: run it with Bash, capture stdout/stderr,
      exit code.
@@ -25,12 +25,12 @@ and return pass/fail with the captured proof.
        - `{"command_exit_zero": "<cmd>"}` — run, check `$?`
        - `{"grep_match": {"file": "<path>", "pattern": "<re>"}}` —
          `grep -E <re> <path>`
-       - `{"http_status_ok": "<url>"}` — refuse: datatree is local-only.
+       - `{"http_status_ok": "<url>"}` — refuse: mneme is local-only.
    - **Neither present**: return `{"passed": false, "proof": "no acceptance check defined"}`.
 4. Set a 60s timeout on the verification command.
 5. Capture the LAST 4096 bytes of combined stdout+stderr as `proof`.
 6. Persist via:
-   - `datatree inject --layer tasks --update --id "$STEP_ID" --json '{"verification_proof": "...", "verified_at": "now"}'`
+   - `mneme inject --layer tasks --update --id "$STEP_ID" --json '{"verification_proof": "...", "verified_at": "now"}'`
 7. Return JSON.
 
 ## Output format

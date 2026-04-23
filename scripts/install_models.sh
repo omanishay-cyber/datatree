@@ -54,8 +54,8 @@ fi
 
 [ -d "$FROM" ] || { echo "ERROR: --from path is not a directory: $FROM" >&2; exit 1; }
 
-DATATREE_HOME="${DATATREE_HOME:-$HOME/.datatree}"
-MODEL_DIR="$DATATREE_HOME/models"
+MNEME_HOME="${MNEME_HOME:-$HOME/.datatree}"
+MODEL_DIR="$MNEME_HOME/models"
 mkdir -p "$MODEL_DIR"
 
 copy_model() {

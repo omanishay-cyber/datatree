@@ -1,4 +1,4 @@
-//! `datatree inject` — UserPromptSubmit hook entry point.
+//! `mneme inject` — UserPromptSubmit hook entry point.
 //!
 //! Claude Code calls this after the user submits a prompt. We forward the
 //! prompt to the supervisor, which composes a "smart inject bundle"
@@ -10,7 +10,7 @@
 //!
 //! ```json
 //! { "hookEventName": "UserPromptSubmit",
-//!   "additional_context": "<datatree-context>...</datatree-context>" }
+//!   "additional_context": "<mneme-context>...</mneme-context>" }
 //! ```
 
 use clap::Args;
@@ -22,7 +22,7 @@ use crate::commands::build::make_client;
 use crate::error::CliResult;
 use crate::ipc::{IpcRequest, IpcResponse};
 
-/// CLI args for `datatree inject`.
+/// CLI args for `mneme inject`.
 #[derive(Debug, Args)]
 pub struct InjectArgs {
     /// The user prompt as captured by the hook.

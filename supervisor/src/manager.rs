@@ -255,7 +255,7 @@ impl ChildManager {
         // here triggers a recursive opaque-future Send-inference error
         // through tokio::process::Child handles on Windows. Children that
         // exit are logged via the shared LogRing and require manual
-        // `datatree daemon restart --child <name>` until the recursion is
+        // `mneme daemon restart --child <name>` until the recursion is
         // restructured (likely via a bounded restart-channel + dedicated
         // supervisor thread). Tracked in TEST_RUN.md.
         let _ = spec;

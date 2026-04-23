@@ -1,16 +1,16 @@
 [package]
-name = "brain"
-version = "0.1.0"
+name = "mneme-brain"
+version = "0.2.0"
 edition = "2021"
-description = "datatree BRAIN — local-only embeddings, Leiden clustering, concept extraction"
-license = "MIT OR Apache-2.0"
+description = "Mneme BRAIN — local-only embeddings, Leiden clustering, concept extraction"
+license = "Apache-2.0"
 
 [[bin]]
-name = "brain"
+name = "mneme-brain"
 path = "src/main.rs"
 
 [lib]
-name = "brain"
+name = "mneme_brain"
 path = "src/lib.rs"
 
 [features]
@@ -25,7 +25,7 @@ llm = ["dep:llama-cpp-2"]
 # Marked optional via path-only so build can proceed even before `common`
 # crate lands; downstream code is gated with `cfg(feature = "with-common")`
 # only where strictly necessary. See src/lib.rs for the local fallback.
-common = { path = "../common", package = "datatree-common" }
+common = { path = "../common", package = "mneme-common" }
 
 # Async runtime + channel primitives
 tokio = { version = "1", features = [
@@ -40,7 +40,7 @@ tokio = { version = "1", features = [
 
 # v0.2: real BGE-small-en-v1.5 embeddings via fastembed-rs (ONNX Runtime).
 # - Offline-safe after first `datatree models install` (model cached to
-#   ~/.datatree/llm/).
+#   ~/.mneme/llm/).
 # - If the model is missing at runtime, Embedder transparently falls back
 #   to the pure-Rust hashing-trick backend so a fresh install still works.
 # The `fastembed` crate is behind a feature flag so the rest of the

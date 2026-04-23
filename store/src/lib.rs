@@ -1,4 +1,4 @@
-//! Database Operations Layer (DOL) for datatree.
+//! Database Operations Layer (DOL) for mneme.
 //!
 //! Implements the 7 sub-layers from design §13.5:
 //!   1. Builder        — creates project shards
@@ -9,7 +9,7 @@
 //!   6. Inject         — typed insert/update/delete with idempotency, audit, events
 //!   7. Lifecycle      — snapshot, restore, migrate, vacuum, repair, archive, purge
 //!
-//! All other datatree workers talk to a single `Store` instance via the
+//! All other mneme workers talk to a single `Store` instance via the
 //! supervisor's IPC. They never construct paths or open SQLite files
 //! themselves.
 
@@ -32,7 +32,7 @@ pub use lifecycle::{
 
 use std::sync::Arc;
 
-use datatree_common::{PathManager};
+use common::{PathManager};
 
 /// Top-level handle. Workers acquire this once at boot and use it for
 /// all DB ops.

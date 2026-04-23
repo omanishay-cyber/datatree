@@ -29,10 +29,10 @@
 set -eu
 
 # --------------------------------------------------------------------- config
-DATATREE_HOME="${DATATREE_HOME:-${HOME}/.datatree}"
-LOG_DIR="${DATATREE_HOME}/logs"
+MNEME_HOME="${MNEME_HOME:-${HOME}/.datatree}"
+LOG_DIR="${MNEME_HOME}/logs"
 LOG_FILE="${LOG_DIR}/install.log"
-MANIFEST_FILE="${DATATREE_HOME}/install-manifest.json"
+MANIFEST_FILE="${MNEME_HOME}/install-manifest.json"
 DATATREE_VERSION="0.1.0"
 
 REQUIRED_DEPS="bun python3 tesseract ffmpeg"
@@ -386,7 +386,7 @@ install_dep() {
 # --------------------------------------------------- manifest write helper
 write_manifest() {
     _installed="$1"  # space-separated list
-    mkdir -p "$DATATREE_HOME"
+    mkdir -p "$MNEME_HOME"
     # JSON arrays
     _to_json_array() {
         _result="["; _first=1

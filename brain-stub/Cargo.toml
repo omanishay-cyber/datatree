@@ -1,12 +1,12 @@
 [package]
-name = "datatree-brain-stub"
+name = "mneme-brain-stub"
 version.workspace = true
 edition.workspace = true
 license = "Proprietary"
 description = "v0.1 stub: brain worker placeholder (real impl in v0.2 once ort toolchain compat restored)"
 
 [[bin]]
-name = "datatree-brain"
+name = "mneme-brain"
 path = "src/main.rs"
 
 [dependencies]

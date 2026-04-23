@@ -1,4 +1,4 @@
-//! `datatree blast <file_or_function> [--depth=N]` — blast radius lookup.
+//! `mneme blast <file_or_function> [--depth=N]` — blast radius lookup.
 
 use clap::Args;
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use crate::commands::build::{handle_response, make_client};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree blast`.
+/// CLI args for `mneme blast`.
 #[derive(Debug, Args)]
 pub struct BlastArgs {
     /// File path or fully-qualified function name (e.g. `src/auth.ts:login`).

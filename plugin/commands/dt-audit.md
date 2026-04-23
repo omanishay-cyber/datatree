@@ -1,12 +1,12 @@
 ---
 name: /dt-audit
-description: Run datatree's drift + quality scanners over the working tree, the diff, or one file.
-command: datatree audit
+description: Run mneme's drift + quality scanners over the working tree, the diff, or one file.
+command: mneme audit
 ---
 
 # /dt-audit
 
-Run datatree's full scanner suite (theme, types, security, accessibility,
+Run mneme's full scanner suite (theme, types, security, accessibility,
 performance) and surface findings ranked by severity.
 
 ## Usage
@@ -30,6 +30,6 @@ performance) and surface findings ranked by severity.
 - Before commit: `/dt-audit --scope diff`
 - After major refactor: `/dt-audit --scope project`
 - Investigate one file: `/dt-audit --file src/auth/session.ts`
-- CI gate: `datatree audit --scope diff --json | jq .summary.by_severity`
+- CI gate: `mneme audit --scope diff --json | jq .summary.by_severity`
 
-See also: `/dt-drift` (open findings only) and the `datatree-audit` skill.
+See also: `/dt-drift` (open findings only) and the `mneme-audit` skill.

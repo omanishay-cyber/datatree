@@ -85,16 +85,16 @@ impl PlatformAdapter for ClaudeCode {
             .as_object_mut()
             .ok_or_else(|| crate::error::CliError::Other("`hooks` is not an object".into()))?;
 
-        // The full Claude Code hook map for datatree.
+        // The full Claude Code hook map for mneme.
         let dt_hooks = json!({
-            "SessionStart":     [{ "command": "datatree session-prime", "owner": "datatree" }],
-            "UserPromptSubmit": [{ "command": "datatree inject",       "owner": "datatree" }],
-            "PreToolUse":       [{ "command": "datatree pre-tool",     "owner": "datatree" }],
-            "PostToolUse":      [{ "command": "datatree post-tool",    "owner": "datatree" }],
-            "Stop":             [{ "command": "datatree turn-end",     "owner": "datatree" }],
-            "SessionEnd":       [{ "command": "datatree session-end",  "owner": "datatree" }],
-            "PreCompact":       [{ "command": "datatree turn-end --pre-compact", "owner": "datatree" }],
-            "SubagentStop":     [{ "command": "datatree turn-end --subagent",    "owner": "datatree" }]
+            "SessionStart":     [{ "command": "mneme session-prime", "owner": "mneme" }],
+            "UserPromptSubmit": [{ "command": "mneme inject",       "owner": "mneme" }],
+            "PreToolUse":       [{ "command": "mneme pre-tool",     "owner": "mneme" }],
+            "PostToolUse":      [{ "command": "mneme post-tool",    "owner": "mneme" }],
+            "Stop":             [{ "command": "mneme turn-end",     "owner": "mneme" }],
+            "SessionEnd":       [{ "command": "mneme session-end",  "owner": "mneme" }],
+            "PreCompact":       [{ "command": "mneme turn-end --pre-compact", "owner": "mneme" }],
+            "SubagentStop":     [{ "command": "mneme turn-end --subagent",    "owner": "mneme" }]
         });
 
         for (event, hook_array) in dt_hooks.as_object().unwrap() {
@@ -104,8 +104,8 @@ impl PlatformAdapter for ClaudeCode {
             let arr = target.as_array_mut().ok_or_else(|| {
                 crate::error::CliError::Other(format!("hooks.{event} is not an array"))
             })?;
-            // Drop any prior datatree-owned entry to keep this idempotent.
-            arr.retain(|e| e.get("owner").and_then(|o| o.as_str()) != Some("datatree"));
+            // Drop any prior mneme-owned entry to keep this idempotent.
+            arr.retain(|e| e.get("owner").and_then(|o| o.as_str()) != Some("mneme"));
             for entry in hook_array.as_array().unwrap() {
                 arr.push(entry.clone());
             }

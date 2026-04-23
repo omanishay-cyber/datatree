@@ -2,7 +2,7 @@
 //!
 //! These tests deliberately avoid the IPC ingest path so they can run on any
 //! platform without socket-cleanup concerns. The IPC layer is exercised
-//! manually via the `datatree-livebus` binary.
+//! manually via the `mneme-livebus` binary.
 
 use std::time::Duration;
 

@@ -1,4 +1,4 @@
-//! `datatree audit [--scope=...]` — run all configured scanners.
+//! `mneme audit [--scope=...]` — run all configured scanners.
 //!
 //! Returns the JSON findings list straight from the scanners worker.
 
@@ -9,7 +9,7 @@ use crate::commands::build::{handle_response, make_client};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree audit`.
+/// CLI args for `mneme audit`.
 #[derive(Debug, Args)]
 pub struct AuditArgs {
     /// Scope filter: `theme`, `security`, `a11y`, `perf`, `types`, or `all`.

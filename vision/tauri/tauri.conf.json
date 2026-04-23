@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
-  "productName": "datatree vision",
+  "productName": "mneme vision",
   "version": "0.1.0",
-  "identifier": "dev.datatree.vision",
+  "identifier": "dev.mneme.vision",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://127.0.0.1:7777",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "datatree vision",
+        "title": "mneme vision",
         "width": 1400,
         "height": 900,
         "minWidth": 1024,
@@ -35,7 +35,7 @@
     "targets": "all",
     "icon": ["icons/icon.png"],
     "category": "DeveloperTool",
-    "shortDescription": "datatree multi-process daemon — Vision",
-    "longDescription": "14 view modes + Command Center for the datatree codebase intelligence daemon."
+    "shortDescription": "mneme multi-process daemon — Vision",
+    "longDescription": "14 view modes + Command Center for the mneme codebase intelligence daemon."
   }
 }

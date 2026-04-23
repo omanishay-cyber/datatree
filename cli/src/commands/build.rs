@@ -1,11 +1,11 @@
-//! `datatree build [project_path]` — initial full project ingest.
+//! `mneme build [project_path]` — initial full project ingest.
 //!
 //! v0.1 strategy: drive parse + store IN-PROCESS. The CLI walks the project,
 //! parses each supported file with Tree-sitter directly (via the `parsers`
 //! library), and writes nodes + edges to the project's `graph.db` via the
 //! store library. No supervisor round-trip — that path is wired in v0.2.
 //!
-//! Benefit: `datatree build .` produces a real, queryable SQLite graph
+//! Benefit: `mneme build .` produces a real, queryable SQLite graph
 //! without any worker pool round-trip or IPC dependency.
 
 use clap::Args;
@@ -16,14 +16,14 @@ use tracing::{info, warn};
 use crate::error::{CliError, CliResult};
 use crate::ipc::{IpcClient, IpcRequest, IpcResponse};
 
-use datatree_common::{layer::DbLayer, paths::PathManager, ids::ProjectId};
-use datatree_store::{inject::InjectOptions, Store};
+use common::{layer::DbLayer, paths::PathManager, ids::ProjectId};
+use store::{inject::InjectOptions, Store};
 use parsers::{
     extractor::Extractor, incremental::IncrementalParser, parser_pool::ParserPool, query_cache,
     Language,
 };
 
-/// CLI args for `datatree build`.
+/// CLI args for `mneme build`.
 #[derive(Debug, Args)]
 pub struct BuildArgs {
     /// Path to the project root. Defaults to CWD.
@@ -41,7 +41,7 @@ pub struct BuildArgs {
 /// Entry point used by `main.rs`.
 pub async fn run(args: BuildArgs, _socket_override: Option<PathBuf>) -> CliResult<()> {
     let project = resolve_project(args.project)?;
-    info!(project = %project.display(), full = args.full, "building datatree graph");
+    info!(project = %project.display(), full = args.full, "building mneme graph");
 
     // 1. Store setup: open (or create) the per-project shard.
     let paths = PathManager::default_root();

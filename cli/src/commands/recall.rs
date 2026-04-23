@@ -1,4 +1,4 @@
-//! `datatree recall <query>` — semantic search across decisions, conversation,
+//! `mneme recall <query>` — semantic search across decisions, conversation,
 //! concepts, files, todos, and constraints.
 
 use clap::Args;
@@ -8,7 +8,7 @@ use crate::commands::build::{handle_response, make_client};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree recall`.
+/// CLI args for `mneme recall`.
 #[derive(Debug, Args)]
 pub struct RecallArgs {
     /// Free-form query string. Required.
