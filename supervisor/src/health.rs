@@ -170,37 +170,37 @@ async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     };
     let mut body = String::new();
     body.push_str(&format!(
-        "# TYPE datatree_supervisor_uptime_seconds countermneme_supervisor_uptime_seconds {}\n",
+        "# TYPE mneme_supervisor_uptime_seconds counter\nmneme_supervisor_uptime_seconds {}\n",
         snap.supervisor_uptime_s
     ));
     body.push_str(&format!(
-        "# TYPE datatree_overall_uptime_percent gaugemneme_overall_uptime_percent {}\n",
+        "# TYPE mneme_overall_uptime_percent gauge\nmneme_overall_uptime_percent {}\n",
         snap.overall_uptime_percent
     ));
     body.push_str(&format!(
-        "# TYPE datatree_cache_hit_rate gaugemneme_cache_hit_rate {}\n",
+        "# TYPE mneme_cache_hit_rate gauge\nmneme_cache_hit_rate {}\n",
         snap.cache_hit_rate
     ));
     for c in &snap.children {
         body.push_str(&format!(
-            "datatree_child_restart_count{{child=\"{}\"}} {}\n",
+            "mneme_child_restart_count{{child=\"{}\"}} {}\n",
             c.name, c.restart_count
         ));
         if let Some(p50) = c.p50_us {
             body.push_str(&format!(
-                "datatree_child_latency_us{{child=\"{}\",quantile=\"0.5\"}} {}\n",
+                "mneme_child_latency_us{{child=\"{}\",quantile=\"0.5\"}} {}\n",
                 c.name, p50
             ));
         }
         if let Some(p95) = c.p95_us {
             body.push_str(&format!(
-                "datatree_child_latency_us{{child=\"{}\",quantile=\"0.95\"}} {}\n",
+                "mneme_child_latency_us{{child=\"{}\",quantile=\"0.95\"}} {}\n",
                 c.name, p95
             ));
         }
         if let Some(p99) = c.p99_us {
             body.push_str(&format!(
-                "datatree_child_latency_us{{child=\"{}\",quantile=\"0.99\"}} {}\n",
+                "mneme_child_latency_us{{child=\"{}\",quantile=\"0.99\"}} {}\n",
                 c.name, p99
             ));
         }
