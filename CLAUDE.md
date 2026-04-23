@@ -84,11 +84,11 @@ If you're modifying source code:
 Once mneme is installed and indexed on its own source:
 
 ```
-/dt-recall "compaction recovery"     → finds the Step Ledger §7 design + impl
-/dt-blast common/src/layer.rs        → who depends on the DbLayer enum
-/dt-audit                            → drift findings across the workspace
-/dt-step status                      → current goal stack for in-progress work
-/dt-doctor                           → SLA + storage health
+/mn-recall "compaction recovery"     → finds the Step Ledger §7 design + impl
+/mn-blast common/src/layer.rs        → who depends on the DbLayer enum
+/mn-audit                            → drift findings across the workspace
+/mn-step status                      → current goal stack for in-progress work
+/mn-doctor                           → SLA + storage health
 ```
 
 When working on mneme itself, prefer these MCP tools over Grep/Read/Glob — that's the whole point of mneme.

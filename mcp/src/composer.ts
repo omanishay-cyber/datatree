@@ -1,7 +1,7 @@
 /**
  * Context-bundle composer.
  *
- * Builds <datatree-context>, <datatree-primer>, and <datatree-resume> blocks
+ * Builds <mneme-context>, <mneme-primer>, and <mneme-resume> blocks
  * by querying the per-project shards (history, decisions, constraints, tasks,
  * findings) and ranking results by relevance to a seed query/prompt. Output is
  * always token-budget bounded — see TokenBudgets in types.ts.
@@ -88,7 +88,7 @@ function joinSection(title: string, lines: string[]): string {
 
 export function composePrimer(inputs: PrimerInputs): string {
   const sections: string[] = [];
-  sections.push("<datatree-primer>");
+  sections.push("<mneme-primer>");
   sections.push(`Project: ${inputs.ctx.cwd}`);
 
   if (inputs.goal) {
@@ -139,7 +139,7 @@ export function composePrimer(inputs: PrimerInputs): string {
     );
   }
 
-  sections.push("</datatree-primer>");
+  sections.push("</mneme-primer>");
   const raw = sections.filter(Boolean).join("\n\n");
   return clampToBudget(raw, TokenBudgets.primer);
 }
@@ -150,14 +150,14 @@ export function composePrimer(inputs: PrimerInputs): string {
 
 export function composeSmartInject(inputs: SmartInjectInputs): string {
   const sections: string[] = [];
-  sections.push("<datatree-context>");
+  sections.push("<mneme-context>");
 
   if (inputs.driftActive) {
     sections.push(
-      "<datatree-redirect>\n" +
+      "<mneme-redirect>\n" +
         "Drift detected: recent assistant responses diverged from the goal stack.\n" +
         "Re-anchor to the active step before proceeding.\n" +
-        "</datatree-redirect>",
+        "</mneme-redirect>",
     );
   }
 
@@ -203,7 +203,7 @@ export function composeSmartInject(inputs: SmartInjectInputs): string {
     );
   }
 
-  sections.push("</datatree-context>");
+  sections.push("</mneme-context>");
   const raw = sections.filter(Boolean).join("\n\n");
   return clampToBudget(raw, TokenBudgets.smart_inject);
 }
@@ -219,7 +219,7 @@ export function composeResume(inputs: ResumeInputs): string {
   const k = inputs.completedSteps.length + 1;
 
   const sections: string[] = [];
-  sections.push("<datatree-resume>");
+  sections.push("<mneme-resume>");
   sections.push(`You are paused at STEP ${k} of ${total}.`);
   sections.push(`\n## Original goal (verbatim from session start)\n${inputs.goalText}`);
 
@@ -269,7 +269,7 @@ export function composeResume(inputs: ResumeInputs): string {
     sections.push(`\n## Verification gate\n\`${cur.acceptance_cmd}\` must exit 0.`);
   }
 
-  sections.push("</datatree-resume>");
+  sections.push("</mneme-resume>");
   return clampToBudget(sections.join("\n"), TokenBudgets.max_total_per_turn);
 }
 
@@ -426,7 +426,7 @@ export async function buildSmartInject(
   });
 }
 
-/** Build the resumption bundle (called by /dt-step or after compaction). */
+/** Build the resumption bundle (called by /mn-step or after compaction). */
 export async function buildResume(opts: ComposeOptions): Promise<{
   bundle: string;
   current_step_id: string | null;

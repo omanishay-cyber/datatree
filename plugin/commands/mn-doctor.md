@@ -1,20 +1,20 @@
 ---
-name: /dt-doctor
+name: /mn-doctor
 description: Run mneme's full self-test suite — IPC round-trip, shard integrity, schema versions, worker health, SLA snapshot.
 command: mneme doctor
 ---
 
-# /dt-doctor
+# /mn-doctor
 
 Run mneme's self-test suite and emit a structured health report.
 
 ## Usage
 
 ```
-/dt-doctor                # full report
-/dt-doctor --json         # machine-readable
-/dt-doctor --quick        # IPC + worker status only (skip integrity)
-/dt-doctor --shard graph  # one shard
+/mn-doctor                # full report
+/mn-doctor --json         # machine-readable
+/mn-doctor --quick        # IPC + worker status only (skip integrity)
+/mn-doctor --shard graph  # one shard
 ```
 
 ## What this does
@@ -32,12 +32,12 @@ Returns per-check status and a list of remediation recommendations.
 
 ## Suggested workflow
 
-- After install: `/dt-doctor` to confirm the daemon is healthy.
-- When anything feels slow: `/dt-doctor` to see which worker is degraded.
+- After install: `/mn-doctor` to confirm the daemon is healthy.
+- When anything feels slow: `/mn-doctor` to see which worker is degraded.
 - In CI: `mneme doctor --json | jq .ok` (exit 0 only if `ok = true`).
 
 If any check fails, the report includes a recommendation. The most common
 fix is `mneme daemon restart`.
 
-See also: `/dt-rebuild` (last resort — re-parse from scratch) and the
+See also: `/mn-rebuild` (last resort — re-parse from scratch) and the
 `mneme-doctor` sub-agent.

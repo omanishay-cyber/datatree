@@ -100,6 +100,7 @@ function localResume(
     return emptyBundle;
   }
   try {
+    type Binding = string | number | null;
     const pick = (kinds: string[], limit: number): LedgerEntry[] => {
       const sql =
         "SELECT id, session_id, timestamp, kind, summary, rationale, " +
@@ -107,9 +108,9 @@ function localResume(
         `FROM ledger_entries WHERE timestamp >= ? ` +
         (kinds.length > 0 ? `AND kind IN (${kinds.map(() => "?").join(",")}) ` : "") +
         "ORDER BY timestamp DESC LIMIT ?";
-      const params: unknown[] = [sinceMillis, ...kinds, limit];
+      const params: Binding[] = [sinceMillis, ...kinds, limit];
       return db
-        .query<Record<string, unknown>, unknown[]>(sql)
+        .query<Record<string, unknown>, Binding[]>(sql)
         .all(...params)
         .map(rowToEntry);
     };
@@ -117,7 +118,7 @@ function localResume(
     const recent_decisions = pick(["decision"], 10);
     const recent_implementations = pick(["impl", "refactor"], 10);
     const open_questions = db
-      .query<Record<string, unknown>, unknown[]>(
+      .query<Record<string, unknown>, []>(
         "SELECT id, session_id, timestamp, kind, summary, rationale, " +
           "touched_files, touched_concepts, transcript_ref, kind_payload " +
           "FROM ledger_entries WHERE kind = 'open_question' ORDER BY timestamp DESC LIMIT 50",

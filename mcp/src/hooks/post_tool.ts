@@ -74,6 +74,6 @@ async function capture(args: PostToolArgs): Promise<void> {
       result_size: result.length,
     });
   } catch (err) {
-    console.error("[datatree-mcp] post_tool capture failed:", err);
+    console.error("[mneme-mcp] post_tool capture failed:", err);
   }
 }

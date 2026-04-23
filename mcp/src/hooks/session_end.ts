@@ -55,7 +55,7 @@ export async function runSessionEnd(args: SessionEndArgs): Promise<HookOutput> {
       },
     };
   } catch (err) {
-    console.error("[datatree-mcp] session_end failed:", err);
+    console.error("[mneme-mcp] session_end failed:", err);
     return { metadata: { hook: "SessionEnd", error: (err as Error).message } };
   }
 }

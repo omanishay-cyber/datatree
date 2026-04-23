@@ -2,6 +2,14 @@
  * MCP tool: god_nodes
  *
  * Returns the top-N most-connected concepts in the corpus graph.
+ *
+ * v0.1 (review P2): reads `graph.db` directly via `bun:sqlite`. Query shape:
+ * UNION ALL over (source_qualified, target_qualified) in `edges`, grouped
+ * and ordered by total degree DESC, LIMIT top_n. Betweenness is not yet
+ * computed client-side (requires a full graph traversal in Rust's
+ * `brain::god_nodes`); we report 0 until the supervisor push-path lands.
+ *
+ * Graceful degrade: missing graph shard → `{ gods: [] }`.
  */
 
 import {
@@ -9,7 +17,7 @@ import {
   GodNodesOutput,
   type ToolDescriptor,
 } from "../types.ts";
-import { query as dbQuery } from "../db.ts";
+import { godNodesTopN, shardDbPath } from "../store.ts";
 
 export const tool: ToolDescriptor<
   ReturnType<typeof GodNodesInput.parse>,
@@ -22,12 +30,20 @@ export const tool: ToolDescriptor<
   outputSchema: GodNodesOutput,
   category: "multimodal",
   async handler(input) {
-    const result = await dbQuery
-      .raw<ReturnType<typeof GodNodesOutput.parse>>("multimodal.god_nodes", {
-        project: input.project,
-        top_n: input.top_n,
-      })
-      .catch(() => null);
-    return result ?? { gods: [] };
+    if (!shardDbPath("graph")) {
+      return { gods: [] };
+    }
+
+    const rows = godNodesTopN(input.top_n);
+
+    return {
+      gods: rows.map((r) => ({
+        id: r.qualified_name,
+        label: r.qualified_name,
+        degree: r.degree,
+        betweenness: 0,
+        community_id: null,
+      })),
+    };
   },
 };

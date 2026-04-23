@@ -1,8 +1,15 @@
 /**
  * MCP tool: recall_decision
  *
- * Semantically searches the decisions log shard for past architectural and
+ * Searches the per-project decisions log for past architectural and
  * implementation decisions matching the query.
+ *
+ * v0.1 (review P2): reads `history.db → decisions` via `bun:sqlite` read-only.
+ * Query shape: LIKE-match over (topic + problem + chosen + reasoning), with
+ * optional `since` timestamp filter, ordered by created_at DESC.
+ *
+ * Graceful degrade: if the history shard isn't built yet, returns
+ * `{ decisions: [], ... }` without throwing.
  */
 
 import {
@@ -11,7 +18,7 @@ import {
   type Decision,
   type ToolDescriptor,
 } from "../types.ts";
-import { query as dbQuery } from "../db.ts";
+import { searchDecisions, shardDbPath } from "../store.ts";
 
 export const tool: ToolDescriptor<
   ReturnType<typeof RecallDecisionInput.parse>,
@@ -25,28 +32,40 @@ export const tool: ToolDescriptor<
   category: "recall",
   async handler(input) {
     const t0 = Date.now();
-    const where = input.since
-      ? "timestamp >= ? ORDER BY timestamp DESC LIMIT ?"
-      : "1=1 ORDER BY timestamp DESC LIMIT ?";
-    const params: unknown[] = input.since
-      ? [input.since, input.limit]
-      : [input.limit];
+    const queryId = crypto.randomUUID();
 
-    const semantic = await dbQuery
-      .semanticSearch<Decision>("decisions", input.query, input.limit)
-      .catch(() => [] as Decision[]);
+    if (!shardDbPath("history")) {
+      return { decisions: [], query_id: queryId, latency_ms: Date.now() - t0 };
+    }
 
-    // Fall back to recency-based selection if semantic search is unavailable.
-    const decisions =
-      semantic.length > 0
-        ? semantic
-        : await dbQuery
-            .select<Decision>("decisions", where, params)
-            .catch(() => [] as Decision[]);
+    const rows = searchDecisions(input.query, input.limit, input.since);
+
+    const decisions: Decision[] = rows.map((r) => {
+      let rejected: string[] = [];
+      try {
+        const parsed = JSON.parse(r.alternatives) as unknown;
+        if (Array.isArray(parsed)) {
+          rejected = parsed.filter((x): x is string => typeof x === "string");
+        }
+      } catch {
+        // ignore malformed payload
+      }
+      return {
+        id: String(r.id),
+        topic: r.topic,
+        problem: r.problem,
+        chosen: r.chosen,
+        reasoning: r.reasoning,
+        rejected,
+        timestamp: r.created_at,
+        source_file: null,
+        confidence: 1,
+      };
+    });
 
     return {
       decisions,
-      query_id: crypto.randomUUID(),
+      query_id: queryId,
       latency_ms: Date.now() - t0,
     };
   },

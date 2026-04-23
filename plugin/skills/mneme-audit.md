@@ -1,10 +1,10 @@
 ---
 name: mneme-audit
 description: "Run mneme's drift + quality scanners (theme, types, security, a11y, perf) over the working tree, the diff, or one file. Use before commits, after refactors, or when the user asks 'what's wrong with this'."
-trigger: /dt-audit
+trigger: /mn-audit
 ---
 
-# /dt-audit
+# /mn-audit
 
 Run mneme's full scanner suite (theme, types, security, accessibility,
 performance, IPC contracts, etc.) and surface the findings ranked by
@@ -13,10 +13,10 @@ severity.
 ## Usage
 
 ```
-/dt-audit                    # all scanners on the project
-/dt-audit --scope diff       # only files in `git status`
-/dt-audit --file <path>      # single file
-/dt-audit --scanner theme    # one scanner
+/mn-audit                    # all scanners on the project
+/mn-audit --scope diff       # only files in `git status`
+/mn-audit --file <path>      # single file
+/mn-audit --scanner theme    # one scanner
 ```
 
 ## When to invoke

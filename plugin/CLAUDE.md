@@ -109,12 +109,12 @@ No cloud sync. See `<repo>/.claude/mneme.json` for per-project tuning.
 ## Quick Commands
 
 ```
-/dt-view             open the 14-view live graph
-/dt-step             view current step ledger
-/dt-recall <query>   semantic search across decisions + concepts + history
-/dt-blast <target>   blast radius for a file or function
-/dt-audit            run all scanners on the working tree
-/dt-doctor           full self-test
+/mn-view             open the 14-view live graph
+/mn-step             view current step ledger
+/mn-recall <query>   semantic search across decisions + concepts + history
+/mn-blast <target>   blast radius for a file or function
+/mn-audit            run all scanners on the working tree
+/mn-doctor           full self-test
 ```
 
 <!-- mneme-end v1.0 -->

@@ -58,7 +58,7 @@ export class DatatreeMcpServer {
     this.ctx = ctx;
     this.server = new Server(
       {
-        name: "datatree",
+        name: "mneme",
         version: "0.1.0",
       },
       {

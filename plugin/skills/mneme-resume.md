@@ -1,10 +1,10 @@
 ---
 name: mneme-resume
 description: "Recover from a context compaction or session restart. Pulls the resumption bundle from the step ledger and continues from the current step. Use after any context reset, or when the user says 'where were we' / 'pick up where we left off'."
-trigger: /dt-step
+trigger: /mn-step
 ---
 
-# /dt-step (resume mode)
+# /mn-step (resume mode)
 
 Recover from a context compaction or session restart by fetching the
 mneme resumption bundle and continuing from the current step in the
@@ -13,19 +13,19 @@ step ledger.
 ## Usage
 
 ```
-/dt-step               # show current step + resume bundle
-/dt-step status        # explicit step_status call
-/dt-step show <id>     # detail of one step
-/dt-step verify <id>   # run acceptance check
-/dt-step complete <id> # mark complete (only if verify passes)
-/dt-step plan <md>     # ingest a roadmap into the ledger
-/dt-step resume        # explicit resume bundle
+/mn-step               # show current step + resume bundle
+/mn-step status        # explicit step_status call
+/mn-step show <id>     # detail of one step
+/mn-step verify <id>   # run acceptance check
+/mn-step complete <id> # mark complete (only if verify passes)
+/mn-step plan <md>     # ingest a roadmap into the ledger
+/mn-step resume        # explicit resume bundle
 ```
 
 ## When to invoke
 
 - **Always** at the start of any new session (the harness fires
-  `SessionStart`, but if you somehow skip it, run `/dt-step` first).
+  `SessionStart`, but if you somehow skip it, run `/mn-step` first).
 - **Always** after the user mentions context was reset, compacted, or
   conversation was lost.
 - When `<mneme-resume>` block appears in the prompt, read it carefully

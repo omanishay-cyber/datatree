@@ -2310,20 +2310,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "mneme-brain-stub"
-version = "0.2.0"
-dependencies = [
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "mneme-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "clap",
  "console",
  "dirs 5.0.1",

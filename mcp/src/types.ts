@@ -839,7 +839,7 @@ export interface ToolDescriptor<I = unknown, O = unknown> {
   outputSchema: z.ZodType<O>;
   /** Implementation called by the MCP runtime after validation. */
   handler: (input: I, ctx: ToolContext) => Promise<O>;
-  /** Optional category (used by /dt-recall, etc.). */
+  /** Optional category (used by /mn-recall, etc.). */
   category?:
     | "recall"
     | "graph"

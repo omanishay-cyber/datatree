@@ -42,7 +42,7 @@ export async function runPreTool(args: PreToolArgs): Promise<HookOutput> {
         return { metadata: { hook: "PreToolUse", duration_ms: Date.now() - t0 } };
     }
   } catch (err) {
-    console.error("[datatree-mcp] pre_tool failed:", err);
+    console.error("[mneme-mcp] pre_tool failed:", err);
     return { metadata: { hook: "PreToolUse", error: (err as Error).message } };
   }
 }
@@ -99,7 +99,7 @@ async function handleEditOrWrite(args: PreToolArgs): Promise<HookOutput> {
     return {
       skip: true,
       result:
-        "BLOCKED by datatree constraints:\n" +
+        "BLOCKED by mneme constraints:\n" +
         blockers.map((c) => `  - [${c.severity}] ${c.rule}`).join("\n"),
       metadata: { blocked: true, count: blockers.length },
     };
@@ -110,7 +110,7 @@ async function handleEditOrWrite(args: PreToolArgs): Promise<HookOutput> {
     .map((c) => `  - [${c.severity}] ${c.rule}`);
   return {
     additional_context:
-      `<datatree-constraints file="${filePath}">\n${lines.join("\n")}\n</datatree-constraints>`,
+      `<mneme-constraints file="${filePath}">\n${lines.join("\n")}\n</mneme-constraints>`,
   };
 }
 

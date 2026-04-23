@@ -138,7 +138,7 @@ of the pipeline (`parse` onward) per file as `.` events arrive.
 ### 8. `inject`
 
 - **Input**: the retrieval payload + the current Step Ledger snapshot.
-- **Process**: the `session-prime` hook or the `dt-step-resume` tool
+- **Process**: the `session-prime` hook or the `mn-step-resume` tool
   composes a **resumption bundle** — verbatim goal, goal stack,
   completed steps, current step, remaining steps, active constraints —
   into the next MCP turn's system context. The budget is ~1-3k tokens

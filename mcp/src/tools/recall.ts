@@ -88,6 +88,8 @@ interface LocalRecallArgs {
   cwd: string;
 }
 
+type Binding = string | number | null;
+
 function localRecall(args: LocalRecallArgs): LedgerEntry[] {
   const dbPath = tasksDbPath(args.cwd);
   if (!dbPath) return [];
@@ -99,7 +101,7 @@ function localRecall(args: LocalRecallArgs): LedgerEntry[] {
   }
   try {
     const conds: string[] = ["1=1"];
-    const params: unknown[] = [];
+    const params: Binding[] = [];
     if (args.kinds.length > 0) {
       conds.push(`kind IN (${args.kinds.map(() => "?").join(",")})`);
       params.push(...args.kinds);
@@ -114,7 +116,7 @@ function localRecall(args: LocalRecallArgs): LedgerEntry[] {
       // Best-effort FTS; gracefully degrade to a LIKE scan if the virtual
       // table is missing or the match expression blows up.
       try {
-        const ftsStmt = db.query<{ id: string }, unknown[]>(
+        const ftsStmt = db.query<{ id: string }, [string]>(
           "SELECT ledger_entries.id AS id FROM ledger_entries_fts " +
             "JOIN ledger_entries ON ledger_entries._rowid_ = ledger_entries_fts.rowid " +
             "WHERE ledger_entries_fts MATCH ?",
@@ -141,7 +143,9 @@ function localRecall(args: LocalRecallArgs): LedgerEntry[] {
       `FROM ledger_entries WHERE ${conds.join(" AND ")} ` +
       "ORDER BY timestamp DESC LIMIT ?";
     params.push(args.limit);
-    const rows = db.query<Record<string, unknown>, unknown[]>(sql).all(...params);
+    const rows = db
+      .query<Record<string, unknown>, Binding[]>(sql)
+      .all(...params);
     return rows.map(rowToEntry);
   } finally {
     db.close();

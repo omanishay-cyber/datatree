@@ -69,6 +69,14 @@ const STATIC_TOOL_FILES = [
   "architecture_overview",
   "identity",
   "conventions",
+  // F1 (Step Ledger) + F6 (Why-Chain)
+  "recall",
+  "resume",
+  "why",
+  // F2 (Hybrid retrieval)
+  "context",
+  // Moat 4 (federated pattern matching)
+  "federated_similar",
 ];
 
 // ---------------------------------------------------------------------------
@@ -117,7 +125,7 @@ class ToolRegistry extends EventEmitter {
       const url = pathToFileURL(fullPath).toString() + cacheBuster;
       const mod: { tool?: ToolDescriptor } = await import(url);
       if (!mod.tool || !mod.tool.name) {
-        console.error(`[datatree-mcp] ${filename}: no exported \`tool\` descriptor`);
+        console.error(`[mneme-mcp] ${filename}: no exported \`tool\` descriptor`);
         return;
       }
 
@@ -131,7 +139,7 @@ class ToolRegistry extends EventEmitter {
       this.fileToName.set(filename, mod.tool.name);
       this.emit("registered", mod.tool.name);
     } catch (err) {
-      console.error(`[datatree-mcp] failed to load ${filename}:`, err);
+      console.error(`[mneme-mcp] failed to load ${filename}:`, err);
     }
   }
 
@@ -169,7 +177,7 @@ class ToolRegistry extends EventEmitter {
         );
       });
     } catch (err) {
-      console.error(`[datatree-mcp] failed to watch tools dir:`, err);
+      console.error(`[mneme-mcp] failed to watch tools dir:`, err);
     }
   }
 

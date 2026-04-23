@@ -307,7 +307,7 @@ impl AdapterContext {
             "## Mneme (the AI superbrain)\n\
              \n\
              - Persistent per-project memory across sessions and compactions.\n\
-             - 30+ MCP tools: see `mneme --help` or run `/dt-recall`, `/dt-blast`, `/dt-graphify`, `/dt-step`.\n\
+             - 30+ MCP tools: see `mneme --help` or run `/mn-recall`, `/mn-blast`, `/mn-graphify`, `/mn-step`.\n\
              - Step Ledger guarantees Claude resumes the *correct* step after compaction.\n\
              - Drift detector enforces this project's rules from CLAUDE.md / .claude/rules.\n\
              - Local-only: zero network egress in the hot path.\n\

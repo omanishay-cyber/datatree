@@ -1,10 +1,10 @@
 ---
 name: mneme-query
 description: "Query the local mneme knowledge graph and project memory. Use when the user asks about files, decisions, blast radius, references, architecture, or anything 'what does X do' / 'where is Y used' / 'why did we pick Z'."
-trigger: /dt-recall
+trigger: /mn-recall
 ---
 
-# /dt-recall
+# /mn-recall
 
 Search the local mneme knowledge graph + persistent project memory for
 the answer to a question — without re-reading any files.
@@ -12,11 +12,11 @@ the answer to a question — without re-reading any files.
 ## Usage
 
 ```
-/dt-recall <free-form question>
-/dt-recall "blast radius of src/auth/session.ts"
-/dt-recall "decisions about state management"
-/dt-recall "open todos tagged ipc"
-/dt-recall "everything that calls validateToken"
+/mn-recall <free-form question>
+/mn-recall "blast radius of src/auth/session.ts"
+/mn-recall "decisions about state management"
+/mn-recall "open todos tagged ipc"
+/mn-recall "everything that calls validateToken"
 ```
 
 ## What this skill does
@@ -28,7 +28,7 @@ the answer to a question — without re-reading any files.
 
 ## When to invoke
 
-Triggered by `/dt-recall`, but also use proactively when:
+Triggered by `/mn-recall`, but also use proactively when:
 
 - The user asks "what does X do" — call `recall_file(path=X)`.
 - The user asks "where is Y used" — call `find_references(symbol=Y)`.

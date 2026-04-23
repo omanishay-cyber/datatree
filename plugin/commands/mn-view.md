@@ -1,10 +1,10 @@
 ---
-name: /dt-view
+name: /mn-view
 description: Open the mneme live graph viewer (14 view modes). Tauri desktop app by default; falls back to localhost:7777 web view.
 command: mneme view
 ---
 
-# /dt-view
+# /mn-view
 
 Open the live mneme graph viewer. Renders the per-project knowledge
 graph in any of 14 view modes (Force-Galaxy, Hierarchy Tree, Sunburst,
@@ -14,11 +14,11 @@ Architecture, 3D Galaxy, Theme Palette, Test Coverage, Risk Dashboard).
 ## Usage
 
 ```
-/dt-view                          # opens the desktop viewer at default view
-/dt-view --view force-galaxy      # specific view
-/dt-view --filter "src/auth/**"   # filter the graph
-/dt-view --web                    # serve at localhost:7777 instead
-/dt-view --export svg --out g.svg # export instead of opening
+/mn-view                          # opens the desktop viewer at default view
+/mn-view --view force-galaxy      # specific view
+/mn-view --filter "src/auth/**"   # filter the graph
+/mn-view --web                    # serve at localhost:7777 instead
+/mn-view --export svg --out g.svg # export instead of opening
 ```
 
 ## What this does

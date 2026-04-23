@@ -2,7 +2,7 @@
  * Hook: UserPromptSubmit — Mode B smart inject (design §4.2).
  *
  * Embeds the user prompt, semantically searches the per-project shards for
- * the top 5–10 relevant facts, and composes a <datatree-context> block
+ * the top 5-10 relevant facts, and composes a <mneme-context> block
  * (≤ 2.5K tokens) prepended to the prompt context.
  *
  * Output JSON shape: { additional_context: string }
@@ -43,7 +43,7 @@ export async function runInject(args: InjectArgs): Promise<HookOutput> {
       },
     };
   } catch (err) {
-    console.error("[datatree-mcp] inject failed:", err);
+    console.error("[mneme-mcp] inject failed:", err);
     return {
       additional_context: "",
       metadata: { hook: "UserPromptSubmit", error: (err as Error).message },

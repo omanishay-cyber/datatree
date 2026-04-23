@@ -170,19 +170,19 @@ fn print_markdown(report: &CompareReport) {
     println!("| # | Query | DT top-1 | DT tokens | DT ms | Cold top-1 | Cold tokens | Cold ms | DT p@5 | Cold p@5 |");
     println!("|---|-------|----------|-----------|-------|------------|-------------|---------|--------|----------|");
     for (i, row) in report.rows.iter().enumerate() {
-        let dt_top1 = row.datatree_top.first().map(String::as_str).unwrap_or("-");
+        let dt_top1 = row.mneme_top.first().map(String::as_str).unwrap_or("-");
         let cold_top1 = row.cold_top.first().map(String::as_str).unwrap_or("-");
         println!(
             "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |",
             i + 1,
             truncate(&row.query, 40),
             truncate(&short_path(dt_top1), 32),
-            row.datatree_tokens,
-            row.datatree_ms,
+            row.mneme_tokens,
+            row.mneme_ms,
             truncate(&short_path(cold_top1), 32),
             row.cold_tokens,
             row.cold_ms,
-            row.datatree_precision_at_5,
+            row.mneme_precision_at_5,
             row.cold_precision_at_5,
         );
     }
@@ -191,11 +191,11 @@ fn print_markdown(report: &CompareReport) {
     println!();
     println!(
         "| Metric | Mneme | Cold baseline |\n|---|---|---|\n| Tokens (sum) | {} | {} |\n| Wall time (ms) | {} | {} |\n| Precision@5 (%) | {} | {} |",
-        report.datatree_total_tokens,
+        report.mneme_total_tokens,
         report.cold_total_tokens,
-        report.datatree_total_ms,
+        report.mneme_total_ms,
         report.cold_total_ms,
-        report.datatree_precision_pct,
+        report.mneme_precision_pct,
         report.cold_precision_pct,
     );
 }
