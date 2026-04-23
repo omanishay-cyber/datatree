@@ -2282,6 +2282,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "chrono",
  "dashmap 5.5.3",
  "dirs 5.0.1",
  "fastembed",
@@ -2296,6 +2297,7 @@ dependencies = [
  "rand 0.8.6",
  "rand_chacha 0.3.1",
  "regex",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",
@@ -2304,6 +2306,7 @@ dependencies = [
  "tokenizers 0.20.4",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2320,6 +2323,7 @@ name = "mneme-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "console",
  "dirs 5.0.1",

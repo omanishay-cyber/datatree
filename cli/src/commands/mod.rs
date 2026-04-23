@@ -29,3 +29,4 @@ pub mod turn_end;
 pub mod uninstall;
 pub mod update;
 pub mod view;
+pub mod why;

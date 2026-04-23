@@ -467,6 +467,96 @@ export const StepPlanFromOutput = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Tool I/O — Step Ledger recall / resume / why  (F1 + F6)
+// ---------------------------------------------------------------------------
+
+/** Ledger kind tags in stable string form (matches `StepKind::tag()` in Rust). */
+export const LedgerKindEnum = z.enum([
+  "decision",
+  "impl",
+  "bug",
+  "open_question",
+  "refactor",
+  "experiment",
+]);
+export type LedgerKind = z.infer<typeof LedgerKindEnum>;
+
+export const LedgerEntry = z.object({
+  id: z.string(),
+  session_id: z.string(),
+  timestamp: z.string(), // RFC3339
+  kind: LedgerKindEnum,
+  summary: z.string(),
+  rationale: z.string().nullable(),
+  touched_files: z.array(z.string()).default([]),
+  touched_concepts: z.array(z.string()).default([]),
+  transcript_ref: z
+    .object({
+      session_id: z.string(),
+      turn_index: z.number().int().nullable().optional(),
+      message_id: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  /** Kind-specific payload, mirrors Rust enum. Kept as opaque JSON here. */
+  kind_payload: z.unknown().optional(),
+});
+export type LedgerEntry = z.infer<typeof LedgerEntry>;
+
+export const MnemeRecallInput = z.object({
+  query: z.string().min(1),
+  kinds: z.array(LedgerKindEnum).default([]),
+  limit: z.number().int().positive().max(50).default(5),
+  since_hours: z.number().int().positive().max(24 * 90).optional(),
+  session_id: z.string().optional(),
+});
+export type MnemeRecallInput = z.infer<typeof MnemeRecallInput>;
+
+export const MnemeRecallOutput = z.object({
+  entries: z.array(LedgerEntry),
+  formatted: z.string(),
+});
+export type MnemeRecallOutput = z.infer<typeof MnemeRecallOutput>;
+
+export const MnemeResumeInput = z.object({
+  since_hours: z.number().int().positive().max(24 * 14).default(48),
+  session_id: z.string().optional(),
+});
+export type MnemeResumeInput = z.infer<typeof MnemeResumeInput>;
+
+export const MnemeResumeOutput = z.object({
+  session_id: z.string(),
+  generated_at: z.string(),
+  recent_decisions: z.array(LedgerEntry),
+  recent_implementations: z.array(LedgerEntry),
+  open_questions: z.array(LedgerEntry),
+  timeline: z.array(LedgerEntry),
+  formatted: z.string(),
+});
+export type MnemeResumeOutput = z.infer<typeof MnemeResumeOutput>;
+
+export const MnemeWhyInput = z.object({
+  question: z.string().min(1),
+  limit: z.number().int().positive().max(20).default(6),
+});
+export type MnemeWhyInput = z.infer<typeof MnemeWhyInput>;
+
+export const MnemeWhyOutput = z.object({
+  question: z.string(),
+  decisions: z.array(LedgerEntry),
+  git_commits: z.array(
+    z.object({
+      sha: z.string(),
+      date: z.string(),
+      subject: z.string(),
+    }),
+  ),
+  related_concepts: z.array(z.string()),
+  formatted: z.string(),
+});
+export type MnemeWhyOutput = z.infer<typeof MnemeWhyOutput>;
+
+// ---------------------------------------------------------------------------
 // Tool I/O — Time Machine (§5.6)
 // ---------------------------------------------------------------------------
 

@@ -284,9 +284,65 @@ export interface ComposeOptions {
   tokenBudget?: number;
 }
 
+/**
+ * Build the Project Identity Kernel block (F9) and return it as a compact
+ * markdown string. Safe to call before the shard exists — returns "" on
+ * any failure so the primer always gets *something*.
+ */
+async function buildIdentityBlock(opts: ComposeOptions): Promise<string> {
+  try {
+    const { tool: identityTool } = await import("./tools/identity.ts");
+    const result = await identityTool.handler(
+      { project: opts.cwd },
+      { cwd: opts.cwd, sessionId: opts.sessionId },
+    );
+    const lines: string[] = [];
+    lines.push("<mneme-identity>");
+    lines.push(`Project: ${result.name}`);
+    if (result.stack.length > 0) {
+      lines.push("\n## Stack");
+      for (const t of result.stack) {
+        lines.push(t.version ? `- ${t.name} (${t.version})` : `- ${t.name}`);
+      }
+    }
+    if (result.domain_summary) {
+      lines.push("\n## What it does");
+      lines.push(result.domain_summary);
+    }
+    if (result.key_concepts.length > 0) {
+      lines.push("\n## Key concepts");
+      for (const c of result.key_concepts.slice(0, 10)) {
+        lines.push(`- ${c.term}`);
+      }
+    }
+    if (result.conventions.length > 0) {
+      lines.push("\n## Conventions (top by confidence)");
+      for (const c of result.conventions.slice(0, 5)) {
+        lines.push(`- [${Math.round(c.confidence * 100)}%] ${c.description}`);
+      }
+    }
+    if (result.recent_goals.length > 0) {
+      lines.push("\n## Recent goals");
+      for (const g of result.recent_goals.slice(0, 5)) {
+        lines.push(`- ${g}`);
+      }
+    }
+    if (result.open_questions.length > 0) {
+      lines.push("\n## Open questions");
+      for (const q of result.open_questions.slice(0, 5)) {
+        lines.push(`- ${q}`);
+      }
+    }
+    lines.push("</mneme-identity>");
+    return lines.join("\n");
+  } catch {
+    return "";
+  }
+}
+
 /** Build a SessionStart primer by querying every relevant shard. */
 export async function buildPrimer(opts: ComposeOptions): Promise<string> {
-  const [decisions, constraints, todos, findings, dirtyFiles, goal] = await Promise.all([
+  const [decisions, constraints, todos, findings, dirtyFiles, goal, identity] = await Promise.all([
     dbQuery
       .select<Decision>("decisions", "1=1 ORDER BY timestamp DESC LIMIT 3")
       .catch(() => []),
@@ -308,9 +364,10 @@ export async function buildPrimer(opts: ComposeOptions): Promise<string> {
     dbQuery
       .raw<string | null>("query.current_goal", { session_id: opts.sessionId })
       .catch(() => null),
+    buildIdentityBlock(opts).catch(() => ""),
   ]);
 
-  return composePrimer({
+  const baseline = composePrimer({
     ctx: { cwd: opts.cwd, sessionId: opts.sessionId },
     goal: goal ?? undefined,
     decisions,
@@ -319,6 +376,14 @@ export async function buildPrimer(opts: ComposeOptions): Promise<string> {
     dirtyFiles,
     redFindings: findings,
   });
+
+  // F9: prepend the Identity Kernel so the model sees "who/what/why" before
+  // the goal/constraints block. Kept separate from composePrimer so unit
+  // tests for that function remain stable.
+  if (identity) {
+    return `${identity}\n\n${baseline}`;
+  }
+  return baseline;
 }
 
 /** Build a UserPromptSubmit smart-inject bundle. */

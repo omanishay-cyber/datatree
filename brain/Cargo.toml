@@ -19,6 +19,10 @@ default = []
 # Enabling pulls in a native build of llama.cpp; disabled by default to keep
 # the workspace buildable in fully offline / no-toolchain environments.
 llm = ["dep:llama-cpp-2"]
+# Optional BGE reranker (cross-encoder). Disabled by default: enabling
+# requires a fastembed build that ships the reranker model surface, which
+# is not yet stable across all tier-1 targets. See brain/src/reranker.rs.
+reranker = []
 
 [dependencies]
 # Workspace sibling — provides shared types (NodeId, EdgeKind, etc.).
@@ -83,6 +87,12 @@ regex = "1"
 dashmap = "5"
 memmap2 = "0.9"
 dirs = "5"
+
+# Step Ledger (F1) — persistent, append-only ledger keyed by ULID-ish ids.
+# We use uuid v7 (time-sortable) because the workspace already depends on it.
+uuid = { version = "1.10", features = ["v4", "v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { workspace = true }
 
 # Local LLM (feature-gated)
 llama-cpp-2 = { version = "0.1.79", optional = true, default-features = false }

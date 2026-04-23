@@ -67,6 +67,8 @@ const STATIC_TOOL_FILES = [
   "wiki_generate",
   "wiki_page",
   "architecture_overview",
+  "identity",
+  "conventions",
 ];
 
 // ---------------------------------------------------------------------------

@@ -60,10 +60,10 @@
   <text x="270" y="200"
         font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
         font-weight="800"
-        font-size="150"
+        font-size="180"
         letter-spacing="-4"
         fill="url(#titleGrad)"
-        filter="url(#softShadow)">datatree</text>
+        filter="url(#softShadow)">Mneme</text>
 
   <!-- tagline -->
   <text x="92" y="300"
@@ -105,7 +105,7 @@
     <text x="28" y="43"
           font-family="JetBrains Mono, SF Mono, ui-monospace, Menlo, monospace"
           font-size="22" fill="#cbd5e1">
-      <tspan fill="#64748b">$ </tspan>/plugin marketplace add github:omanishay-cyber/datatree
+      <tspan fill="#64748b">$ </tspan>/plugin marketplace add github:omanishay-cyber/mneme
     </text>
   </g>
 
@@ -113,5 +113,5 @@
   <text x="1188" y="615" text-anchor="end"
         font-family="JetBrains Mono, SF Mono, ui-monospace, monospace"
         font-size="18"
-        fill="#64748b">github.com/omanishay-cyber/datatree</text>
+        fill="#64748b">github.com/omanishay-cyber/mneme</text>
 </svg>

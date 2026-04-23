@@ -57,8 +57,12 @@ console = "0.15"
 common = { path = "../common", package = "mneme-common" }
 store = { path = "../store", package = "mneme-store" }
 parsers = { path = "../parsers", package = "mneme-parsers" }
-brain = { path = "../brain", package = "mneme-brain", optional = true }
+# `brain` is required — the Step Ledger (F1) and Why-Chain (F6) run
+# in-process from the CLI. Heavy ONNX backends stay feature-gated inside
+# brain itself so this doesn't require a C++ toolchain.
+brain = { path = "../brain", package = "mneme-brain" }
 rusqlite = { workspace = true }
+chrono = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 # Windows path normalisation so manifest paths produced on Win look POSIX
@@ -78,4 +82,4 @@ with-common = []
 # which triggers fastembed to download BGE-Small-En-v1.5 into ~/.mneme/llm/.
 # Off by default so the workspace builds without a C++ toolchain; release
 # builds enable it.
-fastembed-install = ["dep:brain", "brain/fastembed"]
+fastembed-install = ["brain/fastembed"]

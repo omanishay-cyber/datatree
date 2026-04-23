@@ -115,4 +115,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: LICENSE file exists
-        run: test -f LICENSE && grep -qi "datatree community license" LICENSE
+        run: test -f LICENSE && grep -qi "apache license" LICENSE
