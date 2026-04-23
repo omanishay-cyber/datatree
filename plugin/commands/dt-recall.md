@@ -1,7 +1,7 @@
 ---
 name: /dt-recall
-description: Semantic search across decisions, conversations, concepts, files, todos, and constraints stored in the local datatree shards.
-command: datatree recall
+description: Semantic search across decisions, conversations, concepts, files, todos, and constraints stored in the local mneme shards.
+command: mneme recall
 ---
 
 # /dt-recall
@@ -37,4 +37,4 @@ Routes to the matching MCP recall tool:
 
 Returns a concise rendered answer with `source_location` citations.
 
-See also: the `datatree-query` skill.
+See also: the `mneme-query` skill.

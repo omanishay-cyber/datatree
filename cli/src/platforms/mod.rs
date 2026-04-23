@@ -8,8 +8,8 @@
 //! detect()           -> bool      // is this platform installed for the user?
 //! manifest_path()    -> PathBuf   // where to write AGENTS.md / CLAUDE.md / etc.
 //! mcp_config_path()  -> PathBuf   // where the MCP server registry lives
-//! write_manifest()                // marker-injects datatree's section
-//! write_mcp_config()              // backs up + merges datatree MCP entry
+//! write_manifest()                // marker-injects mneme's section
+//! write_mcp_config()              // backs up + merges mneme MCP entry
 //! write_hooks()                   // platforms that support hooks only
 //! ```
 //!
@@ -73,7 +73,7 @@ impl std::str::FromStr for InstallScope {
     }
 }
 
-/// One platform supported by `datatree install`.
+/// One platform supported by `mneme install`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Platform {
     /// Anthropic Claude Code.
@@ -173,7 +173,7 @@ impl Platform {
         Err(CliError::UnknownPlatform(id.to_string()))
     }
 
-    /// Static list of every platform datatree v1.0 supports. Kept in lock-
+    /// Static list of every platform mneme v1.0 supports. Kept in lock-
     /// step with the table in design §21.4.
     pub fn all_known() -> &'static [Platform] {
         &[
@@ -299,22 +299,22 @@ impl AdapterContext {
         self
     }
 
-    /// Build the canonical AGENTS.md body datatree wants to inject.
+    /// Build the canonical AGENTS.md body mneme wants to inject.
     pub fn agents_md_body() -> String {
         // Kept short — full prompt-engineering lives in the supervisor.
-        // This is the user-visible "what is datatree" stub.
+        // This is the user-visible "what is mneme" stub.
         format!(
-            "## Datatree (the AI superbrain)\n\
+            "## Mneme (the AI superbrain)\n\
              \n\
              - Persistent per-project memory across sessions and compactions.\n\
-             - 30+ MCP tools: see `datatree --help` or run `/dt-recall`, `/dt-blast`, `/dt-graphify`, `/dt-step`.\n\
+             - 30+ MCP tools: see `mneme --help` or run `/dt-recall`, `/dt-blast`, `/dt-graphify`, `/dt-step`.\n\
              - Step Ledger guarantees Claude resumes the *correct* step after compaction.\n\
              - Drift detector enforces this project's rules from CLAUDE.md / .claude/rules.\n\
              - Local-only: zero network egress in the hot path.\n\
-             - Vision app: `datatree view`\n\
-             - Daemon: `datatree daemon status`\n\
+             - Vision app: `mneme view`\n\
+             - Daemon: `mneme daemon status`\n\
              \n\
-             v{version} — see https://github.com/anishtrivedi/datatree\n",
+             v{version} — see https://github.com/anishtrivedi/mneme\n",
             version = env!("CARGO_PKG_VERSION")
         )
     }
@@ -347,7 +347,7 @@ pub trait PlatformAdapter: Send + Sync {
         McpFormat::JsonObject
     }
 
-    /// Write the marker-wrapped datatree section into the manifest.
+    /// Write the marker-wrapped mneme section into the manifest.
     /// Default implementation handles the read-modify-write dance via
     /// [`crate::markers::MarkerInjector`].
     fn write_manifest(&self, ctx: &AdapterContext) -> CliResult<PathBuf> {
@@ -384,7 +384,7 @@ pub trait PlatformAdapter: Send + Sync {
         Ok(())
     }
 
-    /// Reverse of [`Self::write_mcp_config`]. Removes datatree's entry.
+    /// Reverse of [`Self::write_mcp_config`]. Removes mneme's entry.
     fn remove_mcp_config(&self, ctx: &AdapterContext) -> CliResult<()> {
         let path = self.mcp_config_path(ctx);
         if !path.exists() {
@@ -394,21 +394,21 @@ pub trait PlatformAdapter: Send + Sync {
     }
 }
 
-/// The canonical datatree MCP entry written into JSON-object configs.
+/// The canonical mneme MCP entry written into JSON-object configs.
 /// Kept as `serde_json::Value` so individual adapters can mutate fields
 /// before serializing (e.g. Cursor wants `transport: "stdio"`).
 pub fn datatree_mcp_entry() -> serde_json::Value {
     serde_json::json!({
-        "command": "datatree",
+        "command": "mneme",
         "args": ["mcp", "stdio"],
         "env": {
-            "DATATREE_LOG": "info"
+            "MNEME_LOG": "info"
         },
         "transport": "stdio"
     })
 }
 
-/// Write `body` into the datatree marker block of the file at `path`,
+/// Write `body` into the mneme marker block of the file at `path`,
 /// creating intermediate directories and the file itself if needed.
 pub fn write_marker_manifest(
     path: &Path,
@@ -435,7 +435,7 @@ pub fn write_marker_manifest(
 }
 
 /// Default merge strategy for MCP configs. Reads existing config (if any),
-/// inserts/updates the `datatree` entry, writes back. Always backs up to
+/// inserts/updates the `mneme` entry, writes back. Always backs up to
 /// `<file>.bak` first.
 pub fn write_mcp_config_default(
     path: &Path,
@@ -472,7 +472,7 @@ pub fn write_mcp_config_default(
     Ok(())
 }
 
-/// Reverse of [`write_mcp_config_default`]. Strips datatree from the config
+/// Reverse of [`write_mcp_config_default`]. Strips mneme from the config
 /// while leaving every other server intact.
 pub fn remove_mcp_entry(
     path: &Path,
@@ -506,7 +506,7 @@ fn merge_mcp_json_object(existing: &str) -> CliResult<String> {
     let servers_obj = servers
         .as_object_mut()
         .ok_or_else(|| CliError::Other("`mcpServers` is not a JSON object".into()))?;
-    servers_obj.insert("datatree".into(), datatree_mcp_entry());
+    servers_obj.insert("mneme".into(), datatree_mcp_entry());
     Ok(serde_json::to_string_pretty(&value)? + "\n")
 }
 
@@ -516,7 +516,7 @@ fn strip_mcp_json_object(existing: &str) -> CliResult<String> {
         .get_mut("mcpServers")
         .and_then(|v| v.as_object_mut())
     {
-        servers.remove("datatree");
+        servers.remove("mneme");
     }
     Ok(serde_json::to_string_pretty(&value)? + "\n")
 }
@@ -535,12 +535,12 @@ fn merge_mcp_json_array(existing: &str) -> CliResult<String> {
     let arr = servers
         .as_array_mut()
         .ok_or_else(|| CliError::Other("`mcpServers` is not a JSON array".into()))?;
-    arr.retain(|s| s.get("name").and_then(|n| n.as_str()) != Some("datatree"));
+    arr.retain(|s| s.get("name").and_then(|n| n.as_str()) != Some("mneme"));
     let mut entry = datatree_mcp_entry();
     entry
         .as_object_mut()
         .unwrap()
-        .insert("name".into(), serde_json::json!("datatree"));
+        .insert("name".into(), serde_json::json!("mneme"));
     arr.push(entry);
     Ok(serde_json::to_string_pretty(&value)? + "\n")
 }
@@ -551,7 +551,7 @@ fn strip_mcp_json_array(existing: &str) -> CliResult<String> {
         .get_mut("mcpServers")
         .and_then(|v| v.as_array_mut())
     {
-        arr.retain(|s| s.get("name").and_then(|n| n.as_str()) != Some("datatree"));
+        arr.retain(|s| s.get("name").and_then(|n| n.as_str()) != Some("mneme"));
     }
     Ok(serde_json::to_string_pretty(&value)? + "\n")
 }
@@ -577,7 +577,7 @@ fn merge_mcp_toml(existing: &str) -> CliResult<String> {
         .ok_or_else(|| CliError::Other("`mcp_servers` is not a TOML table".into()))?;
 
     let mut entry = toml::value::Table::new();
-    entry.insert("command".into(), toml::Value::String("datatree".into()));
+    entry.insert("command".into(), toml::Value::String("mneme".into()));
     entry.insert(
         "args".into(),
         toml::Value::Array(vec![
@@ -586,9 +586,9 @@ fn merge_mcp_toml(existing: &str) -> CliResult<String> {
         ]),
     );
     let mut env = toml::value::Table::new();
-    env.insert("DATATREE_LOG".into(), toml::Value::String("info".into()));
+    env.insert("MNEME_LOG".into(), toml::Value::String("info".into()));
     entry.insert("env".into(), toml::Value::Table(env));
-    servers_table.insert("datatree".into(), toml::Value::Table(entry));
+    servers_table.insert("mneme".into(), toml::Value::Table(entry));
 
     Ok(toml::to_string_pretty(&doc)?)
 }
@@ -600,7 +600,7 @@ fn strip_mcp_toml(existing: &str) -> CliResult<String> {
         .and_then(|t| t.get_mut("mcp_servers"))
         .and_then(|v| v.as_table_mut())
     {
-        servers.remove("datatree");
+        servers.remove("mneme");
     }
     Ok(toml::to_string_pretty(&doc)?)
 }
@@ -667,29 +667,29 @@ mod tests {
         let starting = r#"{"mcpServers":{"other":{"command":"other"}}}"#;
         let merged = merge_mcp_json_object(starting).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&merged).unwrap();
-        assert!(parsed["mcpServers"]["datatree"].is_object());
+        assert!(parsed["mcpServers"]["mneme"].is_object());
         assert!(parsed["mcpServers"]["other"].is_object());
     }
 
     #[test]
     fn merge_mcp_json_array_dedupes_datatree() {
-        let starting = r#"{"mcpServers":[{"name":"datatree","command":"old"}]}"#;
+        let starting = r#"{"mcpServers":[{"name":"mneme","command":"old"}]}"#;
         let merged = merge_mcp_json_array(starting).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&merged).unwrap();
         let arr = parsed["mcpServers"].as_array().unwrap();
         let dt: Vec<&serde_json::Value> = arr
             .iter()
-            .filter(|v| v["name"] == "datatree")
+            .filter(|v| v["name"] == "mneme")
             .collect();
         assert_eq!(dt.len(), 1);
-        assert_eq!(dt[0]["command"], "datatree");
+        assert_eq!(dt[0]["command"], "mneme");
     }
 
     #[test]
     fn merge_mcp_toml_inserts_section() {
         let starting = "";
         let merged = merge_mcp_toml(starting).unwrap();
-        assert!(merged.contains("[mcp_servers.datatree]"));
-        assert!(merged.contains("command = \"datatree\""));
+        assert!(merged.contains("[mcp_servers.mneme]"));
+        assert!(merged.contains("command = mneme\""));
     }
 }

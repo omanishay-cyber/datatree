@@ -1,12 +1,12 @@
 ---
 name: /dt-view
-description: Open the datatree live graph viewer (14 view modes). Tauri desktop app by default; falls back to localhost:7777 web view.
-command: datatree view
+description: Open the mneme live graph viewer (14 view modes). Tauri desktop app by default; falls back to localhost:7777 web view.
+command: mneme view
 ---
 
 # /dt-view
 
-Open the live datatree graph viewer. Renders the per-project knowledge
+Open the live mneme graph viewer. Renders the per-project knowledge
 graph in any of 14 view modes (Force-Galaxy, Hierarchy Tree, Sunburst,
 Treemap, Sankey type/domain, Arc/Chord, Timeline, Heatmap Grid, Layered
 Architecture, 3D Galaxy, Theme Palette, Test Coverage, Risk Dashboard).
@@ -23,7 +23,7 @@ Architecture, 3D Galaxy, Theme Palette, Test Coverage, Risk Dashboard).
 
 ## What this does
 
-1. Resolves the project shard via `datatree finder find-by-cwd`.
+1. Resolves the project shard via `mneme finder find-by-cwd`.
 2. Spawns the Tauri viewer (or `serve --web` if `--web`).
 3. Connects the viewer to the live-bus over WebSocket so node states
    update in real time as files change.

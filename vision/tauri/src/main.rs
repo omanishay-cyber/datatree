@@ -14,5 +14,5 @@ fn main() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running datatree vision");
+        .expect("error while running mneme vision");
 }

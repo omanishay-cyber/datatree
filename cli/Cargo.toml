@@ -1,5 +1,5 @@
 [package]
-name = "datatree-cli"
+name = "mneme-cli"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.78"
@@ -9,11 +9,11 @@ description = "Datatree CLI: the `datatree` command-line tool. Drives install/bu
 
 # The user-facing binary is just `datatree`.
 [[bin]]
-name = "datatree"
+name = "mneme"
 path = "src/main.rs"
 
 [lib]
-name = "datatree_cli"
+name = "mneme_cli"
 path = "src/lib.rs"
 
 [dependencies]
@@ -54,10 +54,10 @@ console = "0.15"
 # Workspace siblings linked in for the `datatree build` / `datatree audit`
 # in-process pipeline (CLI drives parse + store directly so v0.1 can ingest
 # real projects without needing the supervisor to route jobs).
-datatree-common = { path = "../common" }
-datatree-store = { path = "../store" }
-parsers = { path = "../parsers" }
-brain = { path = "../brain", optional = true }
+common = { path = "../common", package = "mneme-common" }
+store = { path = "../store", package = "mneme-store" }
+parsers = { path = "../parsers", package = "mneme-parsers" }
+brain = { path = "../brain", package = "mneme-brain", optional = true }
 rusqlite = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
@@ -75,7 +75,7 @@ default = []
 # compiles standalone while the workspace is still being assembled.
 with-common = []
 # Wires `datatree models install` through to `brain::install_default_model`,
-# which triggers fastembed to download BGE-Small-En-v1.5 into ~/.datatree/llm/.
+# which triggers fastembed to download BGE-Small-En-v1.5 into ~/.mneme/llm/.
 # Off by default so the workspace builds without a C++ toolchain; release
 # builds enable it.
 fastembed-install = ["dep:brain", "brain/fastembed"]

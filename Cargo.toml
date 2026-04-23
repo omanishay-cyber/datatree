@@ -16,19 +16,19 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.78"
-license = "MIT"
-authors = ["Anish Trivedi <bhattanish@gmail.com>"]
-repository = "https://github.com/anishtrivedi/datatree"
-homepage = "https://github.com/anishtrivedi/datatree"
-description = "Datatree — persistent per-project AI superbrain. Claude never starts cold, never loses its place."
+license = "Apache-2.0"
+authors = ["Anish Trivedi"]
+repository = "https://github.com/omanishay-cyber/datatree"
+homepage = "https://github.com/omanishay-cyber/datatree"
+description = "Mneme — the persistent memory layer for AI coding. Survives context compaction, 100% local."
 
 [workspace.dependencies]
 # Internal crates
-datatree-common = { path = "common", version = "0.1.0" }
-datatree-store = { path = "store", version = "0.1.0" }
+mneme-common = { path = "common", version = "0.2.0" }
+mneme-store = { path = "store", version = "0.2.0" }
 
 # Async runtime
 tokio = { version = "1.40", features = ["full"] }

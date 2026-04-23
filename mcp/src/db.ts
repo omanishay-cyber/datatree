@@ -30,17 +30,17 @@ import type {
 /**
  * Discover the supervisor IPC endpoint:
  *   - Windows: \\?\pipe\datatree-supervisor
- *   - macOS / Linux: $HOME/.datatree/supervisor.sock
+ *   - macOS / Linux: $HOME/.mneme/supervisor.sock
  *
- * Override via DATATREE_SOCKET env var.
+ * Override via MNEME_SOCKET env var.
  */
 function discoverSocketPath(): string {
-  const override = process.env.DATATREE_SOCKET;
+  const override = process.env.MNEME_SOCKET;
   if (override && override.length > 0) {
     return override;
   }
   if (platform() === "win32") {
-    return "\\\\?\\pipe\\datatree-supervisor";
+    return "\\\\?\\pipemneme-supervisor";
   }
   return join(homedir(), ".datatree", "supervisor.sock");
 }

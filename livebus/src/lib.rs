@@ -1,6 +1,6 @@
-//! # datatree-livebus
+//! # mneme-livebus
 //!
-//! Local-only event fan-out service for the Datatree multi-process daemon.
+//! Local-only event fan-out service for the Mneme multi-process daemon.
 //!
 //! Worker processes (drift detector, file watcher, test runner, vision, brain,
 //! supervisor) push events into the bus over a Unix socket / Windows named pipe.
@@ -8,7 +8,7 @@
 //! connect over Server-Sent Events (`GET /events/:topic`) or WebSocket
 //! (`/ws`) to receive a fan-out stream of events filtered by topic pattern.
 //!
-//! ## Design constraints (see `docs/design/2026-04-23-datatree-design.md` §11)
+//! ## Design constraints (see `docs/design/2026-04-23-mneme-design.md` §11)
 //!
 //! - **Local only.** The HTTP listener binds to `127.0.0.1` exclusively;
 //!   binding to `0.0.0.0` is forbidden by construction (see [`bind_addr`]).

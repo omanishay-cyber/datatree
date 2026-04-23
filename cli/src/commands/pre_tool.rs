@@ -1,4 +1,4 @@
-//! `datatree pre-tool` — PreToolUse hook entry point.
+//! `mneme pre-tool` — PreToolUse hook entry point.
 //!
 //! Per design §6.3 the hook can short-circuit the tool call by returning
 //! `{"skip": true, "result": "<cached>"}` (e.g. when an identical Read /
@@ -14,7 +14,7 @@ use crate::commands::build::make_client;
 use crate::error::CliResult;
 use crate::ipc::{IpcRequest, IpcResponse};
 
-/// CLI args for `datatree pre-tool`.
+/// CLI args for `mneme pre-tool`.
 #[derive(Debug, Args)]
 pub struct PreToolArgs {
     /// Tool name about to be invoked.

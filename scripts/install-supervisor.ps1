@@ -1,5 +1,5 @@
 # datatree supervisor installer (Windows PowerShell 5.1+)
-# Installs datatree-supervisor.exe to %USERPROFILE%\.datatree\bin\
+# Installs datatree-supervisor.exe to %USERPROFILE%mneme\bin\
 # Registers a Windows service via sc.exe (DatatreeDaemon).
 # Falls back to a Task Scheduler entry at user logon if elevation is denied.
 # Idempotent: re-running does not duplicate entries; existing files .bak'd.
@@ -32,7 +32,7 @@ $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
 Write-Log "Detected platform: windows/$arch"
 
 # --- paths -------------------------------------------------------------------
-$DatatreeHome = if ($env:DATATREE_HOME) { $env:DATATREE_HOME } else { Join-Path $env:USERPROFILE '.datatree' }
+$DatatreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $env:USERPROFILE '.datatree' }
 $BinDir = Join-Path $DatatreeHome 'bin'
 $LogDir = Join-Path $DatatreeHome 'logs'
 

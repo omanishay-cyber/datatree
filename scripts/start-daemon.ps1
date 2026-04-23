@@ -31,7 +31,7 @@ if ($task) {
 }
 
 # fallback: spawn directly
-$DatatreeHome = if ($env:DATATREE_HOME) { $env:DATATREE_HOME } else { Join-Path $env:USERPROFILE '.datatree' }
+$DatatreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $env:USERPROFILE '.datatree' }
 $Bin = Join-Path $DatatreeHome 'bin\datatree-supervisor.exe'
 if (-not (Test-Path $Bin)) {
     Write-Host "[datatree-start] datatree-supervisor.exe not installed at $Bin" -ForegroundColor Red

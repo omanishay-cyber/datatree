@@ -76,9 +76,9 @@ impl PlatformAdapter for Zed {
             crate::error::CliError::Other("`context_servers` is not an object".into())
         })?;
         servers_obj.insert(
-            "datatree".into(),
+            "mneme".into(),
             json!({
-                "command": { "path": "datatree", "args": ["mcp", "stdio"] },
+                "command": { "path": "mneme", "args": ["mcp", "stdio"] },
                 "settings": {}
             }),
         );

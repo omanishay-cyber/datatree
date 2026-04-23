@@ -1,5 +1,5 @@
 [package]
-name = "datatree-supervisor"
+name = "mneme-daemon"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.78"
@@ -8,11 +8,11 @@ authors = ["Anish Trivedi"]
 description = "Datatree master supervisor: spawns and watches all worker child processes."
 
 [[bin]]
-name = "datatree-supervisor"
+name = "mneme-daemon"
 path = "src/main.rs"
 
 [lib]
-name = "datatree_supervisor"
+name = "mneme_daemon"
 path = "src/lib.rs"
 
 [dependencies]
@@ -50,9 +50,9 @@ dunce = "1.0"
 
 # Local workspace members
 # `common` crate is referenced via path; Cargo will resolve relative to this Cargo.toml.
-common = { path = "../common", package = "datatree-common" }
-datatree-store = { path = "../store" }
-parsers = { path = "../parsers" }
+common = { path = "../common", package = "mneme-common" }
+store = { path = "../store", package = "mneme-store" }
+parsers = { path = "../parsers", package = "mneme-parsers" }
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.7"

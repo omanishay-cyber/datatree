@@ -1,5 +1,5 @@
 ---
-name: datatree-resume
+name: mneme-resume
 description: "Recover from a context compaction or session restart. Pulls the resumption bundle from the step ledger and continues from the current step. Use after any context reset, or when the user says 'where were we' / 'pick up where we left off'."
 trigger: /dt-step
 ---
@@ -7,7 +7,7 @@ trigger: /dt-step
 # /dt-step (resume mode)
 
 Recover from a context compaction or session restart by fetching the
-datatree resumption bundle and continuing from the current step in the
+mneme resumption bundle and continuing from the current step in the
 step ledger.
 
 ## Usage
@@ -28,14 +28,14 @@ step ledger.
   `SessionStart`, but if you somehow skip it, run `/dt-step` first).
 - **Always** after the user mentions context was reset, compacted, or
   conversation was lost.
-- When `<datatree-resume>` block appears in the prompt, read it carefully
+- When `<mneme-resume>` block appears in the prompt, read it carefully
   before doing anything else.
 
 ## Procedure
 
 ### Step 1 — Fetch the bundle
 
-Call `step_resume()`. The result is a `<datatree-resume>` block with:
+Call `step_resume()`. The result is a `<mneme-resume>` block with:
 
 - Original goal (verbatim from session start)
 - Goal stack (root → current leaf)

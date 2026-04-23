@@ -1,6 +1,6 @@
-//! # parsers — datatree Tree-sitter worker pool
+//! # parsers — mneme Tree-sitter worker pool
 //!
-//! A multi-language incremental parser pool used by the datatree daemon.
+//! A multi-language incremental parser pool used by the mneme daemon.
 //!
 //! Design references:
 //! - §3.1 — process tree (this crate is the `parse-worker` binary)
@@ -11,7 +11,7 @@
 //! - [`Language`] — the supported-language enum
 //! - [`ParserPool`] — borrows a [`tree_sitter::Parser`] per language per worker
 //! - [`IncrementalParser`] — keeps previous trees in an LRU cache
-//! - [`Extractor`] — turns a parsed [`tree_sitter::Tree`] into datatree
+//! - [`Extractor`] — turns a parsed [`tree_sitter::Tree`] into mneme
 //!   [`Node`](job::Node) / [`Edge`](job::Edge) records
 //! - [`Worker::run`] — async worker loop driving the above
 

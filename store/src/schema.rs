@@ -3,7 +3,7 @@
 //! New schema versions add columns; never drop, never rename. To rename
 //! conceptually, add a new column and stop writing the old one.
 
-use datatree_common::layer::DbLayer;
+use common::layer::DbLayer;
 
 pub const SCHEMA_VERSION: u32 = 1;
 

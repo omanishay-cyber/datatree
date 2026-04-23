@@ -1,13 +1,13 @@
-//! Datatree benchmark harness.
+//! Mneme benchmark harness.
 //!
-//! Measures retrieval quality and token reduction of the datatree graph
+//! Measures retrieval quality and token reduction of the mneme graph
 //! against a naive "cold Claude" baseline (top-5 files by grep). All
 //! measurements run in-process: no supervisor, no daemon, no network.
 //!
 //! Public surface:
 //!   - [`index_repo`]       — times a full indexing pass over a project.
 //!   - [`run_query_set`]    — runs a golden query set and records results.
-//!   - [`compare_vs_cold`]  — compares datatree vs cold baseline per query.
+//!   - [`compare_vs_cold`]  — compares mneme vs cold baseline per query.
 //!
 //! Output types are `serde::Serialize` so bin entry points can dump JSON
 //! for CI consumption. No floating-point fields are emitted unless
@@ -23,8 +23,8 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use datatree_common::{ids::ProjectId, layer::DbLayer, paths::PathManager};
-use datatree_store::{inject::InjectOptions, Store};
+use common::{ids::ProjectId, layer::DbLayer, paths::PathManager};
+use store::{inject::InjectOptions, Store};
 use parsers::{
     extractor::Extractor, incremental::IncrementalParser, parser_pool::ParserPool, query_cache,
     Language,
@@ -79,7 +79,7 @@ pub struct IndexReport {
     pub elapsed_ms: u64,
 }
 
-/// One query's raw retrieval payload (datatree side).
+/// One query's raw retrieval payload (mneme side).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryResult {
     pub query: String,
@@ -134,7 +134,7 @@ pub struct GoldenQuery {
     pub expected_top: Vec<String>,
 }
 
-/// Which datatree retrieval op a query maps to.
+/// Which mneme retrieval op a query maps to.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryKind {
@@ -150,7 +150,7 @@ pub enum QueryKind {
 // Indexing
 // ---------------------------------------------------------------------------
 
-/// Indexes a project using the same pipeline as `datatree build`:
+/// Indexes a project using the same pipeline as `mneme build`:
 /// walk → tree-sitter parse → Extractor → Store::inject.
 ///
 /// Returns timing + counts. Does NOT require a running daemon.
@@ -334,7 +334,7 @@ pub async fn index_repo(project: &Path) -> BenchResult<IndexReport> {
 }
 
 // ---------------------------------------------------------------------------
-// Retrieval (datatree side)
+// Retrieval (mneme side)
 // ---------------------------------------------------------------------------
 
 /// Run an entire query set against the given shard and return per-query
@@ -371,7 +371,7 @@ pub fn run_query_set(shard_graph_db: &Path, queries: &[GoldenQuery]) -> BenchRes
     })
 }
 
-/// Dispatch one golden query to the right datatree retrieval primitive.
+/// Dispatch one golden query to the right mneme retrieval primitive.
 /// Returns up to 5 file paths, de-duplicated and ordered by relevance.
 pub fn run_one_query(conn: &rusqlite::Connection, q: &GoldenQuery) -> BenchResult<Vec<String>> {
     match q.kind {
@@ -453,7 +453,7 @@ fn find_references(conn: &rusqlite::Connection, target: &str) -> BenchResult<Vec
 
 /// Approximates "cold Claude" retrieval: naive substring grep over the
 /// repo, take the 5 files with the most matches. Returns files in rank
-/// order + timing. No datatree shard involved.
+/// order + timing. No mneme shard involved.
 pub fn cold_baseline(repo: &Path, query: &str) -> BenchResult<(Vec<String>, u64)> {
     let start = Instant::now();
     let needle = query.to_lowercase();
@@ -494,7 +494,7 @@ pub fn cold_baseline(repo: &Path, query: &str) -> BenchResult<(Vec<String>, u64)
 // Comparison
 // ---------------------------------------------------------------------------
 
-/// Run a full comparison: each query through both datatree and the cold
+/// Run a full comparison: each query through both mneme and the cold
 /// baseline, with precision\@5 computed against the golden expected list.
 pub fn compare_vs_cold(
     repo: &Path,
@@ -650,7 +650,7 @@ fn is_ignored(path: &Path) -> bool {
             | ".ruff_cache"
             | ".idea"
             | ".vscode"
-            | ".datatree"
+            | ".mneme"
     )
 }
 

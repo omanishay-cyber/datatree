@@ -1,4 +1,4 @@
-//! `datatree drift [--severity=...]` — current drift findings.
+//! `mneme drift [--severity=...]` — current drift findings.
 
 use clap::Args;
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use crate::commands::build::{handle_response, make_client};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree drift`.
+/// CLI args for `mneme drift`.
 #[derive(Debug, Args)]
 pub struct DriftArgs {
     /// Severity filter: `info` | `warn` | `error` | `critical`.

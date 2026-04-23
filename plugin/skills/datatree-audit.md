@@ -1,12 +1,12 @@
 ---
-name: datatree-audit
-description: "Run datatree's drift + quality scanners (theme, types, security, a11y, perf) over the working tree, the diff, or one file. Use before commits, after refactors, or when the user asks 'what's wrong with this'."
+name: mneme-audit
+description: "Run mneme's drift + quality scanners (theme, types, security, a11y, perf) over the working tree, the diff, or one file. Use before commits, after refactors, or when the user asks 'what's wrong with this'."
 trigger: /dt-audit
 ---
 
 # /dt-audit
 
-Run datatree's full scanner suite (theme, types, security, accessibility,
+Run mneme's full scanner suite (theme, types, security, accessibility,
 performance, IPC contracts, etc.) and surface the findings ranked by
 severity.
 
@@ -24,7 +24,7 @@ severity.
 - Before every commit.
 - After a large refactor.
 - When the user says "what's wrong with this", "lint this", "review this".
-- When `<datatree-redirect>` appears at the top of a prompt — drift was
+- When `<mneme-redirect>` appears at the top of a prompt — drift was
   detected and a fresh audit is the fastest way to see what.
 
 ## Procedure

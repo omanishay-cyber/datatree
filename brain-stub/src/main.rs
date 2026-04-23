@@ -11,10 +11,10 @@ use tracing_subscriber::EnvFilter;
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_env("DATATREE_LOG").unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_env_filter(EnvFilter::try_from_env("MNEME_LOG").unwrap_or_else(|_| EnvFilter::new("info")))
         .json()
         .init();
-    tracing::info!("datatree-brain v0.1 stub — embeddings disabled (ort version pending)");
+    tracing::info!("mneme-brain v0.1 stub — embeddings disabled (ort version pending)");
     tokio::signal::ctrl_c().await.ok();
-    tracing::info!("datatree-brain exiting");
+    tracing::info!("mneme-brain exiting");
 }

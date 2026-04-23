@@ -1,6 +1,6 @@
 //! ParseJob / ParseResult — the IPC-shaped types passed across MPSC channels.
 //!
-//! These mirror the shared graph types datatree's `common` crate will own;
+//! These mirror the shared graph types mneme's `common` crate will own;
 //! when that crate exists they can be re-exported under
 //! `parsers::job::{Node, Edge, ...}`. Until then the local definitions are
 //! authoritative and the rest of the daemon imports from here.
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 // ---------------------------------------------------------------------------
-// Confidence — datatree's three-level extraction trust scale (§21.6.2 row 11)
+// Confidence — mneme's three-level extraction trust scale (§21.6.2 row 11)
 // ---------------------------------------------------------------------------
 
 /// How much trust to place in an extracted node or edge.

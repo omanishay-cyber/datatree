@@ -1,4 +1,4 @@
-//! `datatree godnodes [--n=N]` — top-N most-connected concepts.
+//! `mneme godnodes [--n=N]` — top-N most-connected concepts.
 
 use clap::Args;
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use crate::commands::build::{handle_response, make_client};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree godnodes`.
+/// CLI args for `mneme godnodes`.
 #[derive(Debug, Args)]
 pub struct GodNodesArgs {
     /// Optional project path. Defaults to CWD.

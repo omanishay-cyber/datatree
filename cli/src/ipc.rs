@@ -1,7 +1,7 @@
 //! Async client to the supervisor's control socket.
 //!
 //! The supervisor listens on a Unix socket (Unix) or named pipe (Windows)
-//! at `~/.datatree/run/datatree-supervisor.sock`. Wire format is one
+//! at `~/.mneme/run/mneme-supervisor.sock`. Wire format is one
 //! length-prefixed JSON message per request — we use 4-byte big-endian
 //! length, then UTF-8 JSON body, matching the framing the supervisor's
 //! `IpcServer` expects.
@@ -248,12 +248,12 @@ impl IpcClient {
     /// [`crate::runtime_dir`].
     ///
     /// Discovery order:
-    ///   1. `~/.datatree/supervisor.pipe` (Windows PID-scoped pipe name,
+    ///   1. `~/.mneme/supervisor.pipe` (Windows PID-scoped pipe name,
     ///      written by the running supervisor at boot)
-    ///   2. Fallback to the legacy `~/.datatree/run/...sock` path.
+    ///   2. Fallback to the legacy `~/.mneme/run/...sock` path.
     pub fn default_path() -> Self {
         if let Some(home) = dirs::home_dir() {
-            let disco = home.join(".datatree").join("supervisor.pipe");
+            let disco = home.join(".mneme").join("supervisor.pipe");
             if let Ok(content) = std::fs::read_to_string(&disco) {
                 let p = content.trim();
                 if !p.is_empty() {
@@ -363,7 +363,7 @@ async fn connect_stream(socket_path: &std::path::Path) -> CliResult<interprocess
         let pipe_name = socket_path
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or("datatree-supervisor")
+            .unwrap_or("mneme-supervisor")
             .to_string();
         let name = pipe_name
             .as_str()

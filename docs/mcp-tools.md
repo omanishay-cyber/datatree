@@ -1,6 +1,6 @@
-# datatree MCP tools reference
+# mneme MCP tools reference
 
-33+ tools, grouped by category. Every tool is callable from Claude Code, Codex, Cursor, or any MCP-aware AI client once `datatree install` has registered the MCP server.
+33+ tools, grouped by category. Every tool is callable from Claude Code, Codex, Cursor, or any MCP-aware AI client once `mneme install` has registered the MCP server.
 
 > **v0.1.0 status:** 3 flagship tools (`blast_radius`, `recall_concept`, `health`) return real data from the live SQLite shard. The other 30 tools return structured stubs (same schema, empty results) until they're wired in v0.2 — pattern is identical, just needs the `store.ts` helper call.
 
@@ -81,16 +81,16 @@
 
 ### From Claude Code (it does this automatically)
 
-Claude picks up the MCP server automatically after `datatree install` has written the entry to `~/.claude.json`. You can see the tools by running `/mcp` in any Claude Code session after a restart.
+Claude picks up the MCP server automatically after `mneme install` has written the entry to `~/.claude.json`. You can see the tools by running `/mcp` in any Claude Code session after a restart.
 
 ### From the command line (for debugging)
 
 ```bash
 # Raw JSON-RPC 2024-11-05 call:
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"blast_radius","arguments":{"target":"src/auth/login.ts","depth":2}}}' | datatree mcp stdio
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"blast_radius","arguments":{"target":"src/auth/login.ts","depth":2}}}' | mneme mcp stdio
 ```
 
-### Example output (real, from running datatree v0.1.0)
+### Example output (real, from running mneme v0.1.0)
 
 ```json
 {

@@ -1,4 +1,4 @@
-//! `datatree turn-end` — Stop hook entry point.
+//! `mneme turn-end` — Stop hook entry point.
 //!
 //! Triggers the summarizer and updates the Step Ledger drift score.
 //! The optional flags let the same handler be reused for PreCompact (so
@@ -13,7 +13,7 @@ use crate::commands::build::make_client;
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree turn-end`.
+/// CLI args for `mneme turn-end`.
 #[derive(Debug, Args)]
 pub struct TurnEndArgs {
     /// Session id.

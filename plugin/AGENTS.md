@@ -1,26 +1,26 @@
-<!-- datatree-start v1.0 -->
-# Datatree — Universal Agent Manifest
+<!-- mneme-start v1.0 -->
+# Mneme — Universal Agent Manifest
 
-> This file is the **universal** version of datatree's plugin manifest. It is
+> This file is the **universal** version of mneme's plugin manifest. It is
 > used identically by Codex, Cursor (via .cursor/rules), OpenCode, Aider,
 > Trae, Continue, Cline, RooCode, and any other AI harness that reads
 > AGENTS.md as a project-rules file.
 
-This project has the **datatree** local daemon installed. Datatree exposes:
+This project has the **mneme** local daemon installed. Mneme exposes:
 - 30+ MCP tools (recall, code graph, drift, step ledger, time machine, health)
 - 6 hooks (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd)
 - 14 view modes for the live code graph
 - Compaction-resilient Step Ledger
 
-All datatree state is stored in local SQLite shards under
-`~/.datatree/projects/<project-hash>/`. Nothing leaves this machine.
+All mneme state is stored in local SQLite shards under
+`~/.mneme/projects/<project-hash>/`. Nothing leaves this machine.
 
-## Use datatree tools first
+## Use mneme tools first
 
-Before reaching for grep / glob / file reads, check whether datatree can
+Before reaching for grep / glob / file reads, check whether mneme can
 answer the question structurally:
 
-| Goal | datatree tool |
+| Goal | mneme tool |
 |---|---|
 | Find usages | `find_references(symbol)` |
 | Trace impact of a change | `blast_radius(target)` |
@@ -37,7 +37,7 @@ Token-efficiency target: **<= 5 tool calls per task, <= 800 tokens of context.**
 
 ## Step Ledger — Compaction Resilience
 
-Datatree's killer feature is the Step Ledger. Whenever you take on a task
+Mneme's killer feature is the Step Ledger. Whenever you take on a task
 with three or more steps:
 
 1. `step_plan_from(markdown_path)` — ingest a plan, or `step_status` to read it.
@@ -47,13 +47,13 @@ with three or more steps:
 
 ## Drift Detection
 
-Datatree continuously scans changed files for rule violations and surfaces
+Mneme continuously scans changed files for rule violations and surfaces
 findings via `drift_findings(severity?)`. Critical findings show up as
-`<datatree-redirect>` blocks at the top of the next prompt. Re-anchor.
+`<mneme-redirect>` blocks at the top of the next prompt. Re-anchor.
 
 ## Local-Only Constraint
 
-Datatree never makes outbound network calls. No remote LLMs, no telemetry,
+Mneme never makes outbound network calls. No remote LLMs, no telemetry,
 no cloud sync. All extraction, embedding, and audit work runs locally
 (llama.cpp, bge-small ONNX, whisper.cpp, Tesseract).
 
@@ -82,4 +82,4 @@ no cloud sync. All extraction, embedding, and audit work runs locally
 If you observe a tool exceeding budget, run `health()` — supervisor will
 report the slow worker.
 
-<!-- datatree-end v1.0 -->
+<!-- mneme-end v1.0 -->

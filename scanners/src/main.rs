@@ -1,4 +1,4 @@
-//! Datatree scan-worker binary entry point.
+//! Mneme scan-worker binary entry point.
 //!
 //! Spawns a pool of [`ScanWorker`]s (default = `num_cpus * 2`), wires
 //! them to a shared MPSC scan-job channel and a shared MPSC results
@@ -17,7 +17,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
-use datatree_scanners::{
+use mneme_scanners::{
     job::ScanJob,
     registry::{RegistryConfig, ScannerRegistry},
     store_ipc::{BatcherConfig, FindingsBatch, StoreIpcBatcher},

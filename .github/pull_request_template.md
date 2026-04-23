@@ -1,4 +1,4 @@
-<!-- Thanks for contributing to datatree! Answer each section briefly. -->
+<!-- Thanks for contributing to mneme! Answer each section briefly. -->
 
 ## What changes
 <!-- 1-2 sentences. What does this PR do? -->

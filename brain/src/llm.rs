@@ -6,7 +6,7 @@
 //!
 //! Model layout:
 //! ```text
-//! ~/.datatree/llm/phi-3-mini-4k/
+//! ~/.mneme/llm/phi-3-mini-4k/
 //!   model.gguf      # Phi-3-mini-4k-instruct, Q4_K_M
 //! ```
 //!
@@ -52,7 +52,7 @@ struct Backend {
 }
 
 impl LocalLlm {
-    /// Convenience: load Phi-3 from the default `~/.datatree/llm/phi-3-mini-4k/model.gguf`.
+    /// Convenience: load Phi-3 from the default `~/.mneme/llm/phi-3-mini-4k/model.gguf`.
     pub fn from_default_path() -> Self {
         Self::new(&default_model_path())
     }
@@ -234,14 +234,14 @@ fn trim_for_prompt(s: &str, max_chars: usize) -> &str {
     }
 }
 
-/// Default GGUF path: `~/.datatree/llm/phi-3-mini-4k/model.gguf`.
+/// Default GGUF path: `~/.mneme/llm/phi-3-mini-4k/model.gguf`.
 pub fn default_model_path() -> PathBuf {
     if let Some(home) = dirs::home_dir() {
-        home.join(".datatree")
+        home.join(".mneme")
             .join("llm")
             .join("phi-3-mini-4k")
             .join("model.gguf")
     } else {
-        PathBuf::from(".datatree/llm/phi-3-mini-4k/model.gguf")
+        PathBuf::from(".mneme/llm/phi-3-mini-4k/model.gguf")
     }
 }

@@ -1,4 +1,4 @@
-//! Datatree Supervisor library.
+//! Mneme Supervisor library.
 //!
 //! Re-exports every module so the binary (`main.rs`) and external integration
 //! tests can use a stable surface. Nothing here performs side effects — see
@@ -52,7 +52,7 @@ pub async fn run(config: SupervisorConfig) -> Result<()> {
     // Advertise the PID-scoped IPC pipe path so CLI clients can discover it
     // (Windows named pipes are PID-unique to avoid "Access denied" zombies).
     if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
-        let disco = std::path::Path::new(&home).join(".datatree").join("supervisor.pipe");
+        let disco = std::path::Path::new(&home).join(".mneme").join("supervisor.pipe");
         if let Some(parent) = disco.parent() {
             let _ = std::fs::create_dir_all(parent);
         }

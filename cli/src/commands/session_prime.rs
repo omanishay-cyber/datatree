@@ -1,4 +1,4 @@
-//! `datatree session-prime` — SessionStart hook entry point.
+//! `mneme session-prime` — SessionStart hook entry point.
 //!
 //! Claude Code calls this when a new session starts. We respond with the
 //! initial primer block (recent decisions, open todos, last drift findings)
@@ -13,7 +13,7 @@ use crate::commands::build::make_client;
 use crate::error::CliResult;
 use crate::ipc::{IpcRequest, IpcResponse};
 
-/// CLI args for `datatree session-prime`.
+/// CLI args for `mneme session-prime`.
 #[derive(Debug, Args)]
 pub struct SessionPrimeArgs {
     /// Active project root.

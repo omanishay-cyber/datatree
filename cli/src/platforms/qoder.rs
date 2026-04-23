@@ -76,11 +76,11 @@ impl PlatformAdapter for Qoder {
             .ok_or_else(|| crate::error::CliError::Other("`hooks` is not an object".into()))?;
         hooks_obj.insert(
             "onTurnEnd".into(),
-            json!({ "command": "datatree turn-end", "owner": "datatree" }),
+            json!({ "command": "mneme turn-end", "owner": "mneme" }),
         );
         hooks_obj.insert(
             "onSessionStart".into(),
-            json!({ "command": "datatree session-prime", "owner": "datatree" }),
+            json!({ "command": "mneme session-prime", "owner": "mneme" }),
         );
         let serialized = serde_json::to_string_pretty(&value)? + "\n";
         if !ctx.dry_run {

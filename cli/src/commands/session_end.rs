@@ -1,4 +1,4 @@
-//! `datatree session-end` — SessionEnd hook entry point.
+//! `mneme session-end` — SessionEnd hook entry point.
 //!
 //! Final flush + manifest update (per design §6.6). Best-effort; we never
 //! want this hook to take down the host with a non-zero exit.
@@ -11,7 +11,7 @@ use crate::commands::build::make_client;
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree session-end`.
+/// CLI args for `mneme session-end`.
 #[derive(Debug, Args)]
 pub struct SessionEndArgs {
     /// Session id.

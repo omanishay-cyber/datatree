@@ -1,4 +1,4 @@
-//! `datatree` — the user-facing command-line tool.
+//! `mneme` — the user-facing command-line tool.
 //!
 //! The binary is intentionally thin. Every subcommand maps 1:1 to a
 //! handler in `crate::commands::<name>::run`. Errors bubble up as
@@ -6,35 +6,35 @@
 //! and shells can branch on.
 //!
 //! ```text
-//! datatree install [--platform=<name>] [--dry-run] [--scope=...]
-//! datatree uninstall [--platform=<name>] [--scope=...]
-//! datatree build [project_path]
-//! datatree update [project_path]
-//! datatree status
-//! datatree view [--web]
-//! datatree audit [--scope=theme|security|all]
-//! datatree recall <query> [--type=...] [--limit=N]
-//! datatree blast <target> [--depth=N]
-//! datatree graphify
-//! datatree godnodes [--n=N]
-//! datatree drift [--severity=...]
-//! datatree history <query> [--since=...]
-//! datatree snap
-//! datatree doctor
-//! datatree rebuild
-//! datatree step <op> [arg]
-//! datatree inject  --prompt=... --session-id=... --cwd=...
-//! datatree session-prime --project=... --session-id=...
-//! datatree pre-tool   --tool=... --params=... --session-id=...
-//! datatree post-tool  --tool=... --result-file=... --session-id=...
-//! datatree turn-end   --session-id=... [--pre-compact|--subagent]
-//! datatree session-end --session-id=...
-//! datatree daemon <op>
+//! mneme install [--platform=<name>] [--dry-run] [--scope=...]
+//! mneme uninstall [--platform=<name>] [--scope=...]
+//! mneme build [project_path]
+//! mneme update [project_path]
+//! mneme status
+//! mneme view [--web]
+//! mneme audit [--scope=theme|security|all]
+//! mneme recall <query> [--type=...] [--limit=N]
+//! mneme blast <target> [--depth=N]
+//! mneme graphify
+//! mneme godnodes [--n=N]
+//! mneme drift [--severity=...]
+//! mneme history <query> [--since=...]
+//! mneme snap
+//! mneme doctor
+//! mneme rebuild
+//! mneme step <op> [arg]
+//! mneme inject  --prompt=... --session-id=... --cwd=...
+//! mneme session-prime --project=... --session-id=...
+//! mneme pre-tool   --tool=... --params=... --session-id=...
+//! mneme post-tool  --tool=... --result-file=... --session-id=...
+//! mneme turn-end   --session-id=... [--pre-compact|--subagent]
+//! mneme session-end --session-id=...
+//! mneme daemon <op>
 //! ```
 
 use clap::{Parser, Subcommand};
-use datatree_cli::commands;
-use datatree_cli::error::{CliError, CliResult};
+use mneme_cli::commands;
+use mneme_cli::error::{CliError, CliResult};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use tracing::error;
@@ -42,9 +42,9 @@ use tracing::error;
 /// Top-level CLI args.
 #[derive(Debug, Parser)]
 #[command(
-    name = "datatree",
+    name = "mneme",
     version,
-    about = "Datatree — the AI superbrain. Persistent per-project memory + 14-view graph + drift detector + 30+ MCP tools.",
+    about = "Mneme — the AI superbrain. Persistent per-project memory + 14-view graph + drift detector + 30+ MCP tools.",
     long_about = None,
     propagate_version = true,
 )]
@@ -54,11 +54,11 @@ struct Cli {
     verbose: u8,
 
     /// Force JSON-formatted log output (otherwise pretty).
-    #[arg(long, global = true, env = "DATATREE_LOG_JSON")]
+    #[arg(long, global = true, env = "MNEME_LOG_JSON")]
     log_json: bool,
 
     /// Override the supervisor IPC socket path. Useful for tests.
-    #[arg(long, global = true, env = "DATATREE_SOCKET")]
+    #[arg(long, global = true, env = "MNEME_SOCKET")]
     socket: Option<PathBuf>,
 
     /// The subcommand to run.
@@ -66,10 +66,10 @@ struct Cli {
     cmd: Command,
 }
 
-/// Every datatree subcommand.
+/// Every mneme subcommand.
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Install datatree into one or more AI platforms.
+    /// Install mneme into one or more AI platforms.
     Install(commands::install::InstallArgs),
     /// Reverse of `install`.
     Uninstall(commands::uninstall::UninstallArgs),
@@ -125,7 +125,7 @@ enum Command {
     /// Daemon control: start | stop | restart | status | logs.
     Daemon(commands::daemon::DaemonArgs),
     /// Launch the Bun MCP server (used by Claude Code / Codex / etc.
-    /// to talk to datatree via stdio). `datatree mcp stdio`.
+    /// to talk to mneme via stdio). `mneme mcp stdio`.
     Mcp {
         /// Transport mode. Currently only `stdio` is supported.
         #[arg(default_value = "stdio")]
@@ -147,7 +147,7 @@ async fn main() -> ExitCode {
             // Hook outputs are JSON; print the error there too so the host
             // can display something. For interactive commands we use the
             // tracing logger.
-            error!(error = %err, exit_code = err.exit_code(), "datatree command failed");
+            error!(error = %err, exit_code = err.exit_code(), "mneme command failed");
             eprintln!("error: {err}");
             ExitCode::from(err.exit_code() as u8)
         }
@@ -188,7 +188,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
 
 /// Exec into the Bun MCP server. Searches for `mcp/index.ts` at:
 ///   1. $DATATREE_MCP_PATH (env var)
-///   2. ~/.datatree/mcp/index.ts (production install)
+///   2. ~/.mneme/mcp/index.ts (production install)
 ///   3. ./mcp/index.ts (development, relative to cwd)
 async fn launch_mcp(transport: String) -> CliResult<()> {
     if transport != "stdio" {
@@ -198,8 +198,8 @@ async fn launch_mcp(transport: String) -> CliResult<()> {
     }
     let candidates: Vec<PathBuf> = [
         std::env::var("DATATREE_MCP_PATH").ok().map(PathBuf::from),
-        dirs::home_dir().map(|h| h.join(".datatree").join("mcp").join("src").join("index.ts")),
-        dirs::home_dir().map(|h| h.join(".datatree").join("mcp").join("index.ts")),
+        dirs::home_dir().map(|h| h.join(".mneme").join("mcp").join("src").join("index.ts")),
+        dirs::home_dir().map(|h| h.join(".mneme").join("mcp").join("index.ts")),
         Some(PathBuf::from("mcp/src/index.ts")),
         Some(PathBuf::from("mcp/index.ts")),
     ]
@@ -259,7 +259,7 @@ fn init_tracing(verbose: u8, json: bool) {
         _ => "trace",
     };
     let env_filter =
-        EnvFilter::try_from_env("DATATREE_LOG").unwrap_or_else(|_| EnvFilter::new(level));
+        EnvFilter::try_from_env("MNEME_LOG").unwrap_or_else(|_| EnvFilter::new(level));
 
     if json {
         let _ = fmt()
@@ -275,7 +275,7 @@ fn init_tracing(verbose: u8, json: bool) {
     }
 }
 
-// Make the binary still buildable as `cargo build -p datatree-cli` even
+// Make the binary still buildable as `cargo build -p mneme-cli` even
 // when the workspace's `common` crate isn't yet present.
 #[allow(unused_imports)]
-use datatree_cli as _;
+use mneme_cli as _;

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # datatree :: uninstall-runtime.sh
 # Removes the runtime dependencies datatree installed.  Reads the install
-# manifest at ~/.datatree/install-manifest.json to know which deps were
+# manifest at ~/.mneme/install-manifest.json to know which deps were
 # installed by datatree (vs. preexisting on the user's machine).
 #
 # Flags:
@@ -19,10 +19,10 @@
 
 set -eu
 
-DATATREE_HOME="${DATATREE_HOME:-${HOME}/.datatree}"
-LOG_DIR="${DATATREE_HOME}/logs"
+MNEME_HOME="${MNEME_HOME:-${HOME}/.datatree}"
+LOG_DIR="${MNEME_HOME}/logs"
 LOG_FILE="${LOG_DIR}/install.log"
-MANIFEST_FILE="${DATATREE_HOME}/install-manifest.json"
+MANIFEST_FILE="${MNEME_HOME}/install-manifest.json"
 
 KEEP_SHARED=1   # default true
 ASSUME_YES=0
@@ -64,7 +64,7 @@ confirm() {
 
 if [ ! -f "$MANIFEST_FILE" ]; then
     err "Install manifest not found: $MANIFEST_FILE"
-    err "Either datatree was never installed, or you wiped \$DATATREE_HOME."
+    err "Either datatree was never installed, or you wiped \$MNEME_HOME."
     exit 1
 fi
 

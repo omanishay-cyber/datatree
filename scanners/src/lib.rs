@@ -1,4 +1,4 @@
-//! Datatree Scanners library.
+//! Mneme Scanners library.
 //!
 //! Public surface re-exported here so the binary (`main.rs`) and external
 //! integration tests use a stable, documented API.

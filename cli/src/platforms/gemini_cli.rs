@@ -38,7 +38,7 @@ impl PlatformAdapter for GeminiCli {
         McpFormat::JsonObject
     }
 
-    /// Drop a small TOML command that surfaces datatree under `/datatree`
+    /// Drop a small TOML command that surfaces mneme under `/mneme`
     /// in Gemini CLI.
     fn write_hooks(&self, ctx: &AdapterContext) -> CliResult<Option<PathBuf>> {
         let cmd_dir = ctx.home.join(".gemini").join("commands");
@@ -46,10 +46,10 @@ impl PlatformAdapter for GeminiCli {
             std::fs::create_dir_all(&cmd_dir)
                 .map_err(|e| crate::error::CliError::io(&cmd_dir, e))?;
         }
-        let cmd_path = cmd_dir.join("datatree.toml");
-        let body = "name = \"datatree\"\n\
-                    description = \"Run a datatree command (status / recall / blast / step ...)\"\n\
-                    command = \"datatree\"\n\
+        let cmd_path = cmd_dir.join("mneme.toml");
+        let body = "name = mneme\"\n\
+                    description = \"Run a mneme command (status / recall / blast / step ...)\"\n\
+                    command = mneme\"\n\
                     args = [\"$@\"]\n";
         if !ctx.dry_run {
             std::fs::write(&cmd_path, body)

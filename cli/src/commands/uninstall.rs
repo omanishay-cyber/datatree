@@ -1,7 +1,7 @@
-//! `datatree uninstall` — reverse of [`install`](super::install).
+//! `mneme uninstall` — reverse of [`install`](super::install).
 //!
-//! Strips the marker block from each manifest and removes the `datatree`
-//! entry from each MCP config. Safe to re-run; non-datatree content is
+//! Strips the marker block from each manifest and removes the `mneme`
+//! entry from each MCP config. Safe to re-run; non-mneme content is
 //! preserved verbatim.
 
 use clap::Args;
@@ -13,7 +13,7 @@ use crate::platforms::{
     AdapterContext, InstallScope, Platform, PlatformDetector,
 };
 
-/// CLI args for `datatree uninstall`.
+/// CLI args for `mneme uninstall`.
 #[derive(Debug, Args)]
 pub struct UninstallArgs {
     /// Restrict to a single platform; otherwise every detected platform.

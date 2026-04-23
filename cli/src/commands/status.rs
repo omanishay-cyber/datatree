@@ -1,4 +1,4 @@
-//! `datatree status` — graph stats, drift findings count, last build time.
+//! `mneme status` — graph stats, drift findings count, last build time.
 
 use clap::Args;
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use crate::commands::build::{handle_response, make_client};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree status`.
+/// CLI args for `mneme status`.
 #[derive(Debug, Args)]
 pub struct StatusArgs {
     /// Optional project path. Defaults to CWD.

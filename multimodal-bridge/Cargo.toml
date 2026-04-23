@@ -1,16 +1,16 @@
 [package]
-name = "datatree-multimodal-bridge"
+name = "mneme-multimodal"
 version.workspace = true
 edition.workspace = true
 license = "Proprietary"
 description = "Rust shim that spawns the datatree Python multimodal sidecar and proxies messages"
 
 [[bin]]
-name = "datatree-multimodal-bridge"
+name = "mneme-multimodal"
 path = "src/main.rs"
 
 [dependencies]
-datatree-common.workspace = true
+common = { path = "../common", package = "mneme-common" }
 tokio = { workspace = true, features = ["full"] }
 serde.workspace = true
 serde_json.workspace = true

@@ -1,5 +1,5 @@
 [package]
-name = "datatree-livebus"
+name = "mneme-livebus"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.78"
@@ -8,11 +8,11 @@ authors = ["Anish Trivedi"]
 description = "Datatree Live Bus: local SSE/WebSocket fan-out of worker events for Claude Code, vision app, and multi-agent sessions."
 
 [[bin]]
-name = "datatree-livebus"
+name = "mneme-livebus"
 path = "src/main.rs"
 
 [lib]
-name = "datatree_livebus"
+name = "mneme_livebus"
 path = "src/lib.rs"
 
 [dependencies]
@@ -49,7 +49,7 @@ interprocess = { version = "2.2", features = ["tokio"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 
 # Local workspace member (kept optional for standalone builds)
-common = { path = "../common", package = "datatree-common" }
+common = { path = "../common", package = "mneme-common" }
 
 [features]
 default = []

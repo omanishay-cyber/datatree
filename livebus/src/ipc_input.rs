@@ -16,9 +16,9 @@
 //!
 //! ## Path conventions
 //!
-//! - Linux/macOS: `$XDG_RUNTIME_DIR/datatree/livebus.sock` (falls back to
-//!   `/tmp/datatree-livebus.sock`).
-//! - Windows: `\\.\pipe\datatree-livebus`.
+//! - Linux/macOS: `$XDG_RUNTIME_DIR/mneme/livebus.sock` (falls back to
+//!   `/tmp/mneme-livebus.sock`).
+//! - Windows: `\\.\pipe\mneme-livebus`.
 //!
 //! Use [`default_ipc_path`] to compute a sensible default.
 
@@ -43,18 +43,18 @@ pub const MAX_FRAME_BYTES: usize = 1024 * 1024; // 1 MiB
 pub fn default_ipc_path() -> PathBuf {
     #[cfg(windows)]
     {
-        PathBuf::from(r"\\.\pipe\datatree-livebus")
+        PathBuf::from(r"\\.\pipe\mneme-livebus")
     }
     #[cfg(unix)]
     {
         if let Ok(rt) = std::env::var("XDG_RUNTIME_DIR") {
             let mut p = PathBuf::from(rt);
-            p.push("datatree");
+            p.push("mneme");
             let _ = std::fs::create_dir_all(&p);
             p.push("livebus.sock");
             p
         } else {
-            PathBuf::from("/tmp/datatree-livebus.sock")
+            PathBuf::from("/tmp/mneme-livebus.sock")
         }
     }
 }

@@ -19,8 +19,8 @@ use std::process::ExitCode;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
-use brain::worker::{spawn_worker, WorkerConfig};
-use brain::{BrainJob, BrainResult};
+use mneme_brain::worker::{spawn_worker, WorkerConfig};
+use mneme_brain::{BrainJob, BrainResult};
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> ExitCode {

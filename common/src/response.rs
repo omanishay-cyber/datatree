@@ -4,7 +4,7 @@ use uuid::Uuid;
 use crate::error::DbError;
 use crate::layer::DbLayer;
 
-/// Uniform envelope returned by every datatree storage operation.
+/// Uniform envelope returned by every mneme storage operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Response<T> {
     pub success: bool,

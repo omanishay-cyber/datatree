@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to datatree will be recorded here.
+All notable changes to mneme will be recorded here.
 
 Format loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
@@ -9,7 +9,7 @@ Versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Planned for v0.2
 - Wire remaining 30 MCP tools to `store.ts` helpers (pattern already shipped for `blast_radius`, `recall_concept`, `health`)
-- Supervisor-mediated parse dispatch (currently `datatree build` runs in-CLI-process)
+- Supervisor-mediated parse dispatch (currently `mneme build` runs in-CLI-process)
 - Real BGE-small embeddings via `candle-transformers` (deps commented in `brain/Cargo.toml`)
 - Tier-2 Tree-sitter grammars (Swift, Scala, Vue, Julia, Haskell, Kotlin, Svelte, Solidity, Zig)
 - C# grammar ABI bump to v13/14 runtime compatibility
@@ -28,7 +28,7 @@ Initial public release. .
 - **33+ MCP tools** — `blast_radius`, `recall_concept`, `health` wired to real data; 30+ follow the same pattern
 - **14 visualization view modes** (source written; WebGL renderer targets 100 000+ nodes)
 - **18-platform installer** — auto-detects Claude Code, Codex, Cursor, Windsurf, Zed, Continue, OpenCode, Antigravity, Gemini CLI, Aider, Copilot CLI/VS Code, Factory Droid, Trae, Trae-CN, Kiro, Qoder, OpenClaw, Hermes, Qwen
-- **Per-project SQLite graph** built in-process by `datatree build .` via Tree-sitter → extractor → `store::inject` pipeline
+- **Per-project SQLite graph** built in-process by `mneme build .` via Tree-sitter → extractor → `store::inject` pipeline
 - **Pure-Rust hashing-trick embedder** — real similarity-preserving vectors with no native DLL dependency
 - **Live SSE/WebSocket push channel** (code + schema complete; vision app subscribes)
 - **Knowledge-worker mode** — drinks every `.md`, usable for blogs / research / notes, not only code
@@ -37,8 +37,8 @@ Initial public release. .
 ### Verified end-to-end on 2026-04-23
 - 40 of 40 workers running under supervisor
 - `curl http://127.0.0.1:7777/health` returns live SLA JSON
-- `datatree install` writes real manifest blocks to `~/CLAUDE.md`, `~/AGENTS.md`, `~/.claude.json`, `~/.codex/config.toml`
-- `datatree build .` indexed the datatree repo itself: **1 922 nodes + 3 643 edges** across 50 files (1 771 calls, 1 605 contains, 267 imports)
+- `mneme install` writes real manifest blocks to `~/CLAUDE.md`, `~/AGENTS.md`, `~/.claude.json`, `~/.codex/config.toml`
+- `mneme build .` indexed the mneme repo itself: **1 922 nodes + 3 643 edges** across 50 files (1 771 calls, 1 605 contains, 267 imports)
 - MCP JSON-RPC verified: `recall_concept("blast")` returned real hits pointing at `cli/src/commands/blast.rs`; `health` returned `status=green` with 40 live worker PIDs
 
 ### Known v0.1 constraints
@@ -52,9 +52,9 @@ Initial public release. .
 - Bun MCP server: 200+ TS deps installed, zod-validated, hot-reload wired
 - Vision Bun app: 438 deps installed, 14 views scaffolded
 - Python multimodal sidecar: installed, 20+ files, pytest-compatible
-- 18 platform templates with marker-based idempotent install (`<!-- datatree-start v1.0 -->`)
+- 18 platform templates with marker-based idempotent install (`<!-- mneme-start v1.0 -->`)
 - Install scripts (POSIX + PowerShell) for supervisor, models, runtime deps, uninstall
 - GitHub Actions CI (build + test + clippy + bun check)
 
-[Unreleased]: https://github.com/omanishay-cyber/datatree/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/omanishay-cyber/datatree/releases/tag/v0.1.0
+[Unreleased]: https://github.com/omanishay-cyber/mneme/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/omanishay-cyber/mneme/releases/tag/v0.1.0

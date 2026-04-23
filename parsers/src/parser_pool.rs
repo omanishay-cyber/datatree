@@ -81,7 +81,7 @@ impl std::fmt::Debug for ParserPool {
 
 impl ParserPool {
     /// Recommended default: `cpu_count * 4` parsers per enabled language.
-    /// See design §21.3 ("3-8 parsers per CPU core; datatree default 4x").
+    /// See design §21.3 ("3-8 parsers per CPU core; mneme default 4x").
     pub fn with_default_size() -> Result<Self, ParserError> {
         // Workers PER LANGUAGE per PROCESS. The supervisor runs multiple
         // parser-worker processes in parallel, so intra-process parallelism

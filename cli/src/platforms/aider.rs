@@ -61,13 +61,13 @@ impl PlatformAdapter for Aider {
         } else {
             String::new()
         };
-        let snippet = "\n# datatree MCP server (added by `datatree install`)\n\
+        let snippet = "\n# mneme MCP server (added by `mneme install`)\n\
                        mcp_servers:\n  \
-                         datatree:\n    \
-                           command: datatree\n    \
+                         mneme:\n    \
+                           command: mneme\n    \
                            args: [mcp, stdio]\n    \
-                           env:\n      DATATREE_LOG: info\n";
-        if existing.contains("# datatree MCP server") {
+                           env:\n      MNEME_LOG: info\n";
+        if existing.contains("# mneme MCP server") {
             return Ok(path);
         }
         let merged = format!("{existing}{snippet}");

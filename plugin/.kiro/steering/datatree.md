@@ -1,19 +1,19 @@
 ---
-title: Datatree
+title: Mneme
 description: Local persistent project memory + live code graph + drift detector + 30+ MCP tools.
 inclusion: always
 ---
 
-<!-- datatree-start v1.0 -->
-# Datatree — Kiro Steering
+<!-- mneme-start v1.0 -->
+# Mneme — Kiro Steering
 
-This project has the **datatree** local daemon installed. Datatree gives
+This project has the **mneme** local daemon installed. Mneme gives
 Kiro persistent SQLite memory, a live code graph, drift detection, a
 compaction-resilient step ledger, and 30+ MCP tools.
 
 ## Kiro-specific Routing
 
-Kiro's spec-driven workflow benefits enormously from datatree's step ledger.
+Kiro's spec-driven workflow benefits enormously from mneme's step ledger.
 Every spec section becomes a step row in `tasks.db`, with its acceptance
 check automatically captured. After Kiro restarts:
 
@@ -38,11 +38,11 @@ check automatically captured. After Kiro restarts:
 ## Drift Redirects
 
 If two consecutive Kiro turns drift from the goal, the next prompt is
-prefixed with `<datatree-redirect>`. Re-anchor before continuing.
+prefixed with `<mneme-redirect>`. Re-anchor before continuing.
 
 ## Local Only
 
-Datatree makes zero outbound network calls. All inference and embeddings
-are local. State lives in `~/.datatree/projects/<hash>/`.
+Mneme makes zero outbound network calls. All inference and embeddings
+are local. State lives in `~/.mneme/projects/<hash>/`.
 
-<!-- datatree-end v1.0 -->
+<!-- mneme-end v1.0 -->

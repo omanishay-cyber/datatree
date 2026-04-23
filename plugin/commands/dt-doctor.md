@@ -1,12 +1,12 @@
 ---
 name: /dt-doctor
-description: Run datatree's full self-test suite — IPC round-trip, shard integrity, schema versions, worker health, SLA snapshot.
-command: datatree doctor
+description: Run mneme's full self-test suite — IPC round-trip, shard integrity, schema versions, worker health, SLA snapshot.
+command: mneme doctor
 ---
 
 # /dt-doctor
 
-Run datatree's self-test suite and emit a structured health report.
+Run mneme's self-test suite and emit a structured health report.
 
 ## Usage
 
@@ -34,10 +34,10 @@ Returns per-check status and a list of remediation recommendations.
 
 - After install: `/dt-doctor` to confirm the daemon is healthy.
 - When anything feels slow: `/dt-doctor` to see which worker is degraded.
-- In CI: `datatree doctor --json | jq .ok` (exit 0 only if `ok = true`).
+- In CI: `mneme doctor --json | jq .ok` (exit 0 only if `ok = true`).
 
 If any check fails, the report includes a recommendation. The most common
-fix is `datatree daemon restart`.
+fix is `mneme daemon restart`.
 
 See also: `/dt-rebuild` (last resort — re-parse from scratch) and the
-`datatree-doctor` sub-agent.
+`mneme-doctor` sub-agent.

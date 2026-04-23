@@ -16,10 +16,10 @@
 
 set -eu
 
-DATATREE_HOME="${DATATREE_HOME:-${HOME}/.datatree}"
-LOG_DIR="${DATATREE_HOME}/logs"
+MNEME_HOME="${MNEME_HOME:-${HOME}/.datatree}"
+LOG_DIR="${MNEME_HOME}/logs"
 LOG_FILE="${LOG_DIR}/install.log"
-MODEL_DIR="${DATATREE_HOME}/llm"
+MODEL_DIR="${MNEME_HOME}/llm"
 
 JSON=0
 NO_COLOR=0
@@ -148,17 +148,17 @@ WHISPER_PATH="${MODEL_DIR}/faster-whisper-base/model.bin"
 if [ -f "$BGE_PATH" ]; then
     BGE_LINE="bge-small\t1\t${BGE_PATH} (~33MB)\t\t1"
 else
-    BGE_LINE="bge-small\t0\t\tdatatree models install --required --from <dir>\t1"
+    BGE_LINE="bge-small\t0\tmneme models install --required --from <dir>\t1"
 fi
 if [ -f "$PHI3_PATH" ]; then
     PHI3_LINE="Phi-3\t1\t${PHI3_PATH} (~2.4GB)\t\t0"
 else
-    PHI3_LINE="Phi-3\t0\toptional; ~2.4GB\tdatatree models install --with-phi3 --from <dir>\t0"
+    PHI3_LINE="Phi-3\t0\toptional; ~2.4GBmneme models install --with-phi3 --from <dir>\t0"
 fi
 if [ -f "$WHISPER_PATH" ]; then
     WHISPER_LINE="faster-whisper\t1\t${WHISPER_PATH} (~140MB)\t\t0"
 else
-    WHISPER_LINE="faster-whisper\t0\toptional; ~140MB\tdatatree models install --with-whisper --from <dir>\t0"
+    WHISPER_LINE="faster-whisper\t0\toptional; ~140MBmneme models install --with-whisper --from <dir>\t0"
 fi
 
 ALL_ROWS="$(printf '%s\n%s\n%s\n%s\n%s\n' "$RAW" "$SQLITE_LINE" "$BGE_LINE" "$PHI3_LINE" "$WHISPER_LINE")"

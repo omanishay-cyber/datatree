@@ -1,51 +1,51 @@
 {
-  "name": "datatree",
+  "name": "mneme",
   "version": "0.1.0",
-  "displayName": "Datatree — The AI Superbrain",
+  "displayName": "Mneme — The AI Superbrain",
   "description": "Persistent per-project SQLite memory + 14-view live graph + drift detector + 30+ MCP tools. Claude never starts cold, never loses its place.",
   "author": "Anish Trivedi",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/omanishay-cyber/datatree",
+  "homepage": "https://github.com/omanishay-cyber/mneme",
   "scopes": ["global", "user", "project"],
   "platforms": ["win32", "darwin", "linux"],
   "components": {
     "mcpServers": [
-      { "name": "datatree", "config": ".mcp/datatree.json" }
+      { "name": "mneme", "config": ".mcp/mneme.json" }
     ],
     "hooks": [
-      { "event": "SessionStart", "command": "datatree session-prime" },
-      { "event": "UserPromptSubmit", "command": "datatree inject" },
-      { "event": "PreToolUse", "command": "datatree pre-tool" },
-      { "event": "PostToolUse", "command": "datatree post-tool" },
-      { "event": "Stop", "command": "datatree turn-end" },
-      { "event": "SessionEnd", "command": "datatree session-end" }
+      { "event": "SessionStart", "command": "mneme session-prime" },
+      { "event": "UserPromptSubmit", "command": "mneme inject" },
+      { "event": "PreToolUse", "command": "mneme pre-tool" },
+      { "event": "PostToolUse", "command": "mneme post-tool" },
+      { "event": "Stop", "command": "mneme turn-end" },
+      { "event": "SessionEnd", "command": "mneme session-end" }
     ],
     "skills": [
-      "skills/datatree-query.md",
-      "skills/datatree-audit.md",
-      "skills/datatree-resume.md"
+      "skills/mneme-query.md",
+      "skills/mneme-audit.md",
+      "skills/mneme-resume.md"
     ],
     "agents": [
-      "agents/datatree-archivist.md",
-      "agents/datatree-drift-hunter.md",
-      "agents/datatree-blast-tracer.md",
-      "agents/datatree-step-verifier.md",
-      "agents/datatree-doctor.md",
-      "agents/datatree-resumer.md"
+      "agents/mneme-archivist.md",
+      "agents/mneme-drift-hunter.md",
+      "agents/mneme-blast-tracer.md",
+      "agents/mneme-step-verifier.md",
+      "agents/mneme-doctor.md",
+      "agents/mneme-resumer.md"
     ],
     "commands": [
-      { "name": "/dt-view", "command": "datatree view" },
-      { "name": "/dt-audit", "command": "datatree audit" },
-      { "name": "/dt-recall", "command": "datatree recall" },
-      { "name": "/dt-blast", "command": "datatree blast" },
-      { "name": "/dt-graphify", "command": "datatree graphify" },
-      { "name": "/dt-godnodes", "command": "datatree godnodes" },
-      { "name": "/dt-drift", "command": "datatree drift" },
-      { "name": "/dt-history", "command": "datatree history" },
-      { "name": "/dt-snap", "command": "datatree snap" },
-      { "name": "/dt-doctor", "command": "datatree doctor" },
-      { "name": "/dt-rebuild", "command": "datatree rebuild" },
-      { "name": "/dt-step", "command": "datatree step" }
+      { "name": "/dt-view", "command": "mneme view" },
+      { "name": "/dt-audit", "command": "mneme audit" },
+      { "name": "/dt-recall", "command": "mneme recall" },
+      { "name": "/dt-blast", "command": "mneme blast" },
+      { "name": "/dt-graphify", "command": "mneme graphify" },
+      { "name": "/dt-godnodes", "command": "mneme godnodes" },
+      { "name": "/dt-drift", "command": "mneme drift" },
+      { "name": "/dt-history", "command": "mneme history" },
+      { "name": "/dt-snap", "command": "mneme snap" },
+      { "name": "/dt-doctor", "command": "mneme doctor" },
+      { "name": "/dt-rebuild", "command": "mneme rebuild" },
+      { "name": "/dt-step", "command": "mneme step" }
     ],
     "manifests": {
       "claude": "CLAUDE.md",
@@ -53,8 +53,8 @@
       "gemini": "GEMINI.md",
       "qoder": "QODER.md",
       "qwen": "QWEN.md",
-      "cursor": ".cursor/rules/datatree.mdc",
-      "kiro": ".kiro/steering/datatree.md"
+      "cursor": ".cursor/rules/mneme.mdc",
+      "kiro": ".kiro/steering/mneme.md"
     }
   },
   "install": {

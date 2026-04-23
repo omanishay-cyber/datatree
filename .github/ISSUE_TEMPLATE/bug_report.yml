@@ -76,7 +76,7 @@ body:
       label: Logs
       description: |
         - `datatree --verbose doctor` output
-        - `~/.datatree/supervisor.log` (last 50 lines)
+        - `~/.mneme/supervisor.log` (last 50 lines)
         - Any relevant stderr
       render: text
 

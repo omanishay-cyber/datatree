@@ -1,5 +1,5 @@
 {
-  "$comment": "datatree install manifest -- example shape. Lives at ~/.datatree/install-manifest.json. Updated on every install/uninstall run. Single source of truth for what datatree installed vs. what was already on the machine.",
+  "$comment": "mneme install manifest -- example shape. Lives at ~/.mneme/install-manifest.json. Updated on every install/uninstall run. Single source of truth for what mneme installed vs. what was already on the machine.",
 
   "datatree_version": "0.1.0",
   "installed_at": "2026-04-23T15:00:00Z",
@@ -15,7 +15,7 @@
   ],
 
   "models": {
-    "bge-small-en-v1.5": "~/.datatree/llm/bge-small/model.onnx",
+    "bge-small-en-v1.5": "~/.mneme/llm/bge-small/model.onnx",
     "phi3-mini": null,
     "faster-whisper-base": null
   }

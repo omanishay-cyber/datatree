@@ -1,4 +1,4 @@
-//! `datatree step <op> [arg]` — Step Ledger ops.
+//! `mneme step <op> [arg]` — Step Ledger ops.
 //!
 //! Per design §5.5 / §7.2:
 //!
@@ -16,7 +16,7 @@ use crate::commands::build::{handle_response, make_client};
 use crate::error::{CliError, CliResult};
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree step`.
+/// CLI args for `mneme step`.
 #[derive(Debug, Args)]
 pub struct StepArgs {
     /// Operation: `status`, `show`, `verify`, `complete`, `resume`, `plan-from`.

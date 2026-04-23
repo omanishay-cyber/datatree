@@ -1,4 +1,4 @@
-//! `datatree view` — open the vision app.
+//! `mneme view` — open the vision app.
 //!
 //! Tries the native Tauri binary first (per design §9.8 "Native desktop"),
 //! and falls back to opening `http://localhost:7777` in the user's browser.
@@ -14,7 +14,7 @@ use crate::error::{CliError, CliResult};
 /// Default URL for the web fallback.
 const DEFAULT_WEB_URL: &str = "http://localhost:7777";
 
-/// CLI args for `datatree view`.
+/// CLI args for `mneme view`.
 #[derive(Debug, Args)]
 pub struct ViewArgs {
     /// Skip the native Tauri binary; open the browser at
@@ -87,9 +87,9 @@ fn open_browser(url: &str) -> CliResult<()> {
     Ok(())
 }
 
-/// Default install location for the vision app (`~/.datatree/bin/datatree-vision`).
+/// Default install location for the vision app (`~/.mneme/bin/mneme-vision`).
 fn default_vision_binary() -> PathBuf {
-    let mut p = crate::state_dir().join("bin").join("datatree-vision");
+    let mut p = crate::state_dir().join("bin").join("mneme-vision");
     if cfg!(windows) {
         p.set_extension("exe");
     }

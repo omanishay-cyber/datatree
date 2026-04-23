@@ -1,6 +1,6 @@
 //! Control-plane IPC.
 //!
-//! The CLI tool (`datatree daemon ...`) connects to the supervisor over a
+//! The CLI tool (`mneme daemon ...`) connects to the supervisor over a
 //! Unix domain socket (Unix) or named pipe (Windows) and exchanges
 //! length-prefixed JSON messages. The supervisor listens forever; each
 //! incoming connection is handled on its own task.
@@ -163,7 +163,7 @@ fn build_listener(path: &PathBuf) -> Result<Listener, SupervisorError> {
     let pipe_name = path
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or("datatree-supervisor")
+        .unwrap_or("mneme-supervisor")
         .to_string();
     let name = pipe_name
         .as_str()
@@ -305,7 +305,7 @@ pub async fn connect_client(path: &PathBuf) -> Result<Stream, SupervisorError> {
         let pipe_name = path
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or("datatree-supervisor")
+            .unwrap_or("mneme-supervisor")
             .to_string();
         let name = pipe_name
             .as_str()

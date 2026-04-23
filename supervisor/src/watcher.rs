@@ -29,7 +29,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use common::{ids::ProjectId, layer::DbLayer, paths::PathManager};
-use datatree_store::{inject::InjectOptions, Store};
+use store::{inject::InjectOptions, Store};
 use parsers::{extractor::Extractor, incremental::IncrementalParser, parser_pool::ParserPool, Language};
 
 /// Debounce window for collapsing burst saves.
@@ -49,7 +49,7 @@ pub enum ChangeKind {
 }
 
 /// Snapshot of watcher-wide performance counters. Surfaced by the SLA
-/// dashboard so `datatree daemon status` can show the p95 latency.
+/// dashboard so `mneme daemon status` can show the p95 latency.
 #[derive(Debug, Clone, Default)]
 pub struct WatcherStats {
     /// Total debounced re-index jobs that ran to completion.
@@ -167,7 +167,7 @@ pub async fn run_watcher(
         .unwrap_or("project")
         .to_string();
     // Ensure the shard exists — if the user calls `daemon watch` before
-    // `datatree build`, we still come up cleanly instead of panicking.
+    // `mneme build`, we still come up cleanly instead of panicking.
     store
         .builder
         .build_or_migrate(&project_id, &canonical, &project_name)
@@ -302,7 +302,7 @@ async fn reindex_one(
         // Collect qualified names first so we can wipe incoming edges too.
         let q = store
             .query
-            .query_rows(datatree_store::query::Query {
+            .query_rows(store::query::Query {
                 project: project_id.clone(),
                 layer: DbLayer::Graph,
                 sql: "SELECT qualified_name FROM nodes WHERE file_path = ?1".into(),
@@ -395,7 +395,7 @@ async fn reindex_one(
     // no natural UNIQUE and would duplicate on every save without this step.
     let old_nodes = store
         .query
-        .query_rows(datatree_store::query::Query {
+        .query_rows(store::query::Query {
             project: project_id.clone(),
             layer: DbLayer::Graph,
             sql: "SELECT qualified_name FROM nodes WHERE file_path = ?1".into(),
@@ -535,7 +535,7 @@ fn event_kind(ev: &notify::Event) -> ChangeKind {
 }
 
 /// Mirrors the ignore list from `cli/src/commands/build.rs` plus the extras
-/// from the task spec (`.datatree/`, `.git/`, explicit `node_modules`).
+/// from the task spec (`.mneme/`, `.git/`, explicit `node_modules`).
 pub fn is_ignored(path: &Path, root: &Path) -> bool {
     // Quick check against the immediate filename first.
     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -544,7 +544,7 @@ pub fn is_ignored(path: &Path, root: &Path) -> bool {
             "target"
                 | "node_modules"
                 | ".git"
-                | ".datatree"
+                | ".mneme"
                 | "dist"
                 | "build"
                 | ".next"
@@ -567,7 +567,7 @@ pub fn is_ignored(path: &Path, root: &Path) -> bool {
     for comp in rel.components() {
         let s = comp.as_os_str().to_string_lossy();
         match s.as_ref() {
-            "target" | "node_modules" | ".git" | ".datatree" | "dist" | "build" | ".next"
+            "target" | "node_modules" | ".git" | ".mneme" | "dist" | "build" | ".next"
             | ".nuxt" | ".svelte-kit" | ".venv" | "venv" | "__pycache__" | ".pytest_cache"
             | ".mypy_cache" | ".ruff_cache" | ".idea" | ".vscode" => return true,
             _ => {}
@@ -666,7 +666,7 @@ mod tests {
         assert!(is_ignored(Path::new("/proj/target/debug/foo.rs"), &root));
         assert!(is_ignored(Path::new("/proj/node_modules/pkg/index.js"), &root));
         assert!(is_ignored(Path::new("/proj/.git/HEAD"), &root));
-        assert!(is_ignored(Path::new("/proj/.datatree/graph.db"), &root));
+        assert!(is_ignored(Path::new("/proj/.mneme/graph.db"), &root));
         assert!(!is_ignored(Path::new("/proj/src/main.rs"), &root));
     }
 

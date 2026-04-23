@@ -59,7 +59,7 @@ export const tool: ToolDescriptor<
         target: input.target,
         affected_files: [],
         affected_symbols: [
-          `(datatree not yet built — run \`datatree build .\` first; ${(err as Error).message})`,
+          `(datatree not yet built — run mneme build .\` first; ${(err as Error).message})`,
         ],
         test_files: [],
         total_count: 0,

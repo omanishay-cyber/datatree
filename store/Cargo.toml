@@ -1,20 +1,20 @@
 [package]
-name = "datatree-store"
+name = "mneme-store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Database Operations Layer (Builder/Finder/Path/Query/Inject/Lifecycle) for datatree"
 
 [lib]
-name = "datatree_store"
+name = "mneme_store"
 path = "src/lib.rs"
 
 [[bin]]
-name = "datatree-store"
+name = "mneme-store"
 path = "src/main.rs"
 
 [dependencies]
-datatree-common.workspace = true
+common = { path = "../common", package = "mneme-common" }
 tokio.workspace = true
 async-trait.workspace = true
 rusqlite.workspace = true

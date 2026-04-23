@@ -1,6 +1,6 @@
 # datatree :: uninstall-runtime.ps1
 # Removes the runtime dependencies datatree installed on Windows.  Reads
-# ~/.datatree/install-manifest.json to distinguish deps installed by
+# ~/.mneme/install-manifest.json to distinguish deps installed by
 # datatree from deps that already existed on the machine.
 #
 # Flags:
@@ -20,7 +20,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$DataTreeHome = if ($env:DATATREE_HOME) { $env:DATATREE_HOME } else { Join-Path $HOME ".datatree" }
+$DataTreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $HOME ".datatree" }
 $LogDir       = Join-Path $DataTreeHome "logs"
 $LogFile      = Join-Path $LogDir       "install.log"
 $ManifestFile = Join-Path $DataTreeHome "install-manifest.json"
@@ -50,7 +50,7 @@ function Confirm-Action {
 
 if (-not (Test-Path $ManifestFile)) {
     Write-Log "ERROR" "Install manifest not found: $ManifestFile"
-    Write-Log "ERROR" "Either datatree was never installed, or DATATREE_HOME was wiped."
+    Write-Log "ERROR" "Either datatree was never installed, or MNEME_HOME was wiped."
     exit 1
 }
 

@@ -1,4 +1,4 @@
-//! `datatree graphify` — multimodal extraction pass.
+//! `mneme graphify` — multimodal extraction pass.
 //!
 //! Triggers the multimodal-bridge worker which fans out to PyMuPDF /
 //! Tesseract / faster-whisper / nbformat / python-docx / openpyxl as
@@ -11,7 +11,7 @@ use crate::commands::build::{handle_response, make_client, resolve_project};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree graphify`.
+/// CLI args for `mneme graphify`.
 #[derive(Debug, Args)]
 pub struct GraphifyArgs {
     /// Project root. Defaults to CWD.

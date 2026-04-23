@@ -1,4 +1,4 @@
-//! `bench_retrieval` — datatree retrieval benchmark driver.
+//! `bench_retrieval` — mneme retrieval benchmark driver.
 //!
 //! Three subcommands:
 //!   * `index <repo_path>`              — full index build, prints JSON.
@@ -18,7 +18,7 @@ use benchmarks::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "bench_retrieval", about = "Datatree retrieval benchmark harness")]
+#[command(name = "bench_retrieval", about = "Mneme retrieval benchmark harness")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -190,7 +190,7 @@ fn print_markdown(report: &CompareReport) {
     println!("### Totals");
     println!();
     println!(
-        "| Metric | Datatree | Cold baseline |\n|---|---|---|\n| Tokens (sum) | {} | {} |\n| Wall time (ms) | {} | {} |\n| Precision@5 (%) | {} | {} |",
+        "| Metric | Mneme | Cold baseline |\n|---|---|---|\n| Tokens (sum) | {} | {} |\n| Wall time (ms) | {} | {} |\n| Precision@5 (%) | {} | {} |",
         report.datatree_total_tokens,
         report.cold_total_tokens,
         report.datatree_total_ms,

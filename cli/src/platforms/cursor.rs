@@ -67,16 +67,16 @@ impl PlatformAdapter for Cursor {
             .ok_or_else(|| crate::error::CliError::Other("hooks.json root is not object".into()))?;
 
         let entries = json!({
-            "sessionStart":          [{ "command": "datatree session-prime", "owner": "datatree" }],
-            "afterFileEdit":         [{ "command": "datatree post-tool",     "owner": "datatree" }],
-            "beforeShellExecution":  [{ "command": "datatree pre-tool",      "owner": "datatree" }]
+            "sessionStart":          [{ "command": "mneme session-prime", "owner": "mneme" }],
+            "afterFileEdit":         [{ "command": "mneme post-tool",     "owner": "mneme" }],
+            "beforeShellExecution":  [{ "command": "mneme pre-tool",      "owner": "mneme" }]
         });
         for (event, arr) in entries.as_object().unwrap() {
             let target = root.entry(event.clone()).or_insert_with(|| json!([]));
             let target_arr = target.as_array_mut().ok_or_else(|| {
                 crate::error::CliError::Other(format!("{event} is not an array"))
             })?;
-            target_arr.retain(|e| e.get("owner").and_then(|o| o.as_str()) != Some("datatree"));
+            target_arr.retain(|e| e.get("owner").and_then(|o| o.as_str()) != Some("mneme"));
             for entry in arr.as_array().unwrap() {
                 target_arr.push(entry.clone());
             }

@@ -1,4 +1,4 @@
-//! `datatree post-tool` — PostToolUse hook entry point.
+//! `mneme post-tool` — PostToolUse hook entry point.
 //!
 //! Fire-and-forget capture (per design §6.4). We send the request to the
 //! supervisor but don't wait for its response — the host doesn't read
@@ -12,7 +12,7 @@ use crate::commands::build::make_client;
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree post-tool`.
+/// CLI args for `mneme post-tool`.
 #[derive(Debug, Args)]
 pub struct PostToolArgs {
     /// Tool name that ran.

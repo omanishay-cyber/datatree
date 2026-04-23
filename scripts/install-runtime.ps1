@@ -29,7 +29,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 # ----------------------------------------------------------- config
-$DataTreeHome    = if ($env:DATATREE_HOME) { $env:DATATREE_HOME } else { Join-Path $HOME ".datatree" }
+$DataTreeHome    = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $HOME ".datatree" }
 $LogDir          = Join-Path $DataTreeHome "logs"
 $LogFile         = Join-Path $LogDir       "install.log"
 $ManifestFile    = Join-Path $DataTreeHome "install-manifest.json"

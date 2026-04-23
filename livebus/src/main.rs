@@ -1,7 +1,7 @@
-//! datatree-livebus — local SSE/WebSocket fan-out daemon.
+//! mneme-livebus — local SSE/WebSocket fan-out daemon.
 //!
 //! Binds the HTTP listener to **127.0.0.1 only**. The bind address is
-//! validated by [`datatree_livebus::bind_addr`] which refuses anything other
+//! validated by [`mneme_livebus::bind_addr`] which refuses anything other
 //! than a loopback interface, so a misconfigured `--host 0.0.0.0` is a hard
 //! startup failure rather than a silent security regression.
 
@@ -14,16 +14,16 @@ use clap::Parser;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
-use datatree_livebus::bus::EventBus;
-use datatree_livebus::health::{health_handler, HealthCtx, RateSampler};
-use datatree_livebus::ipc_input::{default_ipc_path, run_ipc_listener};
-use datatree_livebus::sse::{sse_firehose_handler, sse_handler};
-use datatree_livebus::subscriber::SubscriberManager;
-use datatree_livebus::ws::ws_upgrade;
-use datatree_livebus::{bind_addr, DEFAULT_HOST, DEFAULT_PORT};
+use mneme_livebus::bus::EventBus;
+use mneme_livebus::health::{health_handler, HealthCtx, RateSampler};
+use mneme_livebus::ipc_input::{default_ipc_path, run_ipc_listener};
+use mneme_livebus::sse::{sse_firehose_handler, sse_handler};
+use mneme_livebus::subscriber::SubscriberManager;
+use mneme_livebus::ws::ws_upgrade;
+use mneme_livebus::{bind_addr, DEFAULT_HOST, DEFAULT_PORT};
 
 #[derive(Parser, Debug)]
-#[command(name = "datatree-livebus", version, about)]
+#[command(name = "mneme-livebus", version, about)]
 struct Args {
     /// Loopback host to bind. Refuses non-loopback addresses.
     #[arg(long, env = "LIVEBUS_HOST", default_value_t = DEFAULT_HOST.to_string())]

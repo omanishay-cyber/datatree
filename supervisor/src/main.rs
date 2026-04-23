@@ -1,4 +1,4 @@
-//! `datatree-supervisor` binary entry point.
+//! `mneme-supervisor` binary entry point.
 //!
 //! Subcommands:
 //!   - `start`   — boot the supervisor in the foreground.
@@ -13,21 +13,21 @@
 #![forbid(unsafe_code)]
 
 use clap::{Parser, Subcommand};
-use datatree_supervisor::config::SupervisorConfig;
-use datatree_supervisor::error::SupervisorError;
-use datatree_supervisor::ipc::{self, ControlCommand, ControlResponse};
-use datatree_supervisor::service::{self, ServiceAction};
-use datatree_supervisor::watcher::{self, WatcherStatsHandle, DEFAULT_DEBOUNCE};
+use mneme_daemon::config::SupervisorConfig;
+use mneme_daemon::error::SupervisorError;
+use mneme_daemon::ipc::{self, ControlCommand, ControlResponse};
+use mneme_daemon::service::{self, ServiceAction};
+use mneme_daemon::watcher::{self, WatcherStatsHandle, DEFAULT_DEBOUNCE};
 use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::error;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Parser)]
-#[command(name = "datatree-supervisor", version, about = "Datatree process supervisor", long_about = None)]
+#[command(name = "mneme-supervisor", version, about = "Mneme process supervisor", long_about = None)]
 struct Cli {
     /// Path to the supervisor TOML config.
-    #[arg(long, env = "DATATREE_CONFIG")]
+    #[arg(long, env = "MNEME_CONFIG")]
     config: Option<PathBuf>,
 
     /// Override the IPC socket / pipe path for client subcommands.
@@ -109,7 +109,7 @@ fn main() -> std::process::ExitCode {
 }
 
 fn init_tracing() {
-    let filter = EnvFilter::try_from_env("DATATREE_LOG")
+    let filter = EnvFilter::try_from_env("MNEME_LOG")
         .unwrap_or_else(|_| EnvFilter::new("info,datatree_supervisor=info"));
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -236,30 +236,30 @@ async fn round_trip(
 }
 
 fn default_config_path() -> PathBuf {
-    if let Some(p) = std::env::var_os("DATATREE_CONFIG") {
+    if let Some(p) = std::env::var_os("MNEME_CONFIG") {
         return PathBuf::from(p);
     }
     let mut base = home_dir();
-    base.push(".datatree");
+    base.push(".mneme");
     base.push("supervisor.toml");
     base
 }
 
 #[cfg(windows)]
 fn default_ipc_path() -> PathBuf {
-    PathBuf::from(r"\\.\pipe\datatree-supervisor")
+    PathBuf::from(r"\\.\pipe\mneme-supervisor")
 }
 
 #[cfg(unix)]
 fn default_ipc_path() -> PathBuf {
     let mut base = home_dir();
-    base.push(".datatree");
+    base.push(".mneme");
     base.push("supervisor.sock");
     base
 }
 
 fn home_dir() -> PathBuf {
-    if let Some(h) = std::env::var_os("DATATREE_HOME") {
+    if let Some(h) = std::env::var_os("MNEME_HOME") {
         return PathBuf::from(h);
     }
     #[cfg(windows)]

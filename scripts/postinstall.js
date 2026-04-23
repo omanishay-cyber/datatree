@@ -4,7 +4,7 @@
  * ─────────────────────
  * Runs automatically after `/plugin install datatree`. Downloads the
  * platform-matching prebuilt binary bundle from the latest GitHub release
- * and unpacks it into ~/.datatree/.
+ * and unpacks it into ~/.mneme/.
  *
  * Rule: NEVER fail hard. If the network is unavailable or the release is
  * still building, print the manual install path and exit 0 so the plugin
@@ -21,10 +21,10 @@ const { join } = require("node:path");
 const https = require("node:https");
 
 const REPO = "omanishay-cyber/datatree";
-const DATATREE_HOME = join(homedir(), ".datatree");
-const DATATREE_BIN = join(DATATREE_HOME, "bin");
-const DATATREE_MCP = join(DATATREE_HOME, "mcp");
-const DATATREE_PLUGIN = join(DATATREE_HOME, "plugin");
+const MNEME_HOME = join(homedir(), ".datatree");
+const DATATREE_BIN = join(MNEME_HOME, "bin");
+const DATATREE_MCP = join(MNEME_HOME, "mcp");
+const DATATREE_PLUGIN = join(MNEME_HOME, "plugin");
 
 function log(msg) { process.stdout.write(`datatree: ${msg}\n`); }
 function warn(msg) { process.stderr.write(`datatree: ${msg}\n`); }
@@ -137,7 +137,7 @@ function extractTarGz(tgzPath, destDir) {
 async function main() {
   log("post-install starting");
 
-  mkdirSync(DATATREE_HOME, { recursive: true });
+  mkdirSync(MNEME_HOME, { recursive: true });
   mkdirSync(DATATREE_BIN, { recursive: true });
   mkdirSync(DATATREE_MCP, { recursive: true });
   mkdirSync(DATATREE_PLUGIN, { recursive: true });
@@ -173,7 +173,7 @@ async function main() {
     return;
   }
 
-  const tmp = join(DATATREE_HOME, `download.${asset.archive}`);
+  const tmp = join(MNEME_HOME, `download.${asset.archive}`);
   try {
     info("downloading");
     await downloadFile(zipUrl, tmp);
@@ -185,11 +185,11 @@ async function main() {
   }
 
   try {
-    info(`extracting to ${DATATREE_HOME}`);
+    info(`extracting to ${MNEME_HOME}`);
     if (asset.archive === "zip") {
-      extractZip(tmp, DATATREE_HOME);
+      extractZip(tmp, MNEME_HOME);
     } else {
-      extractTarGz(tmp, DATATREE_HOME);
+      extractTarGz(tmp, MNEME_HOME);
     }
     rmSync(tmp, { force: true });
   } catch (err) {

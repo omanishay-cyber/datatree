@@ -18,10 +18,10 @@ path = "src/bin/bench_retrieval.rs"
 
 [dependencies]
 # Workspace siblings.
-datatree-common = { path = "../common" }
-datatree-store = { path = "../store" }
-parsers = { path = "../parsers" }
-brain = { path = "../brain" }
+common = { path = "../common", package = "mneme-common" }
+store = { path = "../store", package = "mneme-store" }
+parsers = { path = "../parsers", package = "mneme-parsers" }
+brain = { path = "../brain", package = "mneme-brain" }
 
 # Async runtime.
 tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "sync", "fs", "time"] }

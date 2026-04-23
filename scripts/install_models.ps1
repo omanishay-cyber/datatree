@@ -33,7 +33,7 @@ if (-not (Test-Path $From -PathType Container)) {
     exit 1
 }
 
-$DatatreeHome = if ($env:DATATREE_HOME) { $env:DATATREE_HOME } else { Join-Path $env:USERPROFILE '.datatree' }
+$DatatreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $env:USERPROFILE '.datatree' }
 $ModelDir     = Join-Path $DatatreeHome 'models'
 if (-not (Test-Path $ModelDir)) { New-Item -ItemType Directory -Force -Path $ModelDir | Out-Null }
 

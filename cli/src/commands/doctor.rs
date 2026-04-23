@@ -1,4 +1,4 @@
-//! `datatree doctor` — health check / self-test.
+//! `mneme doctor` — health check / self-test.
 //!
 //! Performs both an in-process check (binary version, runtime/state dirs
 //! writeable, IPC socket reachable) and an IPC `Doctor` request to the
@@ -12,7 +12,7 @@ use crate::commands::build::{handle_response, make_client};
 use crate::error::CliResult;
 use crate::ipc::IpcRequest;
 
-/// CLI args for `datatree doctor`.
+/// CLI args for `mneme doctor`.
 #[derive(Debug, Args)]
 pub struct DoctorArgs {
     /// Skip the live IPC probe (in-process diagnostics only).
@@ -22,7 +22,7 @@ pub struct DoctorArgs {
 
 /// Entry point used by `main.rs`.
 pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResult<()> {
-    println!("datatree v{}", env!("CARGO_PKG_VERSION"));
+    println!("mneme v{}", env!("CARGO_PKG_VERSION"));
 
     let runtime = crate::runtime_dir();
     let state = crate::state_dir();
@@ -52,7 +52,7 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
 fn print_writeable(label: &str, path: &std::path::Path) {
     let writeable = std::fs::create_dir_all(path)
         .and_then(|_| {
-            let probe = path.join(".datatree-probe");
+            let probe = path.join(".mneme-probe");
             std::fs::write(&probe, b"")?;
             std::fs::remove_file(&probe)
         })

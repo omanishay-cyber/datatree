@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use rusqlite::Connection;
 use tracing::debug;
 
-use datatree_common::{
+use common::{
     error::{DbError, DtError, DtResult},
     ids::ProjectId,
     paths::PathManager,
