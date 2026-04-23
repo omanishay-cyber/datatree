@@ -1,17 +1,39 @@
 /**
  * MCP tool: audit
  *
- * Runs all configured scanners over the requested scope (project, file, or
- * uncommitted diff) and returns the union of findings with a summary.
+ * Union of all scanner findings present in the working tree, optionally
+ * filtered by scope (project | file | diff) and the list of scanners to
+ * include.
+ *
+ * v0.1 (review P2): reads `findings.db → findings` via `bun:sqlite`
+ * read-only. Query shape:
+ *   WHERE resolved_at IS NULL
+ *     [AND scanner IN (?,?,..)]
+ *     [AND file = ?]         // scope='file'
+ *   ORDER BY created_at DESC
+ *   LIMIT N
+ *
+ * Summary counts are computed client-side from the returned rows so they
+ * always match what the caller sees.
+ *
+ * Graceful degrade: missing findings shard → `{ findings: [], summary: … }`
+ * with zeroed counts. Never throws.
  */
 
 import {
   AuditInput,
   AuditOutput,
+  SeverityEnum,
   type Finding,
+  type Severity,
   type ToolDescriptor,
 } from "../types.ts";
-import { query as dbQuery } from "../db.ts";
+import { scannerFindings, shardDbPath } from "../store.ts";
+
+function coerceSeverity(s: string): Severity {
+  const parsed = SeverityEnum.safeParse(s);
+  return parsed.success ? parsed.data : "info";
+}
 
 export const tool: ToolDescriptor<
   ReturnType<typeof AuditInput.parse>,
@@ -24,13 +46,31 @@ export const tool: ToolDescriptor<
   outputSchema: AuditOutput,
   category: "drift",
   async handler(input) {
-    const findings = await dbQuery
-      .raw<Finding[]>("scanner.run_all", {
-        scope: input.scope,
-        file: input.file,
-        scanners: input.scanners,
-      })
-      .catch(() => [] as Finding[]);
+    if (!shardDbPath("findings")) {
+      return {
+        findings: [],
+        summary: { total: 0, by_severity: {}, by_scanner: {} },
+      };
+    }
+
+    const rows = scannerFindings(
+      input.scanners,
+      undefined,
+      input.scope === "file" ? input.file : undefined,
+      500,
+    );
+
+    const findings: Finding[] = rows.map((r) => ({
+      id: String(r.id),
+      scanner: r.scanner,
+      severity: coerceSeverity(r.severity),
+      file: r.file,
+      line: r.line_start ?? null,
+      rule: r.rule_id,
+      message: r.message,
+      suggestion: r.suggestion,
+      detected_at: r.created_at,
+    }));
 
     const bySeverity: Record<string, number> = {};
     const byScanner: Record<string, number> = {};
@@ -41,7 +81,11 @@ export const tool: ToolDescriptor<
 
     return {
       findings,
-      summary: { total: findings.length, by_severity: bySeverity, by_scanner: byScanner },
+      summary: {
+        total: findings.length,
+        by_severity: bySeverity,
+        by_scanner: byScanner,
+      },
     };
   },
 };

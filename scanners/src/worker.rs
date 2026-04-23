@@ -6,12 +6,14 @@
 //! worker logs the failure on the [`ScanResult::failed_scanners`] list
 //! and proceeds with the remaining scanners.
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
 
 use crate::error::{Result, ScannerError};
+use crate::findings_writer::FindingsWriter;
 use crate::job::{ScanJob, ScanResult};
 use crate::registry::ScannerRegistry;
 use crate::scanner::Ast;
@@ -97,6 +99,25 @@ impl ScanWorker {
             scan_duration_ms: started.elapsed().as_millis() as u64,
             failed_scanners,
         }
+    }
+
+    /// Run a single job AND persist its findings to `findings_db`.
+    ///
+    /// Used by `mneme audit` and any other inline caller that does not
+    /// want to go through the async batcher + store IPC. Returns the
+    /// `ScanResult` (for telemetry) and the number of rows inserted.
+    ///
+    /// The findings.db connection is opened fresh per call and dropped on
+    /// return, preserving the per-shard single-writer invariant.
+    pub async fn scan_and_persist(
+        &self,
+        job: ScanJob,
+        findings_db: &Path,
+    ) -> Result<(ScanResult, usize)> {
+        let result = self.run_one(job).await;
+        let mut writer = FindingsWriter::open(findings_db)?;
+        let n = writer.write_findings(&result.findings)?;
+        Ok((result, n))
     }
 }
 

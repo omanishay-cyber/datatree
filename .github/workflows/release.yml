@@ -82,7 +82,7 @@ jobs:
             cp target/${{ matrix.target }}/release/mneme-livebus.exe release-staging/bin/ || true
             cp target/${{ matrix.target }}/release/mneme-md-ingest.exe release-staging/bin/ || true
             cp target/${{ matrix.target }}/release/mneme-brain.exe release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/mneme-multimodal-bridge.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-multimodal.exe release-staging/bin/ || true
           else
             cp target/${{ matrix.target }}/release/mneme release-staging/bin/
             cp target/${{ matrix.target }}/release/mneme-daemon release-staging/bin/
@@ -92,7 +92,7 @@ jobs:
             cp target/${{ matrix.target }}/release/mneme-livebus release-staging/bin/ || true
             cp target/${{ matrix.target }}/release/mneme-md-ingest release-staging/bin/ || true
             cp target/${{ matrix.target }}/release/mneme-brain release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/mneme-multimodal-bridge release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-multimodal release-staging/bin/ || true
           fi
 
           # MCP server source (runs under Bun, no compile step)

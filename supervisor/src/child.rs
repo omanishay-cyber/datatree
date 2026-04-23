@@ -7,7 +7,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::process::ChildStdin;
+use tokio::sync::Mutex;
 
 /// Static description of one worker process.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,6 +90,9 @@ pub struct ChildHandle {
     pub current_backoff: Duration,
     /// Most recent latency observations in microseconds (capped).
     pub latency_samples_us: VecDeque<u64>,
+    /// Writable stdin handle for worker-bound job dispatch (framed JSON lines).
+    /// None between spawn attempts or for workers that don't consume stdin.
+    pub stdin: Option<Arc<Mutex<ChildStdin>>>,
 }
 
 impl ChildHandle {
@@ -106,6 +112,7 @@ impl ChildHandle {
             total_uptime: Duration::ZERO,
             current_backoff: initial_backoff,
             latency_samples_us: VecDeque::new(),
+            stdin: None,
         }
     }
 

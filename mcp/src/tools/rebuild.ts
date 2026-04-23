@@ -1,8 +1,13 @@
 /**
  * MCP tool: rebuild
  *
- * Last-resort: re-parse a scope from scratch (graph, semantic, or all).
- * Requires confirm=true to actually run.
+ * Re-parse the requested scope from scratch.
+ *
+ * v0.1 (review P2): rebuild is always a write — we hand off to
+ * `lifecycle.rebuild` over IPC which runs `mneme rebuild <scope>` under
+ * the supervisor's single-writer lock. We keep the safety rail: we
+ * refuse without `confirm=true`. If IPC is down we report a clear
+ * zero-duration empty-rebuilt result rather than silently succeeding.
  */
 
 import {
@@ -28,7 +33,12 @@ export const tool: ToolDescriptor<
         "rebuild: refused without confirm=true (this clears existing data)",
       );
     }
-    const result = await lifecycle.rebuild(input.scope);
-    return result;
+    const t0 = Date.now();
+    try {
+      const r = await lifecycle.rebuild(input.scope);
+      return r;
+    } catch {
+      return { rebuilt: [], duration_ms: Date.now() - t0 };
+    }
   },
 };

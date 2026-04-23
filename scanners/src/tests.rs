@@ -371,3 +371,46 @@ async fn worker_does_not_panic_on_clean_input() {
     let job = ScanJob::new(1, p("a.ts"), Arc::new("export const x = 1;".to_string()));
     let _res = worker.run_one(job).await; // must not panic
 }
+
+// ---------- FindingsWriter integration ----------
+
+#[tokio::test]
+async fn scan_and_persist_writes_all_five_scanner_families_to_db() {
+    // One file that triggers every wired scanner family at least once.
+    let content = r#"
+const key = 'AKIAIOSFODNN7EXAMPLE';
+const c = '#abcdef';
+function foo() {
+  const data = readFileSync('x.json');
+  return <div className="bg-white"><img src="a.png"/><button><X/></button></div>;
+}
+"#
+    .to_string();
+
+    let reg = Arc::new(ScannerRegistry::new(RegistryConfig::default()));
+    let worker = ScanWorker::new(reg, 0);
+    let job = ScanJob::new(7, p("Foo.tsx"), Arc::new(content));
+
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("findings.db");
+
+    let (res, inserted) = worker.scan_and_persist(job, &db_path).await.unwrap();
+    assert!(inserted > 0);
+    assert_eq!(res.job_id, 7);
+
+    // Every wired scanner family must have at least one row.
+    let conn = rusqlite::Connection::open(&db_path).unwrap();
+    for scanner in ["theme", "security", "a11y", "perf", "secrets"] {
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM findings WHERE scanner = ?1",
+                [scanner],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            n > 0,
+            "scanner family '{scanner}' did not produce any finding rows"
+        );
+    }
+}

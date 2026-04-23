@@ -91,7 +91,8 @@ fn config_default_layout_has_all_workers() {
     assert!(names.iter().any(|n| n.starts_with("parser-worker-")));
     assert!(names.iter().any(|n| n.starts_with("scanner-worker-")));
     assert!(names.iter().any(|n| *n == "md-ingest-worker"));
-    assert!(names.iter().any(|n| *n == "multimodal-bridge"));
+    // multimodal extraction is now pure Rust and runs in-process from the
+    // CLI (see cli::commands::graphify). No supervised child.
     assert!(names.iter().any(|n| *n == "brain-worker"));
     assert!(names.iter().any(|n| *n == "livebus-worker"));
     assert!(names.iter().any(|n| *n == "mcp-server"));
@@ -153,4 +154,83 @@ fn handle_timestamp_arithmetic() {
     h.last_started_instant = Some(Instant::now());
     h.status = ChildStatus::Running;
     assert!(h.current_uptime() < Duration::from_millis(50));
+}
+
+/// Integration test: spawn a tiny child that exits on its own, verify the
+/// watchdog-driven restart loop picks it back up.
+///
+/// We model the worker as a child that exits with code 0 after a short
+/// sleep. The `Permanent` strategy means any exit must be restarted, so
+/// the restart_count should reach 2 within a handful of seconds.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn watchdog_respawns_crashed_worker() {
+    use crate::manager::ChildManager;
+    // Use a command that's portable: `cmd /c exit 0` on Windows,
+    // `/bin/sh -c "exit 0"` on unix.
+    #[cfg(windows)]
+    let (cmd, args): (&str, Vec<String>) =
+        ("cmd", vec!["/c".into(), "exit".into(), "0".into()]);
+    #[cfg(unix)]
+    let (cmd, args): (&str, Vec<String>) = ("/bin/sh", vec!["-c".into(), "exit 0".into()]);
+
+    let spec = ChildSpec {
+        name: "flaky".into(),
+        command: cmd.into(),
+        args,
+        env: vec![],
+        restart: RestartStrategy::Permanent,
+        rss_limit_mb: None,
+        cpu_limit_percent: None,
+        health_endpoint: None,
+    };
+    let mut cfg = dummy_config();
+    cfg.children.clear();
+    cfg.children.push(spec.clone());
+    // Tighten the restart budget so the test runs fast.
+    cfg.default_restart_policy.initial_backoff = Duration::from_millis(5);
+    cfg.default_restart_policy.max_backoff = Duration::from_millis(50);
+    cfg.default_restart_policy.backoff_multiplier = 1.5;
+    cfg.default_restart_policy.max_restarts_per_window = 20;
+
+    let ring = Arc::new(crate::log_ring::LogRing::new(256));
+    let mgr = Arc::new(ChildManager::new(cfg, ring));
+    let rx = mgr
+        .take_restart_rx()
+        .await
+        .expect("restart rx taken exactly once");
+    let mgr_clone = mgr.clone();
+    let _loop_task = tokio::spawn(async move { mgr_clone.run_restart_loop(rx).await });
+
+    mgr.spawn_child(spec).await.expect("initial spawn");
+
+    // Poll the snapshot for up to 5s waiting for restart_count >= 2.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut observed = 0u64;
+    while Instant::now() < deadline {
+        let snap = mgr.snapshot().await;
+        if let Some(s) = snap.iter().find(|s| s.name == "flaky") {
+            observed = s.restart_count;
+            if observed >= 2 {
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(
+        observed >= 2,
+        "watchdog should have respawned at least twice, observed {observed}"
+    );
+}
+
+/// Verify the dispatch API correctly reports a missing worker rather than
+/// panicking. Full stdin-write coverage lives in the workspace-level
+/// integration suite because it needs a real child binary.
+#[tokio::test]
+async fn dispatch_unknown_pool_returns_error() {
+    use crate::manager::ChildManager;
+    let cfg = dummy_config();
+    let ring = Arc::new(crate::log_ring::LogRing::new(64));
+    let mgr = Arc::new(ChildManager::new(cfg, ring));
+    let res = mgr.dispatch_to_pool("parser-worker-", "{}\n").await;
+    assert!(res.is_err(), "dispatch with no live workers must error");
 }

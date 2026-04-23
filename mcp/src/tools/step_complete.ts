@@ -1,8 +1,13 @@
 /**
  * MCP tool: step_complete
  *
- * Marks a step complete IF its acceptance check passes (unless force=true).
- * Returns the next step id (or null if the plan is finished).
+ * Marks a step complete.
+ *
+ * v0.1 (review P2): this tool WRITES — mutations on `tasks.db` must go
+ * through the single-writer supervisor. We pre-flight the read (status
+ * + next sibling) via `bun:sqlite` to compute `next_step_id` locally,
+ * then dispatch `step.complete` over IPC. If IPC is down we still
+ * return `completed: false` rather than silently lying.
  */
 
 import {
@@ -10,6 +15,7 @@ import {
   StepCompleteOutput,
   type ToolDescriptor,
 } from "../types.ts";
+import { sessionSteps, shardDbPath, singleStep } from "../store.ts";
 import { query as dbQuery } from "../db.ts";
 
 export const tool: ToolDescriptor<
@@ -23,17 +29,41 @@ export const tool: ToolDescriptor<
   outputSchema: StepCompleteOutput,
   category: "step",
   async handler(input) {
+    // Compute next-step hint from the local shard so we can return a
+    // useful answer even if the supervisor is offline.
+    let nextStepId: string | null = null;
+    if (shardDbPath("tasks")) {
+      const row = singleStep(input.step_id);
+      if (row) {
+        const siblings = sessionSteps(row.session_id);
+        const idx = siblings.findIndex((s) => s.step_id === input.step_id);
+        if (idx >= 0) {
+          const next = siblings
+            .slice(idx + 1)
+            .find((s) => s.status !== "completed");
+          nextStepId = next?.step_id ?? null;
+        }
+      }
+    }
+
     const result = await dbQuery
       .raw<{ completed: boolean; next_step_id: string | null }>(
         "step.complete",
         { step_id: input.step_id, force: input.force },
       )
-      .catch(() => ({ completed: false, next_step_id: null }));
+      .catch(() => null);
 
+    if (result) {
+      return {
+        step_id: input.step_id,
+        completed: result.completed,
+        next_step_id: result.next_step_id ?? nextStepId,
+      };
+    }
     return {
       step_id: input.step_id,
-      completed: result.completed,
-      next_step_id: result.next_step_id,
+      completed: false,
+      next_step_id: nextStepId,
     };
   },
 };

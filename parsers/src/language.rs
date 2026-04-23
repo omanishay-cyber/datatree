@@ -258,9 +258,11 @@ impl Language {
             #[cfg(not(feature = "scala"))]
             Language::Scala => return Err(ParserError::LanguageNotEnabled("scala".into())),
 
-            #[cfg(feature = "vue")]
-            Language::Vue => tree_sitter_vue::LANGUAGE.into(),
-            #[cfg(not(feature = "vue"))]
+            // Vue has no working crates.io grammar pinned to our runtime — the
+            // only published crate (`tree-sitter-vue` 0.0.3) requires the
+            // legacy 0.20 tree-sitter runtime. We keep the Language::Vue
+            // variant for file-detection purposes (Vue SFCs are recognised)
+            // but report the grammar as unavailable at runtime.
             Language::Vue => return Err(ParserError::LanguageNotEnabled("vue".into())),
 
             #[cfg(feature = "svelte")]

@@ -1,0 +1,99 @@
+name: Weekly Benchmarks
+
+on:
+  schedule:
+    # Every Monday 06:00 UTC.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bench:
+    name: Bench (mneme self, ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build bench binary
+        run: cargo build --release -p benchmarks --bin bench_retrieval
+
+      - name: Run bench-all against Mneme itself
+        run: just bench-all . > bench-run.csv 2> bench-run.log
+
+      - name: Upload CSV artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-run-${{ github.run_id }}
+          path: |
+            bench-run.csv
+            bench-run.log
+
+      - name: Append trend row to bench-history.csv
+        run: |
+          set -euo pipefail
+          HEADER="run_id,sha,date,mneme_tokens_sum,cold_tokens_sum,mneme_ms_sum,cold_ms_sum,precision_at_5_pct,precision_at_10_pct,cold_ms_first_build,warm_ms_first_build,incremental_p50_ms,incremental_p95_ms,bytes_per_node,bytes_per_edge"
+          if [ ! -f bench-history.csv ]; then
+            echo "$HEADER" > bench-history.csv
+          fi
+          # bench-all writes one multi-line JSON summary on stderr. Extract it.
+          python3 - <<'PY'
+          import json, pathlib, re, sys
+          raw = pathlib.Path("bench-run.log").read_text(encoding="utf-8", errors="replace")
+          start = raw.rfind("{")
+          end = raw.rfind("}")
+          if start == -1 or end == -1 or end <= start:
+              pathlib.Path("bench-run.json").write_text("{}")
+              sys.exit(0)
+          blob = raw[start:end+1]
+          try:
+              obj = json.loads(blob)
+          except Exception:
+              obj = {}
+          pathlib.Path("bench-run.json").write_text(json.dumps(obj))
+          PY
+          RUN_ID=${{ github.run_id }}
+          SHA=$(git rev-parse HEAD)
+          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          MT=$(jq -r '.compare_totals.mneme_total_tokens // 0' bench-run.json)
+          CT=$(jq -r '.compare_totals.cold_total_tokens // 0' bench-run.json)
+          MMS=$(jq -r '.compare_totals.mneme_total_ms // 0' bench-run.json)
+          CMS=$(jq -r '.compare_totals.cold_total_ms // 0' bench-run.json)
+          P5=$(jq -r '.compare_totals.mneme_precision_pct // 0' bench-run.json)
+          P10=$(jq -r '.recall.precision_at_10_pct // 0' bench-run.json)
+          CMF=$(jq -r '.first_build.cold_ms // 0' bench-run.json)
+          WMF=$(jq -r '.first_build.warm_ms // 0' bench-run.json)
+          IP50=$(jq -r '.incremental.p50_ms // 0' bench-run.json)
+          IP95=$(jq -r '.incremental.p95_ms // 0' bench-run.json)
+          BPN=$(jq -r '.viz_scale.bytes_per_node // 0' bench-run.json)
+          BPE=$(jq -r '.viz_scale.bytes_per_edge // 0' bench-run.json)
+          echo "${RUN_ID},${SHA},${DATE},${MT},${CT},${MMS},${CMS},${P5},${P10},${CMF},${WMF},${IP50},${IP95},${BPN},${BPE}" >> bench-history.csv
+
+      - name: Commit bench-history.csv
+        run: |
+          set -euo pipefail
+          git config user.name "bench-bot"
+          git config user.email "bench-bot@users.noreply.github.com"
+          git add bench-history.csv
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(bench): weekly trend row"
+            git push
+          else
+            echo "no new trend row"
+          fi

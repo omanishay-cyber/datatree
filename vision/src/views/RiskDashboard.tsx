@@ -1,76 +1,156 @@
-import { useEffect, useState } from "react";
-import { fetchGraph, type GraphPayload } from "../api";
+import { useEffect, useMemo, useState } from "react";
+import { fetchFindings, type ShardFindingRow } from "../api/graph";
 
-interface RiskItem {
-  id: string;
-  label: string;
-  risk: number;
-  reasons: string[];
+type Bucket = "critical" | "high" | "medium" | "low";
+type Status = "loading" | "empty" | "ready" | "error";
+
+const BUCKETS: Bucket[] = ["critical", "high", "medium", "low"];
+
+function severityToBucket(sev: string): Bucket {
+  if (sev === "critical") return "critical";
+  if (sev === "high") return "high";
+  if (sev === "medium") return "medium";
+  return "low";
 }
 
-function deriveRisk(payload: GraphPayload): RiskItem[] {
-  return payload.nodes
-    .map((n, i) => {
-      const risk =
-        typeof n.meta?.["risk"] === "number"
-          ? Number(n.meta["risk"])
-          : Math.min(100, ((i * 11) % 100) + ((i * 7) % 13));
-      const reasons: string[] = [];
-      if (risk > 80) reasons.push("hot churn");
-      if ((n.size ?? 0) > 6) reasons.push("size > 6");
-      if ((i % 9) === 0) reasons.push("low coverage");
-      return { id: n.id, label: n.label ?? n.id, risk, reasons };
-    })
-    .sort((a, b) => b.risk - a.risk);
+function severityToScore(sev: string): number {
+  switch (sev) {
+    case "critical":
+      return 95;
+    case "high":
+      return 75;
+    case "medium":
+      return 45;
+    case "low":
+      return 20;
+    default:
+      return 10;
+  }
+}
+
+function bucketClass(b: Bucket): string {
+  // CSS expects critical / high / moderate / low — map medium -> moderate
+  // so we can reuse the existing stylesheet without churn.
+  return b === "medium" ? "moderate" : b;
 }
 
 export function RiskDashboard(): JSX.Element {
-  const [items, setItems] = useState<RiskItem[]>([]);
+  const [findings, setFindings] = useState<ShardFindingRow[]>([]);
+  const [status, setStatus] = useState<Status>("loading");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
-    fetchGraph("risk-dashboard", { signal: ac.signal }).then((payload) => {
-      if (cancelled) return;
-      setItems(deriveRisk(payload));
-    });
+
+    (async (): Promise<void> => {
+      try {
+        const res = await fetchFindings(ac.signal, 2000);
+        if (cancelled) return;
+        if (res.error) {
+          setError(res.error);
+          setStatus("error");
+          return;
+        }
+        setFindings(res.findings);
+        setStatus(res.findings.length === 0 ? "empty" : "ready");
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        if (!cancelled) {
+          setError((err as Error).message);
+          setStatus("error");
+        }
+      }
+    })();
+
     return () => {
       cancelled = true;
       ac.abort();
     };
   }, []);
 
-  const buckets = {
-    critical: items.filter((i) => i.risk >= 80),
-    high: items.filter((i) => i.risk >= 60 && i.risk < 80),
-    moderate: items.filter((i) => i.risk >= 30 && i.risk < 60),
-    low: items.filter((i) => i.risk < 30),
-  };
+  const buckets = useMemo(() => {
+    const grouped: Record<Bucket, ShardFindingRow[]> = {
+      critical: [],
+      high: [],
+      medium: [],
+      low: [],
+    };
+    for (const f of findings) {
+      grouped[severityToBucket(f.severity)].push(f);
+    }
+    return grouped;
+  }, [findings]);
+
+  const totals = useMemo(() => {
+    const byScanner: Record<string, number> = {};
+    for (const f of findings) {
+      byScanner[f.scanner] = (byScanner[f.scanner] ?? 0) + 1;
+    }
+    return { total: findings.length, byScanner };
+  }, [findings]);
 
   return (
     <div className="vz-view vz-view--risk">
       <header className="vz-risk-header">
         <h2>Risk Dashboard</h2>
-        <p>derived from churn × complexity × coverage gaps</p>
+        <p>
+          {status === "ready"
+            ? `${totals.total.toLocaleString()} open findings from findings.db · ${
+                Object.keys(totals.byScanner).length
+              } scanners`
+            : status === "loading"
+              ? "loading findings.db…"
+              : status === "empty"
+                ? "no open findings — shard clean, or not yet scanned"
+                : error
+                  ? `findings error: ${error}`
+                  : ""}
+        </p>
       </header>
-      <section className="vz-risk-grid">
-        {(["critical", "high", "moderate", "low"] as const).map((key) => (
-          <article key={key} className={`vz-risk-card vz-risk-card--${key}`}>
-            <h3>
-              {key} <span>{buckets[key].length}</span>
-            </h3>
-            <ul>
-              {buckets[key].slice(0, 12).map((item) => (
-                <li key={item.id}>
-                  <span className="vz-risk-bar" style={{ width: `${item.risk}%` }} />
-                  <span className="vz-risk-label">{item.label}</span>
-                  <span className="vz-risk-score">{item.risk}</span>
-                </li>
-              ))}
-            </ul>
-          </article>
-        ))}
-      </section>
+      {status === "loading" && (
+        <section className="vz-risk-grid" aria-busy="true">
+          {BUCKETS.map((b) => (
+            <article
+              key={b}
+              className={`vz-risk-card vz-risk-card--${bucketClass(b)}`}
+              style={{ opacity: 0.45 }}
+            >
+              <h3>
+                {b} <span>…</span>
+              </h3>
+            </article>
+          ))}
+        </section>
+      )}
+      {status !== "loading" && (
+        <section className="vz-risk-grid">
+          {BUCKETS.map((b) => {
+            const items = buckets[b];
+            return (
+              <article key={b} className={`vz-risk-card vz-risk-card--${bucketClass(b)}`}>
+                <h3>
+                  {b} <span>{items.length}</span>
+                </h3>
+                <ul>
+                  {items.slice(0, 12).map((item) => {
+                    const score = severityToScore(item.severity);
+                    return (
+                      <li key={item.id}>
+                        <span className="vz-risk-bar" style={{ width: `${score}%` }} />
+                        <span className="vz-risk-label" title={item.message}>
+                          {item.file}:{item.line_start} · {item.rule_id}
+                        </span>
+                        <span className="vz-risk-score">{score}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </article>
+            );
+          })}
+        </section>
+      )}
     </div>
   );
 }

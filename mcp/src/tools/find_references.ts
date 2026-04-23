@@ -1,7 +1,15 @@
 /**
  * MCP tool: find_references
  *
- * Returns all usages of a symbol (definitions, calls, imports, generic uses).
+ * All references (definition + callers + imports + uses) to a symbol.
+ *
+ * v0.1 (review P2): reads `graph.db` via `bun:sqlite` read-only. Query
+ * shape:
+ *   - definition: SELECT file_path, line_start FROM nodes WHERE qualified_name=?
+ *   - usages:     SELECT source_qualified, kind, file_path, line FROM edges
+ *                 WHERE target_qualified = ?
+ * Kinds are mapped: 'calls' → 'call', 'imports' → 'import', others → 'usage'.
+ * Missing shard → `{ symbol, hits: [] }`.
  */
 
 import {
@@ -9,7 +17,16 @@ import {
   FindReferencesOutput,
   type ToolDescriptor,
 } from "../types.ts";
-import { query as dbQuery } from "../db.ts";
+import { findReferences, shardDbPath } from "../store.ts";
+
+type HitKind = "definition" | "call" | "import" | "usage";
+
+function mapKind(k: string): HitKind {
+  if (k === "definition") return "definition";
+  if (k === "calls" || k === "call") return "call";
+  if (k === "imports" || k === "import") return "import";
+  return "usage";
+}
 
 export const tool: ToolDescriptor<
   ReturnType<typeof FindReferencesInput.parse>,
@@ -22,12 +39,17 @@ export const tool: ToolDescriptor<
   outputSchema: FindReferencesOutput,
   category: "graph",
   async handler(input) {
-    const result = await dbQuery
-      .raw<ReturnType<typeof FindReferencesOutput.parse>>(
-        "graph.find_references",
-        { symbol: input.symbol, scope: input.scope },
-      )
-      .catch(() => null);
-    return result ?? { symbol: input.symbol, hits: [] };
+    if (!shardDbPath("graph")) {
+      return { symbol: input.symbol, hits: [] };
+    }
+    const rows = findReferences(input.symbol);
+    const hits = rows.map((r) => ({
+      file: r.file,
+      line: r.line,
+      column: 0,
+      context: r.context,
+      kind: mapKind(r.kind),
+    }));
+    return { symbol: input.symbol, hits };
   },
 };

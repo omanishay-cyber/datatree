@@ -57,6 +57,7 @@ console = "0.15"
 common = { path = "../common", package = "mneme-common" }
 store = { path = "../store", package = "mneme-store" }
 parsers = { path = "../parsers", package = "mneme-parsers" }
+multimodal = { path = "../multimodal-bridge", package = "mneme-multimodal" }
 # `brain` is required — the Step Ledger (F1) and Why-Chain (F6) run
 # in-process from the CLI. Heavy ONNX backends stay feature-gated inside
 # brain itself so this doesn't require a C++ toolchain.

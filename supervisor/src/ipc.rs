@@ -55,6 +55,18 @@ pub enum ControlCommand {
         /// Child name reporting the heartbeat.
         child: String,
     },
+    /// Route a job payload to the worker pool whose names share `pool`
+    /// as a prefix (e.g. `"parser-worker-"`, `"scanner-worker-"`, or
+    /// `"brain-worker"`). The daemon writes `payload` as a JSON line to
+    /// the selected worker's stdin. Used by `mneme build` and the
+    /// scanner/brain orchestrators so the CLI does not have to run parse
+    /// / scan / embed work inline.
+    Dispatch {
+        /// Child-name prefix identifying the pool.
+        pool: String,
+        /// JSON payload handed verbatim to the worker.
+        payload: String,
+    },
 }
 
 /// Responses sent back over the same connection.
@@ -72,6 +84,11 @@ pub enum ControlResponse {
     Logs {
         /// Log entries (oldest-first).
         entries: Vec<crate::log_ring::LogEntry>,
+    },
+    /// Successful dispatch — carries the worker name the job was routed to.
+    Dispatched {
+        /// Worker that accepted the job.
+        worker: String,
     },
     /// Generic OK acknowledgement.
     Ok {
@@ -269,6 +286,14 @@ async fn dispatch(
             let _ = ChildStatus::Running; // keep the import alive
             manager.record_heartbeat(&child).await;
             ControlResponse::Ok { message: None }
+        }
+        ControlCommand::Dispatch { pool, payload } => {
+            match manager.dispatch_to_pool(&pool, &payload).await {
+                Ok(worker) => ControlResponse::Dispatched { worker },
+                Err(e) => ControlResponse::Error {
+                    message: e.to_string(),
+                },
+            }
         }
     }
 }

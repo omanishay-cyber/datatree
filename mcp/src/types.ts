@@ -833,10 +833,18 @@ export interface ToolDescriptor<I = unknown, O = unknown> {
   name: string;
   /** Human description shown to the model. */
   description: string;
-  /** zod schema for input validation. */
-  inputSchema: z.ZodType<I>;
+  /**
+   * zod schema for input validation.
+   *
+   * The third type parameter (`Input`) is intentionally permissive so that
+   * schemas using `.default(...)` — whose `z.input<...>` differs from
+   * `z.output<...>` — can still be assigned to a descriptor typed by the
+   * parsed ("output") shape. `ToolRegistry.invoke()` always parses raw
+   * `unknown` input, so accepting `any` here is type-safe at the boundary.
+   */
+  inputSchema: z.ZodType<I, z.ZodTypeDef, unknown>;
   /** zod schema for output validation. */
-  outputSchema: z.ZodType<O>;
+  outputSchema: z.ZodType<O, z.ZodTypeDef, unknown>;
   /** Implementation called by the MCP runtime after validation. */
   handler: (input: I, ctx: ToolContext) => Promise<O>;
   /** Optional category (used by /mn-recall, etc.). */

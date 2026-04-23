@@ -8,6 +8,7 @@
 #![warn(rust_2018_idioms)]
 
 pub mod error;
+pub mod findings_writer;
 pub mod job;
 pub mod registry;
 pub mod scanner;
@@ -19,6 +20,7 @@ pub mod worker;
 pub mod tests;
 
 pub use error::{Result, ScannerError};
+pub use findings_writer::{scanner_name_for_rule, FindingsWriter};
 pub use job::{ScanJob, ScanResult};
 pub use registry::{RegistryConfig, ScannerRegistry};
 pub use scanner::{line_col_of, Ast, Finding, Scanner, Severity};

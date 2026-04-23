@@ -30,6 +30,22 @@ use parsers::{
     Language,
 };
 
+/// Small fixed query set used when callers want a canned 10-query workload
+/// against any repo (token-reduction and incremental benches). Queries are
+/// intentionally generic so the set works against arbitrary codebases.
+pub const GENERIC_QUERIES: &[&str] = &[
+    "error handling",
+    "config",
+    "database",
+    "parser",
+    "schema",
+    "path manager",
+    "logger",
+    "test",
+    "serialize",
+    "pool",
+];
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -656,6 +672,390 @@ fn is_ignored(path: &Path) -> bool {
 
 fn looks_binary(buf: &[u8]) -> bool {
     buf.iter().take(512).any(|&b| b == 0)
+}
+
+// ---------------------------------------------------------------------------
+// Extended benchmark primitives (v0.2: token-reduction, first-build,
+// incremental, viz-scale, recall). Every primitive is side-effect-free
+// against user network state and keeps in-process with the same store +
+// parser primitives used above.
+// ---------------------------------------------------------------------------
+
+/// Aggregate for token-reduction across a query set.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenReductionReport {
+    /// Number of queries actually measured (after filtering empties).
+    pub queries: u32,
+    /// Per-query ratios (cold_tokens / mneme_tokens). Clamped so that
+    /// divide-by-zero yields 0.
+    pub ratios: Vec<f64>,
+    pub mean_ratio: f64,
+    pub p50_ratio: f64,
+    pub p95_ratio: f64,
+    pub mneme_total_tokens: u64,
+    pub cold_total_tokens: u64,
+}
+
+/// Cold + warm durations for a full `mneme build` pass.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FirstBuildReport {
+    pub cold_ms: u64,
+    pub warm_ms: u64,
+    pub files_indexed: u64,
+    pub nodes: u64,
+    pub edges: u64,
+}
+
+/// Incremental inject benchmark: p50 + p95 over N single-file inject passes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IncrementalReport {
+    pub samples: u32,
+    pub p50_ms: u64,
+    pub p95_ms: u64,
+    pub mean_ms: u64,
+    pub max_ms: u64,
+}
+
+/// Graph.db scaling metrics: bytes/node and bytes/edge.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VizScaleReport {
+    pub graph_db_bytes: u64,
+    pub nodes: u64,
+    pub edges: u64,
+    /// Integer bytes-per-node (graph.db size / nodes). 0 if nodes == 0.
+    pub bytes_per_node: u64,
+    /// Integer bytes-per-edge (graph.db size / edges). 0 if edges == 0.
+    pub bytes_per_edge: u64,
+}
+
+/// Precision@10 across a golden set.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecallReport {
+    pub queries: u32,
+    pub precision_at_10_pct: u32,
+    pub hits: u32,
+    pub total_expected: u32,
+}
+
+/// Compute tokens_reduced_ratio across GENERIC_QUERIES: for each query,
+/// ratio = cold_tokens / mneme_tokens. Produces mean / p50 / p95.
+pub fn bench_token_reduction(
+    repo: &Path,
+    shard_graph_db: &Path,
+) -> BenchResult<TokenReductionReport> {
+    let repo = dunce::canonicalize(repo)
+        .map_err(|e| BenchError::InvalidPath(format!("{}: {e}", repo.display())))?;
+    let conn = rusqlite::Connection::open_with_flags(
+        shard_graph_db,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+    )?;
+
+    let mut ratios = Vec::with_capacity(GENERIC_QUERIES.len());
+    let mut mneme_total = 0u64;
+    let mut cold_total = 0u64;
+
+    for q in GENERIC_QUERIES {
+        let gq = GoldenQuery {
+            query: (*q).to_string(),
+            kind: QueryKind::Recall,
+            target: None,
+            expected_top: Vec::new(),
+        };
+        let mneme_files = run_one_query(&conn, &gq)?;
+        let mneme_tokens = estimate_tokens_from_files(&mneme_files);
+        let (cold_files, _) = cold_baseline(&repo, q)?;
+        let cold_tokens = estimate_tokens_from_files(&cold_files);
+
+        mneme_total += mneme_tokens;
+        cold_total += cold_tokens;
+
+        let ratio = if mneme_tokens == 0 {
+            0.0
+        } else {
+            (cold_tokens as f64) / (mneme_tokens as f64)
+        };
+        ratios.push(ratio);
+    }
+
+    let (mean, p50, p95) = quartiles_f64(&ratios);
+
+    Ok(TokenReductionReport {
+        queries: ratios.len() as u32,
+        ratios,
+        mean_ratio: mean,
+        p50_ratio: p50,
+        p95_ratio: p95,
+        mneme_total_tokens: mneme_total,
+        cold_total_tokens: cold_total,
+    })
+}
+
+/// Time two full `index_repo` passes: cold (delete shard first) and warm
+/// (reuse the shard in place). Returns both elapsed durations.
+pub async fn bench_first_build(repo: &Path) -> BenchResult<FirstBuildReport> {
+    let repo = dunce::canonicalize(repo)
+        .map_err(|e| BenchError::InvalidPath(format!("{}: {e}", repo.display())))?;
+
+    let shard = shard_graph_db(&repo)?;
+    // Best-effort wipe of the shard parent so the first pass is truly cold.
+    if let Some(parent) = shard.parent() {
+        let _ = std::fs::remove_dir_all(parent);
+    }
+
+    let cold = index_repo(&repo).await?;
+    let warm = index_repo(&repo).await?;
+
+    Ok(FirstBuildReport {
+        cold_ms: cold.elapsed_ms,
+        warm_ms: warm.elapsed_ms,
+        files_indexed: cold.files_indexed,
+        nodes: cold.nodes,
+        edges: cold.edges,
+    })
+}
+
+/// Time N single-file inject passes through the Store::inject primitive.
+/// Samples up to the first 100 source files in the repo. For each file we
+/// run one INSERT OR REPLACE for a single node row and time the full
+/// writer-task round-trip.
+pub async fn bench_incremental(repo: &Path) -> BenchResult<IncrementalReport> {
+    let repo = dunce::canonicalize(repo)
+        .map_err(|e| BenchError::InvalidPath(format!("{}: {e}", repo.display())))?;
+
+    let paths = PathManager::default_root();
+    let store = Store::new(paths.clone());
+    let project_id = ProjectId::from_path(&repo)
+        .map_err(|e| BenchError::InvalidPath(format!("hash: {e}")))?;
+    let project_name = repo
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("project")
+        .to_string();
+    let _ = store
+        .builder
+        .build_or_migrate(&project_id, &repo, &project_name)
+        .await
+        .map_err(|e| BenchError::Internal(format!("build_or_migrate: {e}")))?;
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    for entry in walkdir::WalkDir::new(&repo)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| !is_ignored(e.path()))
+    {
+        let Ok(entry) = entry else { continue };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry.path();
+        if Language::from_filename(path).is_none() {
+            continue;
+        }
+        files.push(path.to_path_buf());
+        if files.len() >= 100 {
+            break;
+        }
+    }
+
+    let mut samples: Vec<u64> = Vec::with_capacity(files.len());
+    for (i, path) in files.iter().enumerate() {
+        let sql = "INSERT OR REPLACE INTO nodes(kind,name,qualified_name,file_path,line_start,line_end,language,extra,updated_at) \
+                   VALUES(?1,?2,?3,?4,?5,?6,?7,?8,datetime('now'))";
+        let params = vec![
+            serde_json::Value::String("bench".into()),
+            serde_json::Value::String(format!("bench_node_{i}")),
+            serde_json::Value::String(format!("bench::node::{i}::{}", path.display())),
+            serde_json::Value::String(path.display().to_string()),
+            serde_json::Value::Number(1i64.into()),
+            serde_json::Value::Number(1i64.into()),
+            serde_json::Value::String("rust".into()),
+            serde_json::Value::String("{}".into()),
+        ];
+        let start = Instant::now();
+        let _ = store
+            .inject
+            .insert(
+                &project_id,
+                DbLayer::Graph,
+                sql,
+                params,
+                InjectOptions {
+                    emit_event: false,
+                    audit: false,
+                    ..InjectOptions::default()
+                },
+            )
+            .await;
+        samples.push(start.elapsed().as_millis() as u64);
+    }
+
+    if samples.is_empty() {
+        return Ok(IncrementalReport {
+            samples: 0,
+            p50_ms: 0,
+            p95_ms: 0,
+            mean_ms: 0,
+            max_ms: 0,
+        });
+    }
+
+    let mean = (samples.iter().copied().sum::<u64>() as f64 / samples.len() as f64) as u64;
+    let max = *samples.iter().max().unwrap_or(&0);
+    let (_, p50, p95) = quartiles_u64(&samples);
+
+    Ok(IncrementalReport {
+        samples: samples.len() as u32,
+        p50_ms: p50,
+        p95_ms: p95,
+        mean_ms: mean,
+        max_ms: max,
+    })
+}
+
+/// Measure the size of graph.db on disk relative to its node + edge count.
+pub fn bench_viz_scale(shard_graph_db: &Path) -> BenchResult<VizScaleReport> {
+    let size = std::fs::metadata(shard_graph_db)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    let conn = rusqlite::Connection::open_with_flags(
+        shard_graph_db,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+    )?;
+    let nodes: u64 = conn
+        .query_row("SELECT COUNT(*) FROM nodes", [], |r| r.get::<_, i64>(0))
+        .unwrap_or(0) as u64;
+    let edges: u64 = conn
+        .query_row("SELECT COUNT(*) FROM edges", [], |r| r.get::<_, i64>(0))
+        .unwrap_or(0) as u64;
+
+    let bytes_per_node = if nodes == 0 { 0 } else { size / nodes };
+    let bytes_per_edge = if edges == 0 { 0 } else { size / edges };
+
+    Ok(VizScaleReport {
+        graph_db_bytes: size,
+        nodes,
+        edges,
+        bytes_per_node,
+        bytes_per_edge,
+    })
+}
+
+/// Precision@10 over a golden query fixture.
+pub fn bench_recall(shard_graph_db: &Path, queries: &[GoldenQuery]) -> BenchResult<RecallReport> {
+    let conn = rusqlite::Connection::open_with_flags(
+        shard_graph_db,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+    )?;
+
+    let mut hits = 0u32;
+    let mut total_expected = 0u32;
+    for q in queries {
+        let top = run_one_query_top_n(&conn, q, 10)?;
+        hits += precision_at_n(&top, &q.expected_top, 10);
+        total_expected += q.expected_top.len().min(10) as u32;
+    }
+    let precision_at_10_pct = if total_expected == 0 {
+        0
+    } else {
+        (hits * 100) / total_expected
+    };
+
+    Ok(RecallReport {
+        queries: queries.len() as u32,
+        precision_at_10_pct,
+        hits,
+        total_expected,
+    })
+}
+
+/// Like `run_one_query` but returns up to `n` results (not capped at 5).
+pub fn run_one_query_top_n(
+    conn: &rusqlite::Connection,
+    q: &GoldenQuery,
+    n: usize,
+) -> BenchResult<Vec<String>> {
+    let like_target = q.target.clone().unwrap_or_else(|| q.query.clone());
+    let like = format!("%{}%", like_target.to_lowercase());
+    let q_like = format!("%{}%", q.query.to_lowercase());
+    let limit = n as i64;
+    let sql = match q.kind {
+        QueryKind::Recall => {
+            "SELECT file_path FROM nodes \
+             WHERE file_path IS NOT NULL \
+               AND (LOWER(name) LIKE ?1 OR LOWER(qualified_name) LIKE ?1) \
+             GROUP BY file_path \
+             ORDER BY COUNT(*) DESC LIMIT ?2"
+        }
+        QueryKind::Blast => {
+            "SELECT DISTINCT file_path FROM nodes \
+             WHERE LOWER(qualified_name) LIKE ?1 AND file_path IS NOT NULL \
+             LIMIT ?2"
+        }
+        QueryKind::References => {
+            "SELECT DISTINCT n.file_path FROM edges e \
+             JOIN nodes n ON n.qualified_name = e.source_qualified \
+             WHERE LOWER(e.target_qualified) LIKE ?1 \
+               AND n.file_path IS NOT NULL \
+             LIMIT ?2"
+        }
+    };
+    let mut stmt = conn.prepare(sql)?;
+    let bound_like = match q.kind {
+        QueryKind::Recall => &q_like,
+        _ => &like,
+    };
+    let rows = stmt.query_map(
+        rusqlite::params![bound_like, limit],
+        |r| r.get::<_, String>(0),
+    )?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+fn precision_at_n(got: &[String], expected: &[String], n: usize) -> u32 {
+    let got_n: Vec<&str> = got.iter().take(n).map(|s| s.as_str()).collect();
+    let exp_n: Vec<&str> = expected.iter().take(n).map(|s| s.as_str()).collect();
+    let mut hits = 0u32;
+    for e in &exp_n {
+        let needle = e.replace('\\', "/").to_lowercase();
+        for g in &got_n {
+            let g_norm = g.replace('\\', "/").to_lowercase();
+            if g_norm.contains(&needle) || needle.contains(&g_norm) {
+                hits += 1;
+                break;
+            }
+        }
+    }
+    hits
+}
+
+/// Returns (mean, p50, p95) over a slice of f64 samples. Samples are
+/// copied + sorted; empty input yields all zeroes.
+fn quartiles_f64(samples: &[f64]) -> (f64, f64, f64) {
+    if samples.is_empty() {
+        return (0.0, 0.0, 0.0);
+    }
+    let mut sorted = samples.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mean = sorted.iter().sum::<f64>() / sorted.len() as f64;
+    let p50 = sorted[sorted.len() / 2];
+    let p95_idx = ((sorted.len() as f64 * 0.95) as usize).min(sorted.len() - 1);
+    (mean, p50, sorted[p95_idx])
+}
+
+fn quartiles_u64(samples: &[u64]) -> (u64, u64, u64) {
+    if samples.is_empty() {
+        return (0, 0, 0);
+    }
+    let mut sorted = samples.to_vec();
+    sorted.sort();
+    let mean = sorted.iter().sum::<u64>() / sorted.len() as u64;
+    let p50 = sorted[sorted.len() / 2];
+    let p95_idx = ((sorted.len() as f64 * 0.95) as usize).min(sorted.len() - 1);
+    (mean, p50, sorted[p95_idx])
 }
 
 // ---------------------------------------------------------------------------

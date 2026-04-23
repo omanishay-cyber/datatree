@@ -13,11 +13,22 @@ use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
+
+/// Reason a monitor task queued a restart.
+#[derive(Debug, Clone)]
+pub(crate) struct RestartRequest {
+    /// Child name.
+    pub name: String,
+    /// Exit code observed by the monitor.
+    pub exit_code: i32,
+    /// Time the exit was observed — used to compute the backoff delay.
+    pub queued_at: Instant,
+}
 
 /// Owns all running children and their restart state.
 pub struct ChildManager {
@@ -26,18 +37,38 @@ pub struct ChildManager {
     handles: RwLock<HashMap<String, Arc<Mutex<ChildHandle>>>>,
     monitors: Mutex<HashMap<String, JoinHandle<()>>>,
     shutdown_flag: Mutex<bool>,
+    /// Sender used by each monitor task to queue a restart request. The
+    /// receive end lives inside a separate task started by
+    /// [`Self::start_restart_loop`] — this indirection is what breaks the
+    /// `tokio::process::Child` Send-recursion cycle that forced v0.1 to
+    /// ship with auto-restart disabled.
+    restart_tx: mpsc::UnboundedSender<RestartRequest>,
+    restart_rx: Mutex<Option<mpsc::UnboundedReceiver<RestartRequest>>>,
 }
 
 impl ChildManager {
     /// Construct a manager from a fully-validated config.
     pub fn new(config: SupervisorConfig, log_ring: Arc<LogRing>) -> Self {
+        let (restart_tx, restart_rx) = mpsc::unbounded_channel();
         Self {
             config,
             log_ring,
             handles: RwLock::new(HashMap::new()),
             monitors: Mutex::new(HashMap::new()),
             shutdown_flag: Mutex::new(false),
+            restart_tx,
+            restart_rx: Mutex::new(Some(restart_rx)),
         }
+    }
+
+    /// Take ownership of the restart-request receiver. The supervisor
+    /// spawns exactly one restart loop per manager; calling this a second
+    /// time returns `None`.
+    pub(crate) async fn take_restart_rx(
+        &self,
+    ) -> Option<mpsc::UnboundedReceiver<RestartRequest>> {
+        let mut guard = self.restart_rx.lock().await;
+        guard.take()
     }
 
     /// Spawn every child listed in the config. A child whose binary is
@@ -88,8 +119,13 @@ impl ChildManager {
                 .expect("handle just inserted above")
         };
 
-        let child = self.spawn_os_process(&spec).await?;
+        let mut child = self.spawn_os_process(&spec).await?;
         let pid = child.id();
+        // Capture stdin BEFORE moving the child into the monitor task.
+        // This lets the manager dispatch worker jobs later without needing
+        // a handle to the Child itself (which is !Send across awaits on
+        // Windows named-pipe stdio handles).
+        let stdin_handle = child.stdin.take().map(|s| Arc::new(Mutex::new(s)));
 
         // Move bookkeeping into the spawned task so the surrounding
         // future is Send (Child is Send but holding it across the
@@ -106,6 +142,7 @@ impl ChildManager {
                 h.last_started_at = Some(Utc::now());
                 h.last_started_instant = Some(Instant::now());
                 h.last_heartbeat = Some(Instant::now());
+                h.stdin = stdin_handle;
             }
             me.monitor_child(task_name, child, handle_for_task).await;
         });
@@ -185,6 +222,7 @@ impl ChildManager {
                 h.total_uptime = h.total_uptime.saturating_add(start.elapsed());
             }
             h.pid = None;
+            h.stdin = None;
         }
 
         // Honour a graceful supervisor shutdown.
@@ -213,53 +251,113 @@ impl ChildManager {
             return;
         }
 
-        // Apply exponential backoff + budget.
-        if let Err(e) = self.restart_with_backoff(&name, handle).await {
-            error!(child = %name, error = %e, "restart failed");
+        // Mark the child as Restarting and queue a request on the restart
+        // channel. The dedicated restart loop (see `run_restart_loop`)
+        // performs the actual respawn. This decouples the monitor task —
+        // which still owns the dead `Child` handle until function return —
+        // from the respawn code path that creates a NEW `Child`. The old
+        // recursive `spawn_child` → `monitor_child` call stack forced the
+        // compiler to prove the combined future was Send even though
+        // Windows named-pipe stdio pieces make `Child` ambiguous across
+        // awaits. Splitting via an mpsc boundary lets each side be Send
+        // independently.
+        {
+            let mut h = handle.lock().await;
+            h.status = ChildStatus::Restarting;
+        }
+        if let Err(e) = self.restart_tx.send(RestartRequest {
+            name: name.clone(),
+            exit_code,
+            queued_at: Instant::now(),
+        }) {
+            error!(child = %name, error = %e, "restart channel closed; cannot queue respawn");
+        } else {
+            debug!(child = %name, exit_code, "restart request queued");
         }
     }
 
-    async fn restart_with_backoff(
+    /// Process queued restart requests forever. Owned by a single task.
+    ///
+    /// This loop pulls `RestartRequest`s off the channel filled by
+    /// [`Self::monitor_child`] and performs the respawn with exponential
+    /// backoff + restart-budget enforcement. Because it runs in its own
+    /// tokio task with a fresh stack, the opaque-future Send-inference
+    /// cycle that blocked v0.1 is avoided structurally.
+    pub(crate) async fn run_restart_loop(
+        self: Arc<Self>,
+        mut rx: mpsc::UnboundedReceiver<RestartRequest>,
+    ) {
+        info!("restart loop online");
+        while let Some(req) = rx.recv().await {
+            if *self.shutdown_flag.lock().await {
+                debug!(child = %req.name, "shutdown in progress; ignoring restart request");
+                continue;
+            }
+            if let Err(e) = self.respawn_one(&req).await {
+                error!(child = %req.name, error = %e, "restart failed");
+            }
+        }
+        info!("restart loop offline");
+    }
+
+    async fn respawn_one(
         self: &Arc<Self>,
-        name: &str,
-        handle: Arc<Mutex<ChildHandle>>,
+        req: &RestartRequest,
     ) -> Result<(), SupervisorError> {
         let policy = self.config.default_restart_policy.clone();
+        let handle = match self.handle_for(&req.name).await {
+            Some(h) => h,
+            None => {
+                warn!(child = %req.name, "restart for unknown child; dropping");
+                return Ok(());
+            }
+        };
 
-        // Compute next backoff and check budget.
+        // Compute backoff + enforce budget under the handle lock.
         let (delay, spec) = {
             let mut h = handle.lock().await;
-            h.status = ChildStatus::Restarting;
             h.record_restart(policy.budget_window);
-
             let in_window = h.restarts_in_window(policy.budget_window);
             if in_window > policy.max_restarts_per_window {
                 h.status = ChildStatus::Degraded;
+                warn!(
+                    child = %req.name,
+                    restarts = in_window,
+                    window_secs = policy.budget_window.as_secs(),
+                    "restart budget exceeded; marking degraded"
+                );
                 return Err(SupervisorError::RestartBudgetExceeded {
-                    name: name.to_string(),
+                    name: req.name.clone(),
                     restarts: in_window,
                     window_secs: policy.budget_window.as_secs(),
                 });
             }
-
-            let next = (h.current_backoff.as_millis() as f32 * policy.backoff_multiplier) as u64;
+            let next =
+                (h.current_backoff.as_millis() as f32 * policy.backoff_multiplier) as u64;
             let capped = next.min(policy.max_backoff.as_millis() as u64);
             let delay = h.current_backoff;
             h.current_backoff = Duration::from_millis(capped.max(1));
             (delay, h.spec.clone())
         };
 
-        debug!(child = %name, delay_ms = delay.as_millis() as u64, "would restart");
+        // Sleep the backoff interval. No `Child` is in scope here, so the
+        // compiler can trivially prove the future is Send.
+        debug!(
+            child = %req.name,
+            delay_ms = delay.as_millis() as u64,
+            exit_code = req.exit_code,
+            "restart scheduled"
+        );
         tokio::time::sleep(delay).await;
-        // v0.1 NOTE: auto-restart deferred to v0.2 — invoking spawn_child
-        // here triggers a recursive opaque-future Send-inference error
-        // through tokio::process::Child handles on Windows. Children that
-        // exit are logged via the shared LogRing and require manual
-        // `mneme daemon restart --child <name>` until the recursion is
-        // restructured (likely via a bounded restart-channel + dedicated
-        // supervisor thread). Tracked in TEST_RUN.md.
-        let _ = spec;
-        warn!(child = %name, "auto-restart deferred to v0.2; child stays down");
+
+        if *self.shutdown_flag.lock().await {
+            return Ok(());
+        }
+
+        // Spawn a fresh child. spawn_child is its own future with its own
+        // stack, so nothing in the old monitor's frame is borrowed here.
+        self.spawn_child(spec).await?;
+        info!(child = %req.name, "child respawned");
         Ok(())
     }
 
@@ -326,11 +424,14 @@ impl ChildManager {
                 current_uptime_ms: h.current_uptime().as_millis() as u64,
                 total_uptime_ms: h.total_uptime.as_millis() as u64,
                 last_exit_code: h.last_exit_code,
+                last_started_at: h.last_started_at,
+                last_restart_at: h.last_restart_at,
                 p50_us: percentiles.map(|p| p.0),
                 p95_us: percentiles.map(|p| p.1),
                 p99_us: percentiles.map(|p| p.2),
             });
         }
+        out.sort_by(|a, b| a.name.cmp(&b.name));
         out
     }
 
@@ -363,6 +464,74 @@ impl ChildManager {
             handle.last_heartbeat = Some(Instant::now());
         }
     }
+
+    /// Dispatch a single JSON-line job to the named worker via its stdin
+    /// pipe. The caller serialises the payload; the manager appends a
+    /// trailing newline and flushes.
+    ///
+    /// Returns `Err(SupervisorError::Other)` if the child is not running,
+    /// its stdin handle has been reaped, or the write fails.
+    pub async fn dispatch_job(
+        &self,
+        name: &str,
+        payload: &str,
+    ) -> Result<(), SupervisorError> {
+        let handle = self
+            .handle_for(name)
+            .await
+            .ok_or_else(|| SupervisorError::Other(format!("unknown child: {name}")))?;
+        let stdin_arc = {
+            let h = handle.lock().await;
+            if h.status != ChildStatus::Running {
+                return Err(SupervisorError::Other(format!(
+                    "child '{name}' not running (status {:?})",
+                    h.status
+                )));
+            }
+            h.stdin
+                .clone()
+                .ok_or_else(|| SupervisorError::Other(format!("child '{name}' has no stdin")))?
+        };
+        let mut stdin = stdin_arc.lock().await;
+        stdin.write_all(payload.as_bytes()).await?;
+        if !payload.ends_with('\n') {
+            stdin.write_all(b"\n").await?;
+        }
+        stdin.flush().await?;
+        Ok(())
+    }
+
+    /// Pick a worker matching `prefix` (e.g. `"parser-worker-"`) in round
+    /// robin fashion and dispatch a job to it. Used by the daemon's
+    /// in-process router so the CLI doesn't have to know how many workers
+    /// exist.
+    pub async fn dispatch_to_pool(
+        &self,
+        prefix: &str,
+        payload: &str,
+    ) -> Result<String, SupervisorError> {
+        let mut candidates: Vec<String> = {
+            let guard = self.handles.read().await;
+            guard
+                .keys()
+                .filter(|n| n.starts_with(prefix))
+                .cloned()
+                .collect()
+        };
+        candidates.sort();
+        for name in &candidates {
+            match self.dispatch_job(name, payload).await {
+                Ok(()) => return Ok(name.clone()),
+                Err(e) => {
+                    debug!(child = %name, error = %e, "pool dispatch attempt failed; trying next");
+                }
+            }
+        }
+        Err(SupervisorError::Other(format!(
+            "no worker matching prefix '{prefix}' is accepting jobs ({} candidates)",
+            candidates.len()
+        )))
+    }
 }
 
 /// Read-only summary used by the health & IPC layers.
@@ -382,6 +551,12 @@ pub struct ChildSnapshot {
     pub total_uptime_ms: u64,
     /// Last observed exit code.
     pub last_exit_code: Option<i32>,
+    /// Wall-clock time of the most recent successful spawn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_started_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Wall-clock time of the most recent auto-restart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_restart_at: Option<chrono::DateTime<chrono::Utc>>,
     /// p50 latency in microseconds.
     pub p50_us: Option<u64>,
     /// p95 latency in microseconds.

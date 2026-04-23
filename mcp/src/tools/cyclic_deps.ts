@@ -1,7 +1,13 @@
 /**
  * MCP tool: cyclic_deps
  *
- * Detects circular dependency chains across the project graph.
+ * Detects circular dependency chains.
+ *
+ * v0.1 (review P2): reads `graph.db → edges` via `bun:sqlite` read-only
+ * and runs an in-process iterative Tarjan SCC. We scope to `kind IN
+ * ('imports', 'import')` so only true module-level cycles surface (not
+ * mutual recursion through calls). Missing shard → `{ cycles: [],
+ * count: 0 }`.
  */
 
 import {
@@ -9,7 +15,7 @@ import {
   CyclicDepsOutput,
   type ToolDescriptor,
 } from "../types.ts";
-import { query as dbQuery } from "../db.ts";
+import { detectCycles, shardDbPath } from "../store.ts";
 
 export const tool: ToolDescriptor<
   ReturnType<typeof CyclicDepsInput.parse>,
@@ -21,12 +27,15 @@ export const tool: ToolDescriptor<
   inputSchema: CyclicDepsInput,
   outputSchema: CyclicDepsOutput,
   category: "graph",
-  async handler(input) {
-    const result = await dbQuery
-      .raw<ReturnType<typeof CyclicDepsOutput.parse>>("graph.cyclic_deps", {
-        scope: input.scope,
-      })
-      .catch(() => null);
-    return result ?? { cycles: [], count: 0 };
+  async handler() {
+    if (!shardDbPath("graph")) {
+      return { cycles: [], count: 0 };
+    }
+    // Use a null kind filter to consider all edges; a typical corpus
+    // graph has `imports` edges but older shards used `import`.
+    const cyclesImports = detectCycles("imports");
+    const cyclesImport = detectCycles("import");
+    const cycles = [...cyclesImports, ...cyclesImport];
+    return { cycles, count: cycles.length };
   },
 };

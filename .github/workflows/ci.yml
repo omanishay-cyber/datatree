@@ -53,6 +53,15 @@ jobs:
         run: cargo test --workspace --verbose
         continue-on-error: true  # v0.1: tests not yet wired; enforce in v0.2
 
+      - name: Check multimodal extractors (default features)
+        run: cargo check -p mneme-multimodal
+        continue-on-error: true
+
+      - name: Check multimodal extractors (all optional features)
+        # Needs tesseract/whisper/ffmpeg system libs; tolerated to fail.
+        run: cargo check -p mneme-multimodal --features all-extractors
+        continue-on-error: true
+
   mcp:
     name: MCP server (bun check)
     runs-on: ubuntu-latest
@@ -91,23 +100,9 @@ jobs:
         run: bunx tsc --noEmit
         continue-on-error: true
 
-  python:
-    name: Python multimodal (pip + compile)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install sidecar
-        working-directory: workers/multimodal
-        run: pip install -e .
-
-      - name: Syntax check
-        working-directory: workers/multimodal
-        run: python -m compileall -q datatree_multimodal
+  # v0.2: the Python multimodal sidecar has been retired. Extraction is
+  # now pure Rust in `multimodal-bridge/` (see cli::commands::graphify).
+  # Left here as a breadcrumb for anyone grepping for the old job.
 
   license-check:
     name: License header present
