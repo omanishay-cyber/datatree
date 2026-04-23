@@ -1,28 +1,30 @@
 <div align="center">
 
-<h1>🌳 Mneme</h1>
-
-<h3>Claude never starts cold. Claude never loses its place.</h3>
+<!-- Animated gradient wave header — matches the profile README -->
+<img src="https://capsule-render.vercel.app/api?type=waving&height=220&color=gradient&customColorList=6,11,20&text=Mneme&fontSize=72&fontAlignY=40&desc=Claude%20never%20starts%20cold.%20Claude%20never%20loses%20its%20place.&descSize=16&descAlignY=62&animation=fadeIn" width="100%"/>
 
 <p>
-  <strong>Persistent per-project AI superbrain.</strong><br/>
-  Survives compaction. Indexes code. Injects context. 100% local.<br/>
-  Works with Claude Code, Codex, Cursor, Windsurf, Zed, and 13 more.
+  <a href="#-quick-start"><img src="https://img.shields.io/badge/Install-60%20seconds-4191E1?style=for-the-badge" alt="Install in 60 seconds"/></a>
+  <a href="https://github.com/omanishay-cyber/mneme/releases"><img src="https://img.shields.io/badge/version-v0.2.0-41E1B5?style=for-the-badge" alt="Version"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-22D3EE?style=for-the-badge" alt="License"/></a>
+  <a href="https://github.com/omanishay-cyber/mneme/actions"><img src="https://img.shields.io/badge/CI-green-brightgreen?style=for-the-badge" alt="CI"/></a>
+  <a href="https://github.com/omanishay-cyber/mneme/issues"><img src="https://img.shields.io/badge/Issues-on%20GitHub-a78bfa?style=for-the-badge" alt="Issues"/></a>
 </p>
 
 <p>
-  <a href="#quick-start"><img src="https://img.shields.io/badge/install-in%2060%20seconds-4191E1?style=for-the-badge" alt="Install in 60 seconds"/></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-41E1B5?style=for-the-badge" alt="License"/></a>
-  <a href="#"><img src="https://img.shields.io/badge/status-v0.2.0%20operational-22D3EE?style=for-the-badge" alt="Status"/></a>
+  <strong>The persistent memory layer for AI coding.</strong><br/>
+  Survives context compaction. Indexes your code. Injects the right 1–3K tokens every turn.<br/>
+  100% local. No telemetry. Works with Claude Code, Codex, Cursor, Windsurf, Zed, and 13 more.
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/built%20with-Rust-orange?logo=rust" alt="Rust"/>
-  <img src="https://img.shields.io/badge/built%20with-Bun-black?logo=bun" alt="Bun"/>
-  <img src="https://img.shields.io/badge/built%20with-Python-3776AB?logo=python" alt="Python"/>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platforms"/>
-  <img src="https://img.shields.io/badge/MCP-2024--11--05-success" alt="MCP"/>
-  <img src="https://img.shields.io/badge/local--only-✓-brightgreen" alt="Local only"/>
+  <img src="https://img.shields.io/badge/built%20with-Rust-CE422B?style=flat&logo=rust&logoColor=white" alt="Rust"/>
+  <img src="https://img.shields.io/badge/built%20with-Bun-000000?style=flat&logo=bun&logoColor=white" alt="Bun"/>
+  <img src="https://img.shields.io/badge/built%20with-TypeScript-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript"/>
+  <img src="https://img.shields.io/badge/platform-Win%20%7C%20macOS%20%7C%20Linux-4191E1?style=flat" alt="Platforms"/>
+  <img src="https://img.shields.io/badge/MCP-2024--11--05-41E1B5?style=flat" alt="MCP"/>
+  <img src="https://img.shields.io/badge/local--only-%E2%9C%93-22D3EE?style=flat" alt="Local only"/>
+  <img src="https://img.shields.io/badge/Apache--2.0-open%20source-a78bfa?style=flat" alt="Apache 2.0"/>
 </p>
 
 <p>
@@ -32,13 +34,15 @@
     &nbsp;·&nbsp; <a href="#-the-killer-feature">Killer feature</a>
     &nbsp;·&nbsp; <a href="#-benchmarks">Benchmarks</a>
     &nbsp;·&nbsp; <a href="#-18-supported-platforms">Platforms</a>
+    &nbsp;·&nbsp; <a href="ARCHITECTURE.md">Architecture</a>
     &nbsp;·&nbsp; <a href="docs/">Docs</a>
   </strong>
 </p>
 
+</div>
+
 ---
 
-</div>
 
 ## Feature matrix vs CRG and graphify
 
