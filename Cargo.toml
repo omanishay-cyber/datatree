@@ -12,6 +12,7 @@ members = [
     "md-ingest",
     "brain-stub",
     "brain",
+    "benchmarks",
 ]
 
 [workspace.package]

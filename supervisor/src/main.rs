@@ -17,6 +17,7 @@ use datatree_supervisor::config::SupervisorConfig;
 use datatree_supervisor::error::SupervisorError;
 use datatree_supervisor::ipc::{self, ControlCommand, ControlResponse};
 use datatree_supervisor::service::{self, ServiceAction};
+use datatree_supervisor::watcher::{self, WatcherStatsHandle, DEFAULT_DEBOUNCE};
 use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::error;
@@ -65,6 +66,20 @@ enum Cmd {
         /// How many entries to print.
         #[arg(long, default_value_t = 100)]
         n: usize,
+    },
+    /// Watch a project directory and incrementally re-index on save.
+    /// Blocks until Ctrl-C. Writes `file_reindexed` events to livebus if
+    /// the socket path is reachable.
+    Watch {
+        /// Project root to watch (defaults to CWD).
+        #[arg(long)]
+        project: Option<PathBuf>,
+        /// Optional livebus IPC socket path to emit events on.
+        #[arg(long, env = "DATATREE_LIVEBUS")]
+        livebus: Option<PathBuf>,
+        /// Debounce window in milliseconds.
+        #[arg(long, default_value_t = 250)]
+        debounce_ms: u64,
     },
 }
 
@@ -154,6 +169,38 @@ async fn run_cli(cli: Cli) -> Result<(), SupervisorError> {
             let socket = cli.ipc.unwrap_or_else(default_ipc_path);
             let resp = round_trip(&socket, &ControlCommand::Logs { child, n }).await?;
             print_response(&resp);
+            Ok(())
+        }
+        Cmd::Watch {
+            project,
+            livebus,
+            debounce_ms,
+        } => {
+            let root = project.unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+            });
+            let stats = WatcherStatsHandle::new();
+            let debounce = if debounce_ms == 0 {
+                DEFAULT_DEBOUNCE
+            } else {
+                std::time::Duration::from_millis(debounce_ms)
+            };
+            tracing::info!(
+                root = %root.display(),
+                debounce_ms = debounce.as_millis() as u64,
+                "starting watcher"
+            );
+            let watch_fut = watcher::run_watcher(root, livebus, stats, debounce);
+            tokio::select! {
+                result = watch_fut => {
+                    if let Err(e) = result {
+                        return Err(SupervisorError::Other(format!("watcher exited: {e}")));
+                    }
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    tracing::info!("ctrl-c received, watcher shutting down");
+                }
+            }
             Ok(())
         }
     }

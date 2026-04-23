@@ -257,7 +257,7 @@ For commercial licensing (hosting, derivative products, training), contact the a
 
 ## 📄 License
 
-[Datatree Community License v1.0](LICENSE) — source-available, free to use, commercial resale prohibited.
+[Apache-2.0](LICENSE) — open-source, free to use, commercial resale prohibited.
 
 Copyright © 2026 **Anish Trivedi** (BS Computer Science).
 

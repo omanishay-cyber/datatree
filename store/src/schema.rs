@@ -31,6 +31,8 @@ pub fn schema_sql(layer: DbLayer) -> &'static str {
         DbLayer::Telemetry => TELEMETRY_SQL,
         DbLayer::Corpus => CORPUS_SQL,
         DbLayer::Audit => AUDIT_SQL,
+        DbLayer::Wiki => WIKI_SQL,
+        DbLayer::Architecture => ARCHITECTURE_SQL,
         DbLayer::Meta => META_SQL,
     }
 }
@@ -473,6 +475,31 @@ CREATE TABLE IF NOT EXISTS refactors (
     applied_at TEXT NOT NULL DEFAULT (datetime('now')),
     reverted_at TEXT
 );
+
+-- Refactor proposals — open suggestions produced by the refactor scanner.
+-- Each proposal has a stable uuid plus a full replacement span so the
+-- apply-path can perform an atomic rewrite.
+CREATE TABLE IF NOT EXISTS refactor_proposals (
+    proposal_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    file TEXT NOT NULL,
+    line_start INTEGER NOT NULL,
+    line_end INTEGER NOT NULL,
+    column_start INTEGER NOT NULL,
+    column_end INTEGER NOT NULL,
+    symbol TEXT,
+    original_text TEXT NOT NULL,
+    replacement_text TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'info',
+    confidence REAL NOT NULL DEFAULT 1.0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    applied_at TEXT,
+    backup_path TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_refactor_proposals_file ON refactor_proposals(file);
+CREATE INDEX IF NOT EXISTS idx_refactor_proposals_kind ON refactor_proposals(kind);
+CREATE INDEX IF NOT EXISTS idx_refactor_proposals_open ON refactor_proposals(applied_at) WHERE applied_at IS NULL;
 "#;
 
 const CONTRACTS_SQL: &str = r#"
@@ -557,6 +584,58 @@ CREATE TABLE IF NOT EXISTS audit_log (
     happened_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_audit_layer_time ON audit_log(layer, happened_at);
+"#;
+
+const WIKI_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')));
+
+-- Auto-generated community wiki pages. Append-only: every regeneration
+-- inserts a fresh row with an incremented `version` for the same slug so
+-- history is preserved. Readers fetch WHERE version = MAX(version).
+CREATE TABLE IF NOT EXISTS wiki_pages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    community_id INTEGER,
+    title TEXT NOT NULL,
+    markdown TEXT NOT NULL,
+    summary TEXT,
+    entry_points TEXT NOT NULL DEFAULT '[]',
+    file_paths TEXT NOT NULL DEFAULT '[]',
+    risk_score REAL NOT NULL DEFAULT 0.0,
+    generated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_wiki_pages_slug ON wiki_pages(slug, version);
+CREATE INDEX IF NOT EXISTS idx_wiki_pages_community ON wiki_pages(community_id);
+
+CREATE TABLE IF NOT EXISTS wiki_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT,
+    pages_generated INTEGER NOT NULL DEFAULT 0,
+    notes TEXT
+);
+"#;
+
+const ARCHITECTURE_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')));
+
+-- Each row is a full architecture overview snapshot. Append-only; consumers
+-- read the newest row. JSON columns hold the dense data (coupling matrix,
+-- per-community risk_index, bridge nodes).
+CREATE TABLE IF NOT EXISTS architecture_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    captured_at TEXT NOT NULL DEFAULT (datetime('now')),
+    community_count INTEGER NOT NULL DEFAULT 0,
+    node_count INTEGER NOT NULL DEFAULT 0,
+    edge_count INTEGER NOT NULL DEFAULT 0,
+    coupling_matrix TEXT NOT NULL DEFAULT '[]',
+    risk_index TEXT NOT NULL DEFAULT '[]',
+    bridge_nodes TEXT NOT NULL DEFAULT '[]',
+    hub_nodes TEXT NOT NULL DEFAULT '[]',
+    notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_arch_captured_at ON architecture_snapshots(captured_at);
 "#;
 
 const META_SQL: &str = r#"

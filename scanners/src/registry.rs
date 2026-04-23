@@ -7,8 +7,9 @@ use std::sync::Arc;
 use crate::scanner::Scanner;
 use crate::scanners::{
     a11y::A11yScanner, drift::DriftScanner, ipc::IpcContractsScanner,
-    markdown_drift::MarkdownDriftScanner, perf::PerfScanner, secrets::SecretsScanner,
-    security::SecurityScanner, theme::ThemeScanner, types_ts::TsTypesScanner,
+    markdown_drift::MarkdownDriftScanner, perf::PerfScanner, refactor::RefactorScanner,
+    secrets::SecretsScanner, security::SecurityScanner, theme::ThemeScanner,
+    types_ts::TsTypesScanner,
 };
 
 /// Project-level configuration that scanners need at construction time.
@@ -48,6 +49,7 @@ impl ScannerRegistry {
             Arc::new(IpcContractsScanner::new(config.ipc_types_path.clone())),
             Arc::new(MarkdownDriftScanner::new(config.project_root.clone())),
             Arc::new(SecretsScanner::new()),
+            Arc::new(RefactorScanner::new()),
         ];
         Self { scanners }
     }

@@ -142,7 +142,7 @@ It depends. Building *a tool whose primary value proposition is datatree* (anoth
 
 ### What if I find a bug and want to send a fix?
 
-PRs welcome. See [CONTRIBUTING.md](../CONTRIBUTING.md). By submitting a PR you're agreeing your contribution is licensed under the [Datatree Community License](../LICENSE).
+PRs welcome. See [CONTRIBUTING.md](../CONTRIBUTING.md). By submitting a PR you're agreeing your contribution is licensed under the [Apache-2.0](../LICENSE).
 
 ---
 

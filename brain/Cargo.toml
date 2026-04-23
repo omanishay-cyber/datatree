@@ -38,15 +38,22 @@ tokio = { version = "1", features = [
     "signal",
 ] }
 
-# v0.1 ships a pure-Rust hashing-trick embedder (see src/embeddings.rs).
-# No native ONNX runtime. v0.2 will swap in candle-transformers for real
-# BGE-small weights; keep the import line ready:
-# candle-core = { version = "0.8", default-features = false }
-# candle-nn = { version = "0.8", default-features = false }
-# candle-transformers = { version = "0.8", default-features = false }
+# v0.2: real BGE-small-en-v1.5 embeddings via fastembed-rs (ONNX Runtime).
+# - Offline-safe after first `datatree models install` (model cached to
+#   ~/.datatree/llm/).
+# - If the model is missing at runtime, Embedder transparently falls back
+#   to the pure-Rust hashing-trick backend so a fresh install still works.
+# The `fastembed` crate is behind a feature flag so the rest of the
+# workspace continues to build in environments without a C++ toolchain
+# (ONNX Runtime needs one). Enabled by default on tier-1 platforms.
+fastembed = { version = "4", optional = true, default-features = false, features = [
+    "ort-download-binaries",
+    "hf-hub-native-tls",
+] }
 
 # HuggingFace tokenizers (pure-Rust; no network at load time when given a
-# local tokenizer.json path).
+# local tokenizer.json path). Used by the fallback hashing-trick backend
+# for consistent token-level segmentation.
 tokenizers = { version = "0.20", default-features = false, features = [
     "onig",
 ] }

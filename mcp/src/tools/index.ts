@@ -62,6 +62,11 @@ const STATIC_TOOL_FILES = [
   "health",
   "doctor",
   "rebuild",
+  "refactor_suggest",
+  "refactor_apply",
+  "wiki_generate",
+  "wiki_page",
+  "architecture_overview",
 ];
 
 // ---------------------------------------------------------------------------

@@ -32,7 +32,7 @@ Initial public release. .
 - **Pure-Rust hashing-trick embedder** — real similarity-preserving vectors with no native DLL dependency
 - **Live SSE/WebSocket push channel** (code + schema complete; vision app subscribes)
 - **Knowledge-worker mode** — drinks every `.md`, usable for blogs / research / notes, not only code
-- **Plain-English LICENSE** (Datatree Community License v1.0) — use yes, sell/host/compete/train no
+- **Plain-English LICENSE** (Apache-2.0) — use yes, sell/host/compete/train no
 
 ### Verified end-to-end on 2026-04-23
 - 40 of 40 workers running under supervisor

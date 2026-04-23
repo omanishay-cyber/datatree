@@ -24,6 +24,12 @@ pub enum DbLayer {
     Telemetry,
     Corpus,
     Audit,
+    /// Wiki: auto-generated markdown knowledge pages from Leiden communities
+    /// and god-nodes. Append-only pages table keyed by (community_id, version).
+    Wiki,
+    /// Architecture: coupling matrix + betweenness centrality + risk index
+    /// snapshots. Append-only; each snapshot is a new row.
+    Architecture,
     /// Cross-project meta-database (singleton, not per-project).
     Meta,
 }
@@ -53,6 +59,8 @@ impl DbLayer {
             Self::Telemetry => "telemetry.db",
             Self::Corpus => "corpus.db",
             Self::Audit => "audit.db",
+            Self::Wiki => "wiki.db",
+            Self::Architecture => "architecture.db",
             Self::Meta => "meta.db",
         }
     }
@@ -80,6 +88,8 @@ impl DbLayer {
             Self::Telemetry,
             Self::Corpus,
             Self::Audit,
+            Self::Wiki,
+            Self::Architecture,
         ]
     }
 }
