@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag name (e.g. v0.1.1)"
+        required: true
+
+permissions:
+  contents: write   # required to upload release assets
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: datatree-linux-x64
+            archive: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset_name: datatree-macos-arm64
+            archive: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            asset_name: datatree-macos-x64
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: datatree-windows-x64
+            archive: zip
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build Rust workspace (release)
+        run: cargo build --release --workspace --target ${{ matrix.target }}
+
+      - name: Install MCP server deps
+        working-directory: mcp
+        run: bun install --production
+
+      - name: Stage release payload
+        shell: bash
+        run: |
+          mkdir -p release-staging/bin
+          mkdir -p release-staging/mcp
+          mkdir -p release-staging/vision
+          mkdir -p release-staging/plugin
+
+          # Rust binaries (.exe suffix on Windows, none elsewhere)
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp target/${{ matrix.target }}/release/datatree.exe release-staging/bin/
+            cp target/${{ matrix.target }}/release/datatree-supervisor.exe release-staging/bin/
+            cp target/${{ matrix.target }}/release/datatree-store.exe release-staging/bin/
+            cp target/${{ matrix.target }}/release/datatree-parsers.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/datatree-scanners.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/datatree-livebus.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/datatree-md-ingest.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/datatree-brain.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/datatree-multimodal-bridge.exe release-staging/bin/ || true
+          else
+            cp target/${{ matrix.target }}/release/datatree release-staging/bin/
+            cp target/${{ matrix.target }}/release/datatree-supervisor release-staging/bin/
+            cp target/${{ matrix.target }}/release/datatree-store release-staging/bin/
+            cp target/${{ matrix.target }}/release/datatree-parsers release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/datatree-scanners release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/datatree-livebus release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/datatree-md-ingest release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/datatree-brain release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/datatree-multimodal-bridge release-staging/bin/ || true
+          fi
+
+          # MCP server source (runs under Bun, no compile step)
+          cp -R mcp/src release-staging/mcp/
+          cp mcp/package.json release-staging/mcp/
+          cp mcp/tsconfig.json release-staging/mcp/
+          cp -R mcp/node_modules release-staging/mcp/ 2>/dev/null || true
+
+          # Plugin manifest + templates
+          cp -R plugin release-staging/
+          cp marketplace.json release-staging/ 2>/dev/null || true
+          cp LICENSE release-staging/
+          cp README.md release-staging/
+
+      - name: Package (zip — Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: Compress-Archive -Path release-staging\* -DestinationPath ${{ matrix.asset_name }}.zip -Force
+
+      - name: Package (tar.gz — POSIX)
+        if: matrix.archive == 'tar.gz'
+        run: tar -czf ${{ matrix.asset_name }}.tar.gz -C release-staging .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: |
+            ${{ matrix.asset_name }}.zip
+            ${{ matrix.asset_name }}.tar.gz
+          if-no-files-found: ignore
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f | sort
+
+      - name: Determine tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "value=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ steps.tag.outputs.value }}" \
+            artifacts/**/*.zip \
+            artifacts/**/*.tar.gz \
+            --repo "${{ github.repository }}" \
+            --clobber
