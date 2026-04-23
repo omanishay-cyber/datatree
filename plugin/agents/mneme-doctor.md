@@ -1,6 +1,6 @@
 ---
 name: mneme-doctor
-description: Health-check agent. Runs the supervisor self-test suite, validates every shard's integrity, computes the SLA snapshot, and emits remediation recommendations. Runs every 60s by health-watchdog and on-demand via /dt-doctor.
+description: Health-check agent. Runs the supervisor self-test suite, validates every shard's integrity, computes the SLA snapshot, and emits remediation recommendations. Runs every 60s by health-watchdog and on-demand via /mn-doctor.
 tools: Bash, Read
 model: haiku
 ---

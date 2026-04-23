@@ -258,17 +258,17 @@ See [INSTALL.md](INSTALL.md) for troubleshooting and platform-specific notes.
 ```typescript
 // Claude calls these from within any conversation:
 
-/dt-view                  // Opens the 14-view vision app
-/dt-audit                 // Runs every scanner, returns findings
-/dt-recall "auth flow"    // Semantic recall across code + docs + decisions
-/dt-blast login.ts        // Blast radius — what breaks if this changes
-/dt-step status           // Current position in the numbered plan
-/dt-step resume           // Emit the resumption bundle after compaction
-/dt-godnodes              // Top-10 most-connected concepts
-/dt-drift                 // Active rule violations
-/dt-graphify              // Multimodal extraction pass (PDF / audio / video)
-/dt-history "last tuesday about sync"   // Conversation history search
-/dt-doctor                // SLA snapshot + self-test
+/mn-view                  // Opens the 14-view vision app
+/mn-audit                 // Runs every scanner, returns findings
+/mn-recall "auth flow"    // Semantic recall across code + docs + decisions
+/mn-blast login.ts        // Blast radius — what breaks if this changes
+/mn-step status           // Current position in the numbered plan
+/mn-step resume           // Emit the resumption bundle after compaction
+/mn-godnodes              // Top-10 most-connected concepts
+/mn-drift                 // Active rule violations
+/mn-graphify              // Multimodal extraction pass (PDF / audio / video)
+/mn-history "last tuesday about sync"   // Conversation history search
+/mn-doctor                // SLA snapshot + self-test
 ```
 
 Full reference: [`docs/mcp-tools.md`](docs/mcp-tools.md).

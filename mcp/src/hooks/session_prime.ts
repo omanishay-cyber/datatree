@@ -43,7 +43,7 @@ export async function runSessionPrime(args: SessionPrimeArgs): Promise<HookOutpu
   } catch (err) {
     // Hooks must NEVER crash the harness — return an empty-context result
     // and log to stderr so the supervisor sees it.
-    console.error("[datatree-mcp] session_prime failed:", err);
+    console.error("[mneme-mcp] session_prime failed:", err);
     return {
       additional_context: "",
       metadata: { hook: "SessionStart", error: (err as Error).message },

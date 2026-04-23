@@ -3,15 +3,40 @@
  *
  * Returns the current open drift findings (rule violations actively present
  * in the working tree).
+ *
+ * v0.1 (review P2): reads `findings.db → findings` via `bun:sqlite`
+ * read-only. Query shape:
+ *   WHERE resolved_at IS NULL
+ *     [AND severity = ?]
+ *     [AND file LIKE '%scope%']
+ *   ORDER BY severity-rank DESC, created_at DESC
+ *   LIMIT ?
+ *
+ * Graceful degrade: missing findings shard → `{ findings: [] }`.
  */
 
 import {
   DriftFindingsInput,
   DriftFindingsOutput,
   type Finding,
+  type Severity,
   type ToolDescriptor,
 } from "../types.ts";
-import { query as dbQuery } from "../db.ts";
+import { driftFindings, shardDbPath } from "../store.ts";
+
+const ALLOWED_SEVERITY: readonly Severity[] = [
+  "info",
+  "low",
+  "medium",
+  "high",
+  "critical",
+];
+
+function coerceSeverity(s: string): Severity {
+  return (ALLOWED_SEVERITY as readonly string[]).includes(s)
+    ? (s as Severity)
+    : "info";
+}
 
 export const tool: ToolDescriptor<
   ReturnType<typeof DriftFindingsInput.parse>,
@@ -24,22 +49,23 @@ export const tool: ToolDescriptor<
   outputSchema: DriftFindingsOutput,
   category: "drift",
   async handler(input) {
-    const clauses: string[] = ["resolved_at IS NULL"];
-    const params: unknown[] = [];
-    if (input.severity) {
-      clauses.push("severity = ?");
-      params.push(input.severity);
+    if (!shardDbPath("findings")) {
+      return { findings: [] };
     }
-    if (input.scope) {
-      clauses.push("(file LIKE ?)");
-      params.push(`%${input.scope}%`);
-    }
-    const where = `${clauses.join(" AND ")} ORDER BY severity DESC, detected_at DESC LIMIT ?`;
-    params.push(input.limit);
 
-    const findings = await dbQuery
-      .select<Finding>("findings", where, params)
-      .catch(() => [] as Finding[]);
+    const rows = driftFindings(input.severity, input.scope, input.limit);
+
+    const findings: Finding[] = rows.map((r) => ({
+      id: String(r.id),
+      scanner: r.scanner,
+      severity: coerceSeverity(r.severity),
+      file: r.file,
+      line: r.line_start ?? null,
+      rule: r.rule_id,
+      message: r.message,
+      suggestion: r.suggestion,
+      detected_at: r.created_at,
+    }));
 
     return { findings };
   },

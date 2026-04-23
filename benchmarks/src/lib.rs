@@ -100,14 +100,14 @@ pub struct QuerySetReport {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompareRow {
     pub query: String,
-    pub datatree_top: Vec<String>,
-    pub datatree_tokens: u64,
-    pub datatree_ms: u64,
+    pub mneme_top: Vec<String>,
+    pub mneme_tokens: u64,
+    pub mneme_ms: u64,
     pub cold_top: Vec<String>,
     pub cold_tokens: u64,
     pub cold_ms: u64,
     pub expected_top: Vec<String>,
-    pub datatree_precision_at_5: u32,
+    pub mneme_precision_at_5: u32,
     pub cold_precision_at_5: u32,
 }
 
@@ -115,12 +115,12 @@ pub struct CompareRow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompareReport {
     pub rows: Vec<CompareRow>,
-    pub datatree_total_tokens: u64,
+    pub mneme_total_tokens: u64,
     pub cold_total_tokens: u64,
-    pub datatree_total_ms: u64,
+    pub mneme_total_ms: u64,
     pub cold_total_ms: u64,
     /// Integer percent [0, 100] of precision@5 summed across queries.
-    pub datatree_precision_pct: u32,
+    pub mneme_precision_pct: u32,
     pub cold_precision_pct: u32,
 }
 
@@ -537,19 +537,19 @@ pub fn compare_vs_cold(
 
         rows.push(CompareRow {
             query: q.query.clone(),
-            datatree_top: dt_top,
-            datatree_tokens: dt_tok,
-            datatree_ms: dt_elapsed,
+            mneme_top: dt_top,
+            mneme_tokens: dt_tok,
+            mneme_ms: dt_elapsed,
             cold_top: c_top,
             cold_tokens: c_tok,
             cold_ms: c_elapsed,
             expected_top: q.expected_top.clone(),
-            datatree_precision_at_5: dt_hit,
+            mneme_precision_at_5: dt_hit,
             cold_precision_at_5: cold_hit,
         });
     }
 
-    let datatree_precision_pct = if total_expected == 0 {
+    let mneme_precision_pct = if total_expected == 0 {
         0
     } else {
         (dt_precision_hits * 100) / total_expected
@@ -562,11 +562,11 @@ pub fn compare_vs_cold(
 
     Ok(CompareReport {
         rows,
-        datatree_total_tokens: dt_tokens,
+        mneme_total_tokens: dt_tokens,
         cold_total_tokens: cold_tokens,
-        datatree_total_ms: dt_ms,
+        mneme_total_ms: dt_ms,
         cold_total_ms: cold_ms,
-        datatree_precision_pct,
+        mneme_precision_pct,
         cold_precision_pct,
     })
 }

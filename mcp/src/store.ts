@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
 
-const MNEME_HOME = join(homedir(), ".datatree");
+const MNEME_HOME = join(homedir(), ".mneme");
 
 /**
  * Hash an absolute project path to its ProjectId (matches Rust
@@ -76,12 +76,12 @@ export function openShardDb(layer: string, cwdOverride?: string): Database {
   const root = resolveShardRoot(cwdOverride);
   if (!root) {
     throw new Error(
-      "datatree shard not found — run `datatree build .` in your project first",
+      "mneme shard not found — run `mneme build .` in your project first",
     );
   }
   const path = join(root, `${layer}.db`);
   if (!existsSync(path)) {
-    throw new Error(`datatree shard missing ${layer}.db at ${path}`);
+    throw new Error(`mneme shard missing ${layer}.db at ${path}`);
   }
   return new Database(path, { readonly: true });
 }
@@ -212,4 +212,789 @@ export function callersOf(
   } finally {
     db.close();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Shard availability + per-shard read helpers
+// (Used by recall_file / recall_decision / recall_todo / recall_constraint /
+//  recall_conversation / god_nodes / drift_findings / doctor / step_status /
+//  step_resume — the 10 tools wired in review P2.)
+// ---------------------------------------------------------------------------
+
+/** Returns the absolute .db path for a layer, or null if the shard root or
+ *  the specific layer DB file doesn't exist yet. Never throws. */
+export function shardDbPath(layer: string, cwdOverride?: string): string | null {
+  const root = resolveShardRoot(cwdOverride);
+  if (!root) return null;
+  const path = join(root, `${layer}.db`);
+  return existsSync(path) ? path : null;
+}
+
+/** Open a shard read-only if it exists; returns null instead of throwing. */
+export function tryOpenShard(layer: string, cwdOverride?: string): Database | null {
+  const p = shardDbPath(layer, cwdOverride);
+  if (!p) return null;
+  try {
+    return new Database(p, { readonly: true });
+  } catch {
+    return null;
+  }
+}
+
+/** Run `fn` against a read-only connection to `layer`. If the shard is
+ *  missing or fn throws, returns `fallback`. Connection is always closed. */
+export function withShard<T>(
+  layer: string,
+  fn: (db: Database) => T,
+  fallback: T,
+  cwdOverride?: string,
+): T {
+  const db = tryOpenShard(layer, cwdOverride);
+  if (!db) return fallback;
+  try {
+    return fn(db);
+  } catch {
+    return fallback;
+  } finally {
+    try {
+      db.close();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+// -- graph shard -----------------------------------------------------------
+
+/** Look up a file node by exact path + top-N neighbors (callers/callees). */
+export function fileNodeState(
+  filePath: string,
+  neighborLimit: number = 10,
+  cwdOverride?: string,
+): {
+  file_path: string;
+  language: string | null;
+  sha256: string | null;
+  line_count: number | null;
+  byte_count: number | null;
+  last_parsed_at: string | null;
+  neighbors: Array<{ qualified_name: string; edge_kind: string; kind: string | null }>;
+} | null {
+  return withShard<{
+    file_path: string;
+    language: string | null;
+    sha256: string | null;
+    line_count: number | null;
+    byte_count: number | null;
+    last_parsed_at: string | null;
+    neighbors: Array<{ qualified_name: string; edge_kind: string; kind: string | null }>;
+  } | null>(
+    "graph",
+    (db) => {
+      const file = db
+        .prepare(
+          `SELECT path, sha256, language, line_count, byte_count, last_parsed_at
+           FROM files WHERE path = ?`,
+        )
+        .get(filePath) as
+        | {
+            path: string;
+            sha256: string;
+            language: string | null;
+            line_count: number | null;
+            byte_count: number | null;
+            last_parsed_at: string;
+          }
+        | undefined;
+
+      if (!file) return null;
+
+      // Top neighbors: edges that cross this file's boundary (either endpoint
+      // lives in this file). We approximate via nodes.file_path match.
+      const neighbors = db
+        .prepare(
+          `SELECT DISTINCT
+             CASE WHEN n_src.file_path = ?1 THEN e.target_qualified
+                  ELSE e.source_qualified END AS qualified_name,
+             e.kind AS edge_kind,
+             n_other.kind AS kind
+           FROM edges e
+           LEFT JOIN nodes n_src ON n_src.qualified_name = e.source_qualified
+           LEFT JOIN nodes n_tgt ON n_tgt.qualified_name = e.target_qualified
+           LEFT JOIN nodes n_other ON n_other.qualified_name =
+             CASE WHEN n_src.file_path = ?1 THEN e.target_qualified
+                  ELSE e.source_qualified END
+           WHERE n_src.file_path = ?1 OR n_tgt.file_path = ?1
+           LIMIT ?2`,
+        )
+        .all(filePath, neighborLimit) as Array<{
+        qualified_name: string;
+        edge_kind: string;
+        kind: string | null;
+      }>;
+
+      return {
+        file_path: file.path,
+        language: file.language,
+        sha256: file.sha256 ?? null,
+        line_count: file.line_count,
+        byte_count: file.byte_count,
+        last_parsed_at: file.last_parsed_at ?? null,
+        neighbors,
+      };
+    },
+    null,
+    cwdOverride,
+  );
+}
+
+/** Count inbound+outbound edges that touch any node whose file_path matches. */
+export function blastRadiusCount(filePath: string, cwdOverride?: string): number {
+  return withShard<number>(
+    "graph",
+    (db) => {
+      const row = db
+        .prepare(
+          `SELECT COUNT(DISTINCT e.id) AS c FROM edges e
+           LEFT JOIN nodes n_src ON n_src.qualified_name = e.source_qualified
+           LEFT JOIN nodes n_tgt ON n_tgt.qualified_name = e.target_qualified
+           WHERE n_src.file_path = ? OR n_tgt.file_path = ?`,
+        )
+        .get(filePath, filePath) as { c: number } | undefined;
+      return row?.c ?? 0;
+    },
+    0,
+    cwdOverride,
+  );
+}
+
+/** Top-N most-connected nodes (degree = incoming + outgoing edges). */
+export function godNodesTopN(
+  topN: number = 10,
+  cwdOverride?: string,
+): Array<{
+  qualified_name: string;
+  degree: number;
+  out_degree: number;
+  in_degree: number;
+  kind: string | null;
+}> {
+  return withShard<
+    Array<{
+      qualified_name: string;
+      degree: number;
+      out_degree: number;
+      in_degree: number;
+      kind: string | null;
+    }>
+  >(
+    "graph",
+    (db) => {
+      const rows = db
+        .prepare(
+          `WITH deg AS (
+             SELECT source_qualified AS q, COUNT(*) AS out_d, 0 AS in_d FROM edges GROUP BY source_qualified
+             UNION ALL
+             SELECT target_qualified AS q, 0, COUNT(*)                  FROM edges GROUP BY target_qualified
+           )
+           SELECT d.q AS qualified_name,
+                  SUM(d.out_d + d.in_d) AS degree,
+                  SUM(d.out_d)          AS out_degree,
+                  SUM(d.in_d)           AS in_degree,
+                  (SELECT kind FROM nodes WHERE qualified_name = d.q LIMIT 1) AS kind
+           FROM deg d
+           GROUP BY d.q
+           ORDER BY degree DESC
+           LIMIT ?`,
+        )
+        .all(topN) as Array<{
+        qualified_name: string;
+        degree: number;
+        out_degree: number;
+        in_degree: number;
+        kind: string | null;
+      }>;
+      return rows;
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+// -- history shard ---------------------------------------------------------
+
+/** FTS5 search over decisions.(topic + problem + chosen + reasoning). */
+export function searchDecisions(
+  queryText: string,
+  limit: number = 10,
+  since?: string,
+  cwdOverride?: string,
+): Array<{
+  id: number;
+  session_id: string | null;
+  topic: string;
+  problem: string;
+  chosen: string;
+  reasoning: string;
+  alternatives: string;
+  artifacts: string;
+  created_at: string;
+}> {
+  return withShard<
+    Array<{
+      id: number;
+      session_id: string | null;
+      topic: string;
+      problem: string;
+      chosen: string;
+      reasoning: string;
+      alternatives: string;
+      artifacts: string;
+      created_at: string;
+    }>
+  >(
+    "history",
+    (db) => {
+      // Decisions doesn't have an FTS5 index at schema v1 — scan via LIKE.
+      const like = `%${queryText.toLowerCase()}%`;
+      const params: Array<string | number> = [like, like, like, like];
+      let where = `(lower(topic) LIKE ? OR lower(problem) LIKE ?
+                    OR lower(chosen) LIKE ? OR lower(reasoning) LIKE ?)`;
+      if (since) {
+        where += " AND created_at >= ?";
+        params.push(since);
+      }
+      params.push(limit);
+      const sql = `SELECT id, session_id, topic, problem, chosen, reasoning,
+                          alternatives, artifacts, created_at
+                   FROM decisions
+                   WHERE ${where}
+                   ORDER BY created_at DESC
+                   LIMIT ?`;
+      return db.prepare(sql).all(...params) as Array<{
+        id: number;
+        session_id: string | null;
+        topic: string;
+        problem: string;
+        chosen: string;
+        reasoning: string;
+        alternatives: string;
+        artifacts: string;
+        created_at: string;
+      }>;
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+/** FTS5 search over turns.content with optional session + since filters. */
+export function searchConversation(
+  queryText: string,
+  limit: number = 10,
+  sessionId?: string,
+  since?: string,
+  cwdOverride?: string,
+): Array<{
+  id: number;
+  session_id: string;
+  role: string;
+  content: string;
+  timestamp: string;
+}> {
+  return withShard<
+    Array<{
+      id: number;
+      session_id: string;
+      role: string;
+      content: string;
+      timestamp: string;
+    }>
+  >(
+    "history",
+    (db) => {
+      const params: Array<string | number> = [];
+      // Try FTS5 first; if the query has special chars, fall back to LIKE.
+      const safeQuery = queryText.replace(/["']/g, " ").trim();
+      const useFts = safeQuery.length > 0 && !/[^\w\s]/.test(safeQuery);
+
+      let sql: string;
+      if (useFts) {
+        sql = `SELECT t.id, t.session_id, t.role, t.content, t.timestamp
+               FROM turns_fts f
+               JOIN turns t ON t.id = f.rowid
+               WHERE turns_fts MATCH ?`;
+        params.push(safeQuery);
+      } else {
+        sql = `SELECT id, session_id, role, content, timestamp
+               FROM turns
+               WHERE lower(content) LIKE ?`;
+        params.push(`%${queryText.toLowerCase()}%`);
+      }
+      if (sessionId) {
+        sql += ` AND ${useFts ? "t." : ""}session_id = ?`;
+        params.push(sessionId);
+      }
+      if (since) {
+        sql += ` AND ${useFts ? "t." : ""}timestamp >= ?`;
+        params.push(since);
+      }
+      sql += ` ORDER BY ${useFts ? "t." : ""}timestamp DESC LIMIT ?`;
+      params.push(limit);
+
+      return db.prepare(sql).all(...params) as Array<{
+        id: number;
+        session_id: string;
+        role: string;
+        content: string;
+        timestamp: string;
+      }>;
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+// -- tasks shard -----------------------------------------------------------
+
+/** Open ledger entries used as "todos" (open_question + unresolved impl). */
+export function openReminders(
+  limit: number = 200,
+  tag?: string,
+  since?: string,
+  cwdOverride?: string,
+): Array<{
+  id: string;
+  session_id: string;
+  kind: string;
+  summary: string;
+  rationale: string | null;
+  touched_files: string;
+  touched_concepts: string;
+  timestamp: number;
+}> {
+  return withShard<
+    Array<{
+      id: string;
+      session_id: string;
+      kind: string;
+      summary: string;
+      rationale: string | null;
+      touched_files: string;
+      touched_concepts: string;
+      timestamp: number;
+    }>
+  >(
+    "tasks",
+    (db) => {
+      const clauses: string[] = ["kind = 'open_question'"];
+      const params: Array<string | number> = [];
+      if (tag) {
+        clauses.push("(lower(summary) LIKE ? OR lower(touched_concepts) LIKE ?)");
+        const like = `%${tag.toLowerCase()}%`;
+        params.push(like, like);
+      }
+      if (since) {
+        // since is RFC3339 — convert to unix millis for ledger_entries.
+        const ms = Date.parse(since);
+        if (!Number.isNaN(ms)) {
+          clauses.push("timestamp >= ?");
+          params.push(ms);
+        }
+      }
+      params.push(limit);
+      const sql = `SELECT id, session_id, kind, summary, rationale,
+                          touched_files, touched_concepts, timestamp
+                   FROM ledger_entries
+                   WHERE ${clauses.join(" AND ")}
+                   ORDER BY timestamp DESC
+                   LIMIT ?`;
+      return db.prepare(sql).all(...params) as Array<{
+        id: string;
+        session_id: string;
+        kind: string;
+        summary: string;
+        rationale: string | null;
+        touched_files: string;
+        touched_concepts: string;
+        timestamp: number;
+      }>;
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+/** All steps for a session, ordered by creation (parent-first). */
+export function sessionSteps(
+  sessionId: string,
+  cwdOverride?: string,
+): Array<{
+  step_id: string;
+  parent_step_id: string | null;
+  session_id: string;
+  description: string;
+  acceptance_cmd: string | null;
+  acceptance_check: string;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  verification_proof: string | null;
+  artifacts: string;
+  notes: string;
+  blocker: string | null;
+  drift_score: number;
+}> {
+  return withShard<
+    Array<{
+      step_id: string;
+      parent_step_id: string | null;
+      session_id: string;
+      description: string;
+      acceptance_cmd: string | null;
+      acceptance_check: string;
+      status: string;
+      started_at: string | null;
+      completed_at: string | null;
+      verification_proof: string | null;
+      artifacts: string;
+      notes: string;
+      blocker: string | null;
+      drift_score: number;
+    }>
+  >(
+    "tasks",
+    (db) => {
+      return db
+        .prepare(
+          `SELECT step_id, parent_step_id, session_id, description,
+                  acceptance_cmd, acceptance_check, status, started_at,
+                  completed_at, verification_proof, artifacts, notes,
+                  blocker, drift_score
+           FROM steps
+           WHERE session_id = ?
+           ORDER BY CASE WHEN parent_step_id IS NULL THEN 0 ELSE 1 END,
+                    step_id ASC`,
+        )
+        .all(sessionId) as Array<{
+        step_id: string;
+        parent_step_id: string | null;
+        session_id: string;
+        description: string;
+        acceptance_cmd: string | null;
+        acceptance_check: string;
+        status: string;
+        started_at: string | null;
+        completed_at: string | null;
+        verification_proof: string | null;
+        artifacts: string;
+        notes: string;
+        blocker: string | null;
+        drift_score: number;
+      }>;
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+/** Recent ledger entries for a session (used by step_resume). */
+export function recentLedger(
+  sessionId: string | undefined,
+  sinceMs: number,
+  limit: number = 100,
+  cwdOverride?: string,
+): Array<{
+  id: string;
+  session_id: string;
+  kind: string;
+  summary: string;
+  rationale: string | null;
+  timestamp: number;
+}> {
+  return withShard<
+    Array<{
+      id: string;
+      session_id: string;
+      kind: string;
+      summary: string;
+      rationale: string | null;
+      timestamp: number;
+    }>
+  >(
+    "tasks",
+    (db) => {
+      const params: Array<string | number> = [sinceMs];
+      let sql = `SELECT id, session_id, kind, summary, rationale, timestamp
+                 FROM ledger_entries
+                 WHERE timestamp >= ?`;
+      if (sessionId) {
+        sql += ` AND session_id = ?`;
+        params.push(sessionId);
+      }
+      sql += ` ORDER BY timestamp DESC LIMIT ?`;
+      params.push(limit);
+      return db.prepare(sql).all(...params) as Array<{
+        id: string;
+        session_id: string;
+        kind: string;
+        summary: string;
+        rationale: string | null;
+        timestamp: number;
+      }>;
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+// -- findings shard --------------------------------------------------------
+
+export function driftFindings(
+  severity: string | undefined,
+  scope: string | undefined,
+  limit: number = 50,
+  cwdOverride?: string,
+): Array<{
+  id: number;
+  rule_id: string;
+  scanner: string;
+  severity: string;
+  file: string;
+  line_start: number;
+  line_end: number;
+  message: string;
+  suggestion: string | null;
+  created_at: string;
+}> {
+  return withShard<
+    Array<{
+      id: number;
+      rule_id: string;
+      scanner: string;
+      severity: string;
+      file: string;
+      line_start: number;
+      line_end: number;
+      message: string;
+      suggestion: string | null;
+      created_at: string;
+    }>
+  >(
+    "findings",
+    (db) => {
+      const clauses: string[] = ["resolved_at IS NULL"];
+      const params: Array<string | number> = [];
+      if (severity) {
+        clauses.push("severity = ?");
+        params.push(severity);
+      }
+      if (scope) {
+        clauses.push("file LIKE ?");
+        params.push(`%${scope}%`);
+      }
+      params.push(limit);
+      const sql = `SELECT id, rule_id, scanner, severity, file,
+                          line_start, line_end, message, suggestion, created_at
+                   FROM findings
+                   WHERE ${clauses.join(" AND ")}
+                   ORDER BY CASE severity
+                              WHEN 'critical' THEN 4
+                              WHEN 'high'     THEN 3
+                              WHEN 'medium'   THEN 2
+                              WHEN 'low'      THEN 1
+                              ELSE 0 END DESC,
+                            created_at DESC
+                   LIMIT ?`;
+      return db.prepare(sql).all(...params) as Array<{
+        id: number;
+        rule_id: string;
+        scanner: string;
+        severity: string;
+        file: string;
+        line_start: number;
+        line_end: number;
+        message: string;
+        suggestion: string | null;
+        created_at: string;
+      }>;
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+// -- memory shard ----------------------------------------------------------
+
+export function activeConstraints(
+  scope: "global" | "project" | "file",
+  file: string | undefined,
+  limit: number = 50,
+  cwdOverride?: string,
+): Array<{
+  id: number;
+  scope: string;
+  rule_id: string;
+  rule: string;
+  why: string;
+  how_to_apply: string;
+  applies_to: string;
+  source: string | null;
+  created_at: string;
+}> {
+  return withShard<
+    Array<{
+      id: number;
+      scope: string;
+      rule_id: string;
+      rule: string;
+      why: string;
+      how_to_apply: string;
+      applies_to: string;
+      source: string | null;
+      created_at: string;
+    }>
+  >(
+    "memory",
+    (db) => {
+      // Scope hierarchy: global ⊂ project ⊂ file. "project" scope returns
+      // global + project; "file" scope returns all three, and additionally
+      // client-side filters file-scope rows whose applies_to contains `file`.
+      let allowed: string[];
+      if (scope === "global") allowed = ["global"];
+      else if (scope === "project") allowed = ["global", "project"];
+      else allowed = ["global", "project", "file"];
+
+      const placeholders = allowed.map(() => "?").join(",");
+      const rows = db
+        .prepare(
+          `SELECT id, scope, rule_id, rule, why, how_to_apply, applies_to,
+                  source, created_at
+           FROM constraints
+           WHERE scope IN (${placeholders})
+           ORDER BY created_at DESC
+           LIMIT ?`,
+        )
+        .all(...allowed, limit) as Array<{
+        id: number;
+        scope: string;
+        rule_id: string;
+        rule: string;
+        why: string;
+        how_to_apply: string;
+        applies_to: string;
+        source: string | null;
+        created_at: string;
+      }>;
+
+      if (scope === "file" && file) {
+        return rows.filter((r) => {
+          if (r.scope !== "file") return true;
+          try {
+            const globs = JSON.parse(r.applies_to) as unknown;
+            if (!Array.isArray(globs)) return true;
+            return globs.some((g) => {
+              if (typeof g !== "string") return false;
+              // very light glob — contains or suffix match
+              if (g === "*") return true;
+              if (g.startsWith("*.") && file.endsWith(g.slice(1))) return true;
+              return file.includes(g.replace(/\*/g, ""));
+            });
+          } catch {
+            return true;
+          }
+        });
+      }
+      return rows;
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+// -- doctor: cross-shard health sweep --------------------------------------
+
+export interface ShardHealth {
+  layer: string;
+  exists: boolean;
+  path: string | null;
+  row_counts: Record<string, number>;
+  integrity_ok: boolean;
+  error: string | null;
+}
+
+const DOCTOR_SHARDS: Array<{ layer: string; tables: string[] }> = [
+  { layer: "graph", tables: ["nodes", "edges", "files"] },
+  { layer: "history", tables: ["turns", "decisions"] },
+  { layer: "tasks", tables: ["steps", "ledger_entries"] },
+  { layer: "findings", tables: ["findings"] },
+  { layer: "memory", tables: ["constraints"] },
+  { layer: "semantic", tables: ["embeddings", "concepts", "communities"] },
+];
+
+export function doctorShardSweep(cwdOverride?: string): ShardHealth[] {
+  const out: ShardHealth[] = [];
+  for (const s of DOCTOR_SHARDS) {
+    const p = shardDbPath(s.layer, cwdOverride);
+    if (!p) {
+      out.push({
+        layer: s.layer,
+        exists: false,
+        path: null,
+        row_counts: {},
+        integrity_ok: false,
+        error: "shard not yet created (run `mneme build .`)",
+      });
+      continue;
+    }
+    const db = tryOpenShard(s.layer, cwdOverride);
+    if (!db) {
+      out.push({
+        layer: s.layer,
+        exists: true,
+        path: p,
+        row_counts: {},
+        integrity_ok: false,
+        error: "could not open shard read-only",
+      });
+      continue;
+    }
+    try {
+      const row_counts: Record<string, number> = {};
+      for (const t of s.tables) {
+        try {
+          const r = db.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get() as
+            | { c: number }
+            | undefined;
+          row_counts[t] = r?.c ?? 0;
+        } catch {
+          row_counts[t] = -1;
+        }
+      }
+      let integrity_ok = false;
+      try {
+        const ic = db.prepare("PRAGMA integrity_check").get() as
+          | { integrity_check: string }
+          | undefined;
+        integrity_ok = ic?.integrity_check === "ok";
+      } catch {
+        integrity_ok = false;
+      }
+      out.push({
+        layer: s.layer,
+        exists: true,
+        path: p,
+        row_counts,
+        integrity_ok,
+        error: null,
+      });
+    } finally {
+      try {
+        db.close();
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return out;
 }

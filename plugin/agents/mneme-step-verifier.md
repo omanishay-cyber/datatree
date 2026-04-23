@@ -1,6 +1,6 @@
 ---
 name: mneme-step-verifier
-description: Runs the acceptance check for the current step in the Step Ledger. Refuses to advance the ledger if the check fails. Called by step_complete and by the user via /dt-step verify.
+description: Runs the acceptance check for the current step in the Step Ledger. Refuses to advance the ledger if the check fails. Called by step_complete and by the user via /mn-step verify.
 tools: Bash, Read
 model: haiku
 ---

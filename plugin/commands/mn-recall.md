@@ -1,10 +1,10 @@
 ---
-name: /dt-recall
+name: /mn-recall
 description: Semantic search across decisions, conversations, concepts, files, todos, and constraints stored in the local mneme shards.
 command: mneme recall
 ---
 
-# /dt-recall
+# /mn-recall
 
 Query the persistent project memory + knowledge graph without re-reading
 any files.
@@ -12,13 +12,13 @@ any files.
 ## Usage
 
 ```
-/dt-recall <query>                          # auto-route to best tool
-/dt-recall decision "<query>"               # decisions log
-/dt-recall conversation "<query>"           # past conversation turns
-/dt-recall concept "<query>" --modality code # concepts (filter by modality)
-/dt-recall file <path>                      # file state + summary
-/dt-recall todo                             # open TODOs
-/dt-recall constraint --scope project       # active rules
+/mn-recall <query>                          # auto-route to best tool
+/mn-recall decision "<query>"               # decisions log
+/mn-recall conversation "<query>"           # past conversation turns
+/mn-recall concept "<query>" --modality code # concepts (filter by modality)
+/mn-recall file <path>                      # file state + summary
+/mn-recall todo                             # open TODOs
+/mn-recall constraint --scope project       # active rules
 ```
 
 ## What this does

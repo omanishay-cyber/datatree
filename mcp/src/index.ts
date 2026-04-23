@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Datatree MCP server — main entry.
+ * Mneme MCP server — main entry.
  *
  * Two modes of operation, selected by the first positional argument:
  *
@@ -8,12 +8,12 @@
  *      reload), connects via @modelcontextprotocol/sdk, runs forever.
  *
  *   2. Hook command. Examples:
- *        datatree-mcp session-prime --project=. --session-id=abc
- *        datatree-mcp inject        --prompt="..." --session-id=abc --cwd=.
- *        datatree-mcp pre-tool      --tool=Read --params-json='{...}' --session-id=abc
- *        datatree-mcp post-tool     --tool=Read --result-file=/tmp/r.txt --session-id=abc
- *        datatree-mcp turn-end      --session-id=abc
- *        datatree-mcp session-end   --session-id=abc
+ *        mneme-mcp session-prime --project=. --session-id=abc
+ *        mneme-mcp inject        --prompt="..." --session-id=abc --cwd=.
+ *        mneme-mcp pre-tool      --tool=Read --params-json='{...}' --session-id=abc
+ *        mneme-mcp post-tool     --tool=Read --result-file=/tmp/r.txt --session-id=abc
+ *        mneme-mcp turn-end      --session-id=abc
+ *        mneme-mcp session-end   --session-id=abc
  *
  *      Each hook command prints exactly one JSON object to stdout matching
  *      HookOutput from types.ts and exits 0.
@@ -146,7 +146,7 @@ async function startMcp(): Promise<void> {
 
   // Lifecycle: shut down cleanly on SIGINT/SIGTERM.
   const shutdown = async (signal: string): Promise<void> => {
-    console.error(`[datatree-mcp] received ${signal}, shutting down`);
+    console.error(`[mneme-mcp] received ${signal}, shutting down`);
     registry.unwatch();
     await server.stop();
     shutdownDb();
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
       await runHook(command, flags);
       process.exit(0);
     } catch (err) {
-      console.error(`[datatree-mcp] hook ${command} failed:`, err);
+      console.error(`[mneme-mcp] hook ${command} failed:`, err);
       // Always emit a valid (empty) HookOutput so the harness doesn't crash.
       process.stdout.write(
         JSON.stringify({ additional_context: "", metadata: { error: String(err) } }),
@@ -192,6 +192,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("[datatree-mcp] fatal:", err);
+  console.error("[mneme-mcp] fatal:", err);
   process.exit(1);
 });

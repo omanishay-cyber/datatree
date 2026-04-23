@@ -10,6 +10,7 @@ pub mod build;
 pub mod daemon;
 pub mod doctor;
 pub mod drift;
+pub mod federated;
 pub mod godnodes;
 pub mod graphify;
 pub mod history;

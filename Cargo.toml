@@ -10,7 +10,7 @@ members = [
     "multimodal-bridge",
     "cli",
     "md-ingest",
-    "brain-stub",
+
     "brain",
     "benchmarks",
 ]

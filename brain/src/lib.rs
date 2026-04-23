@@ -25,6 +25,7 @@ pub mod conventions;
 pub mod embed_store;
 pub mod embeddings;
 pub mod error;
+pub mod federated;
 pub mod identity;
 pub mod job;
 pub mod ledger;
@@ -84,6 +85,10 @@ pub use conventions::{
 pub use embed_store::{EmbedStore, NearestHit};
 pub use embeddings::{install_default_model, Embedder, EMBEDDING_DIM};
 pub use error::{BrainError, BrainResult as BrainOutcome};
+pub use federated::{
+    minhash_k, simhash_64, FederatedCounts, FederatedStore, PatternFingerprint, MINHASH_K,
+    SIMHASH_BITS,
+};
 pub use identity::{detect_stack, ProjectIdentity, TechCategory, Technology};
 pub use job::{BrainJob, BrainResult, JobId};
 pub use ledger::{

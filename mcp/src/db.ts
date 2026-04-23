@@ -1,5 +1,5 @@
 /**
- * datatree CLI IPC wrapper.
+ * mneme CLI IPC wrapper.
  *
  * Exposes the same 7 sub-layer DB API (Builder / Finder / AccessPath / Query
  * / Response / Injection / Lifecycle — see design §13.5) to TypeScript callers.
@@ -42,7 +42,7 @@ function discoverSocketPath(): string {
   if (platform() === "win32") {
     return "\\\\?\\pipemneme-supervisor";
   }
-  return join(homedir(), ".datatree", "supervisor.sock");
+  return join(homedir(), ".mneme", "supervisor.sock");
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +116,7 @@ class IpcClient {
         }
       } catch (err) {
         // Malformed frame — drop it; the caller will time out.
-        console.error("[datatree-mcp] malformed IPC frame", err);
+        console.error("[mneme-mcp] malformed IPC frame", err);
       }
     }
   }
@@ -372,7 +372,7 @@ export const livebus = {
       await _client.request("livebus.emit", { topic, payload });
     } catch (err) {
       // Live bus is best-effort; never let emission failures break the caller.
-      console.error("[datatree-mcp] livebus emit failed", err);
+      console.error("[mneme-mcp] livebus emit failed", err);
     }
   },
 };

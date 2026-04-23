@@ -4,15 +4,39 @@
  * Returns active constraints (rules) for the current project, file, or global
  * scope. Constraints originate from CLAUDE.md, .claude/rules/, and the
  * project's datatree.json.
+ *
+ * v0.1 (review P2): reads `memory.db → constraints` via `bun:sqlite`
+ * read-only. Query shape: scope-filtered WHERE + client-side glob match over
+ * `applies_to` for file-scoped rules. Scope hierarchy expands downward:
+ *   - global  → {scope = 'global'}
+ *   - project → {scope IN ('global','project')}
+ *   - file    → {all three}, plus `applies_to` glob match against `input.file`
+ *
+ * Severity + enforcement derivation: the schema stores neither explicitly
+ * (`store/src/schema.rs`), so we infer severity from the `rule_id` / `source`
+ * (anything with "security" or "MUST" → "high", otherwise "medium") and
+ * default enforcement to "warn".
+ *
+ * Graceful degrade: missing memory shard → `{ constraints: [] }`.
  */
 
 import {
   RecallConstraintInput,
   RecallConstraintOutput,
   type Constraint,
+  type Severity,
   type ToolDescriptor,
 } from "../types.ts";
-import { query as dbQuery } from "../db.ts";
+import { activeConstraints, shardDbPath } from "../store.ts";
+
+function inferSeverity(rule: string, source: string | null): Severity {
+  const blob = `${rule} ${source ?? ""}`.toLowerCase();
+  if (blob.includes("security") || blob.includes("never") || blob.includes("must not")) {
+    return "high";
+  }
+  if (blob.includes("must") || blob.includes("always")) return "medium";
+  return "low";
+}
 
 export const tool: ToolDescriptor<
   ReturnType<typeof RecallConstraintInput.parse>,
@@ -25,24 +49,20 @@ export const tool: ToolDescriptor<
   outputSchema: RecallConstraintOutput,
   category: "recall",
   async handler(input) {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-    if (input.scope === "global") {
-      clauses.push("scope = 'global'");
-    } else if (input.scope === "project") {
-      clauses.push("scope IN ('global','project')");
-    } else if (input.scope === "file" && input.file) {
-      clauses.push("scope IN ('global','project','file')");
-      // file-scope filter is best-effort — server-side glob match
-      clauses.push("(scope <> 'file' OR file_glob_matches(?, file_glob))");
-      params.push(input.file);
+    if (!shardDbPath("memory")) {
+      return { constraints: [] };
     }
 
-    const whereBody = clauses.length > 0 ? clauses.join(" AND ") : "1=1";
-    const where = `${whereBody} ORDER BY severity DESC, id ASC LIMIT 50`;
-    const constraints = await dbQuery
-      .select<Constraint>("constraints", where, params)
-      .catch(() => [] as Constraint[]);
+    const rows = activeConstraints(input.scope, input.file, 50);
+
+    const constraints: Constraint[] = rows.map((r) => ({
+      id: String(r.id),
+      rule: r.rule,
+      scope: r.scope,
+      source: r.source ?? "unknown",
+      severity: inferSeverity(r.rule, r.source),
+      enforcement: "warn" as const,
+    }));
 
     return { constraints };
   },

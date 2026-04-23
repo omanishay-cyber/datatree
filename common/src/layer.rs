@@ -35,6 +35,12 @@ pub enum DbLayer {
     /// re-running `mneme build` inserts fresh rows with updated confidence
     /// rather than mutating existing ones.
     Conventions,
+    /// Federated pattern fingerprints (Moat 4). Append-only. Stores local
+    /// SimHash+MinHash fingerprints derived from Convention Learner output
+    /// and the concept graph. No source code leaves this shard; upload is
+    /// strictly opt-in (see `brain::federated`). `source_file` is present
+    /// locally but is NEVER included in any upload payload.
+    Federated,
     /// Cross-project meta-database (singleton, not per-project).
     Meta,
 }
@@ -67,6 +73,7 @@ impl DbLayer {
             Self::Wiki => "wiki.db",
             Self::Architecture => "architecture.db",
             Self::Conventions => "conventions.db",
+            Self::Federated => "federated.db",
             Self::Meta => "meta.db",
         }
     }
@@ -97,6 +104,7 @@ impl DbLayer {
             Self::Wiki,
             Self::Architecture,
             Self::Conventions,
+            Self::Federated,
         ]
     }
 }

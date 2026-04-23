@@ -34,6 +34,7 @@ pub fn schema_sql(layer: DbLayer) -> &'static str {
         DbLayer::Wiki => WIKI_SQL,
         DbLayer::Architecture => ARCHITECTURE_SQL,
         DbLayer::Conventions => CONVENTIONS_SQL,
+        DbLayer::Federated => FEDERATED_SQL,
         DbLayer::Meta => META_SQL,
     }
 }
@@ -685,6 +686,29 @@ CREATE TABLE IF NOT EXISTS conventions (
 );
 CREATE INDEX IF NOT EXISTS idx_conventions_kind ON conventions(pattern_kind);
 CREATE INDEX IF NOT EXISTS idx_conventions_confidence ON conventions(confidence);
+"#;
+
+const FEDERATED_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')));
+
+-- Federated pattern fingerprints (Moat 4). Append-only. Each row stores a
+-- locally-computed SimHash + MinHash fingerprint for a code pattern. The
+-- `source_file` column is LOCAL ONLY — it MUST be stripped before any
+-- opt-in upload (see `brain::federated::FederatedStore::export_for_upload`).
+CREATE TABLE IF NOT EXISTS pattern_fingerprints (
+    id TEXT PRIMARY KEY,
+    pattern_kind TEXT NOT NULL,
+    simhash INTEGER NOT NULL,
+    minhash BLOB NOT NULL,       -- bincode-serialized Vec<u32> (k=128)
+    ast_shape TEXT NOT NULL,
+    span_tokens INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    source_file TEXT,             -- local only, NEVER uploaded
+    uploaded INTEGER NOT NULL DEFAULT 0   -- 1 if user opted in and it synced
+);
+CREATE INDEX IF NOT EXISTS idx_fp_simhash ON pattern_fingerprints(simhash);
+CREATE INDEX IF NOT EXISTS idx_fp_pattern ON pattern_fingerprints(pattern_kind);
+CREATE INDEX IF NOT EXISTS idx_fp_uploaded ON pattern_fingerprints(uploaded);
 "#;
 
 const META_SQL: &str = r#"

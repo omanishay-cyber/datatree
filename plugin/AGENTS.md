@@ -60,12 +60,12 @@ no cloud sync. All extraction, embedding, and audit work runs locally
 ## Quick Commands
 
 ```
-/dt-view     open the live graph (Tauri or web)
-/dt-step     view current step ledger
-/dt-recall   semantic search
-/dt-blast    blast radius
-/dt-audit    run all scanners
-/dt-doctor   self-test
+/mn-view     open the live graph (Tauri or web)
+/mn-step     view current step ledger
+/mn-recall   semantic search
+/mn-blast    blast radius
+/mn-audit    run all scanners
+/mn-doctor   self-test
 ```
 
 ## Performance Budgets
