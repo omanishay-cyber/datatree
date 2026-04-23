@@ -22,20 +22,21 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            asset_name: datatree-linux-x64
+            asset_name: mneme-linux-x64
             archive: tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
-            asset_name: datatree-macos-arm64
-            archive: tar.gz
-          - os: macos-13
-            target: x86_64-apple-darwin
-            asset_name: datatree-macos-x64
+            asset_name: mneme-macos-arm64
             archive: tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            asset_name: datatree-windows-x64
+            asset_name: mneme-windows-x64
             archive: zip
+          # Note: macos-13 (Intel Mac) removed from the matrix. GitHub's
+          # hosted Intel Mac runners are chronically queue-starved (hours
+          # to days), which blocks the publish job indefinitely. Intel Mac
+          # users should run the arm64 asset via Rosetta 2 or build from
+          # source. Intel Mac is sunset-class hardware by 2026.
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -73,25 +74,25 @@ jobs:
 
           # Rust binaries (.exe suffix on Windows, none elsewhere)
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp target/${{ matrix.target }}/release/datatree.exe release-staging/bin/
-            cp target/${{ matrix.target }}/release/datatree-supervisor.exe release-staging/bin/
-            cp target/${{ matrix.target }}/release/datatree-store.exe release-staging/bin/
-            cp target/${{ matrix.target }}/release/datatree-parsers.exe release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/datatree-scanners.exe release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/datatree-livebus.exe release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/datatree-md-ingest.exe release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/datatree-brain.exe release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/datatree-multimodal-bridge.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme.exe release-staging/bin/
+            cp target/${{ matrix.target }}/release/mneme-daemon.exe release-staging/bin/
+            cp target/${{ matrix.target }}/release/mneme-store.exe release-staging/bin/
+            cp target/${{ matrix.target }}/release/mneme-parsers.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-scanners.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-livebus.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-md-ingest.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-brain.exe release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-multimodal-bridge.exe release-staging/bin/ || true
           else
-            cp target/${{ matrix.target }}/release/datatree release-staging/bin/
-            cp target/${{ matrix.target }}/release/datatree-supervisor release-staging/bin/
-            cp target/${{ matrix.target }}/release/datatree-store release-staging/bin/
-            cp target/${{ matrix.target }}/release/datatree-parsers release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/datatree-scanners release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/datatree-livebus release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/datatree-md-ingest release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/datatree-brain release-staging/bin/ || true
-            cp target/${{ matrix.target }}/release/datatree-multimodal-bridge release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme release-staging/bin/
+            cp target/${{ matrix.target }}/release/mneme-daemon release-staging/bin/
+            cp target/${{ matrix.target }}/release/mneme-store release-staging/bin/
+            cp target/${{ matrix.target }}/release/mneme-parsers release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-scanners release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-livebus release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-md-ingest release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-brain release-staging/bin/ || true
+            cp target/${{ matrix.target }}/release/mneme-multimodal-bridge release-staging/bin/ || true
           fi
 
           # MCP server source (runs under Bun, no compile step)
@@ -127,6 +128,11 @@ jobs:
   publish:
     name: Publish release
     needs: build
+    # Always run so partial-matrix successes still publish. Individual build
+    # jobs set `fail-fast: false`, so `needs: build` alone would skip publish
+    # if any leg failed. `if: !cancelled()` keeps publish running whenever
+    # the workflow wasn't cancelled — which is what we want.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
