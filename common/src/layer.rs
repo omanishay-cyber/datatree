@@ -30,6 +30,11 @@ pub enum DbLayer {
     /// Architecture: coupling matrix + betweenness centrality + risk index
     /// snapshots. Append-only; each snapshot is a new row.
     Architecture,
+    /// Conventions: inferred project conventions (naming, imports, tests,
+    /// etc.) produced by the Convention Learner (F3). Append-only —
+    /// re-running `mneme build` inserts fresh rows with updated confidence
+    /// rather than mutating existing ones.
+    Conventions,
     /// Cross-project meta-database (singleton, not per-project).
     Meta,
 }
@@ -61,6 +66,7 @@ impl DbLayer {
             Self::Audit => "audit.db",
             Self::Wiki => "wiki.db",
             Self::Architecture => "architecture.db",
+            Self::Conventions => "conventions.db",
             Self::Meta => "meta.db",
         }
     }
@@ -90,6 +96,7 @@ impl DbLayer {
             Self::Audit,
             Self::Wiki,
             Self::Architecture,
+            Self::Conventions,
         ]
     }
 }

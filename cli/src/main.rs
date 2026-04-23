@@ -105,6 +105,8 @@ enum Command {
     Rebuild(commands::rebuild::RebuildArgs),
     /// Step Ledger operations.
     Step(commands::step::StepArgs),
+    /// Why-Chain: decision trace from ledger + git + concept graph.
+    Why(commands::why::WhyArgs),
     /// Hook entry: UserPromptSubmit (emits JSON additional_context).
     Inject(commands::inject::InjectArgs),
     /// Hook entry: SessionStart.
@@ -175,6 +177,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
         Command::Doctor(args) => commands::doctor::run(args, socket_override).await,
         Command::Rebuild(args) => commands::rebuild::run(args, socket_override).await,
         Command::Step(args) => commands::step::run(args, socket_override).await,
+        Command::Why(args) => commands::why::cmd_why(args, socket_override).await,
         Command::Inject(args) => commands::inject::run(args, socket_override).await,
         Command::SessionPrime(args) => commands::session_prime::run(args, socket_override).await,
         Command::PreTool(args) => commands::pre_tool::run(args, socket_override).await,

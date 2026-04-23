@@ -33,6 +33,7 @@ pub fn schema_sql(layer: DbLayer) -> &'static str {
         DbLayer::Audit => AUDIT_SQL,
         DbLayer::Wiki => WIKI_SQL,
         DbLayer::Architecture => ARCHITECTURE_SQL,
+        DbLayer::Conventions => CONVENTIONS_SQL,
         DbLayer::Meta => META_SQL,
     }
 }
@@ -202,6 +203,35 @@ CREATE TABLE IF NOT EXISTS roadmaps (
     title TEXT NOT NULL,
     source_md TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- F1: Persistent Step Ledger. Append-only. Each row is one distilled
+-- decision/implementation/bug/open-question/refactor/experiment. See
+-- `brain/src/ledger.rs` for the Rust side.
+--
+-- Columns are deliberately TEXT-heavy so new kinds and payload shapes can
+-- be rolled out without an ALTER TABLE (append-only schema invariant).
+CREATE TABLE IF NOT EXISTS ledger_entries (
+    id TEXT PRIMARY KEY,                         -- uuid v7 hex
+    session_id TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,                  -- unix millis
+    kind TEXT NOT NULL,                          -- decision|impl|bug|open_question|refactor|experiment
+    summary TEXT NOT NULL,                       -- one-sentence distillation
+    rationale TEXT,
+    touched_files TEXT NOT NULL DEFAULT '[]',    -- JSON array of paths
+    touched_concepts TEXT NOT NULL DEFAULT '[]', -- JSON array of concept ids
+    transcript_ref TEXT,                         -- JSON {session, turn, message_id} or NULL
+    kind_payload TEXT NOT NULL,                  -- full JSON of the StepKind variant
+    embedding BLOB                               -- 384 f32 LE, optional
+);
+CREATE INDEX IF NOT EXISTS idx_ledger_session ON ledger_entries(session_id);
+CREATE INDEX IF NOT EXISTS idx_ledger_time ON ledger_entries(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_ledger_kind ON ledger_entries(kind);
+
+-- Keyword search over summary + rationale. Populated by
+-- `brain::ledger::SqliteLedger::append`.
+CREATE VIRTUAL TABLE IF NOT EXISTS ledger_entries_fts USING fts5(
+    text, tokenize='porter'
 );
 "#;
 
@@ -636,6 +666,25 @@ CREATE TABLE IF NOT EXISTS architecture_snapshots (
     notes TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_arch_captured_at ON architecture_snapshots(captured_at);
+"#;
+
+const CONVENTIONS_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')));
+
+-- Inferred project conventions (F3, Convention Learner). Append-only; every
+-- `mneme build` inserts a fresh row with updated confidence rather than
+-- mutating an existing one. Readers pick the highest-confidence row per
+-- (pattern_kind, pattern_json) key.
+CREATE TABLE IF NOT EXISTS conventions (
+    id TEXT PRIMARY KEY,
+    pattern_kind TEXT NOT NULL,
+    pattern_json TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    evidence_count INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_conventions_kind ON conventions(pattern_kind);
+CREATE INDEX IF NOT EXISTS idx_conventions_confidence ON conventions(confidence);
 "#;
 
 const META_SQL: &str = r#"

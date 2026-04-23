@@ -40,7 +40,46 @@
 
 </div>
 
-## 🧠 The problem mneme solves
+## Feature matrix vs CRG and graphify
+
+Honest head-to-head against the two closest projects in the AI-code-context space:
+[CRG (code-review-graph)](https://github.com/tirth8205/code-review-graph) and
+[graphify](https://github.com/omanishay-cyber/graphify). Wins and losses both.
+
+| Capability | **Mneme** | CRG | graphify |
+|---|---|---|---|
+| **Compaction recovery (Step Ledger)** | ✅ numbered, verification-gated, SQLite-persisted | ❌ | ❌ |
+| **Drift detector enforcing CLAUDE.md rules live** | ✅ 10 scanners incl. drift + md-drift + secrets | partial (lint-style) | ❌ |
+| **Built-in scanners** | ✅ 10 (theme, types, security, a11y, perf, drift, ipc, md-drift, secrets, refactor) | 1 (review-oriented) | ❌ |
+| **Tree-sitter grammars** | ✅ 29 (Tier 1 + community) | 23 | 5-ish (per-input) |
+| **MCP tools** | ✅ 35 (full `mcp/src/tools/` surface) | 24 | n/a (not an MCP) |
+| **Multi-process Rust supervisor** | ✅ watchdog + WAL + restart + health HTTP | ❌ (single-process Python) | ❌ (single-process Python) |
+| **Real local embeddings** | ✅ pure-Rust hashing-trick default, opt-in bge-small from local path | ❌ | partial (sentence-transformers, network-pullable) |
+| **Storage layers** | ✅ 22 sharded SQLite DBs + global meta.db | 1 | 1-2 JSON + HTML |
+| **Visualization surface** | ✅ 14 WebGL views + Command Center (Tauri app) | 1 (D3 force graph) | 1 (static HTML) |
+| **Multimodal (PDF / audio / video / OCR)** | ✅ Python sidecar, fault-isolated | ❌ | partial (text only by default) |
+| **Live push updates (SSE + WebSocket)** | ✅ livebus worker, multi-agent pubsub | ❌ | ❌ |
+| **100% local, zero unsolicited network** | ✅ enforced across Rust / TS / Python | ✅ | ⚠️ model downloads + Whisper prompts |
+| **License** | ✅ Apache-2.0 | MIT | MIT |
+| **18 AI tools supported out of the box** | ✅ (Claude Code, Codex, Cursor, Windsurf, Zed, +13 more) | 2 (Claude Code, VS Code ext) | 1 (manual integration) |
+| — | — | — | — |
+| **One-shot `pip install`** | ❌ (Rust + Bun toolchain install) | ✅ `pip install crg` | ✅ `pip install graphify` |
+| **VS Code extension** | ❌ (coming) | ✅ first-class | ❌ |
+| **Whisper with locale prompt tuning for non-English audio** | ❌ (generic Whisper) | n/a | ✅ (specialised locale prompts) |
+| **Hosted demo** | ❌ (local-only by design) | ✅ | ✅ |
+
+### Why Mneme
+
+CRG and graphify are great at what they do — CRG is a polished review graph with a
+VS Code extension, graphify is a fast way to turn any input into a browsable HTML
+knowledge graph. Mneme is the bigger, heavier tool: a **persistent daemon** that
+runs between sessions, **survives compaction** at the architecture level (not the
+prompt level), enforces your CLAUDE.md rules in real time, and gives every AI tool
+you use the same memory. If you want a one-command install for a single project,
+use CRG or graphify. If you want an AI superbrain that lives on your machine for
+years and never forgets, use Mneme.
+
+
 
 Every AI coding assistant has the same three flaws:
 

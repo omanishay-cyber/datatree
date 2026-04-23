@@ -18,13 +18,19 @@
 #![forbid(unsafe_op_in_unsafe_fn)]
 #![warn(missing_debug_implementations)]
 
+pub mod blast;
 pub mod cluster_runner;
 pub mod concept;
+pub mod conventions;
 pub mod embed_store;
 pub mod embeddings;
 pub mod error;
+pub mod identity;
 pub mod job;
+pub mod ledger;
 pub mod leiden;
+pub mod reranker;
+pub mod retrieve;
 pub mod summarize;
 pub mod wiki;
 pub mod worker;
@@ -68,13 +74,28 @@ impl std::fmt::Display for NodeId {
 
 // ---- Re-exports -----------------------------------------------------------
 
+pub use blast::{build_report, compute_risk, BlastReport, CodeRef, RiskLevel};
 pub use cluster_runner::ClusterRunner;
 pub use concept::{Concept, ConceptExtractor};
+pub use conventions::{
+    Convention, ConventionLearner, ConventionPattern, DefaultLearner, NamingScope, NamingStyle,
+    Violation,
+};
 pub use embed_store::{EmbedStore, NearestHit};
 pub use embeddings::{install_default_model, Embedder, EMBEDDING_DIM};
 pub use error::{BrainError, BrainResult as BrainOutcome};
+pub use identity::{detect_stack, ProjectIdentity, TechCategory, Technology};
 pub use job::{BrainJob, BrainResult, JobId};
+pub use ledger::{
+    new_entry_id, Ledger, LedgerError, LedgerResult, RecallQuery, ResumeBundle, SqliteLedger,
+    StepEntry, StepKind, TranscriptRef,
+};
 pub use leiden::{Community, LeidenConfig, LeidenSolver};
+pub use reranker::Reranker;
+pub use retrieve::{
+    estimate_tokens, BM25Index, GraphIndex, RetrievalEngine, RetrievalResult, RetrievalSource,
+    ScoredHit,
+};
 pub use summarize::Summarizer;
 pub use wiki::{CommunityInput, WikiBuilder, WikiPage, WikiSymbol};
 pub use worker::{spawn_worker, WorkerHandle};
