@@ -1,0 +1,45 @@
+[package]
+name = "datatree-scanners"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78"
+license = "MIT"
+authors = ["Anish Trivedi"]
+description = "Datatree scanner worker pool: applies drift / theme / security / a11y / perf / ipc / markdown / secrets / types rules and writes findings to findings.db via the store IPC."
+
+[[bin]]
+name = "datatree-scanners"
+path = "src/main.rs"
+
+[lib]
+name = "datatree_scanners"
+path = "src/lib.rs"
+
+[dependencies]
+# Workspace local
+common = { path = "../common", package = "datatree-common" }
+
+# Async runtime + concurrency primitives
+tokio = { version = "1.40", features = ["full"] }
+
+# Regex engine — all patterns compiled once at startup via once_cell.
+regex = "1.10"
+once_cell = "1.19"
+
+# Error model + serialization
+thiserror = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Optional but conventional in the workspace.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[features]
+default = []
+with-common = []
+
+[dev-dependencies]
+tokio = { version = "1.40", features = ["full", "test-util", "macros"] }
+tempfile = "3.10"

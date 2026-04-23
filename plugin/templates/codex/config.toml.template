@@ -1,0 +1,11 @@
+# datatree-marker v1.0
+# Merged into ~/.codex/config.toml by the datatree install command.
+# Existing keys are preserved; only [mcp_servers.datatree] is replaced.
+
+[mcp_servers.datatree]
+command = "bun"
+args    = ["{{datatree_root}}/mcp/index.ts"]
+
+[mcp_servers.datatree.env]
+DATATREE_HOME         = "{{datatree_home}}"
+DATATREE_PROJECT_ROOT = "{{project_root}}"

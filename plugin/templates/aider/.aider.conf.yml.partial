@@ -1,0 +1,16 @@
+# datatree-marker v1.0
+# Merged into .aider.conf.yml by the datatree install command.
+# Existing keys are preserved; only the keys below are added/overwritten.
+
+# Treat datatree's CONVENTIONS.md as a project-level system prompt addition.
+read:
+  - CONVENTIONS.md
+
+# Datatree owns these files; do not let Aider scan them.
+aiderignore:
+  - .datatree/
+  - "**/.datatree/"
+
+# Refresh the graph after every successful Aider commit.
+lint-cmd:
+  - "sh: datatree update --quiet || true"

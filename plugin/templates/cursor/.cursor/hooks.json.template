@@ -1,0 +1,20 @@
+{
+  "$comment": "datatree-marker v1.0 — Cursor hook entries. Merged into existing .cursor/hooks.json; existing entries preserved.",
+  "hooks": {
+    "sessionStart": [
+      {
+        "name": "datatree-prime",
+        "command": "{{datatree_root}}/scripts/hooks/cursor-session-start.sh",
+        "timeout": 2000
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "name": "datatree-update",
+        "command": "{{datatree_root}}/scripts/hooks/cursor-after-edit.sh",
+        "args": ["${file}"],
+        "timeout": 5000
+      }
+    ]
+  }
+}

@@ -1,0 +1,72 @@
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Bun / Node
+node_modules/
+dist/
+build/
+.bun/
+bun.lockb.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Datatree runtime data (per-user; never commit)
+~/.datatree/
+.datatree/
+
+# Models (large; user installs via datatree models install)
+*.onnx
+*.gguf
+*.bin
+runtime/
+
+# Tauri
+src-tauri/target/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary
+tmp/
+*.tmp
+*.swp
+*~
+
+# Snapshot output of any indexed project
+.code-review-graph/
+
+# Backup files made by datatree's idempotent installer
+*.bak
+
+# Generated docs (regenerated from source)
+api-docs/
+
+# Local override configs
+.env
+.env.local
+*.local.json
+
+# Google Drive / OneDrive sync junk that sometimes appears
+.tmp.driveupload/
+.tmp.drive*
+.~*
+desktop.ini
+Thumbs.db

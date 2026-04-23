@@ -1,0 +1,20 @@
+{
+  "$comment": "datatree-marker v1.0 — merged into .qoder/settings.json. Existing keys preserved.",
+  "agent": {
+    "rulesFile": "QODER.md",
+    "graphFirst": true
+  },
+  "context": {
+    "providers": {
+      "datatree": {
+        "enabled": true,
+        "priority": 100,
+        "transport": "mcp",
+        "server": "datatree"
+      }
+    }
+  },
+  "hooks": {
+    "afterEdit": "{{datatree_root}}/scripts/hooks/qoder-after-edit.sh"
+  }
+}

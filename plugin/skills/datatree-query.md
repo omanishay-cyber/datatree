@@ -1,0 +1,74 @@
+---
+name: datatree-query
+description: "Query the local datatree knowledge graph and project memory. Use when the user asks about files, decisions, blast radius, references, architecture, or anything 'what does X do' / 'where is Y used' / 'why did we pick Z'."
+trigger: /dt-recall
+---
+
+# /dt-recall
+
+Search the local datatree knowledge graph + persistent project memory for
+the answer to a question — without re-reading any files.
+
+## Usage
+
+```
+/dt-recall <free-form question>
+/dt-recall "blast radius of src/auth/session.ts"
+/dt-recall "decisions about state management"
+/dt-recall "open todos tagged ipc"
+/dt-recall "everything that calls validateToken"
+```
+
+## What this skill does
+
+1. Picks the right datatree MCP tool for the question.
+2. Calls it via the stdio MCP server (already running locally).
+3. Returns a concise, structured answer.
+4. Cites the source rows (with `source_location`) when quoting.
+
+## When to invoke
+
+Triggered by `/dt-recall`, but also use proactively when:
+
+- The user asks "what does X do" — call `recall_file(path=X)`.
+- The user asks "where is Y used" — call `find_references(symbol=Y)`.
+- The user asks "what breaks if I change Z" — call `blast_radius(target=Z)`.
+- The user asks "did we already decide …" — call `recall_decision(query=...)`.
+- The user asks "what are the open TODOs" — call `recall_todo()`.
+- The user asks "what rules apply to this file" — call
+  `recall_constraint(scope='file', file=...)`.
+
+## Procedure
+
+### Step 1 — Pick the tool
+
+Map the question to the matching datatree MCP tool:
+
+| Question pattern | Tool |
+|---|---|
+| where / who calls / find usages of `X` | `find_references(symbol=X)` |
+| what breaks if I change `X` | `blast_radius(target=X)` |
+| summary of `<file>` | `recall_file(path=<file>)` |
+| decisions about `Y` | `recall_decision(query=Y)` |
+| open todos | `recall_todo()` |
+| rules for `<file>` | `recall_constraint(scope='file', file=<file>)` |
+| concept search across corpus | `recall_concept(query=…)` |
+| architecture overview | `god_nodes()` then `audit_corpus()` |
+
+### Step 2 — Call the tool
+
+Invoke via the stdio MCP server (the harness has already auto-registered
+datatree from `plugin.json`).
+
+### Step 3 — Render the answer
+
+- Quote the most relevant 1–3 results with their `source_location` (file:line).
+- Keep the response under 800 tokens.
+- Suggest the **single** most useful follow-up datatree tool call.
+
+## Honesty Rules
+
+- Never invent results. If datatree returns an empty array, say so.
+- Always quote `source_location` when citing a specific fact.
+- If a recall returns nothing useful, fall back to Grep/Glob — but only
+  after datatree returned empty.

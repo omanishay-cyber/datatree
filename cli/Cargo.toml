@@ -1,0 +1,75 @@
+[package]
+name = "datatree-cli"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78"
+license = "MIT"
+authors = ["Anish Trivedi"]
+description = "Datatree CLI: the `datatree` command-line tool. Drives install/build/view/audit/recall/step plus all hook entry points."
+
+# The user-facing binary is just `datatree`.
+[[bin]]
+name = "datatree"
+path = "src/main.rs"
+
+[lib]
+name = "datatree_cli"
+path = "src/lib.rs"
+
+[dependencies]
+# Async runtime — required for IPC, hook handlers, and parallel platform installs.
+tokio = { version = "1.40", features = ["rt", "rt-multi-thread", "macros", "io-util", "net", "fs", "time", "signal", "sync"] }
+
+# CLI parsing. Derive-style with rich help, env, and subcommand support.
+clap = { version = "4.5", features = ["derive", "env", "wrap_help", "color", "suggestions"] }
+
+# Serialization for hook JSON payloads, MCP config blobs, and step artifacts.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Errors.
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging — tracing-subscriber initialised in main with env filter.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "ansi"] }
+
+# IPC: client to the supervisor's Unix socket / named pipe.
+interprocess = { version = "2.2", features = ["tokio"] }
+
+# Hashing — used by markers.rs to detect user edits inside the marker block,
+# and by install.rs for content-addressable manifest backups.
+sha2 = "0.10"
+
+# Filesystem helpers.
+dirs = "5.0"
+walkdir = "2.5"
+
+# Pretty progress bars + colored output for `datatree build`, `install`, etc.
+indicatif = { version = "0.17", features = ["rayon"] }
+console = "0.15"
+
+# Workspace siblings linked in for the `datatree build` / `datatree audit`
+# in-process pipeline (CLI drives parse + store directly so v0.1 can ingest
+# real projects without needing the supervisor to route jobs).
+datatree-common = { path = "../common" }
+datatree-store = { path = "../store" }
+parsers = { path = "../parsers" }
+rusqlite = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+# Windows path normalisation so manifest paths produced on Win look POSIX
+# when written to JSON consumed by Bun.
+dunce = "1.0"
+
+[dev-dependencies]
+tempfile = "3.10"
+tokio = { version = "1.40", features = ["full", "test-util", "macros"] }
+
+[features]
+default = []
+# Enables linking the workspace `common` crate. Optional so this crate
+# compiles standalone while the workspace is still being assembled.
+with-common = []

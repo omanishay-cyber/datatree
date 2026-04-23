@@ -1,0 +1,36 @@
+<!-- datatree-start v1.0 -->
+# Datatree (OpenCode)
+
+Datatree is a persistent knowledge graph of this project, exposed to
+OpenCode via the `datatree` MCP server (see `.opencode.json`) and the
+`.opencode/plugins/datatree.ts` plugin (file.edited + tool.execute.before
+hooks).
+
+## Tool usage rules (MANDATORY)
+
+**Use datatree MCP tools BEFORE OpenCode's built-in code search, file
+read, or grep.** The plugin's `tool.execute.before` hook will warn you
+when you reach for a shell tool without first calling datatree.
+
+On every task:
+
+1. `datatree.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `datatree.query`, `datatree.impact`, `datatree.search`
+   at `detail_level="minimal"`.
+3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
+4. The `file.edited` hook keeps the graph fresh after every save.
+
+## Step ledger
+
+Steps append to `~/.datatree/projects/<id>/steps.jsonl`. Recover with
+`datatree.last_steps(n=10)`.
+
+## Drift detection
+
+Datatree flags symbol/doc/test drift. Address all flags before done.
+
+## Compaction resilience
+
+After a context reset, one `datatree.minimal_context(...)` call restores
+situational awareness from the persistent graph.
+<!-- datatree-end -->

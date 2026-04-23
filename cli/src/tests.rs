@@ -1,0 +1,152 @@
+//! Crate-level integration tests.
+//!
+//! Per the task spec the bare minimum here is:
+//!
+//! 1. marker injection idempotency (covered in [`marker_idempotency`])
+//! 2. platform auto-detect (covered in [`auto_detect_smoke`])
+//!
+//! We add a couple of additional checks that exercise the install path
+//! end-to-end against a `tempdir` fake home so regressions in the
+//! per-adapter logic surface fast.
+
+#![cfg(test)]
+
+use std::path::PathBuf;
+use tempfile::tempdir;
+
+use crate::markers::{MarkerInjector, MARKER_END, MARKER_START_PREFIX};
+use crate::platforms::{
+    AdapterContext, InstallScope, Platform, PlatformDetector,
+};
+
+#[test]
+fn marker_idempotency_round_trip() {
+    let original = "# Doc\n\nUser content.\n";
+    let path = PathBuf::from("/tmp/CLAUDE.md");
+
+    // Write A.
+    let a1 = MarkerInjector::inject(original, "BODY-A", &path, false).unwrap();
+    assert!(a1.contains(MARKER_START_PREFIX));
+    assert!(a1.contains(MARKER_END));
+    assert!(a1.contains("BODY-A"));
+
+    // Write A again — must be byte-identical.
+    let a2 = MarkerInjector::inject(&a1, "BODY-A", &path, false).unwrap();
+    assert_eq!(a1, a2);
+
+    // Replace with B — only one marker block remains, BODY-B is in,
+    // BODY-A is out.
+    let b1 = MarkerInjector::inject(&a1, "BODY-B", &path, false).unwrap();
+    assert_eq!(b1.matches(MARKER_START_PREFIX).count(), 1);
+    assert_eq!(b1.matches(MARKER_END).count(), 1);
+    assert!(b1.contains("BODY-B"));
+    assert!(!b1.contains("BODY-A"));
+
+    // User content outside the markers is preserved verbatim.
+    assert!(b1.contains("User content."));
+
+    // Removing leaves the user content intact.
+    let cleaned = MarkerInjector::remove(&b1);
+    assert!(cleaned.contains("User content."));
+    assert!(!cleaned.contains(MARKER_START_PREFIX));
+    assert!(!cleaned.contains(MARKER_END));
+}
+
+#[test]
+fn auto_detect_smoke() {
+    let dir = tempdir().unwrap();
+    let detected =
+        PlatformDetector::detect_installed(InstallScope::User, dir.path());
+    // Per design §21.4.2 ClaudeCode and Qoder are always tried.
+    assert!(detected.contains(&Platform::ClaudeCode));
+    assert!(detected.contains(&Platform::Qoder));
+    // Other platforms aren't installed in this temp home, so they should
+    // be absent from the detection set.
+    assert!(!detected.contains(&Platform::Cursor));
+    assert!(!detected.contains(&Platform::Codex));
+}
+
+#[test]
+fn every_platform_has_unique_id_and_round_trips() {
+    let mut ids: Vec<&'static str> = Vec::new();
+    for &p in Platform::all_known() {
+        ids.push(p.id());
+        let parsed = Platform::from_id(p.id()).unwrap();
+        assert_eq!(parsed, p);
+    }
+    let mut sorted = ids.clone();
+    sorted.sort_unstable();
+    sorted.dedup();
+    assert_eq!(sorted.len(), ids.len(), "platform ids must be unique");
+}
+
+#[test]
+fn install_writes_marker_block_into_fake_home() {
+    let dir = tempdir().unwrap();
+    let project = dir.path().to_path_buf();
+
+    // Use the ClaudeCode adapter directly — it always reports detected.
+    let ctx = AdapterContext::new(InstallScope::Project, project.clone());
+    let adapter = Platform::ClaudeCode.adapter();
+
+    let manifest = adapter.write_manifest(&ctx).unwrap();
+    assert!(manifest.exists());
+    let contents = std::fs::read_to_string(&manifest).unwrap();
+    assert!(contents.contains(MARKER_START_PREFIX));
+    assert!(contents.contains(MARKER_END));
+
+    // Re-running install must NOT duplicate the block.
+    adapter.write_manifest(&ctx).unwrap();
+    let contents2 = std::fs::read_to_string(&manifest).unwrap();
+    assert_eq!(
+        contents2.matches(MARKER_START_PREFIX).count(),
+        1,
+        "double install must not duplicate the marker block"
+    );
+}
+
+#[test]
+fn install_dry_run_writes_nothing() {
+    let dir = tempdir().unwrap();
+    let project = dir.path().to_path_buf();
+    let ctx = AdapterContext::new(InstallScope::Project, project.clone()).with_dry_run(true);
+    let adapter = Platform::ClaudeCode.adapter();
+    let manifest = adapter.write_manifest(&ctx).unwrap();
+    assert!(
+        !manifest.exists(),
+        "dry-run must not create the manifest file"
+    );
+}
+
+#[test]
+fn uninstall_strips_marker_block() {
+    let dir = tempdir().unwrap();
+    let project = dir.path().to_path_buf();
+    let ctx = AdapterContext::new(InstallScope::Project, project.clone());
+    let adapter = Platform::ClaudeCode.adapter();
+
+    adapter.write_manifest(&ctx).unwrap();
+    adapter.remove_manifest(&ctx).unwrap();
+    let manifest = adapter.manifest_path(&ctx);
+    let contents = std::fs::read_to_string(&manifest).unwrap_or_default();
+    assert!(!contents.contains(MARKER_START_PREFIX));
+    assert!(!contents.contains(MARKER_END));
+}
+
+#[test]
+fn mcp_config_is_backed_up_before_overwrite() {
+    let dir = tempdir().unwrap();
+    let project = dir.path().to_path_buf();
+    let ctx = AdapterContext::new(InstallScope::Project, project.clone());
+    let adapter = Platform::ClaudeCode.adapter();
+
+    // First write — no original file -> no .bak yet (nothing to back up).
+    let mcp = adapter.write_mcp_config(&ctx).unwrap();
+    assert!(mcp.exists());
+    let bak = mcp.with_extension("json.bak");
+    assert!(!bak.exists(), "no backup should be created on first write");
+
+    // Second write — there *is* an original now, so we expect a .bak.
+    adapter.write_mcp_config(&ctx).unwrap();
+    assert!(bak.exists(), "second write must produce a .bak");
+}

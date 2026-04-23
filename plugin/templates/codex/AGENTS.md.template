@@ -1,0 +1,58 @@
+<!-- datatree-start v1.0 -->
+# Datatree (OpenAI Codex CLI)
+
+Codex CLI reads `AGENTS.md` from project, parent, and home directories
+and merges them in scope order. This block teaches Codex how to use the
+datatree knowledge graph that runs in the background on this machine.
+
+## What datatree is
+
+A persistent, incrementally-updated graph of this project's symbols,
+files, edges, and recent edits. It is exposed via the `datatree` MCP
+server (see `~/.codex/config.toml` -> `[mcp_servers.datatree]`).
+The graph is kept fresh by `datatree-supervisor`, a per-user daemon.
+
+## Tool usage rules (MANDATORY)
+
+**Use datatree MCP tools BEFORE shell `grep`, `find`, `cat`, or `rg`**
+for any structural or semantic question about the codebase. Use shell
+tools only when datatree explicitly suggests them or when you are reading
+a file datatree already located.
+
+On every task:
+
+1. Call `datatree.minimal_context(task="<one-sentence description>")`.
+   ~100 tokens; returns the files/symbols/recent-changes that matter.
+2. Iterate with `datatree.query`, `datatree.impact`, `datatree.search`.
+3. Only then read files. Default `detail_level="minimal"` everywhere.
+4. After any patch, datatree updates incrementally via the post-tool hook.
+
+Budget: <= 5 datatree calls and <= 800 tokens of graph context per task.
+
+## Step ledger
+
+Every non-trivial step is appended to
+`~/.datatree/projects/<id>/steps.jsonl`. Read with
+`datatree.last_steps(n=10)` to recover "what was I doing" after a reset.
+
+## Drift detection
+
+Datatree flags three drifts and you must address them before declaring done:
+
+- **Symbol drift** — public signature changed without caller updates.
+- **Doc drift** — behaviour changed without doc/comment updates.
+- **Test drift** — source changed without matching test edits.
+
+## Compaction resilience
+
+When Codex truncates conversation, this AGENTS.md and the step ledger
+are your recovery fuel. One `datatree.minimal_context(...)` call after a
+truncation rebuilds your situational awareness from the persistent graph.
+
+## Locations
+
+- MCP config:    `~/.codex/config.toml` (`[mcp_servers.datatree]`)
+- Daemon home:   `~/.datatree/`
+- Project graph: `~/.datatree/projects/<id>/graph.db`
+- Step ledger:   `~/.datatree/projects/<id>/steps.jsonl`
+<!-- datatree-end -->
