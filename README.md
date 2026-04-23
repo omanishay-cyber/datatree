@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>🌳 datatree</h1>
+<h1>🌳 Datatree</h1>
 
 <h3>Claude never starts cold. Claude never loses its place.</h3>
 
