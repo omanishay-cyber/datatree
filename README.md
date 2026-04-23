@@ -12,7 +12,7 @@
 
 <p>
   <a href="#quick-start"><img src="https://img.shields.io/badge/install-in%2060%20seconds-4191E1?style=for-the-badge" alt="Install in 60 seconds"/></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Community%20v1.0-41E1B5?style=for-the-badge" alt="License"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-41E1B5?style=for-the-badge" alt="License"/></a>
   <a href="#"><img src="https://img.shields.io/badge/status-v0.1.0%20operational-22D3EE?style=for-the-badge" alt="Status"/></a>
 </p>
 
@@ -285,18 +285,18 @@ Full reference: [`docs/mcp-tools.md`](docs/mcp-tools.md).
 
 Bug reports, feature requests, and PRs are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-This project uses a **community license** (see [LICENSE](LICENSE)). In plain English:
+This project is **Apache-2.0** licensed (see [LICENSE](LICENSE)). In plain English:
 
 - ✅ Use it — at work, at home, however you like
-- ✅ Modify it for yourself
-- ✅ Contribute back
-- ❌ Sell it / host it as a paid service / build a competing MCP from it / train AI models on it
-
-For commercial licensing (hosting, derivative products, training), contact the author.
+- ✅ Modify it for yourself or for a product you ship
+- ✅ Redistribute (including commercially, bundled into your own product)
+- ✅ Sublicense — include in products under other compatible licenses
+- ✅ Patent grant — Apache-2.0 gives you an explicit patent license
+- Just keep the copyright notice and don't claim Mneme endorses your fork.
 
 ## 📄 License
 
-[Apache-2.0](LICENSE) — open-source, free to use, commercial resale prohibited.
+[Apache-2.0](LICENSE) — permissive open-source. Commercial use, redistribution, and hosted derivatives all permitted.
 
 Copyright © 2026 **Anish Trivedi** (BS Computer Science).
 
