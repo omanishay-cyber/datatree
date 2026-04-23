@@ -4,8 +4,8 @@ contact_links:
     url: https://github.com/omanishay-cyber/datatree/discussions
     about: Architecture questions, use cases, "is this a good idea?" — anything open-ended
   - name: 🔒 Security report
-    url: mailto:bhattanish@gmail.com
+    url: mailto:(GitHub Issues or Discussions)
     about: Please do not file public issues for security vulnerabilities — email instead
   - name: 💼 Commercial licensing
-    url: mailto:bhattanish@gmail.com
+    url: mailto:(GitHub Issues or Discussions)
     about: Hosting datatree as a service, building a derivative product, training on it — all require a commercial agreement

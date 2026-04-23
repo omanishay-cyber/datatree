@@ -101,11 +101,11 @@ Your PR will get a template. Short version of what's in it:
 
 - **GitHub Issues** — bug reports and feature requests (public, search-indexed)
 - **GitHub Discussions** — architecture questions, use cases, "is this a good idea?" conversations
-- **Email** bhattanish@gmail.com for commercial licensing or security reports
+- **Email** (GitHub Issues or Discussions) for commercial licensing or security reports
 
 ## Security
 
-If you find a security issue — **please don't open a public issue**. Email bhattanish@gmail.com with:
+If you find a security issue — **please don't open a public issue**. Email (GitHub Issues or Discussions) with:
 
 - A description of the vulnerability
 - Steps to reproduce
