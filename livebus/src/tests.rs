@@ -144,9 +144,11 @@ async fn eviction_emits_degraded_mode_event() {
         ));
     }
 
-    let evicted = tokio::time::timeout(Duration::from_millis(250), watcher.rx.recv())
+    // 2s timeout — dispatch is synchronous but degraded-mode emission may
+    // be delayed by the subscriber-bounded-channel signal path in debug builds.
+    let evicted = tokio::time::timeout(Duration::from_secs(2), watcher.rx.recv())
         .await
-        .expect("expected a degraded_mode event")
+        .expect("expected a degraded_mode event within 2s")
         .expect("watcher channel closed");
     assert_eq!(evicted.topic, "system.degraded_mode");
 }

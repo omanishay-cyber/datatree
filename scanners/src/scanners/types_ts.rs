@@ -22,8 +22,10 @@ static AS_ANY: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bas\s+any\b").expect("as
 
 /// Non-null assertion: an identifier followed by `!` then `.` / `(` / `[`.
 /// Excludes `!=`, `!==`, and `!` used as boolean negation prefix.
+/// NOTE: the `[` in the trailing char class must be escaped — `regex` crate
+/// rejects a bare `[` inside a character class.
 static NON_NULL_ASSERTION: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"[A-Za-z_$][A-Za-z0-9_$]*!\s*[.([]").expect("non-null assertion regex"));
+    Lazy::new(|| Regex::new(r"[A-Za-z_$][A-Za-z0-9_$]*!\s*[.(\[]").expect("non-null assertion regex"));
 
 /// `export default ...`. Single-line; matches at start-of-line or after
 /// whitespace.
