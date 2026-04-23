@@ -1,0 +1,62 @@
+﻿{
+  "$comment": "datatree-marker v1.0 — merged into existing .claude/settings.json by the install command. Existing user keys are preserved.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{datatree_root}}/scripts/hooks/pretool-graphfirst.sh",
+            "timeout": 2000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{datatree_root}}/scripts/hooks/posttool-update.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{datatree_root}}/scripts/hooks/userprompt-prime.sh",
+            "timeout": 1500
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{datatree_root}}/scripts/hooks/stop-flush-ledger.sh",
+            "timeout": 2000
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{datatree_root}}/scripts/hooks/precompact-checkpoint.sh",
+            "timeout": 2000
+          }
+        ]
+      }
+    ]
+  }
+}

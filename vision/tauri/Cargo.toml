@@ -1,0 +1,27 @@
+[package]
+name = "datatree-vision-tauri"
+version = "0.1.0"
+description = "Tauri desktop wrapper for the datatree Vision app"
+authors = ["datatree"]
+edition = "2021"
+rust-version = "1.75"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = ["macos-private-api"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+# Default to using the bundled dist/ build of the web app.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

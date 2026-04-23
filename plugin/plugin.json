@@ -1,0 +1,65 @@
+{
+  "name": "datatree",
+  "version": "0.1.0",
+  "displayName": "Datatree — The AI Superbrain",
+  "description": "Persistent per-project SQLite memory + 14-view live graph + drift detector + 30+ MCP tools. Claude never starts cold, never loses its place.",
+  "author": "Anish Trivedi",
+  "license": "MIT",
+  "homepage": "https://github.com/anishtrivedi/datatree",
+  "scopes": ["global", "user", "project"],
+  "platforms": ["win32", "darwin", "linux"],
+  "components": {
+    "mcpServers": [
+      { "name": "datatree", "config": ".mcp/datatree.json" }
+    ],
+    "hooks": [
+      { "event": "SessionStart", "command": "datatree session-prime" },
+      { "event": "UserPromptSubmit", "command": "datatree inject" },
+      { "event": "PreToolUse", "command": "datatree pre-tool" },
+      { "event": "PostToolUse", "command": "datatree post-tool" },
+      { "event": "Stop", "command": "datatree turn-end" },
+      { "event": "SessionEnd", "command": "datatree session-end" }
+    ],
+    "skills": [
+      "skills/datatree-query.md",
+      "skills/datatree-audit.md",
+      "skills/datatree-resume.md"
+    ],
+    "agents": [
+      "agents/datatree-archivist.md",
+      "agents/datatree-drift-hunter.md",
+      "agents/datatree-blast-tracer.md",
+      "agents/datatree-step-verifier.md",
+      "agents/datatree-doctor.md",
+      "agents/datatree-resumer.md"
+    ],
+    "commands": [
+      { "name": "/dt-view", "command": "datatree view" },
+      { "name": "/dt-audit", "command": "datatree audit" },
+      { "name": "/dt-recall", "command": "datatree recall" },
+      { "name": "/dt-blast", "command": "datatree blast" },
+      { "name": "/dt-graphify", "command": "datatree graphify" },
+      { "name": "/dt-godnodes", "command": "datatree godnodes" },
+      { "name": "/dt-drift", "command": "datatree drift" },
+      { "name": "/dt-history", "command": "datatree history" },
+      { "name": "/dt-snap", "command": "datatree snap" },
+      { "name": "/dt-doctor", "command": "datatree doctor" },
+      { "name": "/dt-rebuild", "command": "datatree rebuild" },
+      { "name": "/dt-step", "command": "datatree step" }
+    ],
+    "manifests": {
+      "claude": "CLAUDE.md",
+      "agents": "AGENTS.md",
+      "gemini": "GEMINI.md",
+      "qoder": "QODER.md",
+      "qwen": "QWEN.md",
+      "cursor": ".cursor/rules/datatree.mdc",
+      "kiro": ".kiro/steering/datatree.md"
+    }
+  },
+  "install": {
+    "preInstall": "scripts/install-supervisor.js",
+    "postInstall": "scripts/start-daemon.js",
+    "preUninstall": "scripts/stop-daemon.js"
+  }
+}

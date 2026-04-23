@@ -1,0 +1,27 @@
+<!-- datatree-start v1.0 -->
+# Datatree (Qwen Code)
+
+Qwen Code reads `QWEN.md` for project context and supports MCP servers
+via its `settings.json`. Datatree is exposed there as the `datatree`
+server, backed by the per-user `datatree-supervisor` daemon.
+
+## Tool usage rules (MANDATORY)
+
+**Call datatree MCP tools BEFORE Qwen's built-in code search, file
+read, or shell tools** for structural or semantic questions.
+
+On every task:
+
+1. `datatree.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `datatree.query`, `datatree.impact`, `datatree.search`
+   at `detail_level="minimal"`.
+3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
+4. Edits update the graph incrementally via the supervisor's watcher.
+
+## Step ledger / drift / compaction
+
+- Ledger: `~/.datatree/projects/<id>/steps.jsonl`. Recover with
+  `datatree.last_steps(n=10)`.
+- Address symbol/doc/test drift before declaring done.
+- After any reset, re-prime with `datatree.minimal_context(...)`.
+<!-- datatree-end -->

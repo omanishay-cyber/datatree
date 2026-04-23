@@ -1,0 +1,24 @@
+[package]
+name = "datatree-multimodal-bridge"
+version.workspace = true
+edition.workspace = true
+license = "Proprietary"
+description = "Rust shim that spawns the datatree Python multimodal sidecar and proxies messages"
+
+[[bin]]
+name = "datatree-multimodal-bridge"
+path = "src/main.rs"
+
+[dependencies]
+datatree-common.workspace = true
+tokio = { workspace = true, features = ["full"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+bytes.workspace = true
+dirs.workspace = true
+rmp-serde = "1.3"

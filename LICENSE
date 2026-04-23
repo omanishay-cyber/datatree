@@ -1,0 +1,230 @@
+DATATREE COMMUNITY LICENSE
+Version 1.0 — April 2026
+
+Copyright (c) 2026 Anish Trivedi (BS, Computer Science).
+All rights reserved except as expressly granted below.
+
+This license is inspired by the Elastic License v2 and is written in plain
+English so you know exactly what you can and cannot do. If any clause is
+unclear, the interpretation that favours the copyright holder applies.
+
+================================================================================
+0. ONE-LINE SUMMARY
+================================================================================
+
+You can USE datatree for your own coding, writing, research, and knowledge
+work — as many times as you want, on as many of your own machines as you
+want, individually or with your own team. You cannot SELL it, HOST it as a
+paid service, REPACKAGE it as a competing MCP/plugin/product, or USE IT TO
+TRAIN any AI model.
+
+================================================================================
+1. DEFINITIONS
+================================================================================
+
+  "Software" means the datatree project, including its source code,
+  compiled binaries, schemas, prompts, plugin manifests, install scripts,
+  design documents, bundled models, and any files in the official
+  repository at https://github.com/omanishay-cyber/datatree (and its
+  future canonical home).
+
+  "You" means the individual or legal entity exercising rights under this
+  license.
+
+  "Licensor" means Anish Trivedi, the copyright holder.
+
+  "Production Use" means running the Software for your own coding,
+  debugging, writing, research, notes, learning, documentation, or
+  knowledge work — whether on your personal computer, a computer you own
+  at your workplace, or a machine under your day-to-day control. Both
+  commercial employment and personal projects count as Production Use and
+  are freely permitted.
+
+  "Hosted Service" means making the Software, or any substantial portion
+  of its functionality, available to third parties as a managed service
+  — whether paid, freemium, ad-supported, or free — where those third
+  parties do not install the Software themselves.
+
+  "Derivative MCP Product" means any software you publish, distribute,
+  or offer to third parties whose primary value proposition overlaps
+  substantially with the Software (e.g., another "persistent AI memory
+  MCP", "AI superbrain", "Claude context manager", or similar), and which
+  was built using the Software's source code, schemas, design documents,
+  prompts, or compiled artefacts.
+
+================================================================================
+2. WHAT YOU ARE FREE TO DO
+================================================================================
+
+Subject to your compliance with Section 3 (restrictions), the Licensor
+grants you a worldwide, royalty-free, non-exclusive, non-transferable
+license to:
+
+  (a)  INSTALL AND RUN the Software on any computer you personally own or
+       personally operate, as many times as you wish, for as long as you
+       wish. This includes laptops, desktops, servers, virtual machines,
+       and containers.
+
+  (b)  USE the Software for Production Use — coding, debugging, writing,
+       blogging, research, note-taking, studying, learning, preparing
+       documents, managing personal or team knowledge, or any similar
+       productive work — including when that work is performed for pay or
+       as part of a commercial job. You do not need to pay anyone to run
+       datatree as part of your day job.
+
+  (c)  MODIFY the Software locally for your own use. You can tweak
+       settings, write custom MCP tools, add scanners, adjust prompts,
+       and integrate datatree into your personal or team workflow.
+
+  (d)  SHARE the Software with members of your own team or household
+       (defined as people who share a physical residence, are employed by
+       the same legal entity as you, or are direct collaborators on your
+       project). Every such person must still comply with this license.
+
+  (e)  LEARN from the Software's source code and design documents.
+       Reading the code to understand how datatree works, for your own
+       education or for non-commercial teaching, is explicitly allowed.
+
+  (f)  SUBMIT BUG REPORTS, feature requests, and pull requests back to
+       the upstream repository. Contributions accepted upstream remain
+       under this license.
+
+  (g)  SCREENSHOT, RECORD, OR DEMO the Software in blog posts, talks,
+       tutorials, or videos — attribution to "datatree by Anish
+       Trivedi" appreciated.
+
+================================================================================
+3. WHAT YOU MAY NOT DO
+================================================================================
+
+You may NOT, without a separate written agreement signed by the Licensor:
+
+  (a)  SELL the Software, in whole or in part. This includes: selling
+       copies, selling access, selling installations, selling bundled
+       support as the primary purpose, selling hardware whose primary
+       value is running datatree, or charging any fee whose provision
+       relies on the Software's functionality.
+
+  (b)  OFFER THE SOFTWARE AS A HOSTED SERVICE (see §1). You cannot spin
+       up a SaaS, a managed API, a hosted "datatree cloud", a public
+       multi-tenant instance, or any similar offering where third parties
+       use datatree without installing it themselves.
+
+  (c)  PUBLISH A DERIVATIVE MCP PRODUCT (see §1). You cannot take the
+       Software's source code, schemas, prompts, or design and use them
+       as the foundation for your own published AI-memory MCP, AI
+       superbrain, AI context manager, AI plugin, or similar tool and
+       distribute that tool to others. This includes open-source
+       releases: you cannot publish a competitor even for free.
+
+  (d)  REPACKAGE OR REBRAND the Software and distribute it as your own.
+       Removing "datatree", renaming the project, claiming authorship,
+       or shipping a fork under a different brand is not allowed.
+
+  (e)  USE THE SOFTWARE TO TRAIN OR FINE-TUNE any machine-learning model,
+       language model, embedding model, agent framework, or AI system,
+       whether for research or commercial purposes. This includes using
+       the source code, the architectural design, the prompts, the
+       schemas, or any derived outputs as training data.
+
+  (f)  REMOVE OR OBSCURE copyright notices, license files, branding,
+       version strings, or the markers datatree injects into your
+       CLAUDE.md / AGENTS.md / GEMINI.md / plugin manifests.
+
+  (g)  GRANT SUBLICENSES. Your right to use the Software cannot be
+       passed to anyone else. Each user must install their own copy and
+       accept this license directly.
+
+  (h)  SUE THE LICENSOR for patent infringement related to the Software
+       and expect to keep your license. If you bring such a suit, your
+       rights under Section 2 terminate immediately.
+
+================================================================================
+4. THIRD-PARTY COMPONENTS
+================================================================================
+
+datatree statically links, dynamically references, and bundles a number of
+third-party open-source components (Rust crates, Tree-sitter grammars, the
+Bun runtime, the Python runtime, ONNX Runtime components, Tesseract OCR,
+FFmpeg, etc.). Each such component remains licensed under its own original
+license (MIT, Apache-2.0, BSD, etc.). Nothing in this license weakens,
+supersedes, or alters the terms of those upstream licenses.
+
+This license governs the datatree-original work only — the integration
+glue, the plugin manifests, the install scripts, the vision app, the
+scanners, the brain logic, the design documents, the 27-layer schema, and
+all other material produced by the datatree project itself.
+
+================================================================================
+5. NO WARRANTY
+================================================================================
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, ACCURACY, NON-INFRINGEMENT, AND FREEDOM
+FROM DEFECTS OR INTERRUPTIONS. RUNNING SOFTWARE ON YOUR COMPUTER IS YOUR
+RESPONSIBILITY.
+
+================================================================================
+6. LIMITATION OF LIABILITY
+================================================================================
+
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES (INCLUDING LOSS
+OF DATA, LOST PROFITS, BUSINESS INTERRUPTION, OR PROCUREMENT OF
+SUBSTITUTE SOFTWARE) ARISING OUT OF OR RELATED TO THE SOFTWARE, EVEN IF
+THE LICENSOR HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+================================================================================
+7. TERMINATION
+================================================================================
+
+Your rights under Section 2 terminate automatically and without notice if
+you violate any provision of Section 3. Upon termination you must cease
+using the Software and delete every copy (binaries, source, caches,
+snapshots, generated databases, derivative materials) from every device
+and storage medium under your control.
+
+Sections 3, 4, 5, 6, 8, and 9 survive termination indefinitely.
+
+================================================================================
+8. COMMERCIAL LICENSING
+================================================================================
+
+If you want to do any of the things listed in Section 3 — sell the
+Software, host it as a service, build a derivative product on top of it,
+train a model on it, rebrand and redistribute it — contact the Licensor
+to discuss a commercial agreement. The Licensor is willing to have that
+conversation; refusing to ask is not the same as permission.
+
+================================================================================
+9. GOVERNING LAW
+================================================================================
+
+This license is governed by the laws of the State of New Jersey, United
+States of America, without regard to its conflict-of-laws principles. Any
+dispute arising from or related to this license shall be brought
+exclusively in the state or federal courts located in Union County, New
+Jersey, and you consent to the personal jurisdiction and venue of those
+courts.
+
+================================================================================
+10. PLAIN-ENGLISH RECAP (non-binding but good-faith summary)
+================================================================================
+
+TL;DR:
+  ✅  Use datatree at work.
+  ✅  Use datatree at home.
+  ✅  Tell your friends.
+  ✅  Modify it for your own use.
+  ✅  Contribute back.
+  ❌  Don't sell it.
+  ❌  Don't host it as a service.
+  ❌  Don't build your own competing MCP from it.
+  ❌  Don't train AI models on it.
+  ❌  Don't rebrand and redistribute.
+
+Questions? bhattanish@gmail.com.
+
+— Anish Trivedi
+  April 2026

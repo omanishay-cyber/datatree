@@ -1,0 +1,37 @@
+<!-- datatree-start v1.0 -->
+# Datatree (Google Antigravity — AGENTS.md)
+
+Antigravity reads both `AGENTS.md` and `GEMINI.md`. This file is the
+universal agent context; `GEMINI.md` carries Gemini-specific notes.
+
+Datatree is a persistent knowledge graph of this project, exposed via
+the `datatree` MCP server (see `mcp_config.json`) and kept fresh by the
+per-user `datatree-supervisor` daemon.
+
+## Tool usage rules (MANDATORY)
+
+**Use datatree MCP tools BEFORE Antigravity's built-in code search,
+file read, or workspace tools** for any structural or semantic question.
+
+On every task:
+
+1. `datatree.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `datatree.query`, `datatree.impact`, `datatree.search`
+   at `detail_level="minimal"`.
+3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
+4. Edits update the graph incrementally via the supervisor.
+
+## Step ledger
+
+Steps append to `~/.datatree/projects/<id>/steps.jsonl`. Recover with
+`datatree.last_steps(n=10)`.
+
+## Drift detection
+
+Datatree flags symbol/doc/test drift. Address all flags before done.
+
+## Compaction resilience
+
+After a context reset, one `datatree.minimal_context(...)` call restores
+situational awareness from the persistent graph.
+<!-- datatree-end -->

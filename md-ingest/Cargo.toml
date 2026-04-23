@@ -1,0 +1,15 @@
+[package]
+name = "datatree-md-ingest"
+version.workspace = true
+edition.workspace = true
+license = "Proprietary"
+description = "v0.1 stub: markdown ingestion worker placeholder (real impl in v0.2)"
+
+[[bin]]
+name = "datatree-md-ingest"
+path = "src/main.rs"
+
+[dependencies]
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
