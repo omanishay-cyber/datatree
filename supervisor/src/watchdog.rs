@@ -3,9 +3,16 @@
 //! - Heartbeat tick (every 1s): for every running child, ensure the last
 //!   heartbeat is within `HEARTBEAT_DEADLINE`. If a child has missed it, the
 //!   watchdog force-kills the PID and lets the [`crate::ChildManager`]
-//!   monitor task pick up the corpse and restart with backoff.
+//!   monitor task observe the exit and queue an auto-restart request on
+//!   the restart channel (see `manager::run_restart_loop`).
 //! - Deep self-test (every `health_check_interval`, default 60s): pings each
 //!   child's `/health` endpoint over its dedicated IPC channel.
+//!
+//! The auto-restart path was disabled in v0.1 due to a Send-recursion
+//! cycle triggered by `tokio::process::Child` stdio handles on Windows.
+//! It is re-enabled as of this commit by decoupling the restart decision
+//! from the monitor task via an `mpsc::UnboundedChannel` (see
+//! `manager.rs :: RestartRequest`). No change to the watchdog contract.
 
 use crate::child::ChildStatus;
 use crate::error::SupervisorError;

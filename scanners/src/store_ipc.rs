@@ -8,6 +8,7 @@
 //! and flush interval are tuned for sub-millisecond latency on the
 //! happy path while still bundling work under load.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,7 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 
 use crate::error::{Result, ScannerError};
+use crate::findings_writer::FindingsWriter;
 use crate::job::ScanResult;
 use crate::scanner::Finding;
 
@@ -141,4 +143,31 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+/// Drain [`FindingsBatch`]es produced by [`StoreIpcBatcher`] and persist
+/// every finding to `findings_db` via [`FindingsWriter`].
+///
+/// Used by the supervisor + `mneme audit` when a direct, in-process write
+/// path is preferred over shipping batches over an external IPC channel.
+/// Exits cleanly when `batches` closes, returning the total number of
+/// rows inserted.
+pub async fn drain_batches_to_db(
+    mut batches: mpsc::Receiver<FindingsBatch>,
+    findings_db: PathBuf,
+) -> Result<usize> {
+    // rusqlite is sync, but each call is short; we hold one connection for
+    // the lifetime of the batcher and funnel every batch through it.
+    let mut total = 0usize;
+    let mut writer = FindingsWriter::open(&findings_db)?;
+    while let Some(batch) = batches.recv().await {
+        if batch.findings.is_empty() {
+            continue;
+        }
+        let n = writer.write_findings(&batch.findings).map_err(|e| {
+            ScannerError::StoreIpc(format!("findings writer: {e}"))
+        })?;
+        total += n;
+    }
+    Ok(total)
 }

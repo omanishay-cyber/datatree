@@ -2,16 +2,24 @@ import { useEffect, useRef, useState } from "react";
 import Graph from "graphology";
 import Sigma from "sigma";
 import forceAtlas2 from "graphology-layout-forceatlas2";
-import { fetchGraph, type GraphPayload } from "../api";
+import { fetchNodes, fetchEdges } from "../api/graph";
 import { useVisionStore } from "../store";
 
 // View 1 — Sigma.js v3 WebGL force-directed graph.
 // Targets 60fps on 100K nodes via WebGL renderer + ForceAtlas2 pre-layout.
+//
+// Wired to the real graph shard (graph.db) via /api/graph/nodes + /api/graph/edges.
+// Shows a loading skeleton while the shard query is in flight and a first-class
+// error state when the shard is missing ("run `mneme build .`").
+
+type Status = "loading" | "empty" | "ready" | "error";
 
 export function ForceGalaxy(): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sigmaRef = useRef<Sigma | null>(null);
+  const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
+  const [counts, setCounts] = useState<{ nodes: number; edges: number }>({ nodes: 0, edges: 0 });
   const selectNodes = useVisionStore((s) => s.selectNodes);
   const liveEvents = useVisionStore((s) => s.liveEvents);
 
@@ -20,12 +28,30 @@ export function ForceGalaxy(): JSX.Element {
     const ac = new AbortController();
     let cancelled = false;
 
-    const start = performance.now();
-    fetchGraph("force-galaxy", { signal: ac.signal })
-      .then((payload: GraphPayload) => {
+    (async (): Promise<void> => {
+      const start = performance.now();
+      try {
+        const [nodesRes, edgesRes] = await Promise.all([
+          fetchNodes(ac.signal, 4000),
+          fetchEdges(ac.signal, 16000),
+        ]);
         if (cancelled || !containerRef.current) return;
+
+        const nodes = nodesRes.nodes;
+        const edges = edgesRes.edges;
+
+        if (nodesRes.error) {
+          setError(nodesRes.error);
+          setStatus("error");
+          return;
+        }
+        if (nodes.length === 0) {
+          setStatus("empty");
+          return;
+        }
+
         const g = new Graph({ multi: false, type: "mixed" });
-        for (const n of payload.nodes) {
+        for (const n of nodes) {
           g.addNode(n.id, {
             label: n.label ?? n.id,
             x: n.x ?? Math.random(),
@@ -34,15 +60,19 @@ export function ForceGalaxy(): JSX.Element {
             color: n.color ?? "#7aa7ff",
           });
         }
-        for (const e of payload.edges) {
+        for (const e of edges) {
           if (!g.hasNode(e.source) || !g.hasNode(e.target)) continue;
-          g.addEdge(e.source, e.target, { weight: e.weight ?? 1, color: "#3a4a66" });
+          // graphology rejects duplicate edges in simple mode; swallow.
+          try {
+            g.addEdge(e.source, e.target, { weight: e.weight ?? 1, color: "#3a4a66" });
+          } catch {
+            /* duplicate edge — ignore */
+          }
         }
 
-        // Pre-layout: a few iterations of ForceAtlas2 to settle positions.
         if (g.order > 0) {
           forceAtlas2.assign(g, {
-            iterations: payload.nodes.length > 5000 ? 30 : 60,
+            iterations: nodes.length > 5000 ? 30 : 60,
             settings: { gravity: 1, scalingRatio: 8 },
           });
         }
@@ -58,16 +88,23 @@ export function ForceGalaxy(): JSX.Element {
           selectNodes([{ id: node, label: String(attrs["label"] ?? node) }]);
         });
 
+        setCounts({ nodes: nodes.length, edges: edges.length });
+        setStatus("ready");
+
         const elapsed = performance.now() - start;
         if (elapsed > 500) {
           // First-paint budget exceeded; surface for telemetry callers.
           // eslint-disable-next-line no-console
           console.warn(`force-galaxy first-paint ${elapsed.toFixed(0)}ms (>500 budget)`);
         }
-      })
-      .catch((err: Error) => {
-        if (err.name !== "AbortError") setError(err.message);
-      });
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        if (!cancelled) {
+          setError((err as Error).message);
+          setStatus("error");
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -96,7 +133,26 @@ export function ForceGalaxy(): JSX.Element {
   return (
     <div className="vz-view vz-view--galaxy">
       <div ref={containerRef} className="vz-view-canvas" data-testid="force-galaxy" />
-      {error && <div className="vz-view-error">graph error: {error}</div>}
+      {status === "loading" && (
+        <div className="vz-view-hint" role="status">
+          loading graph.db -- nodes + edges…
+        </div>
+      )}
+      {status === "empty" && (
+        <div className="vz-view-error" role="status">
+          no nodes in shard yet — run <code>mneme build .</code> in your project
+        </div>
+      )}
+      {status === "error" && error && (
+        <div className="vz-view-error" role="alert">
+          graph error: {error}
+        </div>
+      )}
+      {status === "ready" && (
+        <p className="vz-view-hint">
+          {counts.nodes.toLocaleString()} nodes · {counts.edges.toLocaleString()} edges · from graph.db
+        </p>
+      )}
     </div>
   );
 }

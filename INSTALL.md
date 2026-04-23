@@ -2,15 +2,15 @@
 
 > **TL;DR for v0.1.0:** from source only. Prebuilt binaries ship in v0.1.1.
 
-mneme is a multi-process daemon (Rust supervisor + Bun MCP server + Python multimodal sidecar). The install process has three paths, sized for three kinds of users.
+mneme is a multi-process daemon (Rust supervisor + Bun MCP server). Multimodal extraction is pure Rust — no Python sidecar as of v0.2. The install process has three paths, sized for three kinds of users.
 
 ## Prerequisites
 
 | Platform | You need |
 |---|---|
-| **Windows 10 / 11** | Rust 1.78+, Bun 1.3+, Python 3.10+, git, ~2 GB free disk |
-| **macOS 12+** | Rust 1.78+, Bun 1.3+, Python 3.10+, Xcode CLT, ~2 GB free disk |
-| **Linux (Ubuntu / Fedora / Arch)** | Rust 1.78+, Bun 1.3+, Python 3.10+, `build-essential` (or distro equivalent) |
+| **Windows 10 / 11** | Rust 1.78+, Bun 1.3+, git, ~2 GB free disk |
+| **macOS 12+** | Rust 1.78+, Bun 1.3+, Xcode CLT, ~2 GB free disk |
+| **Linux (Ubuntu / Fedora / Arch)** | Rust 1.78+, Bun 1.3+, `build-essential` (or distro equivalent) |
 
 Optional runtime deps — install if you want the matching features:
 
@@ -40,8 +40,8 @@ cd mcp && bun install && cd ..
 # Install vision app dependencies (~450 packages)
 cd vision && bun install && cd ..
 
-# Install multimodal Python sidecar
-cd workers/multimodal && pip install -e . && cd ../..
+# v0.2: multimodal extraction is now pure Rust (crate `mneme-multimodal`),
+# built as part of the cargo workspace above. No Python sidecar install.
 
 # Copy binaries to the supervised bin dir
 # POSIX:

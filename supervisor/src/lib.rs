@@ -64,6 +64,16 @@ pub async fn run(config: SupervisorConfig) -> Result<()> {
     let watchdog = Arc::new(Watchdog::new(manager.clone(), config.health_check_interval));
     let shutdown = Arc::new(Notify::new());
 
+    // 0. Start the restart-request processor BEFORE any child is spawned
+    //    so a child that crashes during spawn_all() is still eligible for
+    //    auto-restart. The receiver is taken exactly once.
+    let restart_handle = if let Some(rx) = manager.take_restart_rx().await {
+        let mgr = manager.clone();
+        Some(tokio::spawn(async move { mgr.run_restart_loop(rx).await }))
+    } else {
+        None
+    };
+
     // 1. Spawn every configured child.
     manager.spawn_all().await?;
 
@@ -115,6 +125,10 @@ pub async fn run(config: SupervisorConfig) -> Result<()> {
     }
     if let Err(e) = ipc_handle.await {
         error!(error = %e, "ipc task join error");
+    }
+    if let Some(h) = restart_handle {
+        h.abort();
+        let _ = h.await;
     }
 
     info!("supervisor stopped cleanly");

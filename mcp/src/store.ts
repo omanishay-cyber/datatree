@@ -824,6 +824,660 @@ export function driftFindings(
   );
 }
 
+// -- findings shard (audit helpers) ----------------------------------------
+
+/**
+ * Return open findings, optionally filtered by a list of scanner names and
+ * a scope glob (matched LIKE '%scope%' against `file`).
+ *
+ * Used by `audit` and every `audit_<scanner>` tool. Severity + scanner
+ * breakdowns are computed by the caller.
+ */
+export function scannerFindings(
+  scanners: string[] | undefined,
+  scope: string | undefined,
+  file: string | undefined,
+  limit: number = 500,
+  cwdOverride?: string,
+): Array<{
+  id: number;
+  rule_id: string;
+  scanner: string;
+  severity: string;
+  file: string;
+  line_start: number;
+  line_end: number;
+  message: string;
+  suggestion: string | null;
+  created_at: string;
+}> {
+  return withShard<
+    Array<{
+      id: number;
+      rule_id: string;
+      scanner: string;
+      severity: string;
+      file: string;
+      line_start: number;
+      line_end: number;
+      message: string;
+      suggestion: string | null;
+      created_at: string;
+    }>
+  >(
+    "findings",
+    (db) => {
+      const clauses: string[] = ["resolved_at IS NULL"];
+      const params: Array<string | number> = [];
+      if (scanners && scanners.length > 0) {
+        const placeholders = scanners.map(() => "?").join(",");
+        clauses.push(`scanner IN (${placeholders})`);
+        for (const s of scanners) params.push(s);
+      }
+      if (file) {
+        clauses.push("file = ?");
+        params.push(file);
+      } else if (scope) {
+        clauses.push("file LIKE ?");
+        params.push(`%${scope}%`);
+      }
+      params.push(limit);
+      const sql = `SELECT id, rule_id, scanner, severity, file,
+                          line_start, line_end, message, suggestion, created_at
+                   FROM findings
+                   WHERE ${clauses.join(" AND ")}
+                   ORDER BY created_at DESC
+                   LIMIT ?`;
+      return db.prepare(sql).all(...params) as Array<{
+        id: number;
+        rule_id: string;
+        scanner: string;
+        severity: string;
+        file: string;
+        line_start: number;
+        line_end: number;
+        message: string;
+        suggestion: string | null;
+        created_at: string;
+      }>;
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+/** Aggregated stats for `audit_corpus`: counts by scanner × severity. */
+export function findingsCorpusStats(cwdOverride?: string): {
+  total: number;
+  by_severity: Record<string, number>;
+  by_scanner: Record<string, number>;
+  by_scanner_severity: Record<string, Record<string, number>>;
+} {
+  return withShard<{
+    total: number;
+    by_severity: Record<string, number>;
+    by_scanner: Record<string, number>;
+    by_scanner_severity: Record<string, Record<string, number>>;
+  }>(
+    "findings",
+    (db) => {
+      const rows = db
+        .prepare(
+          `SELECT scanner, severity, COUNT(*) AS c
+           FROM findings
+           WHERE resolved_at IS NULL
+           GROUP BY scanner, severity`,
+        )
+        .all() as Array<{ scanner: string; severity: string; c: number }>;
+
+      const by_severity: Record<string, number> = {};
+      const by_scanner: Record<string, number> = {};
+      const by_scanner_severity: Record<string, Record<string, number>> = {};
+      let total = 0;
+      for (const r of rows) {
+        total += r.c;
+        by_severity[r.severity] = (by_severity[r.severity] ?? 0) + r.c;
+        by_scanner[r.scanner] = (by_scanner[r.scanner] ?? 0) + r.c;
+        const sev = by_scanner_severity[r.scanner] ?? {};
+        sev[r.severity] = (sev[r.severity] ?? 0) + r.c;
+        by_scanner_severity[r.scanner] = sev;
+      }
+      return { total, by_severity, by_scanner, by_scanner_severity };
+    },
+    { total: 0, by_severity: {}, by_scanner: {}, by_scanner_severity: {} },
+    cwdOverride,
+  );
+}
+
+// -- graph shard (call graph / cycles / deps / references) -----------------
+
+export interface GraphEdgeRow {
+  source: string;
+  target: string;
+  kind: string;
+  file: string | null;
+  line: number | null;
+}
+
+/** BFS call-graph expansion. direction picks edge orientation. */
+export function callGraphBfs(
+  fn: string,
+  direction: "callers" | "callees" | "both",
+  depth: number,
+  cwdOverride?: string,
+): {
+  nodes: Array<{ id: string; label: string; file: string; line: number }>;
+  edges: Array<{ source: string; target: string; call_count: number }>;
+} {
+  return withShard<{
+    nodes: Array<{ id: string; label: string; file: string; line: number }>;
+    edges: Array<{ source: string; target: string; call_count: number }>;
+  }>(
+    "graph",
+    (db) => {
+      const visited = new Set<string>([fn]);
+      const edgePairs = new Map<string, number>(); // "src->tgt" -> count
+      const pickCallees = direction === "callees" || direction === "both";
+      const pickCallers = direction === "callers" || direction === "both";
+
+      const calleeStmt = db.prepare(
+        `SELECT target_qualified AS tgt, file_path AS file, line
+         FROM edges WHERE kind = 'calls' AND source_qualified = ?`,
+      );
+      const callerStmt = db.prepare(
+        `SELECT source_qualified AS src, file_path AS file, line
+         FROM edges WHERE kind = 'calls' AND target_qualified = ?`,
+      );
+
+      let frontier: string[] = [fn];
+      for (let d = 0; d < depth && frontier.length > 0; d++) {
+        const next: string[] = [];
+        for (const cur of frontier) {
+          if (pickCallees) {
+            const rows = calleeStmt.all(cur) as Array<{
+              tgt: string;
+              file: string | null;
+              line: number | null;
+            }>;
+            for (const r of rows) {
+              const key = `${cur}->${r.tgt}`;
+              edgePairs.set(key, (edgePairs.get(key) ?? 0) + 1);
+              if (!visited.has(r.tgt)) {
+                visited.add(r.tgt);
+                next.push(r.tgt);
+              }
+            }
+          }
+          if (pickCallers) {
+            const rows = callerStmt.all(cur) as Array<{
+              src: string;
+              file: string | null;
+              line: number | null;
+            }>;
+            for (const r of rows) {
+              const key = `${r.src}->${cur}`;
+              edgePairs.set(key, (edgePairs.get(key) ?? 0) + 1);
+              if (!visited.has(r.src)) {
+                visited.add(r.src);
+                next.push(r.src);
+              }
+            }
+          }
+        }
+        frontier = next;
+      }
+
+      const nodeMetaStmt = db.prepare(
+        `SELECT qualified_name, name, file_path, line_start
+         FROM nodes WHERE qualified_name = ?`,
+      );
+      const nodes = Array.from(visited).map((q) => {
+        const m = nodeMetaStmt.get(q) as
+          | {
+              qualified_name: string;
+              name: string;
+              file_path: string | null;
+              line_start: number | null;
+            }
+          | undefined;
+        return {
+          id: q,
+          label: m?.name ?? q,
+          file: m?.file_path ?? "",
+          line: m?.line_start ?? 0,
+        };
+      });
+      const edges = Array.from(edgePairs.entries()).map(([k, count]) => {
+        const [source, target] = k.split("->");
+        return {
+          source: source ?? "",
+          target: target ?? "",
+          call_count: count,
+        };
+      });
+      return { nodes, edges };
+    },
+    { nodes: [], edges: [] },
+    cwdOverride,
+  );
+}
+
+/** Tarjan strongly-connected-components over `edges` table. Returns cycles
+ *  (components with >= 2 nodes) as ordered lists of qualified names. */
+export function detectCycles(
+  kindFilter: string | null,
+  cwdOverride?: string,
+): string[][] {
+  return withShard<string[][]>(
+    "graph",
+    (db) => {
+      // Build adjacency map from edges.
+      const where = kindFilter ? `WHERE kind = ?` : "";
+      const rows = (
+        kindFilter
+          ? db.prepare(
+              `SELECT source_qualified AS s, target_qualified AS t FROM edges ${where}`,
+            ).all(kindFilter)
+          : db.prepare(
+              `SELECT source_qualified AS s, target_qualified AS t FROM edges`,
+            ).all()
+      ) as Array<{ s: string; t: string }>;
+
+      const adj = new Map<string, string[]>();
+      const allNodes = new Set<string>();
+      for (const r of rows) {
+        let list = adj.get(r.s);
+        if (!list) {
+          list = [];
+          adj.set(r.s, list);
+        }
+        list.push(r.t);
+        allNodes.add(r.s);
+        allNodes.add(r.t);
+      }
+
+      // Iterative Tarjan.
+      let index = 0;
+      const indices = new Map<string, number>();
+      const lowlink = new Map<string, number>();
+      const onStack = new Set<string>();
+      const stack: string[] = [];
+      const out: string[][] = [];
+
+      const strongconnect = (v0: string): void => {
+        // Iterative DFS with a work stack.
+        const work: Array<{ v: string; i: number }> = [{ v: v0, i: 0 }];
+        indices.set(v0, index);
+        lowlink.set(v0, index);
+        index++;
+        stack.push(v0);
+        onStack.add(v0);
+
+        while (work.length > 0) {
+          const frame = work[work.length - 1];
+          if (!frame) break;
+          const successors = adj.get(frame.v) ?? [];
+          if (frame.i < successors.length) {
+            const w = successors[frame.i];
+            frame.i++;
+            if (w == null) continue;
+            if (!indices.has(w)) {
+              indices.set(w, index);
+              lowlink.set(w, index);
+              index++;
+              stack.push(w);
+              onStack.add(w);
+              work.push({ v: w, i: 0 });
+            } else if (onStack.has(w)) {
+              const cur = lowlink.get(frame.v);
+              const wIdx = indices.get(w);
+              if (cur != null && wIdx != null) {
+                lowlink.set(frame.v, Math.min(cur, wIdx));
+              }
+            }
+          } else {
+            // Done with this vertex — emit SCC if root.
+            if (lowlink.get(frame.v) === indices.get(frame.v)) {
+              const comp: string[] = [];
+              while (true) {
+                const w = stack.pop();
+                if (w == null) break;
+                onStack.delete(w);
+                comp.push(w);
+                if (w === frame.v) break;
+              }
+              if (comp.length >= 2) out.push(comp);
+            }
+            work.pop();
+            if (work.length > 0) {
+              const parent = work[work.length - 1];
+              if (parent) {
+                const parentLow = lowlink.get(parent.v);
+                const frameLow = lowlink.get(frame.v);
+                if (parentLow != null && frameLow != null) {
+                  lowlink.set(parent.v, Math.min(parentLow, frameLow));
+                }
+              }
+            }
+          }
+        }
+      };
+
+      for (const v of allNodes) {
+        if (!indices.has(v)) strongconnect(v);
+      }
+      return out;
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+/** BFS over `imports` edges to collect forward + reverse dependencies. */
+export function dependencyChain(
+  file: string,
+  direction: "forward" | "reverse" | "both",
+  cwdOverride?: string,
+): { forward: string[]; reverse: string[] } {
+  return withShard<{ forward: string[]; reverse: string[] }>(
+    "graph",
+    (db) => {
+      const fwd = new Set<string>();
+      const rev = new Set<string>();
+
+      // Forward = files that `file` imports (transitively).
+      if (direction === "forward" || direction === "both") {
+        const stmt = db.prepare(
+          `SELECT DISTINCT e.target_qualified AS tgt, n.file_path AS file
+           FROM edges e
+           LEFT JOIN nodes n ON n.qualified_name = e.target_qualified
+           WHERE e.kind IN ('imports', 'import') AND e.file_path = ?`,
+        );
+        let frontier: string[] = [file];
+        for (let d = 0; d < 10 && frontier.length > 0; d++) {
+          const next: string[] = [];
+          for (const f of frontier) {
+            const rows = stmt.all(f) as Array<{
+              tgt: string;
+              file: string | null;
+            }>;
+            for (const r of rows) {
+              const t = r.file ?? r.tgt;
+              if (t && !fwd.has(t) && t !== file) {
+                fwd.add(t);
+                next.push(t);
+              }
+            }
+          }
+          frontier = next;
+        }
+      }
+
+      // Reverse = files that import anything in `file`.
+      if (direction === "reverse" || direction === "both") {
+        const stmt = db.prepare(
+          `SELECT DISTINCT e.file_path AS file
+           FROM edges e
+           LEFT JOIN nodes n ON n.qualified_name = e.target_qualified
+           WHERE e.kind IN ('imports', 'import')
+             AND n.file_path = ?`,
+        );
+        let frontier: string[] = [file];
+        for (let d = 0; d < 10 && frontier.length > 0; d++) {
+          const next: string[] = [];
+          for (const f of frontier) {
+            const rows = stmt.all(f) as Array<{ file: string | null }>;
+            for (const r of rows) {
+              if (r.file && !rev.has(r.file) && r.file !== file) {
+                rev.add(r.file);
+                next.push(r.file);
+              }
+            }
+          }
+          frontier = next;
+        }
+      }
+
+      return { forward: Array.from(fwd), reverse: Array.from(rev) };
+    },
+    { forward: [], reverse: [] },
+    cwdOverride,
+  );
+}
+
+/** All references to a symbol: edges WHERE target_qualified = ?. */
+export function findReferences(
+  symbol: string,
+  cwdOverride?: string,
+): Array<{
+  file: string;
+  line: number;
+  kind: string;
+  source: string;
+  context: string;
+}> {
+  return withShard<
+    Array<{
+      file: string;
+      line: number;
+      kind: string;
+      source: string;
+      context: string;
+    }>
+  >(
+    "graph",
+    (db) => {
+      const rows = db
+        .prepare(
+          `SELECT e.source_qualified AS source,
+                  e.kind               AS kind,
+                  COALESCE(e.file_path, n.file_path) AS file,
+                  COALESCE(e.line, n.line_start)      AS line,
+                  n.signature          AS signature
+           FROM edges e
+           LEFT JOIN nodes n ON n.qualified_name = e.source_qualified
+           WHERE e.target_qualified = ?
+           ORDER BY e.kind, file
+           LIMIT 500`,
+        )
+        .all(symbol) as Array<{
+        source: string;
+        kind: string;
+        file: string | null;
+        line: number | null;
+        signature: string | null;
+      }>;
+
+      // Definitions = node rows where qualified_name = symbol.
+      const defRows = db
+        .prepare(
+          `SELECT file_path AS file, line_start AS line, signature
+           FROM nodes WHERE qualified_name = ?`,
+        )
+        .all(symbol) as Array<{
+        file: string | null;
+        line: number | null;
+        signature: string | null;
+      }>;
+
+      const defs = defRows.map((d) => ({
+        file: d.file ?? "",
+        line: d.line ?? 0,
+        kind: "definition",
+        source: symbol,
+        context: d.signature ?? symbol,
+      }));
+
+      const usages = rows.map((r) => ({
+        file: r.file ?? "",
+        line: r.line ?? 0,
+        kind: r.kind,
+        source: r.source,
+        context: r.signature ?? r.source,
+      }));
+
+      return [...defs, ...usages];
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+// -- tasks shard (single-step lookup) --------------------------------------
+
+/** Lookup one step row by step_id. */
+export function singleStep(
+  stepId: string,
+  cwdOverride?: string,
+): {
+  step_id: string;
+  parent_step_id: string | null;
+  session_id: string;
+  description: string;
+  acceptance_cmd: string | null;
+  acceptance_check: string;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  verification_proof: string | null;
+  artifacts: string;
+  notes: string;
+  blocker: string | null;
+  drift_score: number;
+} | null {
+  return withShard<{
+    step_id: string;
+    parent_step_id: string | null;
+    session_id: string;
+    description: string;
+    acceptance_cmd: string | null;
+    acceptance_check: string;
+    status: string;
+    started_at: string | null;
+    completed_at: string | null;
+    verification_proof: string | null;
+    artifacts: string;
+    notes: string;
+    blocker: string | null;
+    drift_score: number;
+  } | null>(
+    "tasks",
+    (db) => {
+      const r = db
+        .prepare(
+          `SELECT step_id, parent_step_id, session_id, description,
+                  acceptance_cmd, acceptance_check, status, started_at,
+                  completed_at, verification_proof, artifacts, notes,
+                  blocker, drift_score
+           FROM steps WHERE step_id = ? LIMIT 1`,
+        )
+        .get(stepId) as
+        | {
+            step_id: string;
+            parent_step_id: string | null;
+            session_id: string;
+            description: string;
+            acceptance_cmd: string | null;
+            acceptance_check: string;
+            status: string;
+            started_at: string | null;
+            completed_at: string | null;
+            verification_proof: string | null;
+            artifacts: string;
+            notes: string;
+            blocker: string | null;
+            drift_score: number;
+          }
+        | undefined;
+      return r ?? null;
+    },
+    null,
+    cwdOverride,
+  );
+}
+
+// -- snapshots (filesystem) ------------------------------------------------
+
+/** List available snapshots from the project's snapshot dir. Returns
+ *  [] when missing. Each snapshot is a sibling directory whose name is
+ *  the timestamp id. */
+export function listSnapshotsFs(cwdOverride?: string): Array<{
+  id: string;
+  path: string;
+  bytes: number;
+  captured_at: string;
+}> {
+  const root = resolveShardRoot(cwdOverride);
+  if (!root) return [];
+  const snapDir = join(root, "snapshots");
+  if (!existsSync(snapDir)) return [];
+  try {
+    const { readdirSync, statSync } = require("node:fs") as typeof import("node:fs");
+    const entries = readdirSync(snapDir);
+    const out: Array<{
+      id: string;
+      path: string;
+      bytes: number;
+      captured_at: string;
+    }> = [];
+    for (const name of entries) {
+      const p = join(snapDir, name);
+      let bytes = 0;
+      try {
+        const st = statSync(p);
+        if (!st.isDirectory()) continue;
+        for (const sub of readdirSync(p)) {
+          try {
+            const subst = statSync(join(p, sub));
+            if (subst.isFile()) bytes += subst.size;
+          } catch {
+            // skip
+          }
+        }
+        out.push({
+          id: name,
+          path: p,
+          bytes,
+          captured_at: st.mtime.toISOString(),
+        });
+      } catch {
+        // skip
+      }
+    }
+    out.sort((a, b) => b.id.localeCompare(a.id));
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Return absolute path to a snapshot's <layer>.db file, or null if missing. */
+export function snapshotLayerPath(
+  snapshotId: string,
+  layer: string,
+  cwdOverride?: string,
+): string | null {
+  const root = resolveShardRoot(cwdOverride);
+  if (!root) return null;
+  const p = join(root, "snapshots", snapshotId, `${layer}.db`);
+  return existsSync(p) ? p : null;
+}
+
+/** Open a snapshot's layer DB read-only (returns null if missing). */
+export function openSnapshotShard(
+  snapshotId: string,
+  layer: string,
+  cwdOverride?: string,
+): Database | null {
+  const p = snapshotLayerPath(snapshotId, layer, cwdOverride);
+  if (!p) return null;
+  try {
+    return new Database(p, { readonly: true });
+  } catch {
+    return null;
+  }
+}
+
 // -- memory shard ----------------------------------------------------------
 
 export function activeConstraints(

@@ -370,3 +370,177 @@ fn confidence_serializes_as_kebab_case() {
     let j = serde_json::to_string(&Confidence::Ambiguous).unwrap();
     assert_eq!(j, "\"ambiguous\"");
 }
+
+// ---------------------------------------------------------------------------
+// Tier-2 grammars — smoke tests
+//
+// Each test is cfg-gated on the grammar feature so `cargo test --no-default-
+// features -F tier1` still passes. The assertion contract is minimal:
+//   1. parse_file returns Ok
+//   2. the resulting tree root has a non-empty kind string
+//   3. the extractor emits at least one non-File Node (function / class /
+//      comment), proving the query cache compiled at least one pattern
+//      against the grammar's node names
+// That's the bare "grammar plumbs through end-to-end" check the external
+// design review asked for.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+async fn tier2_smoke(lang: Language, src: &str, filename: &str) {
+    let pool = pool();
+    let inc = IncrementalParser::new(pool);
+    let path = PathBuf::from(filename);
+    let tree = parse_once(&inc, filename, lang, src).await;
+    assert!(
+        !tree.root_node().kind().is_empty(),
+        "{lang} root node kind must be non-empty"
+    );
+    let extractor = Extractor::new(lang);
+    let g = extractor
+        .extract(&tree, src.as_bytes(), &path)
+        .expect("extract");
+    let non_file: Vec<_> = g
+        .nodes
+        .iter()
+        .filter(|n| n.kind != NodeKind::File)
+        .collect();
+    assert!(
+        !non_file.is_empty(),
+        "{lang}: expected at least one function/class/comment node, got only File. \
+         Check query patterns for this language. Nodes: {:?}",
+        g.nodes
+    );
+}
+
+#[cfg(feature = "swift")]
+#[tokio::test]
+async fn swift_grammar_smoke() {
+    let src = r#"
+        class Greeter {
+            func hello(name: String) -> String {
+                return "Hi, " + name
+            }
+        }
+        func top() -> Int { return 42 }
+    "#;
+    tier2_smoke(Language::Swift, src, "sample.swift").await;
+}
+
+#[cfg(feature = "kotlin")]
+#[tokio::test]
+async fn kotlin_grammar_smoke() {
+    let src = r#"
+        class Greeter {
+            fun hello(name: String): String {
+                return "Hi, $name"
+            }
+        }
+        fun top(): Int = 42
+    "#;
+    tier2_smoke(Language::Kotlin, src, "sample.kt").await;
+}
+
+#[cfg(feature = "scala")]
+#[tokio::test]
+async fn scala_grammar_smoke() {
+    let src = r#"
+        object Greeter {
+            def hello(name: String): String = s"Hi, $name"
+        }
+        class Animal { def speak(): String = "noise" }
+    "#;
+    tier2_smoke(Language::Scala, src, "sample.scala").await;
+}
+
+#[cfg(feature = "julia")]
+#[tokio::test]
+async fn julia_grammar_smoke() {
+    let src = r#"
+        struct Point
+            x::Float64
+            y::Float64
+        end
+        function greet(name)
+            return "Hi, $name"
+        end
+        top() = 42
+    "#;
+    tier2_smoke(Language::Julia, src, "sample.jl").await;
+}
+
+#[cfg(feature = "haskell")]
+#[tokio::test]
+async fn haskell_grammar_smoke() {
+    let src = "module Main where\n\
+               \n\
+               greet :: String -> String\n\
+               greet name = \"Hi, \" ++ name\n\
+               \n\
+               top :: Int\n\
+               top = 42\n";
+    tier2_smoke(Language::Haskell, src, "sample.hs").await;
+}
+
+#[cfg(feature = "svelte")]
+#[tokio::test]
+async fn svelte_grammar_smoke() {
+    // Svelte grammar recognises SFC structure; we only assert the parse
+    // succeeds and at least the comment-query finds our HTML comment.
+    let src = "<!-- hello -->\n<script>let x = 1;</script>\n<h1>Hi</h1>\n";
+    tier2_smoke(Language::Svelte, src, "sample.svelte").await;
+}
+
+#[cfg(feature = "solidity")]
+#[tokio::test]
+async fn solidity_grammar_smoke() {
+    let src = r#"
+        // SPDX-License-Identifier: MIT
+        pragma solidity ^0.8.0;
+        contract Greeter {
+            function hello(string memory name) public pure returns (string memory) {
+                return name;
+            }
+        }
+    "#;
+    tier2_smoke(Language::Solidity, src, "sample.sol").await;
+}
+
+#[cfg(feature = "zig")]
+#[tokio::test]
+async fn zig_grammar_smoke() {
+    let src = r#"
+        const std = @import("std");
+        pub fn hello(name: []const u8) []const u8 {
+            return name;
+        }
+        pub fn top() i32 { return 42; }
+    "#;
+    tier2_smoke(Language::Zig, src, "sample.zig").await;
+}
+
+#[tokio::test]
+async fn vue_gracefully_disabled() {
+    // Vue has no working crates.io grammar; ensure the runtime path is
+    // the graceful-skip branch rather than a panic. `is_enabled` must be
+    // false and acquire() must return NoParserForLanguage.
+    assert!(
+        !Language::Vue.is_enabled(),
+        "Vue must be reported as not-enabled until a working grammar crate exists"
+    );
+    let pool = ParserPool::new(1).unwrap();
+    let err = pool.acquire(Language::Vue).await.unwrap_err();
+    assert!(matches!(err, crate::ParserError::NoParserForLanguage(_)));
+}
+
+#[test]
+fn tier2_languages_mapped_from_extension() {
+    assert_eq!(Language::from_extension("swift"), Some(Language::Swift));
+    assert_eq!(Language::from_extension("kt"), Some(Language::Kotlin));
+    assert_eq!(Language::from_extension("scala"), Some(Language::Scala));
+    assert_eq!(Language::from_extension("vue"), Some(Language::Vue));
+    assert_eq!(Language::from_extension("svelte"), Some(Language::Svelte));
+    assert_eq!(Language::from_extension("sol"), Some(Language::Solidity));
+    assert_eq!(Language::from_extension("jl"), Some(Language::Julia));
+    assert_eq!(Language::from_extension("zig"), Some(Language::Zig));
+    assert_eq!(Language::from_extension("hs"), Some(Language::Haskell));
+}

@@ -468,6 +468,18 @@ fn is_callable_kind(kind: &str, lang: Language) -> bool {
                 | "function_expression"
                 | "arrow_function"
         ),
+        // --- Tier 2 community grammars ---------------------------------
+        Language::Swift => matches!(kind, "function_declaration"),
+        Language::Kotlin => matches!(kind, "function_declaration"),
+        Language::Scala => matches!(kind, "function_definition" | "function_declaration"),
+        Language::Solidity => {
+            matches!(kind, "function_definition" | "modifier_definition")
+        }
+        Language::Julia => {
+            matches!(kind, "function_definition" | "short_function_definition")
+        }
+        Language::Zig => matches!(kind, "FnProto"),
+        Language::Haskell => matches!(kind, "function"),
         _ => matches!(kind, "function_declaration" | "function_definition"),
     }
 }

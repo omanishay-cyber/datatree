@@ -363,41 +363,162 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
         (Language::Lua, QueryKind::Comments) => r#"(comment) @comment"#,
 
         // ---------------- Tier 2 community grammars -------------------------
-        // Patterns deliberately conservative so the extractor degrades
+        // Patterns are deliberately conservative so the extractor degrades
         // gracefully on grammar version drift. Richer queries land per
-        // language as the scanner crate matures.
+        // language as the scanner crate matures. Each grammar exposes its
+        // own node-name conventions — we cover `Functions`, `Classes`, and
+        // `Comments` where the grammar supports them, and fall through to
+        // the catch-all empty pattern for anything else.
+
+        // ---- Swift (tree-sitter-swift 0.7) --------------------------------
         #[cfg(feature = "swift")]
         (Language::Swift, QueryKind::Functions) => {
             r#"(function_declaration name: (simple_identifier) @name) @function"#
         }
+        #[cfg(feature = "swift")]
+        (Language::Swift, QueryKind::Classes) => {
+            r#"
+            (class_declaration name: (type_identifier) @name) @class
+            (protocol_declaration name: (type_identifier) @name) @class
+            "#
+        }
+        #[cfg(feature = "swift")]
+        (Language::Swift, QueryKind::Comments) => r#"(comment) @comment"#,
+
+        // ---- Kotlin (tree-sitter-kotlin-sg 0.4) ---------------------------
         #[cfg(feature = "kotlin")]
         (Language::Kotlin, QueryKind::Functions) => {
             r#"(function_declaration (simple_identifier) @name) @function"#
         }
+        #[cfg(feature = "kotlin")]
+        (Language::Kotlin, QueryKind::Classes) => {
+            r#"(class_declaration (type_identifier) @name) @class"#
+        }
+        #[cfg(feature = "kotlin")]
+        (Language::Kotlin, QueryKind::Comments) => {
+            r#"
+            (line_comment) @comment
+            (multiline_comment) @comment
+            "#
+        }
+
+        // ---- Scala (tree-sitter-scala 0.24) -------------------------------
         #[cfg(feature = "scala")]
         (Language::Scala, QueryKind::Functions) => {
-            r#"(function_definition name: (_) @name) @function"#
+            r#"
+            (function_definition name: (_) @name) @function
+            (function_declaration name: (_) @name) @function
+            "#
         }
-        #[cfg(feature = "vue")]
-        (Language::Vue, QueryKind::Comments) => r#"(comment) @comment"#,
+        #[cfg(feature = "scala")]
+        (Language::Scala, QueryKind::Classes) => {
+            r#"
+            (class_definition name: (identifier) @name) @class
+            (object_definition name: (identifier) @name) @class
+            (trait_definition name: (identifier) @name) @class
+            "#
+        }
+        #[cfg(feature = "scala")]
+        (Language::Scala, QueryKind::Comments) => {
+            r#"
+            (comment) @comment
+            (block_comment) @comment
+            "#
+        }
+
+        // ---- Svelte (tree-sitter-svelte-ng 1.0) ---------------------------
+        // Svelte files wrap JS/TS inside SFC markup; the grammar itself
+        // exposes only component-level constructs. We capture comments; the
+        // extractor layer re-invokes the TS/JS extractors on <script> blocks
+        // separately (tracked for the scanner crate).
         #[cfg(feature = "svelte")]
         (Language::Svelte, QueryKind::Comments) => r#"(comment) @comment"#,
+
+        // ---- Solidity (tree-sitter-solidity 1.2 — JoranHonig fork) --------
         #[cfg(feature = "solidity")]
         (Language::Solidity, QueryKind::Functions) => {
-            r#"(function_definition name: (_) @name) @function"#
+            r#"
+            (function_definition name: (_) @name) @function
+            (modifier_definition name: (_) @name) @function
+            "#
         }
+        #[cfg(feature = "solidity")]
+        (Language::Solidity, QueryKind::Classes) => {
+            r#"
+            (contract_declaration name: (_) @name) @class
+            (interface_declaration name: (_) @name) @class
+            (library_declaration name: (_) @name) @class
+            "#
+        }
+        #[cfg(feature = "solidity")]
+        (Language::Solidity, QueryKind::Comments) => r#"(comment) @comment"#,
+
+        // ---- Julia (tree-sitter-julia 0.23) -------------------------------
         #[cfg(feature = "julia")]
         (Language::Julia, QueryKind::Functions) => {
-            r#"(function_definition name: (_) @name) @function"#
+            r#"
+            (function_definition name: (_) @name) @function
+            (short_function_definition name: (_) @name) @function
+            "#
         }
+        #[cfg(feature = "julia")]
+        (Language::Julia, QueryKind::Classes) => {
+            r#"
+            (struct_definition name: (_) @name) @class
+            (abstract_definition name: (_) @name) @class
+            "#
+        }
+        #[cfg(feature = "julia")]
+        (Language::Julia, QueryKind::Comments) => {
+            r#"
+            (line_comment) @comment
+            (block_comment) @comment
+            "#
+        }
+
+        // ---- Zig (tree-sitter-zig 1.1) ------------------------------------
         #[cfg(feature = "zig")]
         (Language::Zig, QueryKind::Functions) => {
-            r#"(function_declaration name: (_) @name) @function"#
+            r#"(FnProto (IDENTIFIER) @name) @function"#
         }
+        #[cfg(feature = "zig")]
+        (Language::Zig, QueryKind::Classes) => {
+            r#"(ContainerDecl) @class"#
+        }
+        #[cfg(feature = "zig")]
+        (Language::Zig, QueryKind::Comments) => {
+            r#"
+            (line_comment) @comment
+            (doc_comment) @comment
+            "#
+        }
+
+        // ---- Haskell (tree-sitter-haskell 0.23) ---------------------------
         #[cfg(feature = "haskell")]
         (Language::Haskell, QueryKind::Functions) => {
-            r#"(function) @function"#
+            r#"
+            (function name: (variable) @name) @function
+            (signature name: (variable) @name) @function
+            "#
         }
+        #[cfg(feature = "haskell")]
+        (Language::Haskell, QueryKind::Classes) => {
+            r#"
+            (class name: (name) @name) @class
+            (data_type name: (name) @name) @class
+            (newtype name: (name) @name) @class
+            "#
+        }
+        #[cfg(feature = "haskell")]
+        (Language::Haskell, QueryKind::Comments) => {
+            r#"
+            (comment) @comment
+            "#
+        }
+
+        // ---- Vue — no working grammar; empty patterns (extractor will
+        // gracefully emit the File node and nothing else). ----------------
+        (Language::Vue, _) => "",
 
         // ----- ERROR/MISSING — same query across every grammar ---------------
         // tree-sitter exposes ERROR as a built-in node name regardless of

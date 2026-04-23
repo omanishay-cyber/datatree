@@ -1,7 +1,13 @@
 /**
  * MCP tool: dependency_chain
  *
- * Returns the forward (what file imports) + reverse (what imports file) chain.
+ * Forward (what file imports transitively) + reverse (what imports file
+ * transitively) chain.
+ *
+ * v0.1 (review P2): BFS over `graph.db → edges` with kind IN
+ * ('imports', 'import'). Forward uses edges where `file_path = file`;
+ * reverse uses joined `nodes.file_path = file` on the target side.
+ * Missing shard → `{ forward: [], reverse: [] }`.
  */
 
 import {
@@ -9,7 +15,7 @@ import {
   DependencyChainOutput,
   type ToolDescriptor,
 } from "../types.ts";
-import { query as dbQuery } from "../db.ts";
+import { dependencyChain, shardDbPath } from "../store.ts";
 
 export const tool: ToolDescriptor<
   ReturnType<typeof DependencyChainInput.parse>,
@@ -22,12 +28,10 @@ export const tool: ToolDescriptor<
   outputSchema: DependencyChainOutput,
   category: "graph",
   async handler(input) {
-    const result = await dbQuery
-      .raw<ReturnType<typeof DependencyChainOutput.parse>>(
-        "graph.dependency_chain",
-        { file: input.file, direction: input.direction },
-      )
-      .catch(() => null);
-    return result ?? { file: input.file, forward: [], reverse: [] };
+    if (!shardDbPath("graph")) {
+      return { file: input.file, forward: [], reverse: [] };
+    }
+    const { forward, reverse } = dependencyChain(input.file, input.direction);
+    return { file: input.file, forward, reverse };
   },
 };

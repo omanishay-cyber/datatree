@@ -1,121 +1,129 @@
-//! Bridge between the Rust supervisor and the Python multimodal sidecar.
+//! `mneme-multimodal` — thin CLI around [`mneme_multimodal::Registry`].
 //!
-//! Spawns `python -m datatree_multimodal` as a subprocess, proxies
-//! length-prefixed msgpack frames between the supervisor IPC socket and
-//! the Python sidecar's stdin/stdout. If the sidecar dies, the bridge
-//! exits non-zero so the supervisor restarts both.
+//! Use cases:
+//!   * `mneme-multimodal extract path/to/file.pdf` → prints JSON to stdout
+//!   * `mneme-multimodal extract-dir /project --out results.jsonl`
+//!
+//! The daemon/supervisor path now imports this crate as a library
+//! (via `mneme-cli`) rather than spawning a Python sidecar, so this
+//! binary exists mainly for ad-hoc inspection and test fixtures.
 
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::Stdio;
-use std::sync::Arc;
 
-use clap::Parser;
-use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::Command;
-use tokio::sync::Mutex;
-use tracing::{error, info, warn};
+use clap::{Parser, Subcommand};
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-#[derive(Debug, Parser)]
-#[command(name = "mneme-multimodal-bridge")]
-struct Cli {
-    /// Path to the Python interpreter to use. Defaults to bundled
-    /// `~/.mneme/runtime/python/bin/python` if present, else `python3`.
-    #[arg(long, env = "DATATREE_PYTHON")]
-    python: Option<PathBuf>,
+use mneme_multimodal::{ExtractedDoc, Registry};
 
-    /// Override the mneme home (default: ~/.mneme).
-    #[arg(long, env = "MNEME_HOME")]
-    home: Option<PathBuf>,
+#[derive(Debug, Parser)]
+#[command(
+    name = "mneme-multimodal",
+    version,
+    about = "Pure-Rust multimodal extraction (PDF / Markdown / Image / Audio / Video)"
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Cmd,
 }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> anyhow::Result<()> {
+#[derive(Debug, Subcommand)]
+enum Cmd {
+    /// Extract a single file; print the resulting `ExtractedDoc` as JSON.
+    Extract {
+        /// File to extract.
+        path: PathBuf,
+    },
+    /// Walk a directory and emit one JSON object per successfully
+    /// extracted file (JSON lines).
+    ExtractDir {
+        /// Root directory.
+        path: PathBuf,
+        /// Optional output file. Defaults to stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Print every file extension the default registry handles.
+    Kinds,
+}
+
+fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_env("MNEME_LOG").unwrap_or_else(|_| EnvFilter::new("info")))
-        .json()
+        .with_env_filter(
+            EnvFilter::try_from_env("MNEME_LOG").unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .init();
 
     let cli = Cli::parse();
+    let registry = Registry::default_wired();
 
-    let python = cli.python.unwrap_or_else(|| {
-        let home = cli.home.clone().unwrap_or_else(|| {
-            dirs::home_dir().expect("no home dir").join(".mneme")
-        });
-        let bundled = home.join("runtime/python/bin/python");
-        if bundled.exists() { bundled } else { PathBuf::from("python3") }
-    });
-
-    info!(python = %python.display(), "spawning multimodal sidecar");
-
-    let mut child = Command::new(&python)
-        .args(["-m", "datatree_multimodal"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()?;
-
-    let mut child_stdin = child.stdin.take().expect("piped stdin");
-    let mut child_stdout = child.stdout.take().expect("piped stdout");
-
-    // For Phase 1 the bridge runs in a "ping/wait" mode: it forwards stdin
-    // → child stdin, child stdout → stdout. The supervisor's IPC routing
-    // attaches us via a socketpair externally, so this loop is intentionally
-    // simple. Future expansion: a 4-byte length-prefixed msgpack channel
-    // multiplexer.
-    let stdout_task = tokio::spawn(async move {
-        let mut buf = [0u8; 8192];
-        loop {
-            match child_stdout.read(&mut buf).await {
-                Ok(0) => break,
-                Ok(n) => {
-                    let mut out = tokio::io::stdout();
-                    if out.write_all(&buf[..n]).await.is_err() { break; }
-                    if out.flush().await.is_err() { break; }
-                }
-                Err(_) => break,
+    match cli.command {
+        Cmd::Extract { path } => {
+            let doc = registry.extract(&path)?;
+            let out = serde_json::to_string_pretty(&doc)?;
+            println!("{out}");
+        }
+        Cmd::ExtractDir { path, out } => {
+            let mut sink: Box<dyn Write> = match out.as_ref() {
+                Some(p) => Box::new(std::fs::File::create(p)?),
+                None => Box::new(std::io::stdout().lock()),
+            };
+            let mut n_ok = 0usize;
+            let mut n_skip = 0usize;
+            for entry in walk(&path) {
+                let doc = match registry.try_extract(&entry) {
+                    Some(d) => d,
+                    None => {
+                        n_skip += 1;
+                        continue;
+                    }
+                };
+                write_jsonl(&mut sink, &doc)?;
+                n_ok += 1;
+            }
+            info!(ok = n_ok, skipped = n_skip, root = %path.display(), "extract-dir complete");
+        }
+        Cmd::Kinds => {
+            for k in registry.known_kinds() {
+                println!("{k}");
             }
         }
-    });
-
-    let stdin_task = tokio::spawn(async move {
-        let mut buf = [0u8; 8192];
-        let mut input = tokio::io::stdin();
-        loop {
-            match input.read(&mut buf).await {
-                Ok(0) => break,
-                Ok(n) => {
-                    if child_stdin.write_all(&buf[..n]).await.is_err() { break; }
-                    if child_stdin.flush().await.is_err() { break; }
-                }
-                Err(_) => break,
-            }
-        }
-    });
-
-    let status = child.wait().await?;
-    let _ = stdout_task.await;
-    let _ = stdin_task.await;
-
-    if !status.success() {
-        error!(?status, "multimodal sidecar exited non-zero");
-        std::process::exit(status.code().unwrap_or(1));
     }
-    info!("multimodal bridge clean exit");
     Ok(())
 }
 
-// Reserved types for future structured channel.
-#[derive(Debug, Serialize, Deserialize)]
-struct Frame {
-    job_id: String,
-    kind: String,
-    payload: serde_json::Value,
+fn walk(root: &std::path::Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let rd = match std::fs::read_dir(&dir) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                // Skip conventional noise; the CLI's own walker does more.
+                let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                if matches!(
+                    name,
+                    ".git" | "target" | "node_modules" | "__pycache__" | ".venv" | "venv"
+                ) {
+                    continue;
+                }
+                stack.push(p);
+            } else if p.is_file() {
+                out.push(p);
+            }
+        }
+    }
+    out
 }
 
-#[allow(dead_code)]
-async fn _placeholder(_: Arc<Mutex<()>>) -> anyhow::Result<()> {
-    warn!("structured-channel mode not yet wired");
+fn write_jsonl(sink: &mut dyn Write, doc: &ExtractedDoc) -> anyhow::Result<()> {
+    let s = serde_json::to_string(doc)?;
+    sink.write_all(s.as_bytes())?;
+    sink.write_all(b"\n")?;
     Ok(())
 }

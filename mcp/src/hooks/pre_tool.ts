@@ -55,17 +55,18 @@ async function handleRead(args: PreToolArgs): Promise<HookOutput> {
   const filePath = String(args.params.file_path ?? "");
   if (!filePath) return {};
 
+  type ReadCache = {
+    hit: boolean;
+    content?: string;
+    summary?: string;
+    hash?: string;
+  };
   const cached = await dbQuery
-    .raw<{
-      hit: boolean;
-      content?: string;
-      summary?: string;
-      hash?: string;
-    }>("tool_cache.read_lookup", {
+    .raw<ReadCache>("tool_cache.read_lookup", {
       file_path: filePath,
       session_id: args.sessionId,
     })
-    .catch(() => ({ hit: false }));
+    .catch((): ReadCache => ({ hit: false }));
 
   if (cached.hit && cached.content) {
     void livebus.emit("pre_tool.cache_hit", {
@@ -118,12 +119,13 @@ async function handleBash(args: PreToolArgs): Promise<HookOutput> {
   const command = String(args.params.command ?? "");
   if (!command) return {};
 
+  type BashCache = { hit: boolean; output?: string };
   const cached = await dbQuery
-    .raw<{ hit: boolean; output?: string }>("tool_cache.bash_lookup", {
+    .raw<BashCache>("tool_cache.bash_lookup", {
       command,
       session_id: args.sessionId,
     })
-    .catch(() => ({ hit: false }));
+    .catch((): BashCache => ({ hit: false }));
 
   if (cached.hit && cached.output) {
     return {
@@ -136,13 +138,14 @@ async function handleBash(args: PreToolArgs): Promise<HookOutput> {
 }
 
 async function handleSearch(args: PreToolArgs): Promise<HookOutput> {
+  type SearchCache = { hit: boolean; output?: string };
   const cached = await dbQuery
-    .raw<{ hit: boolean; output?: string }>("tool_cache.search_lookup", {
+    .raw<SearchCache>("tool_cache.search_lookup", {
       tool: args.tool,
       params: args.params,
       session_id: args.sessionId,
     })
-    .catch(() => ({ hit: false }));
+    .catch((): SearchCache => ({ hit: false }));
 
   if (cached.hit && cached.output) {
     return {

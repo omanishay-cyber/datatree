@@ -39,6 +39,11 @@ chrono = { version = "0.4", features = ["serde"] }
 # Graph analytics for architecture overview (coupling / betweenness).
 petgraph = { version = "0.6", features = ["serde-1"] }
 
+# SQLite (workspace-pinned). Used by `findings_writer` for the direct
+# per-shard persist path when scanners run inline (CLI audit, unit tests).
+# The background supervisor writes via `store_ipc` instead.
+rusqlite = { workspace = true }
+
 [features]
 default = []
 with-common = []

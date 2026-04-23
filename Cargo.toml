@@ -43,8 +43,10 @@ rusqlite = { version = "0.32", features = ["bundled", "blob", "functions", "serd
 r2d2 = "0.8"
 r2d2_sqlite = "0.25"
 
-# Tree-sitter
-tree-sitter = "0.23"
+# Tree-sitter — bumped to 0.25 to support ABI v15 grammars (C# 0.23.x, Swift 0.7,
+# Zig 1.1, Solidity 1.2, etc.) while remaining backward-compatible with older
+# ABI v14 grammars via the `tree-sitter-language` bridge crate.
+tree-sitter = "0.25"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

@@ -160,9 +160,10 @@ impl SupervisorConfig {
             health_endpoint: Some("/health".into()),
         });
 
-        // v0.1: multimodal-bridge excluded from default children. It spawns
-        // on demand via `mneme graphify` / `mneme multimodal`. Leaving
-        // it out of the default supervisor spec so the daemon stays green.
+        // v0.2: multimodal extraction moved fully in-process. The
+        // `mneme-multimodal` crate (pure Rust; no Python sidecar) is
+        // driven directly by `mneme graphify`. No supervised child for
+        // this path.
 
         children.push(ChildSpec {
             name: "brain-worker".into(),

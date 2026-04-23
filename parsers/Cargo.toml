@@ -35,9 +35,11 @@ tokio = { version = "1.40", features = [
     "fs",
 ] }
 
-# Tree-sitter core — design §21.3 specifies 0.23+ (readme uses 0.24 wording but
-# 0.23 is the latest stable interop ABI for the grammar crates listed below).
-tree-sitter = "0.23"
+# Tree-sitter core — bumped to 0.25 so we can host grammars compiled against
+# ABI v15 (C# 0.23.5, Swift 0.7, Solidity 1.2, Zig 1.1, Scala 0.24+) alongside
+# the older ABI v14 Tier-1 grammars. The `tree-sitter-language` 0.1 bridge
+# crate keeps the `LANGUAGE.into()` idiom working across both ABIs.
+tree-sitter = "0.25"
 
 # Logging + tracing
 tracing = "0.1"
@@ -83,6 +85,8 @@ ahash = "0.8"
 # ---------------------------------------------------------------------------
 
 # --- Tier 1 (default) ---
+# All Tier-1 grammars use `tree-sitter-language = 0.1` which bridges ABIs
+# v14 and v15 against the 0.25 runtime we depend on above.
 tree-sitter-typescript = "0.23"
 tree-sitter-javascript = "0.23"
 tree-sitter-python = "0.23"
@@ -91,6 +95,7 @@ tree-sitter-go = "0.23"
 tree-sitter-java = "0.23"
 tree-sitter-c = "0.23"
 tree-sitter-cpp = "0.23"
+# tree-sitter-c-sharp 0.23.x ships ABI v15; only the 0.25 runtime accepts it.
 tree-sitter-c-sharp = "0.23"
 tree-sitter-ruby = "0.23"
 tree-sitter-php = "0.23"
@@ -101,15 +106,24 @@ tree-sitter-toml-ng = { version = "0.7", optional = true }
 tree-sitter-yaml = { version = "0.7", optional = true }
 tree-sitter-md = { version = "0.3", optional = true }
 
-# --- Tier 2 (community-maintained; opt-in) ---
-# Tier-2 grammars are commented out for the v0.1 release because their
-# crates.io versions/names are inconsistent across the ecosystem. Re-enable
-# individually once a working version is confirmed.
-# tree-sitter-swift = { version = "0.7", optional = true }
-# tree-sitter-scala = { version = "0.23", optional = true }
-# tree-sitter-vue = { version = "0.2", optional = true }
-# tree-sitter-julia = { version = "0.23", optional = true }
-# tree-sitter-haskell = { version = "0.23", optional = true }
+# --- Tier 2 (community-maintained; opt-in via features, default-on) ---
+# Each grammar has been pinned to a version known to compile against the 0.25
+# runtime. Vue is intentionally omitted — the only crates.io `tree-sitter-vue`
+# (0.0.3) pins `tree-sitter = ~0.20.3` and is unmaintained. Vue SFC support
+# will be added later by parsing as HTML and re-parsing `<script>` blocks.
+tree-sitter-swift = { version = "0.7", optional = true }
+tree-sitter-scala = { version = "0.24", optional = true }
+tree-sitter-julia = { version = "0.23", optional = true }
+tree-sitter-haskell = { version = "0.23", optional = true }
+# Kotlin: the `tree-sitter-kotlin` crate is pinned to runtime <0.23; the
+# actively-maintained fork `tree-sitter-kotlin-sg` tracks 0.23+.
+tree-sitter-kotlin-sg = { version = "0.4", optional = true }
+# Svelte: the original `tree-sitter-svelte` crate is unmaintained; `-ng` is
+# the maintained fork.
+tree-sitter-svelte-ng = { version = "1.0", optional = true }
+# Solidity: JoranHonig's fork, published under `tree-sitter-solidity`.
+tree-sitter-solidity = { version = "1.2", optional = true }
+tree-sitter-zig = { version = "1.1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["test-util", "macros", "rt-multi-thread"] }
@@ -121,7 +135,14 @@ criterion = { version = "0.5", features = ["html_reports"] }
 # Feature flags
 # ---------------------------------------------------------------------------
 [features]
-default = ["tier1", "markdown", "yaml", "toml", "lua"]
+default = [
+    "tier1", "markdown", "yaml", "toml", "lua",
+    # Tier-2 grammars are opt-in but enabled by default so `cargo build`
+    # produces a binary with the complete Tier-2 coverage promised in the
+    # external design review.
+    "swift", "scala", "julia", "haskell",
+    "kotlin", "svelte", "solidity", "zig",
+]
 
 # Tier 1 always present (TS, JS, Py, Rust, Go, Java, C, C++, C#, Ruby, PHP,
 # Bash, JSON). Listed for explicitness even though the deps are non-optional.
@@ -133,16 +154,24 @@ yaml = ["dep:tree-sitter-yaml"]
 toml = ["dep:tree-sitter-toml-ng"]
 lua = ["dep:tree-sitter-lua"]
 
-# Heavier / community grammars — disabled in v0.1 (see commented deps above)
-# swift = ["dep:tree-sitter-swift"]
-# scala = ["dep:tree-sitter-scala"]
-# vue = ["dep:tree-sitter-vue"]
-# julia = ["dep:tree-sitter-julia"]
-# haskell = ["dep:tree-sitter-haskell"]
+# Tier-2 community grammars
+swift = ["dep:tree-sitter-swift"]
+scala = ["dep:tree-sitter-scala"]
+julia = ["dep:tree-sitter-julia"]
+haskell = ["dep:tree-sitter-haskell"]
+kotlin = ["dep:tree-sitter-kotlin-sg"]
+svelte = ["dep:tree-sitter-svelte-ng"]
+solidity = ["dep:tree-sitter-solidity"]
+zig = ["dep:tree-sitter-zig"]
+# `vue` is reserved — no working crates.io grammar exists yet. The Language
+# enum preserves the variant so downstream code compiles unchanged.
+vue = []
 
-# Convenience: every supported grammar (Tier-1 + light docs only in v0.1)
+# Convenience: every supported grammar (Tier-1 + light docs + Tier-2)
 full = [
     "markdown", "yaml", "toml", "lua",
+    "swift", "scala", "julia", "haskell",
+    "kotlin", "svelte", "solidity", "zig",
 ]
 
 # Use the workspace `common` crate for shared Node/Edge types instead of the

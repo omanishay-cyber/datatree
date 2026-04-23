@@ -1,8 +1,12 @@
 /**
  * MCP tool: call_graph
  *
- * Returns the direct + transitive call graph for a function in either
- * direction (callers, callees, or both).
+ * Returns the direct + transitive call graph for a function.
+ *
+ * v0.1 (review P2): reads `graph.db → edges` WHERE kind='calls' via
+ * `bun:sqlite` read-only. BFS up to `depth` hops in the requested
+ * direction (callers, callees, both). For each visited node we pull its
+ * source location from `nodes`. Missing shard → `{ nodes: [], edges: [] }`.
  */
 
 import {
@@ -10,7 +14,7 @@ import {
   CallGraphOutput,
   type ToolDescriptor,
 } from "../types.ts";
-import { query as dbQuery } from "../db.ts";
+import { callGraphBfs, shardDbPath } from "../store.ts";
 
 export const tool: ToolDescriptor<
   ReturnType<typeof CallGraphInput.parse>,
@@ -23,13 +27,14 @@ export const tool: ToolDescriptor<
   outputSchema: CallGraphOutput,
   category: "graph",
   async handler(input) {
-    const result = await dbQuery
-      .raw<ReturnType<typeof CallGraphOutput.parse>>("graph.call_graph", {
-        function: input.function,
-        direction: input.direction,
-        depth: input.depth,
-      })
-      .catch(() => null);
-    return result ?? { nodes: [], edges: [] };
+    if (!shardDbPath("graph")) {
+      return { nodes: [], edges: [] };
+    }
+    const { nodes, edges } = callGraphBfs(
+      input.function,
+      input.direction,
+      input.depth,
+    );
+    return { nodes, edges };
   },
 };
