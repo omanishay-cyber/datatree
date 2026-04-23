@@ -1,0 +1,94 @@
+name: integration-tests
+
+# Indexes three real repositories with Mneme and verifies that a fixed set of
+# retrieval queries still return the expected top-k files. Any regression of
+# more than 20% on any repo fails the build.
+#
+# Runs on every push to main and on pull requests. Intentionally separate from
+# the unit-test CI (ci.yml) because these tests take ~15 min.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: retrieval regression on ${{ matrix.fixture }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture:
+          - mneme-self         # index Mneme's own source
+          - django             # Python framework, ~300k LOC
+          - typescript         # TS compiler, ~2M LOC
+    steps:
+      - name: Checkout Mneme
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: integration-tests-${{ matrix.fixture }}
+
+      - name: Build Mneme release
+        run: cargo build --release --workspace
+
+      - name: Clone fixture repo
+        run: |
+          case "${{ matrix.fixture }}" in
+            mneme-self)
+              # already have it; point at repo root
+              echo "FIXTURE_PATH=${{ github.workspace }}" >> "$GITHUB_ENV"
+              ;;
+            django)
+              git clone --depth=1 https://github.com/django/django.git /tmp/django
+              echo "FIXTURE_PATH=/tmp/django" >> "$GITHUB_ENV"
+              ;;
+            typescript)
+              git clone --depth=1 https://github.com/microsoft/TypeScript.git /tmp/typescript
+              echo "FIXTURE_PATH=/tmp/typescript" >> "$GITHUB_ENV"
+              ;;
+          esac
+
+      - name: Index with Mneme
+        run: |
+          ./target/release/mneme-daemon start --detach || true
+          sleep 3
+          ./target/release/mneme build "$FIXTURE_PATH"
+
+      - name: Run retrieval suite
+        run: |
+          ./target/release/bench_retrieval query-suite \
+            --fixture "${{ matrix.fixture }}" \
+            --project "$FIXTURE_PATH" \
+            --queries benchmarks/fixtures/integration-${{ matrix.fixture }}.json \
+            --out /tmp/results-${{ matrix.fixture }}.json
+
+      - name: Check regression threshold
+        run: |
+          ./target/release/bench_retrieval check-regression \
+            --current /tmp/results-${{ matrix.fixture }}.json \
+            --baseline benchmarks/fixtures/baseline-${{ matrix.fixture }}.json \
+            --max-precision-drop 0.20 \
+            --max-latency-regression 2.0
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-${{ matrix.fixture }}
+          path: /tmp/results-${{ matrix.fixture }}.json
+          if-no-files-found: ignore
