@@ -263,7 +263,7 @@ Copyright © 2026 **Anish Trivedi** (BS Computer Science).
 
 ## 💬 Contact
 
-- **Email** — bhattanish@gmail.com
+- **Email** — (GitHub Issues or Discussions)
 - **GitHub Issues** — bug reports, feature requests
 - **GitHub Discussions** — architecture questions, use cases
 
