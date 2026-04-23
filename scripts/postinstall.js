@@ -8,7 +8,7 @@
  *
  * Rule: NEVER fail hard. If the network is unavailable or the release is
  * still building, print the manual install path and exit 0 so the plugin
- * still registers. User can run `datatree install-runtime` later to retry.
+ * still registers. User can run `mneme install-runtime` later to retry.
  */
 
 "use strict";
@@ -20,14 +20,14 @@ const { homedir, platform, arch } = require("node:os");
 const { join } = require("node:path");
 const https = require("node:https");
 
-const REPO = "omanishay-cyber/datatree";
-const MNEME_HOME = join(homedir(), ".datatree");
-const DATATREE_BIN = join(MNEME_HOME, "bin");
-const DATATREE_MCP = join(MNEME_HOME, "mcp");
-const DATATREE_PLUGIN = join(MNEME_HOME, "plugin");
+const REPO = "omanishay-cyber/mneme";
+const MNEME_HOME = join(homedir(), ".mneme");
+const MNEME_BIN = join(MNEME_HOME, "bin");
+const MNEME_MCP = join(MNEME_HOME, "mcp");
+const MNEME_PLUGIN = join(MNEME_HOME, "plugin");
 
-function log(msg) { process.stdout.write(`datatree: ${msg}\n`); }
-function warn(msg) { process.stderr.write(`datatree: ${msg}\n`); }
+function log(msg) { process.stdout.write(`mneme: ${msg}\n`); }
+function warn(msg) { process.stderr.write(`mneme: ${msg}\n`); }
 function info(msg) { process.stdout.write(`        · ${msg}\n`); }
 
 // ---------- platform ----------
@@ -36,16 +36,16 @@ function detectAsset() {
   const pf = platform();
   const ar = arch();
   if (pf === "win32" && (ar === "x64" || ar === "ia32")) {
-    return { name: "datatree-windows-x64", archive: "zip" };
+    return { name: "mneme-windows-x64", archive: "zip" };
   }
-  if (pf === "darwin" && ar === "arm64") {
-    return { name: "datatree-macos-arm64", archive: "tar.gz" };
-  }
-  if (pf === "darwin" && ar === "x64") {
-    return { name: "datatree-macos-x64", archive: "tar.gz" };
+  if (pf === "darwin") {
+    // Intel Macs run the arm64 binary under Rosetta 2 (built in since
+    // macOS 11). GitHub's hosted macos-13 runner is too queue-starved
+    // to justify a separate Intel artifact.
+    return { name: "mneme-macos-arm64", archive: "tar.gz" };
   }
   if (pf === "linux" && ar === "x64") {
-    return { name: "datatree-linux-x64", archive: "tar.gz" };
+    return { name: "mneme-linux-x64", archive: "tar.gz" };
   }
   return null;
 }
@@ -58,7 +58,7 @@ function httpsGet(url, headers = {}) {
       url,
       {
         headers: {
-          "User-Agent": "datatree-postinstall",
+          "User-Agent": "mneme-postinstall",
           Accept: "application/octet-stream",
           ...headers,
         },
@@ -138,9 +138,9 @@ async function main() {
   log("post-install starting");
 
   mkdirSync(MNEME_HOME, { recursive: true });
-  mkdirSync(DATATREE_BIN, { recursive: true });
-  mkdirSync(DATATREE_MCP, { recursive: true });
-  mkdirSync(DATATREE_PLUGIN, { recursive: true });
+  mkdirSync(MNEME_BIN, { recursive: true });
+  mkdirSync(MNEME_MCP, { recursive: true });
+  mkdirSync(MNEME_PLUGIN, { recursive: true });
 
   const asset = detectAsset();
   if (!asset) {
@@ -199,22 +199,22 @@ async function main() {
 
   if (platform() !== "win32") {
     try {
-      for (const name of readdirSync(DATATREE_BIN)) {
-        try { chmodSync(join(DATATREE_BIN, name), 0o755); } catch {}
+      for (const name of readdirSync(MNEME_BIN)) {
+        try { chmodSync(join(MNEME_BIN, name), 0o755); } catch {}
       }
     } catch {}
   }
 
-  info(`installed: ${DATATREE_BIN}`);
+  info(`installed: ${MNEME_BIN}`);
   info(`release:   ${releaseUrl}`);
   log("post-install complete. Next:");
-  log("  1. Start the daemon:   datatree-supervisor start");
-  log("  2. Index your project: datatree build .");
-  log("  3. Configure AI tools: datatree install");
+  log("  1. Start the daemon:   mneme-daemon start");
+  log("  2. Index your project: mneme build .");
+  log("  3. Configure AI tools: mneme install");
 }
 
 main().catch((err) => {
   warn(`unexpected error: ${err.message}`);
-  warn("plugin registered; run `datatree install-runtime` to retry binaries later");
+  warn("plugin registered; run `mneme install-runtime` to retry binaries later");
   process.exitCode = 0;
 });
