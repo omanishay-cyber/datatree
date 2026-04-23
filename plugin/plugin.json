@@ -4,8 +4,8 @@
   "displayName": "Datatree — The AI Superbrain",
   "description": "Persistent per-project SQLite memory + 14-view live graph + drift detector + 30+ MCP tools. Claude never starts cold, never loses its place.",
   "author": "Anish Trivedi",
-  "license": "MIT",
-  "homepage": "https://github.com/anishtrivedi/datatree",
+  "license": "Datatree Community License v1.0",
+  "homepage": "https://github.com/omanishay-cyber/datatree",
   "scopes": ["global", "user", "project"],
   "platforms": ["win32", "darwin", "linux"],
   "components": {
@@ -58,8 +58,8 @@
     }
   },
   "install": {
-    "preInstall": "scripts/install-supervisor.js",
-    "postInstall": "scripts/start-daemon.js",
-    "preUninstall": "scripts/stop-daemon.js"
+    "preInstall": "scripts/preinstall.js",
+    "postInstall": "scripts/postinstall.js",
+    "preUninstall": "scripts/preuninstall.js"
   }
 }
