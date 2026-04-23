@@ -1,81 +1,113 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
-import { fetchGraph } from "../api";
+import { fetchCommunityMatrix } from "../api/graph";
+
+type Status = "loading" | "empty" | "ready" | "error";
 
 export function ArcChord(): JSX.Element {
   const ref = useRef<SVGSVGElement | null>(null);
+  const [status, setStatus] = useState<Status>("loading");
+  const [error, setError] = useState<string | null>(null);
+  const [communityCount, setCommunityCount] = useState(0);
 
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
-    fetchGraph("arc-chord", { signal: ac.signal }).then((payload) => {
-      if (cancelled || !ref.current) return;
-      const labels = Array.from(
-        new Set(payload.nodes.map((n) => (n.label ?? n.id).split(/[/\\]/)[0] ?? "root")),
-      );
-      const idx = new Map(labels.map((l, i) => [l, i] as const));
-      const matrix: number[][] = Array.from({ length: labels.length }, () => Array(labels.length).fill(0));
-      for (const e of payload.edges) {
-        const sLabel = (payload.nodes.find((n) => n.id === e.source)?.label ?? e.source).split(/[/\\]/)[0] ?? "root";
-        const tLabel = (payload.nodes.find((n) => n.id === e.target)?.label ?? e.target).split(/[/\\]/)[0] ?? "root";
-        const i = idx.get(sLabel);
-        const j = idx.get(tLabel);
-        if (i == null || j == null) continue;
-        const row = matrix[i];
-        if (!row) continue;
-        row[j] = (row[j] ?? 0) + (e.weight ?? 1);
+
+    (async (): Promise<void> => {
+      try {
+        const res = await fetchCommunityMatrix(ac.signal);
+        if (cancelled || !ref.current) return;
+        if (res.error) {
+          setError(res.error);
+          setStatus("error");
+          return;
+        }
+        if (res.communities.length === 0 || res.matrix.length === 0) {
+          setStatus("empty");
+          return;
+        }
+        const matrix = res.matrix;
+        const totalEdges = matrix.reduce(
+          (s, row) => s + row.reduce((a, b) => a + b, 0),
+          0,
+        );
+        if (totalEdges === 0) {
+          setStatus("empty");
+          return;
+        }
+        setCommunityCount(res.communities.length);
+
+        const labels = res.communities.map((c) => c.name);
+
+        const width = 760;
+        const height = 760;
+        const outer = Math.min(width, height) * 0.5 - 30;
+        const inner = outer - 18;
+
+        const chord = d3.chord().padAngle(0.04).sortSubgroups(d3.descending);
+        const chords = chord(matrix);
+        const arc = d3.arc<d3.ChordGroup>().innerRadius(inner).outerRadius(outer);
+        const ribbon = d3.ribbon<d3.Chord, d3.ChordSubgroup>().radius(inner);
+        const color = d3.scaleOrdinal(d3.schemeTableau10);
+
+        const svg = d3
+          .select(ref.current)
+          .attr("viewBox", `${-width / 2} ${-height / 2} ${width} ${height}`);
+        svg.selectAll("*").remove();
+
+        svg
+          .append("g")
+          .selectAll("path")
+          .data(chords.groups)
+          .join("path")
+          .attr("d", arc)
+          .attr("fill", (d) => color(String(d.index)))
+          .attr("stroke", "#0a0e18")
+          .append("title")
+          .text((d) => `${labels[d.index] ?? ""} (${d.value})`);
+
+        svg
+          .append("g")
+          .attr("fill-opacity", 0.55)
+          .selectAll("path")
+          .data(chords)
+          .join("path")
+          .attr("d", ribbon)
+          .attr("fill", (d) => color(String(d.target.index)))
+          .append("title")
+          .text(
+            (d) =>
+              `${labels[d.source.index] ?? "?"} -> ${labels[d.target.index] ?? "?"} : ${d.source.value}`,
+          );
+
+        svg
+          .append("g")
+          .selectAll("text")
+          .data(chords.groups)
+          .join("text")
+          .attr("transform", (d) => {
+            const angle = (d.startAngle + d.endAngle) / 2;
+            return `rotate(${(angle * 180) / Math.PI - 90}) translate(${outer + 8})${
+              angle > Math.PI ? " rotate(180)" : ""
+            }`;
+          })
+          .attr("text-anchor", (d) =>
+            (d.startAngle + d.endAngle) / 2 > Math.PI ? "end" : "start",
+          )
+          .attr("fill", "#cdd6e4")
+          .attr("font-size", 10)
+          .text((d) => labels[d.index] ?? "");
+
+        setStatus("ready");
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        if (!cancelled) {
+          setError((err as Error).message);
+          setStatus("error");
+        }
       }
-
-      const width = 760;
-      const height = 760;
-      const outer = Math.min(width, height) * 0.5 - 30;
-      const inner = outer - 18;
-
-      const chord = d3.chord().padAngle(0.04).sortSubgroups(d3.descending);
-      const chords = chord(matrix);
-      const arc = d3.arc<d3.ChordGroup>().innerRadius(inner).outerRadius(outer);
-      const ribbon = d3.ribbon<d3.Chord, d3.ChordSubgroup>().radius(inner);
-      const color = d3.scaleOrdinal(d3.schemeTableau10);
-
-      const svg = d3
-        .select(ref.current)
-        .attr("viewBox", `${-width / 2} ${-height / 2} ${width} ${height}`);
-      svg.selectAll("*").remove();
-
-      svg
-        .append("g")
-        .selectAll("path")
-        .data(chords.groups)
-        .join("path")
-        .attr("d", arc)
-        .attr("fill", (d) => color(String(d.index)))
-        .attr("stroke", "#0a0e18");
-
-      svg
-        .append("g")
-        .attr("fill-opacity", 0.55)
-        .selectAll("path")
-        .data(chords)
-        .join("path")
-        .attr("d", ribbon)
-        .attr("fill", (d) => color(String(d.target.index)))
-        .append("title")
-        .text((d) => `${labels[d.source.index]} → ${labels[d.target.index]} : ${d.source.value}`);
-
-      svg
-        .append("g")
-        .selectAll("text")
-        .data(chords.groups)
-        .join("text")
-        .attr("transform", (d) => {
-          const angle = (d.startAngle + d.endAngle) / 2;
-          return `rotate(${(angle * 180) / Math.PI - 90}) translate(${outer + 8})${angle > Math.PI ? " rotate(180)" : ""}`;
-        })
-        .attr("text-anchor", (d) => ((d.startAngle + d.endAngle) / 2 > Math.PI ? "end" : "start"))
-        .attr("fill", "#cdd6e4")
-        .attr("font-size", 10)
-        .text((d) => labels[d.index] ?? "");
-    });
+    })();
     return () => {
       cancelled = true;
       ac.abort();
@@ -85,6 +117,26 @@ export function ArcChord(): JSX.Element {
   return (
     <div className="vz-view vz-view--chord">
       <svg ref={ref} className="vz-view-canvas" />
+      {status === "loading" && (
+        <div className="vz-view-hint" role="status">
+          loading semantic.db communities + graph.db edges...
+        </div>
+      )}
+      {status === "empty" && (
+        <div className="vz-view-error" role="status">
+          no communities in semantic.db yet -- run <code>mneme build .</code> and let brain cluster
+        </div>
+      )}
+      {status === "error" && error && (
+        <div className="vz-view-error" role="alert">
+          chord error: {error}
+        </div>
+      )}
+      {status === "ready" && (
+        <p className="vz-view-hint">
+          {communityCount.toLocaleString()} communities - cross-edge density
+        </p>
+      )}
     </div>
   );
 }

@@ -19,6 +19,17 @@ import type {
   ShardFindingRow,
   GraphStatsPayload,
   DaemonHealthPayload,
+  FileTreeNode,
+  KindFlowPayload,
+  DomainFlowPayload,
+  CommunityMatrixPayload,
+  CommitRow,
+  HeatmapPayload,
+  LayerTierPayload,
+  Galaxy3DPayload,
+  TestCoverageRow,
+  ThemeSwatchRow,
+  HierarchyNode,
 } from "../src/api/graph";
 import type { GraphNode, GraphEdge } from "../src/api";
 
@@ -369,5 +380,735 @@ function colorForKind(kind: string): string {
       return "#f59e0b";
     default:
       return "#7aa7ff";
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  View 3 -- Sunburst (hierarchical file tree)                                */
+/* -------------------------------------------------------------------------- */
+
+export function fetchFileTree(limit = 4000): FileTreeNode {
+  const files = fetchFilesForTreemap(limit);
+  const root: FileTreeNode = { name: "project", children: [] };
+  for (const f of files) {
+    const segs = f.path.split(/[/\\]/).filter(Boolean);
+    let cursor: FileTreeNode = root;
+    for (let i = 0; i < segs.length; i += 1) {
+      const seg = segs[i] ?? "";
+      cursor.children = cursor.children ?? [];
+      let child = cursor.children.find((c) => c.name === seg);
+      if (!child) {
+        child = { name: seg, children: [] };
+        cursor.children.push(child);
+      }
+      if (i === segs.length - 1) {
+        child.value = Math.max(1, f.line_count ?? 1);
+        child.language = f.language ?? null;
+      }
+      cursor = child;
+    }
+  }
+  return root;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  View 4 -- Sankey Type Flow                                                 */
+/* -------------------------------------------------------------------------- */
+
+export function fetchKindFlow(limit = 50000): KindFlowPayload {
+  const db = openShard("graph");
+  if (!db) return { nodes: [], links: [] };
+  try {
+    const rows = db
+      .prepare(
+        `SELECT ns.kind AS source_kind, nt.kind AS target_kind,
+                e.kind AS edge_kind, COUNT(*) AS c
+         FROM edges e
+         JOIN nodes ns ON ns.qualified_name = e.source_qualified
+         JOIN nodes nt ON nt.qualified_name = e.target_qualified
+         GROUP BY ns.kind, nt.kind, e.kind
+         ORDER BY c DESC
+         LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      source_kind: string;
+      target_kind: string;
+      edge_kind: string;
+      c: number;
+    }>;
+
+    const nodeIds = new Set<string>();
+    for (const r of rows) {
+      nodeIds.add(`src:${r.source_kind}`);
+      nodeIds.add(`tgt:${r.target_kind}`);
+    }
+    const nodes = Array.from(nodeIds).map((id) => {
+      const [side, kind] = id.split(":", 2);
+      return { id, kind: kind ?? id, side: side ?? "src" };
+    });
+    const links = rows.map((r) => ({
+      source: `src:${r.source_kind}`,
+      target: `tgt:${r.target_kind}`,
+      value: r.c,
+      edgeKind: r.edge_kind,
+    }));
+    return { nodes, links };
+  } finally {
+    try {
+      db.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  View 5 -- Sankey Domain Flow                                               */
+/* -------------------------------------------------------------------------- */
+
+function domainOf(p: string | null | undefined): string {
+  if (!p) return "root";
+  const segs = p.split(/[/\\]/).filter(Boolean);
+  return segs[0] ?? "root";
+}
+
+export function fetchDomainFlow(limit = 50000): DomainFlowPayload {
+  const db = openShard("graph");
+  if (!db) return { nodes: [], links: [] };
+  try {
+    const rows = db
+      .prepare(
+        `SELECT ns.file_path AS src_path, nt.file_path AS tgt_path, COUNT(*) AS c
+         FROM edges e
+         JOIN nodes ns ON ns.qualified_name = e.source_qualified
+         JOIN nodes nt ON nt.qualified_name = e.target_qualified
+         WHERE ns.file_path IS NOT NULL AND nt.file_path IS NOT NULL
+         GROUP BY ns.file_path, nt.file_path
+         LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      src_path: string | null;
+      tgt_path: string | null;
+      c: number;
+    }>;
+
+    const agg = new Map<string, number>();
+    const domains = new Set<string>();
+    for (const r of rows) {
+      const s = domainOf(r.src_path);
+      const t = domainOf(r.tgt_path);
+      if (s === t) continue;
+      domains.add(s);
+      domains.add(t);
+      const k = `${s}|${t}`;
+      agg.set(k, (agg.get(k) ?? 0) + r.c);
+    }
+    const nodes = Array.from(domains).map((d) => ({ id: d, domain: d }));
+    const links: DomainFlowPayload["links"] = [];
+    for (const [k, v] of agg.entries()) {
+      const [s, t] = k.split("|");
+      if (!s || !t) continue;
+      links.push({ source: s, target: t, value: v });
+    }
+    return { nodes, links };
+  } finally {
+    try {
+      db.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  View 6 -- Arc Chord (community-to-community)                               */
+/* -------------------------------------------------------------------------- */
+
+export function fetchCommunityMatrix(): CommunityMatrixPayload {
+  const sem = openShard("semantic");
+  const graph = openShard("graph");
+  if (!sem || !graph) {
+    try {
+      sem?.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      graph?.close();
+    } catch {
+      /* ignore */
+    }
+    return { communities: [], matrix: [] };
+  }
+  try {
+    const commRows = sem
+      .prepare(
+        `SELECT id, name, size, dominant_language
+         FROM communities
+         ORDER BY size DESC
+         LIMIT 24`,
+      )
+      .all() as Array<{
+      id: number;
+      name: string;
+      size: number;
+      dominant_language: string | null;
+    }>;
+    if (commRows.length === 0) return { communities: [], matrix: [] };
+
+    const members = sem
+      .prepare(`SELECT community_id, node_qualified FROM community_membership`)
+      .all() as Array<{ community_id: number; node_qualified: string }>;
+
+    const commIndex = new Map<number, number>();
+    commRows.forEach((c, i) => commIndex.set(c.id, i));
+
+    const nodeToComm = new Map<string, number>();
+    for (const m of members) {
+      const idx = commIndex.get(m.community_id);
+      if (idx != null) nodeToComm.set(m.node_qualified, idx);
+    }
+
+    const n = commRows.length;
+    const matrix: number[][] = Array.from({ length: n }, () =>
+      Array.from({ length: n }, () => 0),
+    );
+
+    const edges = graph
+      .prepare(`SELECT source_qualified, target_qualified FROM edges LIMIT 200000`)
+      .all() as Array<{ source_qualified: string; target_qualified: string }>;
+
+    for (const e of edges) {
+      const si = nodeToComm.get(e.source_qualified);
+      const ti = nodeToComm.get(e.target_qualified);
+      if (si == null || ti == null) continue;
+      const row = matrix[si];
+      if (!row) continue;
+      row[ti] = (row[ti] ?? 0) + 1;
+    }
+
+    return {
+      communities: commRows.map((c) => ({
+        id: c.id,
+        name: c.name,
+        size: c.size,
+        language: c.dominant_language,
+      })),
+      matrix,
+    };
+  } finally {
+    try {
+      sem.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      graph.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  View 7 -- Timeline (git commits)                                           */
+/* -------------------------------------------------------------------------- */
+
+export function fetchCommits(limit = 500): CommitRow[] {
+  const db = openShard("git");
+  if (!db) return [];
+  try {
+    const rows = db
+      .prepare(
+        `SELECT c.sha, c.author_name, c.committed_at, c.message,
+                COUNT(cf.file_path) AS files_changed,
+                COALESCE(SUM(cf.additions), 0) AS insertions,
+                COALESCE(SUM(cf.deletions), 0) AS deletions
+         FROM commits c
+         LEFT JOIN commit_files cf ON cf.sha = c.sha
+         GROUP BY c.sha
+         ORDER BY c.committed_at DESC
+         LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      sha: string;
+      author_name: string | null;
+      committed_at: string;
+      message: string;
+      files_changed: number;
+      insertions: number;
+      deletions: number;
+    }>;
+    return rows.map((r) => ({
+      sha: r.sha,
+      author: r.author_name,
+      date: r.committed_at,
+      message: r.message,
+      files_changed: r.files_changed,
+      insertions: r.insertions,
+      deletions: r.deletions,
+    }));
+  } finally {
+    try {
+      db.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  View 8 -- Heatmap Grid (file drift + complexity)                           */
+/* -------------------------------------------------------------------------- */
+
+export function fetchHeatmap(fileLimit = 120): HeatmapPayload {
+  const graph = openShard("graph");
+  const findingsDb = openShard("findings");
+  if (!graph) {
+    try {
+      findingsDb?.close();
+    } catch {
+      /* ignore */
+    }
+    return { severities: ["critical", "high", "medium", "low"], files: [] };
+  }
+  const severities = ["critical", "high", "medium", "low"] as const;
+  try {
+    const files = graph
+      .prepare(
+        `SELECT path, language, line_count FROM files
+         ORDER BY line_count DESC
+         LIMIT ?`,
+      )
+      .all(fileLimit) as Array<{
+      path: string;
+      language: string | null;
+      line_count: number | null;
+    }>;
+
+    const complexityRows = graph
+      .prepare(
+        `SELECT file_path, COUNT(*) AS c FROM nodes
+         WHERE kind = 'function' AND file_path IS NOT NULL
+         GROUP BY file_path`,
+      )
+      .all() as Array<{ file_path: string; c: number }>;
+    const complexity = new Map<string, number>();
+    for (const r of complexityRows) complexity.set(r.file_path, r.c);
+
+    const sevByFile = new Map<string, Record<string, number>>();
+    if (findingsDb) {
+      try {
+        const findingRows = findingsDb
+          .prepare(
+            `SELECT file, severity, COUNT(*) AS c FROM findings
+             WHERE resolved_at IS NULL
+             GROUP BY file, severity`,
+          )
+          .all() as Array<{ file: string; severity: string; c: number }>;
+        for (const r of findingRows) {
+          let bucket = sevByFile.get(r.file);
+          if (!bucket) {
+            bucket = {};
+            sevByFile.set(r.file, bucket);
+          }
+          bucket[r.severity] = r.c;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const rows = files.map((f) => {
+      const counts = sevByFile.get(f.path) ?? {};
+      return {
+        file: f.path,
+        language: f.language,
+        line_count: f.line_count ?? 0,
+        complexity: complexity.get(f.path) ?? 0,
+        severities: {
+          critical: counts["critical"] ?? 0,
+          high: counts["high"] ?? 0,
+          medium: counts["medium"] ?? 0,
+          low: counts["low"] ?? 0,
+        },
+      };
+    });
+
+    return { severities: [...severities], files: rows };
+  } finally {
+    try {
+      graph.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      findingsDb?.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  View 9 -- Layered Architecture                                             */
+/* -------------------------------------------------------------------------- */
+
+const TIER_RULES: Array<{ tier: string; match: RegExp }> = [
+  { tier: "presentation", match: /^(vision|web|ui|frontend)\b/i },
+  { tier: "api", match: /^(mcp|cli|api|plugin)\b/i },
+  { tier: "intelligence", match: /^(brain|parsers?|scanners?|workers?|multimodal)\b/i },
+  { tier: "data", match: /^(store|supervisor|livebus|sql)\b/i },
+  { tier: "foundation", match: /^(common|core|shared|utils?)\b/i },
+];
+
+function tierOf(path: string | null | undefined): string {
+  if (!path) return "other";
+  const first = domainOf(path);
+  for (const r of TIER_RULES) {
+    if (r.match.test(first)) return r.tier;
+  }
+  return "other";
+}
+
+export function fetchLayerTiers(): LayerTierPayload {
+  const graph = openShard("graph");
+  if (!graph) {
+    return {
+      tiers: ["presentation", "api", "intelligence", "data", "foundation", "other"],
+      entries: [],
+    };
+  }
+  try {
+    const rows = graph
+      .prepare(
+        `SELECT path, language, line_count FROM files ORDER BY line_count DESC LIMIT 5000`,
+      )
+      .all() as Array<{ path: string; language: string | null; line_count: number | null }>;
+    const entries = rows.map((f) => ({
+      file: f.path,
+      language: f.language,
+      line_count: f.line_count ?? 0,
+      tier: tierOf(f.path),
+      domain: domainOf(f.path),
+    }));
+    return {
+      tiers: ["presentation", "api", "intelligence", "data", "foundation", "other"],
+      entries,
+    };
+  } finally {
+    try {
+      graph.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  View 10 -- Project Galaxy 3D                                               */
+/* -------------------------------------------------------------------------- */
+
+export function fetchGalaxy3D(limit = 4000): Galaxy3DPayload {
+  const graph = openShard("graph");
+  const sem = openShard("semantic");
+  if (!graph) {
+    try {
+      sem?.close();
+    } catch {
+      /* ignore */
+    }
+    return { nodes: [], edges: [] };
+  }
+  try {
+    const nodes = graph
+      .prepare(
+        `SELECT qualified_name AS id, name, kind, file_path
+         FROM nodes
+         ORDER BY id
+         LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      id: string;
+      name: string | null;
+      kind: string;
+      file_path: string | null;
+    }>;
+
+    const degreeRows = graph
+      .prepare(
+        `SELECT q, COUNT(*) AS c FROM (
+           SELECT source_qualified AS q FROM edges
+           UNION ALL
+           SELECT target_qualified AS q FROM edges
+         ) GROUP BY q`,
+      )
+      .all() as Array<{ q: string; c: number }>;
+    const degree = new Map<string, number>();
+    for (const r of degreeRows) degree.set(r.q, r.c);
+
+    const commByNode = new Map<string, number>();
+    if (sem) {
+      try {
+        const rows = sem
+          .prepare(`SELECT community_id, node_qualified FROM community_membership`)
+          .all() as Array<{ community_id: number; node_qualified: string }>;
+        for (const r of rows) commByNode.set(r.node_qualified, r.community_id);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const edges = graph
+      .prepare(
+        `SELECT source_qualified AS source, target_qualified AS target, kind
+         FROM edges
+         ORDER BY id
+         LIMIT ?`,
+      )
+      .all(Math.min(limit * 2, 8000)) as Array<{
+      source: string;
+      target: string;
+      kind: string;
+    }>;
+
+    return {
+      nodes: nodes.map((n) => ({
+        id: n.id,
+        label: n.name ?? n.id,
+        kind: n.kind,
+        file_path: n.file_path,
+        degree: degree.get(n.id) ?? 0,
+        community_id: commByNode.get(n.id) ?? null,
+      })),
+      edges: edges.map((e) => ({ source: e.source, target: e.target, kind: e.kind })),
+    };
+  } finally {
+    try {
+      graph.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      sem?.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  View 11 -- Test Coverage                                                   */
+/* -------------------------------------------------------------------------- */
+
+function testFilenameCandidates(src: string): string[] {
+  // src is e.g. "src/foo.rs" -> "src/foo_test.rs", "tests/foo.rs", "src/foo.test.ts"
+  const parts = src.split(/[/\\]/).filter(Boolean);
+  if (parts.length === 0) return [];
+  const last = parts[parts.length - 1] ?? "";
+  const dot = last.lastIndexOf(".");
+  const base = dot >= 0 ? last.slice(0, dot) : last;
+  const ext = dot >= 0 ? last.slice(dot) : "";
+  const dirParts = parts.slice(0, -1);
+  const dir = dirParts.join("/");
+  const candidates: string[] = [];
+  if (ext === ".rs") {
+    candidates.push(`${dir}/${base}_test${ext}`.replace(/^\//, ""));
+    candidates.push(`tests/${base}${ext}`);
+    candidates.push(`${dir}/tests/${base}${ext}`.replace(/^\//, ""));
+  } else if (ext === ".ts" || ext === ".tsx" || ext === ".js" || ext === ".jsx") {
+    candidates.push(`${dir}/${base}.test${ext}`.replace(/^\//, ""));
+    candidates.push(`${dir}/${base}.spec${ext}`.replace(/^\//, ""));
+    candidates.push(`${dir}/__tests__/${base}${ext}`.replace(/^\//, ""));
+  } else if (ext === ".py") {
+    candidates.push(`${dir}/test_${base}${ext}`.replace(/^\//, ""));
+    candidates.push(`tests/test_${base}${ext}`);
+  }
+  return candidates;
+}
+
+export function fetchTestCoverage(limit = 2000): TestCoverageRow[] {
+  const graph = openShard("graph");
+  if (!graph) return [];
+  try {
+    const allFiles = graph
+      .prepare(
+        `SELECT path, language, line_count FROM files
+         ORDER BY line_count DESC`,
+      )
+      .all() as Array<{
+      path: string;
+      language: string | null;
+      line_count: number | null;
+    }>;
+
+    const isTestPath = (p: string): boolean => {
+      const lower = p.toLowerCase();
+      if (/(^|[\\/])tests?([\\/]|$)/.test(lower)) return true;
+      if (/(^|[\\/])__tests__([\\/]|$)/.test(lower)) return true;
+      if (/_test\.(rs|py|go)$/.test(lower)) return true;
+      if (/\.(test|spec)\.[jt]sx?$/.test(lower)) return true;
+      if (/(^|[\\/])test_[^\\/]+\.py$/.test(lower)) return true;
+      return false;
+    };
+
+    const files = allFiles.filter((f) => !isTestPath(f.path)).slice(0, limit);
+    const testPaths = new Set(allFiles.filter((f) => isTestPath(f.path)).map((f) => f.path));
+    const testPaths = new Set(testFileRows.map((r) => r.path));
+
+    const testNodeCounts = graph
+      .prepare(
+        `SELECT file_path, COUNT(*) AS c FROM nodes
+         WHERE is_test = 1 AND file_path IS NOT NULL
+         GROUP BY file_path`,
+      )
+      .all() as Array<{ file_path: string; c: number }>;
+    const testNodeByFile = new Map<string, number>();
+    for (const r of testNodeCounts) testNodeByFile.set(r.file_path, r.c);
+
+    return files.map((f) => {
+      const candidates = testFilenameCandidates(f.path);
+      const testFile = candidates.find((c) => testPaths.has(c)) ?? null;
+      const ownTests = testNodeByFile.get(f.path) ?? 0;
+      const externalTests = testFile ? (testNodeByFile.get(testFile) ?? 1) : 0;
+      const testCount = ownTests + externalTests;
+      return {
+        file: f.path,
+        language: f.language,
+        line_count: f.line_count ?? 0,
+        test_file: testFile,
+        test_count: testCount,
+        covered: testCount > 0,
+      };
+    });
+  } finally {
+    try {
+      graph.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  View 12 -- Theme Palette                                                   */
+/* -------------------------------------------------------------------------- */
+
+const COLOR_RE = /#[0-9a-fA-F]{3,8}\b|(?:rgb|hsl)a?\([^)]+\)|var\(--[\w-]+\)/g;
+
+export function fetchThemeSwatches(limit = 2000): ThemeSwatchRow[] {
+  const db = openShard("findings");
+  if (!db) return [];
+  try {
+    const rows = db
+      .prepare(
+        `SELECT id, file, line_start, message, suggestion, rule_id, severity
+         FROM findings
+         WHERE scanner = 'theme' AND resolved_at IS NULL
+         ORDER BY severity DESC, created_at DESC
+         LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      id: number;
+      file: string;
+      line_start: number;
+      message: string;
+      suggestion: string | null;
+      rule_id: string;
+      severity: string;
+    }>;
+
+    const swatches: ThemeSwatchRow[] = [];
+    const counts = new Map<string, number>();
+    for (const r of rows) {
+      const src = `${r.message} ${r.suggestion ?? ""}`;
+      const matches = src.match(COLOR_RE);
+      if (!matches) continue;
+      for (const m of matches) {
+        counts.set(m, (counts.get(m) ?? 0) + 1);
+        swatches.push({
+          file: r.file,
+          line: r.line_start,
+          declaration: r.rule_id,
+          value: m,
+          severity: r.severity,
+          message: r.message,
+          used_count: 0,
+        });
+      }
+    }
+    // Second pass: set used_count from the global map (number of occurrences
+    // of this exact value across all findings we inspected).
+    for (const s of swatches) {
+      s.used_count = counts.get(s.value) ?? 1;
+    }
+    // Deduplicate by (file,line,value) -- scanners sometimes emit multiple
+    // findings on the same line.
+    const seen = new Set<string>();
+    const deduped: ThemeSwatchRow[] = [];
+    for (const s of swatches) {
+      const key = `${s.file}:${s.line}:${s.value}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(s);
+    }
+    return deduped;
+  } finally {
+    try {
+      db.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  View 13 -- Hierarchy Tree (qualified_name prefix tree)                     */
+/* -------------------------------------------------------------------------- */
+
+export function fetchHierarchy(limit = 4000): HierarchyNode {
+  const db = openShard("graph");
+  if (!db) return { name: "project", children: [] };
+  try {
+    const rows = db
+      .prepare(
+        `SELECT qualified_name, kind, file_path FROM nodes
+         WHERE kind IN ('module', 'class', 'file')
+         ORDER BY qualified_name
+         LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      qualified_name: string;
+      kind: string;
+      file_path: string | null;
+    }>;
+
+    const root: HierarchyNode = { name: "project", children: [] };
+    for (const r of rows) {
+      const segs = r.qualified_name.split(/[.:/\\]+/).filter(Boolean);
+      if (segs.length === 0) continue;
+      let cursor: HierarchyNode = root;
+      for (let i = 0; i < segs.length; i += 1) {
+        const seg = segs[i] ?? "";
+        cursor.children = cursor.children ?? [];
+        let child = cursor.children.find((c) => c.name === seg);
+        if (!child) {
+          child = { name: seg, children: [] };
+          cursor.children.push(child);
+        }
+        if (i === segs.length - 1) {
+          child.kind = r.kind;
+          child.file_path = r.file_path;
+        }
+        cursor = child;
+      }
+    }
+    return root;
+  } finally {
+    try {
+      db.close();
+    } catch {
+      /* ignore */
+    }
   }
 }

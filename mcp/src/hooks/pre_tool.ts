@@ -1,17 +1,22 @@
 /**
- * Hook: PreToolUse — Mode C enrichment (design §4.3).
+ * Hook: PreToolUse — deterministic cache + constraint guard ONLY.
  *
- * For Read: if the file is unchanged since the last read this session,
- * short-circuit with the cached summary instead of re-reading.
+ * Architecture note: after v0.2 we moved AI-facing "use Mneme" guidance
+ * out of this hook and into MCP-native channels (server.instructions +
+ * the `mneme://commands` resource + richer per-tool descriptions). Hooks
+ * are retained only for **deterministic, safe, cheap** operations where
+ * a failure in the hook must NOT break the tool call:
  *
- * For Edit/Write: pre-inject relevant constraints (e.g. "no hardcoded
- * colors", "no any types", "named exports only").
+ *   - Read: content-hash short-circuit when the file is unchanged this
+ *     session. Saves tokens; falls back to real Read on cache miss.
+ *   - Edit/Write: surface file-scoped CLAUDE.md constraints so the AI
+ *     sees the relevant rule before it writes. BLOCK only on explicit
+ *     critical-severity constraints (e.g. force-push to main).
+ *   - Bash: identical-command short-circuit against tool_cache.db.
+ *   - Grep/Glob: equivalent-query short-circuit against tool_cache.db.
  *
- * For Bash: short-circuit if a recent identical run is in tool_cache.db.
- *
- * For Grep/Glob: short-circuit if an equivalent query is cached.
- *
- * Output JSON shape: HookOutput — supports skip+result OR additional_context.
+ * Every path wraps in try/catch and returns an empty HookOutput on any
+ * failure — a flaky hook must never take down a tool call.
  */
 
 import { query as dbQuery, livebus } from "../db.ts";

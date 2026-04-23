@@ -1,17 +1,33 @@
 import { useEffect, useState } from "react";
-import { fetchGraph } from "../api";
+import { fetchThemeSwatches, type ThemeSwatchRow } from "../api/graph";
 
 interface Swatch {
+  key: string;
   name: string;
   value: string;
+  file: string;
+  line: number;
+  severity: string;
+  used_count: number;
   contrast?: number;
-  wcag: "AAA" | "AA" | "AA Large" | "fail";
+  wcag: "AAA" | "AA" | "AA Large" | "fail" | "n/a";
+  solid: boolean;
 }
 
+type Status = "loading" | "empty" | "ready" | "error";
+
 function relativeLuminance(hex: string): number {
-  const m = /^#?([\da-f]{6})$/i.exec(hex);
+  const m = /^#?([\da-f]{3,8})\b/i.exec(hex);
   if (!m) return 0;
-  const num = parseInt(m[1] ?? "000000", 16);
+  let h = m[1] ?? "000000";
+  if (h.length === 3) {
+    h = h
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  }
+  if (h.length === 8) h = h.slice(0, 6);
+  const num = Number.parseInt(h, 16);
   const r = (num >> 16) & 0xff;
   const g = (num >> 8) & 0xff;
   const b = num & 0xff;
@@ -37,30 +53,54 @@ function wcagLabel(ratio: number): Swatch["wcag"] {
   return "fail";
 }
 
+function toSwatch(row: ThemeSwatchRow): Swatch {
+  const solid = /^#[0-9a-fA-F]{3,8}$/.test(row.value);
+  const contrast = solid ? contrastRatio(row.value, "#0a0e18") : 0;
+  return {
+    key: `${row.file}:${row.line}:${row.value}`,
+    name: row.declaration,
+    value: row.value,
+    file: row.file,
+    line: row.line,
+    severity: row.severity,
+    used_count: row.used_count,
+    contrast: solid ? Math.round(contrast * 10) / 10 : undefined,
+    wcag: solid ? wcagLabel(contrast) : "n/a",
+    solid,
+  };
+}
+
 export function ThemePalette(): JSX.Element {
   const [swatches, setSwatches] = useState<Swatch[]>([]);
+  const [status, setStatus] = useState<Status>("loading");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
-    fetchGraph("theme-palette", { signal: ac.signal }).then((payload) => {
-      if (cancelled) return;
-      // Synthesise swatches from node hex colors when the daemon doesn't supply tokens.
-      const tokens: Swatch[] = payload.nodes.map((n, i) => {
-        const value =
-          (n.meta?.["value"] as string | undefined) ??
-          n.color ??
-          `#${(((i + 1) * 1234567) & 0xffffff).toString(16).padStart(6, "0")}`;
-        const ratio = contrastRatio(value, "#0a0e18");
-        return {
-          name: (n.label ?? n.id) as string,
-          value,
-          contrast: Math.round(ratio * 10) / 10,
-          wcag: wcagLabel(ratio),
-        };
-      });
-      setSwatches(tokens);
-    });
+    (async (): Promise<void> => {
+      try {
+        const res = await fetchThemeSwatches(ac.signal, 2000);
+        if (cancelled) return;
+        if (res.error) {
+          setError(res.error);
+          setStatus("error");
+          return;
+        }
+        if (res.swatches.length === 0) {
+          setStatus("empty");
+          return;
+        }
+        setSwatches(res.swatches.map(toSwatch));
+        setStatus("ready");
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        if (!cancelled) {
+          setError((err as Error).message);
+          setStatus("error");
+        }
+      }
+    })();
     return () => {
       cancelled = true;
       ac.abort();
@@ -69,20 +109,60 @@ export function ThemePalette(): JSX.Element {
 
   return (
     <div className="vz-view vz-view--palette">
-      <div className="vz-palette-grid">
-        {swatches.map((s) => (
-          <article key={`${s.name}-${s.value}`} className="vz-swatch">
-            <div className="vz-swatch-chip" style={{ background: s.value }} />
-            <div className="vz-swatch-meta">
-              <strong>{s.name}</strong>
-              <span className="vz-swatch-hex">{s.value}</span>
-              <span className={`vz-badge vz-badge--${s.wcag.toLowerCase().replace(/\s+/g, "-")}`}>
-                {s.wcag} - {s.contrast}:1
-              </span>
-            </div>
-          </article>
-        ))}
-      </div>
+      {status === "loading" && (
+        <div className="vz-view-hint" role="status">
+          loading findings.db theme scanner output...
+        </div>
+      )}
+      {status === "empty" && (
+        <div className="vz-view-error" role="status">
+          no theme findings -- either the theme scanner hasn't run, or the project is clean.
+          Try <code>mneme audit .</code>
+        </div>
+      )}
+      {status === "error" && error && (
+        <div className="vz-view-error" role="alert">
+          palette error: {error}
+        </div>
+      )}
+      {status === "ready" && (
+        <>
+          <div className="vz-palette-grid">
+            {swatches.slice(0, 400).map((s) => (
+              <article key={s.key} className="vz-swatch">
+                <div
+                  className="vz-swatch-chip"
+                  style={{ background: s.solid ? s.value : "#1c2433" }}
+                >
+                  {!s.solid && (
+                    <span style={{ color: "#cdd6e4", fontSize: 10, padding: 4 }}>
+                      {s.value}
+                    </span>
+                  )}
+                </div>
+                <div className="vz-swatch-meta">
+                  <strong>{s.name}</strong>
+                  <span className="vz-swatch-hex">{s.value}</span>
+                  <span
+                    className={`vz-badge vz-badge--${s.wcag
+                      .toLowerCase()
+                      .replace(/\s+/g, "-")
+                      .replace("/", "")}`}
+                  >
+                    {s.wcag === "n/a" ? "n/a" : `${s.wcag} - ${s.contrast}:1`}
+                  </span>
+                  <span style={{ fontSize: 10, color: "#7a8aa6" }}>
+                    {s.file}:{s.line} - used {s.used_count}x
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+          <p className="vz-view-hint">
+            {swatches.length.toLocaleString()} theme findings - WCAG vs #0a0e18
+          </p>
+        </>
+      )}
     </div>
   );
 }

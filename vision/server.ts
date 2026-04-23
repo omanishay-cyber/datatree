@@ -13,6 +13,17 @@ import {
   fetchFindings,
   buildStatusPayload,
   probeDaemon,
+  fetchFileTree,
+  fetchKindFlow,
+  fetchDomainFlow,
+  fetchCommunityMatrix,
+  fetchCommits,
+  fetchHeatmap,
+  fetchLayerTiers,
+  fetchGalaxy3D,
+  fetchTestCoverage,
+  fetchThemeSwatches,
+  fetchHierarchy,
 } from "./server/shard";
 
 const HOST = "127.0.0.1";
@@ -275,6 +286,96 @@ const server = Bun.serve({
     }
     if (url.pathname === "/api/graph/status") {
       return jsonResponse(buildStatusPayload());
+    }
+    if (url.pathname === "/api/graph/file-tree") {
+      try {
+        const limit = Number(url.searchParams.get("limit") ?? "4000");
+        return jsonResponse({ tree: fetchFileTree(limit) });
+      } catch (err) {
+        return jsonResponse({ tree: { name: "project", children: [] }, error: String(err) });
+      }
+    }
+    if (url.pathname === "/api/graph/kind-flow") {
+      try {
+        const limit = Number(url.searchParams.get("limit") ?? "50000");
+        return jsonResponse(fetchKindFlow(limit));
+      } catch (err) {
+        return jsonResponse({ nodes: [], links: [], error: String(err) });
+      }
+    }
+    if (url.pathname === "/api/graph/domain-flow") {
+      try {
+        const limit = Number(url.searchParams.get("limit") ?? "50000");
+        return jsonResponse(fetchDomainFlow(limit));
+      } catch (err) {
+        return jsonResponse({ nodes: [], links: [], error: String(err) });
+      }
+    }
+    if (url.pathname === "/api/graph/community-matrix") {
+      try {
+        return jsonResponse(fetchCommunityMatrix());
+      } catch (err) {
+        return jsonResponse({ communities: [], matrix: [], error: String(err) });
+      }
+    }
+    if (url.pathname === "/api/graph/commits") {
+      try {
+        const limit = Number(url.searchParams.get("limit") ?? "500");
+        return jsonResponse({ commits: fetchCommits(limit) });
+      } catch (err) {
+        return jsonResponse({ commits: [], error: String(err) });
+      }
+    }
+    if (url.pathname === "/api/graph/heatmap") {
+      try {
+        const limit = Number(url.searchParams.get("limit") ?? "120");
+        return jsonResponse(fetchHeatmap(limit));
+      } catch (err) {
+        return jsonResponse({
+          severities: ["critical", "high", "medium", "low"],
+          files: [],
+          error: String(err),
+        });
+      }
+    }
+    if (url.pathname === "/api/graph/layers") {
+      try {
+        return jsonResponse(fetchLayerTiers());
+      } catch (err) {
+        return jsonResponse({ tiers: [], entries: [], error: String(err) });
+      }
+    }
+    if (url.pathname === "/api/graph/galaxy-3d") {
+      try {
+        const limit = Number(url.searchParams.get("limit") ?? "4000");
+        return jsonResponse(fetchGalaxy3D(limit));
+      } catch (err) {
+        return jsonResponse({ nodes: [], edges: [], error: String(err) });
+      }
+    }
+    if (url.pathname === "/api/graph/test-coverage") {
+      try {
+        const limit = Number(url.searchParams.get("limit") ?? "2000");
+        return jsonResponse({ rows: fetchTestCoverage(limit) });
+      } catch (err) {
+        return jsonResponse({ rows: [], error: String(err) });
+      }
+    }
+    if (url.pathname === "/api/graph/theme-palette") {
+      try {
+        const limit = Number(url.searchParams.get("limit") ?? "2000");
+        return jsonResponse({ swatches: fetchThemeSwatches(limit) });
+      } catch (err) {
+        return jsonResponse({ swatches: [], error: String(err) });
+      }
+    }
+    if (url.pathname === "/api/graph/hierarchy") {
+      try {
+        const limit = Number(url.searchParams.get("limit") ?? "4000");
+        return jsonResponse({ tree: fetchHierarchy(limit) });
+      } catch (err) {
+        return jsonResponse({ tree: { name: "project", children: [] }, error: String(err) });
+      }
     }
     if (url.pathname === "/api/daemon/health") {
       const probe = await probeDaemon(DAEMON_HEALTH);

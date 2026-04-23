@@ -76,6 +76,174 @@ export interface FindingsResponse {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Shapes for the newly-wired views                                           */
+/* -------------------------------------------------------------------------- */
+
+export interface FileTreeNode {
+  name: string;
+  value?: number;
+  language?: string | null;
+  children?: FileTreeNode[];
+}
+export interface FileTreeResponse {
+  tree: FileTreeNode;
+  error?: string;
+}
+
+export interface KindFlowNode {
+  id: string;
+  kind: string;
+  side: string;
+}
+export interface KindFlowLink {
+  source: string;
+  target: string;
+  value: number;
+  edgeKind: string;
+}
+export interface KindFlowPayload {
+  nodes: KindFlowNode[];
+  links: KindFlowLink[];
+}
+export interface KindFlowResponse extends KindFlowPayload {
+  error?: string;
+}
+
+export interface DomainFlowNode {
+  id: string;
+  domain: string;
+}
+export interface DomainFlowLink {
+  source: string;
+  target: string;
+  value: number;
+}
+export interface DomainFlowPayload {
+  nodes: DomainFlowNode[];
+  links: DomainFlowLink[];
+}
+export interface DomainFlowResponse extends DomainFlowPayload {
+  error?: string;
+}
+
+export interface CommunityInfo {
+  id: number;
+  name: string;
+  size: number;
+  language: string | null;
+}
+export interface CommunityMatrixPayload {
+  communities: CommunityInfo[];
+  matrix: number[][];
+}
+export interface CommunityMatrixResponse extends CommunityMatrixPayload {
+  error?: string;
+}
+
+export interface CommitRow {
+  sha: string;
+  author: string | null;
+  date: string;
+  message: string;
+  files_changed: number;
+  insertions: number;
+  deletions: number;
+}
+export interface CommitsResponse {
+  commits: CommitRow[];
+  error?: string;
+}
+
+export interface HeatmapFileRow {
+  file: string;
+  language: string | null;
+  line_count: number;
+  complexity: number;
+  severities: { critical: number; high: number; medium: number; low: number };
+}
+export interface HeatmapPayload {
+  severities: string[];
+  files: HeatmapFileRow[];
+}
+export interface HeatmapResponse extends HeatmapPayload {
+  error?: string;
+}
+
+export interface LayerTierEntry {
+  file: string;
+  language: string | null;
+  line_count: number;
+  tier: string;
+  domain: string;
+}
+export interface LayerTierPayload {
+  tiers: string[];
+  entries: LayerTierEntry[];
+}
+export interface LayerTierResponse extends LayerTierPayload {
+  error?: string;
+}
+
+export interface Galaxy3DNode {
+  id: string;
+  label: string;
+  kind: string;
+  file_path: string | null;
+  degree: number;
+  community_id: number | null;
+}
+export interface Galaxy3DEdge {
+  source: string;
+  target: string;
+  kind: string;
+}
+export interface Galaxy3DPayload {
+  nodes: Galaxy3DNode[];
+  edges: Galaxy3DEdge[];
+}
+export interface Galaxy3DResponse extends Galaxy3DPayload {
+  error?: string;
+}
+
+export interface TestCoverageRow {
+  file: string;
+  language: string | null;
+  line_count: number;
+  test_file: string | null;
+  test_count: number;
+  covered: boolean;
+}
+export interface TestCoverageResponse {
+  rows: TestCoverageRow[];
+  error?: string;
+}
+
+export interface ThemeSwatchRow {
+  file: string;
+  line: number;
+  declaration: string;
+  value: string;
+  severity: string;
+  message: string;
+  used_count: number;
+}
+export interface ThemeSwatchResponse {
+  swatches: ThemeSwatchRow[];
+  error?: string;
+}
+
+export interface HierarchyNode {
+  name: string;
+  kind?: string;
+  file_path?: string | null;
+  children?: HierarchyNode[];
+}
+export interface HierarchyResponse {
+  tree: HierarchyNode;
+  error?: string;
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Client fetchers                                                            */
 /* -------------------------------------------------------------------------- */
 
@@ -112,4 +280,79 @@ export async function fetchDaemonHealth(
   signal?: AbortSignal,
 ): Promise<DaemonHealthPayload> {
   return getJson<DaemonHealthPayload>("/api/daemon/health", signal);
+}
+
+export async function fetchFileTree(
+  signal?: AbortSignal,
+  limit = 4000,
+): Promise<FileTreeResponse> {
+  return getJson<FileTreeResponse>(`/api/graph/file-tree?limit=${limit}`, signal);
+}
+
+export async function fetchKindFlow(
+  signal?: AbortSignal,
+  limit = 50000,
+): Promise<KindFlowResponse> {
+  return getJson<KindFlowResponse>(`/api/graph/kind-flow?limit=${limit}`, signal);
+}
+
+export async function fetchDomainFlow(
+  signal?: AbortSignal,
+  limit = 50000,
+): Promise<DomainFlowResponse> {
+  return getJson<DomainFlowResponse>(`/api/graph/domain-flow?limit=${limit}`, signal);
+}
+
+export async function fetchCommunityMatrix(
+  signal?: AbortSignal,
+): Promise<CommunityMatrixResponse> {
+  return getJson<CommunityMatrixResponse>("/api/graph/community-matrix", signal);
+}
+
+export async function fetchCommits(
+  signal?: AbortSignal,
+  limit = 500,
+): Promise<CommitsResponse> {
+  return getJson<CommitsResponse>(`/api/graph/commits?limit=${limit}`, signal);
+}
+
+export async function fetchHeatmap(
+  signal?: AbortSignal,
+  limit = 120,
+): Promise<HeatmapResponse> {
+  return getJson<HeatmapResponse>(`/api/graph/heatmap?limit=${limit}`, signal);
+}
+
+export async function fetchLayerTiers(
+  signal?: AbortSignal,
+): Promise<LayerTierResponse> {
+  return getJson<LayerTierResponse>("/api/graph/layers", signal);
+}
+
+export async function fetchGalaxy3D(
+  signal?: AbortSignal,
+  limit = 4000,
+): Promise<Galaxy3DResponse> {
+  return getJson<Galaxy3DResponse>(`/api/graph/galaxy-3d?limit=${limit}`, signal);
+}
+
+export async function fetchTestCoverage(
+  signal?: AbortSignal,
+  limit = 2000,
+): Promise<TestCoverageResponse> {
+  return getJson<TestCoverageResponse>(`/api/graph/test-coverage?limit=${limit}`, signal);
+}
+
+export async function fetchThemeSwatches(
+  signal?: AbortSignal,
+  limit = 2000,
+): Promise<ThemeSwatchResponse> {
+  return getJson<ThemeSwatchResponse>(`/api/graph/theme-palette?limit=${limit}`, signal);
+}
+
+export async function fetchHierarchy(
+  signal?: AbortSignal,
+  limit = 4000,
+): Promise<HierarchyResponse> {
+  return getJson<HierarchyResponse>(`/api/graph/hierarchy?limit=${limit}`, signal);
 }
