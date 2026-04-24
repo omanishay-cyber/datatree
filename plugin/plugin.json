@@ -12,14 +12,7 @@
     "mcpServers": [
       { "name": "mneme", "config": ".mcp/mneme.json" }
     ],
-    "hooks": [
-      { "event": "SessionStart", "command": "mneme session-prime" },
-      { "event": "UserPromptSubmit", "command": "mneme inject" },
-      { "event": "PreToolUse", "command": "mneme pre-tool" },
-      { "event": "PostToolUse", "command": "mneme post-tool" },
-      { "event": "Stop", "command": "mneme turn-end" },
-      { "event": "SessionEnd", "command": "mneme session-end" }
-    ],
+    "hooks": [],
     "skills": [
       "skills/mneme-query.md",
       "skills/mneme-audit.md",
