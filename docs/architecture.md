@@ -59,9 +59,9 @@ Each worker (parsers, scanners, brain, livebus, store, md-ingest) runs as a sepa
 
 ### 3. 100% local
 
-No outbound network calls in the hot path. Embeddings are computed by a pure-Rust hashing-trick embedder that ships with the binaries; no ONNX native DLL, no Hugging Face download, no API key, no telemetry. If you block mneme at the firewall, it keeps working.
+No outbound network calls in the hot path. By default, embeddings are computed by a pure-Rust hashing-trick embedder that ships with the binaries — no ONNX native DLL, no Hugging Face download, no API key, no telemetry. As of v0.3.0, real BGE-small-en-v1.5 ONNX embeddings are available as an opt-in build (`brain` crate `real-embeddings` feature) using dynamic ORT loading — still local, still no network call. If you block mneme at the firewall, it keeps working.
 
-The only exception is `mneme models install --from <local-mirror>` which copies pre-downloaded model files from a path you specify — still local.
+The only exception is `mneme models install --from-path <local-mirror>` which copies pre-downloaded model files from a path you specify — still local.
 
 ### 4. Marker-based idempotent injection
 

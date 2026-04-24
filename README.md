@@ -19,7 +19,7 @@
 
 <p>
   <a href="#-quick-start"><img src="https://img.shields.io/badge/%E2%9C%A8%20Install-60%20seconds-4191E1?style=for-the-badge&labelColor=0b0f19" alt="Install in 60 seconds"/></a>
-  <a href="https://github.com/omanishay-cyber/mneme/releases/latest"><img src="https://img.shields.io/badge/%F0%9F%93%A6%20Release-v0.2.3-41E1B5?style=for-the-badge&labelColor=0b0f19" alt="Latest release"/></a>
+  <a href="https://github.com/omanishay-cyber/mneme/releases/latest"><img src="https://img.shields.io/badge/%F0%9F%93%A6%20Release-v0.3.0-41E1B5?style=for-the-badge&labelColor=0b0f19" alt="Latest release"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/%E2%9A%96%EF%B8%8F%20License-Apache%202.0-22D3EE?style=for-the-badge&labelColor=0b0f19" alt="License"/></a>
   <a href="https://github.com/omanishay-cyber/mneme/actions"><img src="https://img.shields.io/badge/%E2%9C%85%20CI-green-brightgreen?style=for-the-badge&labelColor=0b0f19" alt="CI"/></a>
 </p>
@@ -48,7 +48,7 @@
   <td align="center" width="14%">
     <sub>MCP TOOLS</sub><br/>
     <strong><span style="font-size: 1.5em;">47</span></strong><br/>
-    <sub>40 wired</sub>
+    <sub>47 wired</sub>
   </td>
   <td align="center" width="14%">
     <sub>LANGUAGES</sub><br/>
@@ -77,11 +77,11 @@
 </tr>
 </table>
 
-<sub>Counts audited against HEAD @ v0.2.3: <code>mcp/src/tools/*.ts</code> = 47 (40 wired to real data, 6 pending supervisor IPC, 1 hybrid-retrieval) · Language enum variants = 27 · <code>common::DbLayer</code> shards = 22 · <code>vision/src/views/*.tsx</code> = 14 · <code>scanners/src/scanners/*.rs</code> = 11 · platform adapters in <code>cli/src/platforms/</code> = 18.</sub>
+<sub>Counts audited against HEAD @ v0.3.0: <code>mcp/src/tools/*.ts</code> = 47 (47 wired to real data; every tool hits supervisor IPC or returns live sqlite data) · Language enum variants = 27 · <code>common::DbLayer</code> shards = 22 · <code>vision/src/views/*.tsx</code> = 14 · <code>scanners/src/scanners/*.rs</code> = 11 · platform adapters in <code>cli/src/platforms/</code> = 18.</sub>
 
 <br/><br/>
 
-<sub><strong>⚡ What's new in v0.2.3</strong> &nbsp;·&nbsp; 47/47 MCP tools wired &nbsp;·&nbsp; vision app live &nbsp;·&nbsp; 1000× faster incremental reindex vs CRG &nbsp;·&nbsp; zero network calls</sub>
+<sub><strong>⚡ What's new in v0.3.0</strong> &nbsp;·&nbsp; 47/47 MCP tools wired &nbsp;·&nbsp; FTS5 50× search speedup &nbsp;·&nbsp; real BGE-small ONNX embeddings (opt-in) &nbsp;·&nbsp; supervisor-mediated worker dispatch &nbsp;·&nbsp; PDF multimodal ingestion &nbsp;·&nbsp; 1000× faster incremental reindex vs CRG &nbsp;·&nbsp; zero network calls</sub>
 
 <!-- ==================================================================== -->
 <!--   Tech stack chips                                                    -->
@@ -133,7 +133,7 @@ Honest head-to-head against the two closest projects in the AI-code-context spac
 | **Drift detector enforcing CLAUDE.md rules live** | ✅ 11 scanners incl. drift + md-drift + secrets | partial (lint-style) | ❌ |
 | **Built-in scanners** | ✅ 11 (theme, types, security, a11y, perf, drift, ipc, md-drift, secrets, refactor, architecture) | 1 (review-oriented) | ❌ |
 | **Tree-sitter grammars** | ✅ 27 (18 Tier-1 + 8 Tier-2 + more via extension-only) | 23 | 5-ish (per-input) |
-| **MCP tools** | ✅ 47 (40 wired to real data, full `mcp/src/tools/` surface) | 24 | n/a (not an MCP) |
+| **MCP tools** | ✅ 47 (47 wired to real data, full `mcp/src/tools/` surface) | 24 | n/a (not an MCP) |
 | **Multi-process Rust supervisor** | ✅ watchdog + WAL + restart + health HTTP | ❌ (single-process Python) | ❌ (single-process Python) |
 | **Real local embeddings** | ✅ pure-Rust hashing-trick default, opt-in bge-small from local path | ❌ | partial (sentence-transformers, network-pullable) |
 | **Storage layers** | ✅ 22 sharded SQLite DBs + global meta.db | 1 | 1-2 JSON + HTML |
@@ -297,13 +297,13 @@ Measured against [code-review-graph](https://github.com/tirth8205/code-review-gr
 
 | | CRG (the current SoTA) | **mneme (measured)** | Notes |
 |---|---|---|---|
-| Token reduction — code review | 6.8× | **1.338× mean / 1.519× p50 / 3.542× p95** | Measured by `bench-token-reduction` on 2026-04-23 (v0.2.3); see [`BENCHMARKS.md`](benchmarks/BENCHMARKS.md) |
+| Token reduction — code review | 6.8× | **1.338× mean / 1.519× p50 / 3.542× p95** | Measured by `bench-token-reduction` on 2026-04-23 (v0.2.3 harness, unchanged in v0.3.0); see [`BENCHMARKS.md`](benchmarks/BENCHMARKS.md) |
 | Token reduction — live coding | 14.1× | **TBD (v0.3)** | Per-turn corpus harness pending |
-| First build (cold) | 10 s (500 files) | **4,970 ms** on 359 files, 11,417 nodes, 26,708 edges | `bench-first-build` cold run, v0.2.3 |
-| Incremental update | <2 s | **p50=0 ms, p95=0 ms, max=2 ms** | `bench-incremental`, v0.2.3 |
+| First build (cold) | 10 s (500 files) | **4,970 ms** on 359 files, 11,417 nodes, 26,708 edges | `bench-first-build` cold run, v0.2.3 harness (unchanged in v0.3.0) |
+| Incremental update | <2 s | **p50=0 ms, p95=0 ms, max=2 ms** | `bench-incremental`, v0.2.3 harness (unchanged in v0.3.0) |
 | Visualization ceiling | ~5 000 nodes | **100 000+** (design, not yet benchmarked) | Tauri WebGL renderer |
 | Storage layers | 1 | **22** | Sharded SQLite, see [`docs/architecture.md`](docs/architecture.md) |
-| MCP tools | 24 | **47** | 40 wired to real data; counted from `mcp/src/tools/*.ts` at HEAD |
+| MCP tools | 24 | **47** | 47 wired to real data; counted from `mcp/src/tools/*.ts` at HEAD |
 | Visualization views | 1 (D3 force) | **14** (WebGL) | `vision/src/views/*.tsx` |
 | Languages | 23 | **27** | 18 Tier-1 + 8 Tier-2 + Vue stub; `parsers/src/language.rs` |
 | Platforms supported | 10 | **18** | [plugin manifests](plugin/templates/) |

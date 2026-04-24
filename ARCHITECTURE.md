@@ -103,11 +103,15 @@ of the pipeline (`parse` onward) per file as `.` events arrive.
 ### 5. `embed`
 
 - **Input**: `Node.name` + `Node.docstring` fragments, batched to 256 items.
-- **Process**: `brain` worker uses a **pure-Rust hashing-trick embedder**
+- **Process**: `brain` worker defaults to a **pure-Rust hashing-trick embedder**
   (no ONNX, no Hugging Face). Each token is hashed to a 384-dim sparse
   vector; averages are computed per `Node`. Vectors are written to
   `semantic.db` (table `node_vectors`, BLOB column) through the semantic
-  single-writer task.
+  single-writer task. As of v0.3.0, real **BGE-small-en-v1.5** ONNX
+  embeddings are available via the `real-embeddings` feature flag on the
+  `brain` crate (`ort` `load-dynamic` — no ORT link at compile time);
+  enable it once you've staged the `.onnx` + `tokenizer.json` locally
+  (see `mneme models install --from-path`).
 - **Output**: `semantic.db` populated; an in-memory `hnsw_rs` graph is
   built for top-k nearest neighbour lookup.
 - **Why this**: zero-dependency, zero-network, reproducible, tiny binary.
@@ -367,9 +371,11 @@ use so you know what you're running on.
 The default embedder is a pure-Rust hashing-trick (`brain::embed::hash`)
 with 384 dimensions. Binary size impact: zero. Install friction: zero.
 Quality: sufficient for intra-project recall, which is what matters
-here. Users who want real embeddings can opt in via `mneme models install
---model bge-small-en-v1.5 --from <local-path>` and the bridge swaps the
-embedder at load time. No network call involved either way.
+here. Users who want real embeddings can opt in by building `brain` with
+the `real-embeddings` feature and staging the model locally via
+`mneme models install --from-path <dir>` — `ort` is loaded dynamically at
+runtime (`ORT_DYLIB_PATH`), so the compiled binary never links against
+ONNX Runtime. No network call involved either way.
 
 ### 7. Fault domains are OS processes
 

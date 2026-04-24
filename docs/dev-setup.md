@@ -132,7 +132,7 @@ cd mcp && bun test
 cd workers/multimodal && pytest
 ```
 
-v0.2.3 ships with `cargo test --workspace` fully green (190+ tests, 0 failed, 0 ignored) — parsers, supervisor, store, scanners, brain, md-ingest, cli, livebus all pass.
+v0.3.0 ships with `cargo test --workspace` fully green (280+ tests, 0 failed, 0 ignored) — parsers, supervisor, store, scanners, brain, md-ingest, cli, livebus all pass (includes 30 new supervisor/common tests for the job-dispatch path, 4 new brain tests for the ONNX inference path, and 7 new scanner tests).
 
 ## Debugging
 

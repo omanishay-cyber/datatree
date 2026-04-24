@@ -1,6 +1,6 @@
 # Installing mneme
 
-> **TL;DR for v0.2.3:** prebuilt binaries attached to the release for Linux x64 / macOS arm64 / Windows x64. One-line installers below.
+> **TL;DR for v0.3.0:** prebuilt binaries attached to the release for Linux x64 / macOS arm64 / Windows x64. One-line installers below.
 
 mneme is a multi-process daemon (Rust supervisor + Bun MCP server). Multimodal extraction is pure Rust — no Python sidecar as of v0.2. The install process has three paths, sized for three kinds of users.
 

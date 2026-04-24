@@ -16,7 +16,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.78"
 license = "Apache-2.0"
@@ -27,8 +27,8 @@ description = "Mneme — the persistent memory layer for AI coding. Survives con
 
 [workspace.dependencies]
 # Internal crates
-mneme-common = { path = "common", version = "0.2.0" }
-mneme-store = { path = "store", version = "0.2.0" }
+mneme-common = { path = "common", version = "0.3.0" }
+mneme-store = { path = "store", version = "0.3.0" }
 
 # Async runtime
 tokio = { version = "1.40", features = ["full"] }

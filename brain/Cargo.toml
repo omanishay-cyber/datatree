@@ -1,9 +1,9 @@
 [package]
 name = "mneme-brain"
-version = "0.2.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 description = "Mneme BRAIN — local-only embeddings, Leiden clustering, concept extraction"
-license = "Apache-2.0"
+license.workspace = true
 
 [[bin]]
 name = "mneme-brain"

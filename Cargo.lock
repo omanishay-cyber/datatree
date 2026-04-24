@@ -247,7 +247,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "benchmarks"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "dunce",
@@ -2193,7 +2193,7 @@ dependencies = [
 
 [[package]]
 name = "mneme-brain"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -2226,7 +2226,7 @@ dependencies = [
 
 [[package]]
 name = "mneme-cli"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2255,7 +2255,7 @@ dependencies = [
 
 [[package]]
 name = "mneme-common"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "chrono",
@@ -2272,7 +2272,7 @@ dependencies = [
 
 [[package]]
 name = "mneme-daemon"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2306,7 +2306,7 @@ dependencies = [
 
 [[package]]
 name = "mneme-livebus"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-broadcast",
@@ -2331,7 +2331,7 @@ dependencies = [
 
 [[package]]
 name = "mneme-md-ingest"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "tokio",
  "tracing",
@@ -2340,7 +2340,7 @@ dependencies = [
 
 [[package]]
 name = "mneme-multimodal"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2365,7 +2365,7 @@ dependencies = [
 
 [[package]]
 name = "mneme-parsers"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ahash",
  "anyhow",
@@ -2417,7 +2417,7 @@ dependencies = [
 
 [[package]]
 name = "mneme-scanners"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "mneme-common",
@@ -2436,7 +2436,7 @@ dependencies = [
 
 [[package]]
 name = "mneme-store"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",

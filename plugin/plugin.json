@@ -1,8 +1,8 @@
 {
   "name": "mneme",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "displayName": "Mneme — The AI Superbrain",
-  "description": "Persistent per-project SQLite memory + 14-view live graph + drift detector + 30+ MCP tools. Claude never starts cold, never loses its place.",
+  "description": "Persistent per-project SQLite memory + 14-view live graph + drift detector + 47 MCP tools (all wired). Claude never starts cold, never loses its place.",
   "author": "Anish Trivedi",
   "license": "Apache-2.0",
   "homepage": "https://github.com/omanishay-cyber/mneme",

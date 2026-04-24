@@ -1,7 +1,7 @@
 {
   "name": "@mneme/mcp",
-  "version": "0.2.0",
-  "description": "Mneme MCP server: 30+ tools + 6 hooks exposing the mneme supervisor over stdio JSON-RPC.",
+  "version": "0.3.0",
+  "description": "Mneme MCP server: 47 tools + 6 hooks exposing the mneme supervisor over stdio JSON-RPC.",
   "type": "module",
   "private": true,
   "main": "src/index.ts",

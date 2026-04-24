@@ -2,8 +2,8 @@
   "$schema": "https://claude.ai/claude-code/plugin-marketplace-schema.json",
   "name": "mneme",
   "displayName": "mneme — the AI superbrain",
-  "description": "Persistent per-project memory that survives context compaction. 22-shard SQLite, 47 MCP tools (all wired), 14 visualization views, 11 drift scanners, compaction-resilient Step Ledger. 100% local.",
-  "version": "0.2.3",
+  "description": "Persistent per-project memory that survives context compaction. 22-shard SQLite, 47/47 MCP tools wired, 14 visualization views, 11 drift scanners, compaction-resilient Step Ledger, FTS5 50× search, opt-in BGE-small ONNX embeddings. 100% local.",
+  "version": "0.3.0",
   "author": "Anish Trivedi",
   "homepage": "https://omanishay-cyber.github.io/mneme/",
   "repository": "https://github.com/omanishay-cyber/mneme",
@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "mneme",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "description": "AI superbrain MCP — persistent memory, blast-radius queries, drift detection, Step Ledger that survives compaction.",
       "source": {
         "type": "github",

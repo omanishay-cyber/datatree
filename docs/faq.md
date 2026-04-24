@@ -150,7 +150,7 @@ PRs welcome. See [CONTRIBUTING.md](../CONTRIBUTING.md). By submitting a PR you'r
 
 ### Will it work on my 100k-file monorepo?
 
-Yes in theory. The architecture is designed for monorepo scale (WebGL visualisation handles 100k+ nodes, WAL SQLite scales to GBs of graph data, parser workers parallelise across CPU cores). In practice v0.2.3 self-indexes the Mneme source tree (11,417 nodes / 26,708 edges / 359 files, measured 2026-04-23) and the benchmark CI indexes Django (~300k LOC) and TypeScript (~2M LOC); larger-repo performance tuning is ongoing.
+Yes in theory. The architecture is designed for monorepo scale (WebGL visualisation handles 100k+ nodes, WAL SQLite scales to GBs of graph data, parser workers parallelise across CPU cores). In practice v0.3.0 self-indexes the Mneme source tree (11,417 nodes / 26,708 edges / 359 files, measured 2026-04-23) and the benchmark CI indexes Django (~300k LOC) and TypeScript (~2M LOC); larger-repo performance tuning is ongoing.
 
 ### How much disk does it use?
 

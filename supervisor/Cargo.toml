@@ -1,10 +1,10 @@
 [package]
 name = "mneme-daemon"
-version = "0.1.0"
-edition = "2021"
-rust-version = "1.78"
-license = "MIT"
-authors = ["Anish Trivedi"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
 description = "Mneme master supervisor: spawns and watches all worker child processes."
 
 [[bin]]
