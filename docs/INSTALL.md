@@ -20,6 +20,36 @@ iwr -useb https://raw.githubusercontent.com/omanishay-cyber/mneme/main/scripts/i
 curl -fsSL https://raw.githubusercontent.com/omanishay-cyber/mneme/main/scripts/install.sh | sh
 ```
 
+### Native package managers (alternative to the one-liners)
+
+These read from the same GitHub release asset; pick whichever feels natural.
+
+**Homebrew** (macOS arm64 + Linux x86_64):
+```bash
+brew tap omanishay-cyber/mneme https://github.com/omanishay-cyber/homebrew-mneme
+brew install mneme
+```
+Formula source: `dist/homebrew/Formula/mneme.rb`. The tap repo is created by the maintainer when the formula is ready to publish; until then, use the one-liner.
+
+**Scoop** (Windows):
+```powershell
+scoop bucket add mneme https://github.com/omanishay-cyber/scoop-mneme
+scoop install mneme
+```
+Manifest source: `dist/scoop/mneme.json`. Same publishing caveat.
+
+**Winget** (Windows):
+```powershell
+winget install Omanishay-Cyber.Mneme
+```
+Manifest source: `dist/winget/manifests/o/Omanishay-Cyber/Mneme/0.3.0/`. Submitted to `microsoft/winget-pkgs` separately.
+
+**VS Code extension** (Marketplace):
+```
+ext install Omanishay-Cyber.mneme
+```
+Source: `vscode/`. The extension auto-runs `mneme register-mcp --platform vscode` on activation, adds a status bar indicator, and exposes 6 commands (Build, Doctor, Recall, Open Vision, Start/Stop daemon).
+
 Both scripts are **idempotent**. Re-run them to upgrade. They will:
 
 1. Stop any running mneme daemon (so the fresh binary is not file-locked).
