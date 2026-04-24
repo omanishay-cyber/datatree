@@ -1,24 +1,73 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-labelledby="ogTitle ogDesc">
+  <title id="ogTitle">Mneme — the persistent memory layer for AI coding</title>
+  <desc id="ogDesc">Animated banner: gradient Mneme wordmark, pulsing graph background, measured-stats ribbon (1000× faster incremental reindex, 47/47 MCP tools wired, 0 network calls), feature chips, and install command with blinking caret.</desc>
+
   <defs>
+    <style>
+      @media (prefers-reduced-motion: reduce) {
+        * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+        animate, animateMotion, animateTransform { display: none !important; }
+      }
+    </style>
+
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0b0f19"/>
       <stop offset="0.5" stop-color="#0f172a"/>
       <stop offset="1" stop-color="#1e293b"/>
     </linearGradient>
+
     <radialGradient id="glowA" cx="0.2" cy="0.15" r="0.6">
-      <stop offset="0" stop-color="#4191E1" stop-opacity="0.32"/>
+      <stop offset="0" stop-color="#4191E1" stop-opacity="0.32">
+        <animate attributeName="stop-opacity" values="0.28;0.42;0.28" dur="6s" repeatCount="indefinite"/>
+      </stop>
       <stop offset="1" stop-color="#4191E1" stop-opacity="0"/>
     </radialGradient>
+
     <radialGradient id="glowB" cx="0.85" cy="0.75" r="0.55">
-      <stop offset="0" stop-color="#41E1B5" stop-opacity="0.25"/>
+      <stop offset="0" stop-color="#41E1B5" stop-opacity="0.25">
+        <animate attributeName="stop-opacity" values="0.22;0.36;0.22" dur="6s" begin="-3s" repeatCount="indefinite"/>
+      </stop>
       <stop offset="1" stop-color="#41E1B5" stop-opacity="0"/>
     </radialGradient>
+
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#4191E1" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+
     <linearGradient id="titleGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#4191E1"/>
-      <stop offset="0.5" stop-color="#41E1B5"/>
-      <stop offset="1" stop-color="#22D3EE"/>
+      <stop offset="0" stop-color="#4191E1">
+        <animate attributeName="offset" values="0;0.08;0" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="0.5" stop-color="#41E1B5">
+        <animate attributeName="offset" values="0.5;0.58;0.5" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="1" stop-color="#22D3EE">
+        <animate attributeName="offset" values="1;0.92;1" dur="8s" repeatCount="indefinite"/>
+      </stop>
     </linearGradient>
+
+    <linearGradient id="sheen" x1="-0.5" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+      <animate attributeName="x1" values="-0.5;1.5" dur="6s" begin="2s" repeatCount="indefinite"/>
+      <animate attributeName="x2" values="0;2" dur="6s" begin="2s" repeatCount="indefinite"/>
+    </linearGradient>
+
+    <mask id="wordmarkMask">
+      <rect width="1280" height="640" fill="black"/>
+      <text x="230" y="210"
+            font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+            font-weight="800" font-size="180" letter-spacing="-4" fill="white">Mneme</text>
+    </mask>
+
+    <linearGradient id="ribbonGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4191E1" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#41E1B5" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#22D3EE" stop-opacity="0.18"/>
+    </linearGradient>
+
     <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur in="SourceAlpha" stdDeviation="8"/>
       <feOffset dx="0" dy="4"/>
@@ -27,91 +76,193 @@
     </filter>
   </defs>
 
-  <!-- backdrop -->
+  <!-- BACKDROP -->
   <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#grid)"/>
   <rect width="1280" height="640" fill="url(#glowA)"/>
   <rect width="1280" height="640" fill="url(#glowB)"/>
 
-  <!-- faint node graph hint in the background -->
-  <g stroke="#4191E1" stroke-opacity="0.10" stroke-width="1.2" fill="none">
-    <path d="M 120 540 Q 240 380, 360 480 T 600 420 T 860 380 T 1140 460"/>
-    <path d="M 80 380 Q 220 300, 380 340 T 640 280 T 920 260 T 1200 280"/>
-    <path d="M 240 200 Q 420 250, 600 180 T 900 220 T 1180 190"/>
-  </g>
-  <g fill="#41E1B5" fill-opacity="0.22">
-    <circle cx="120" cy="540" r="3"/>
-    <circle cx="360" cy="480" r="3"/>
-    <circle cx="600" cy="420" r="3"/>
-    <circle cx="860" cy="380" r="3"/>
-    <circle cx="1140" cy="460" r="3"/>
-    <circle cx="380" cy="340" r="3"/>
-    <circle cx="640" cy="280" r="3"/>
-    <circle cx="920" cy="260" r="3"/>
-    <circle cx="600" cy="180" r="3"/>
-    <circle cx="900" cy="220" r="3"/>
+  <!-- GRAPH: animated lines + pulsing dots (decorative) -->
+  <g stroke="#4191E1" stroke-opacity="0.09" stroke-width="1.2" fill="none"
+     stroke-dasharray="1500" stroke-dashoffset="1500">
+    <path d="M 120 540 Q 240 380, 360 480 T 600 420 T 860 380 T 1140 460">
+      <animate attributeName="stroke-dashoffset" from="1500" to="0" dur="2.2s" begin="0.1s" fill="freeze"/>
+    </path>
+    <path d="M 80 380 Q 220 300, 380 340 T 640 280 T 920 260 T 1200 280">
+      <animate attributeName="stroke-dashoffset" from="1500" to="0" dur="2.2s" begin="0.4s" fill="freeze"/>
+    </path>
   </g>
 
-  <!-- tree emoji hero -->
+  <g fill="#41E1B5" fill-opacity="0.85">
+    <circle r="2.5">
+      <animateMotion dur="4s" begin="2.2s" repeatCount="indefinite" rotate="auto"
+        path="M 120 540 Q 240 380, 360 480 T 600 420 T 860 380 T 1140 460"/>
+      <animate attributeName="fill-opacity" values="0;0.9;0" dur="4s" begin="2.2s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="2" fill="#22D3EE">
+      <animateMotion dur="5s" begin="2.8s" repeatCount="indefinite" rotate="auto"
+        path="M 80 380 Q 220 300, 380 340 T 640 280 T 920 260 T 1200 280"/>
+      <animate attributeName="fill-opacity" values="0;0.9;0" dur="5s" begin="2.8s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <g fill="#41E1B5">
+    <circle cx="120" cy="540" r="3" fill-opacity="0.22">
+      <animate attributeName="fill-opacity" values="0.22;0.9;0.22" dur="3.6s" begin="0s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="3;5;3" dur="3.6s" begin="0s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="360" cy="480" r="3" fill-opacity="0.22">
+      <animate attributeName="fill-opacity" values="0.22;0.9;0.22" dur="3.6s" begin="0.3s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="3;5;3" dur="3.6s" begin="0.3s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="860" cy="380" r="3" fill-opacity="0.22">
+      <animate attributeName="fill-opacity" values="0.22;0.9;0.22" dur="3.6s" begin="0.9s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="3;5;3" dur="3.6s" begin="0.9s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1140" cy="460" r="3" fill-opacity="0.22">
+      <animate attributeName="fill-opacity" values="0.22;0.9;0.22" dur="3.6s" begin="1.2s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="3;5;3" dur="3.6s" begin="1.2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="380" cy="340" r="3" fill-opacity="0.22">
+      <animate attributeName="fill-opacity" values="0.22;0.9;0.22" dur="3.6s" begin="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="3;5;3" dur="3.6s" begin="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="920" cy="260" r="3" fill-opacity="0.22">
+      <animate attributeName="fill-opacity" values="0.22;0.9;0.22" dur="3.6s" begin="2.1s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="3;5;3" dur="3.6s" begin="2.1s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- TOP-RIGHT VERSION PILL — clear of wordmark -->
+  <g transform="translate(1100, 32)" opacity="0">
+    <animate attributeName="opacity" from="0" to="1" dur="0.6s" begin="1.1s" fill="freeze"/>
+    <rect width="148" height="34" rx="17" fill="#41E1B5" fill-opacity="0.14" stroke="#41E1B5" stroke-opacity="0.65"/>
+    <circle cx="18" cy="17" r="5" fill="#41E1B5">
+      <animate attributeName="r" values="4;5.5;4" dur="1.6s" repeatCount="indefinite"/>
+      <animate attributeName="fill-opacity" values="0.85;1;0.85" dur="1.6s" repeatCount="indefinite"/>
+    </circle>
+    <text x="34" y="22"
+          font-family="JetBrains Mono, SF Mono, ui-monospace, Menlo, monospace"
+          font-size="14" font-weight="700" fill="#41E1B5">v0.2.3 · live</text>
+  </g>
+
+  <!-- HERO: tree + Mneme wordmark -->
   <g filter="url(#softShadow)">
-    <text x="90" y="210" font-size="160" font-family="Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji,sans-serif">🌳</text>
+    <text x="58" y="220" font-size="150"
+          font-family="Apple Color Emoji,Segoe UI Emoji,Noto Color Emoji,sans-serif">🌳
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0; 0,-6; 0,0" dur="5s" repeatCount="indefinite"/>
+    </text>
   </g>
 
-  <!-- wordmark -->
-  <text x="270" y="200"
-        font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
-        font-weight="800"
-        font-size="180"
-        letter-spacing="-4"
-        fill="url(#titleGrad)"
-        filter="url(#softShadow)">Mneme</text>
+  <g opacity="0">
+    <animate attributeName="opacity" from="0" to="1" dur="0.8s" begin="0.3s" fill="freeze"/>
+    <text x="230" y="210"
+          font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+          font-weight="800" font-size="180" letter-spacing="-4"
+          fill="url(#titleGrad)" filter="url(#softShadow)">Mneme</text>
+    <rect x="0" y="0" width="1280" height="640" fill="url(#sheen)" mask="url(#wordmarkMask)"/>
+  </g>
 
-  <!-- tagline -->
-  <text x="92" y="300"
+  <!-- TAGLINE -->
+  <text x="62" y="293"
         font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
-        font-weight="600"
-        font-size="42"
-        fill="#e6edf3">Claude never starts cold. Claude never loses its place.</text>
+        font-weight="700" font-size="40" fill="#e6edf3" opacity="0">
+    <animate attributeName="opacity" from="0" to="1" dur="0.8s" begin="0.9s" fill="freeze"/>
+    <animate attributeName="y" from="313" to="293" dur="0.8s" begin="0.9s" fill="freeze"/>
+    Claude never starts cold. Claude never loses its place.
+  </text>
 
-  <!-- subtag -->
-  <text x="92" y="352"
-        font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
-        font-weight="400"
-        font-size="24"
-        fill="#94a3b8">Persistent per-project AI superbrain · 33+ MCP tools · 14 views · 100% local</text>
+  <!-- MEASURED-WIN RIBBON (3 honest stats, clean dividers, no overflow) -->
+  <g transform="translate(62, 328)" opacity="0">
+    <animate attributeName="opacity" from="0" to="1" dur="0.8s" begin="1.3s" fill="freeze"/>
+    <rect width="1156" height="54" rx="12"
+          fill="url(#ribbonGrad)" stroke="#41E1B5" stroke-opacity="0.3"/>
 
-  <!-- feature chips -->
-  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="22" font-weight="600">
-    <g transform="translate(92, 420)">
-      <rect width="220" height="54" rx="12" fill="#4191E1" fill-opacity="0.12" stroke="#4191E1" stroke-opacity="0.45"/>
-      <text x="110" y="34" text-anchor="middle" fill="#4191E1">Survives compaction</text>
+    <!-- Stat 1: 1000× faster incremental -->
+    <text x="34" y="35" font-family="JetBrains Mono, SF Mono, ui-monospace, Menlo, monospace"
+          font-size="24" font-weight="800" fill="#41E1B5">1000×</text>
+    <text x="118" y="34" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+          font-size="16" font-weight="500" fill="#cbd5e1">faster incremental reindex vs CRG</text>
+
+    <line x1="448" y1="14" x2="448" y2="40" stroke="#475569" stroke-width="1"/>
+
+    <!-- Stat 2: 47/47 MCP tools wired -->
+    <text x="470" y="35" font-family="JetBrains Mono, SF Mono, ui-monospace, Menlo, monospace"
+          font-size="24" font-weight="800" fill="#22D3EE">47/47</text>
+    <text x="562" y="34" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+          font-size="16" font-weight="500" fill="#cbd5e1">MCP tools wired · 27 langs · 14 views</text>
+
+    <line x1="960" y1="14" x2="960" y2="40" stroke="#475569" stroke-width="1"/>
+
+    <!-- Stat 3: 0 network calls -->
+    <text x="982" y="35" font-family="JetBrains Mono, SF Mono, ui-monospace, Menlo, monospace"
+          font-size="24" font-weight="800" fill="#4191E1">0</text>
+    <text x="1004" y="34" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+          font-size="16" font-weight="500" fill="#cbd5e1">network calls · 100 % local</text>
+  </g>
+
+  <!-- FEATURE CHIPS (5 across, no duplicate 1000×) -->
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+     font-size="18" font-weight="600">
+
+    <g transform="translate(62, 406)" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin="1.5s" fill="freeze"/>
+      <rect width="224" height="52" rx="12" fill="#4191E1" fill-opacity="0.12" stroke="#4191E1" stroke-opacity="0.45"/>
+      <text x="112" y="33" text-anchor="middle" fill="#4191E1">Survives compaction</text>
     </g>
-    <g transform="translate(332, 420)">
-      <rect width="200" height="54" rx="12" fill="#41E1B5" fill-opacity="0.12" stroke="#41E1B5" stroke-opacity="0.45"/>
-      <text x="100" y="34" text-anchor="middle" fill="#41E1B5">18 AI tools</text>
+
+    <g transform="translate(304, 406)" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin="1.65s" fill="freeze"/>
+      <rect width="214" height="52" rx="12" fill="#41E1B5" fill-opacity="0.12" stroke="#41E1B5" stroke-opacity="0.45"/>
+      <text x="107" y="33" text-anchor="middle" fill="#41E1B5">18 AI tools · 1-cmd install</text>
     </g>
-    <g transform="translate(552, 420)">
-      <rect width="240" height="54" rx="12" fill="#22D3EE" fill-opacity="0.12" stroke="#22D3EE" stroke-opacity="0.45"/>
-      <text x="120" y="34" text-anchor="middle" fill="#22D3EE">25× token reduction</text>
+
+    <g transform="translate(536, 406)" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin="1.8s" fill="freeze"/>
+      <rect width="218" height="52" rx="12" fill="#22D3EE" fill-opacity="0.12" stroke="#22D3EE" stroke-opacity="0.45"/>
+      <text x="109" y="33" text-anchor="middle" fill="#22D3EE">Step Ledger · multimodal</text>
     </g>
-    <g transform="translate(812, 420)">
-      <rect width="200" height="54" rx="12" fill="#a78bfa" fill-opacity="0.12" stroke="#a78bfa" stroke-opacity="0.45"/>
-      <text x="100" y="34" text-anchor="middle" fill="#a78bfa">Zero cloud</text>
+
+    <g transform="translate(772, 406)" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin="1.95s" fill="freeze"/>
+      <rect width="180" height="52" rx="12" fill="#a78bfa" fill-opacity="0.12" stroke="#a78bfa" stroke-opacity="0.45"/>
+      <text x="90" y="33" text-anchor="middle" fill="#a78bfa">Zero cloud</text>
+    </g>
+
+    <g transform="translate(970, 406)" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin="2.1s" fill="freeze"/>
+      <rect width="160" height="52" rx="12" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.45"/>
+      <text x="80" y="33" text-anchor="middle" fill="#fbbf24">Apache-2.0</text>
+    </g>
+
+    <g transform="translate(1148, 406)" opacity="0">
+      <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin="2.25s" fill="freeze"/>
+      <rect width="70" height="52" rx="12" fill="#fb7185" fill-opacity="0.12" stroke="#fb7185" stroke-opacity="0.45"/>
+      <text x="35" y="33" text-anchor="middle" fill="#fb7185">v0.3</text>
     </g>
   </g>
 
-  <!-- install command -->
-  <g transform="translate(92, 520)">
-    <rect width="900" height="68" rx="12" fill="#0b0f19" stroke="#334155"/>
-    <text x="28" y="43"
+  <!-- INSTALL COMMAND (single, centered in viewport) -->
+  <g transform="translate(62, 494)" opacity="0">
+    <animate attributeName="opacity" from="0" to="1" dur="0.6s" begin="2.4s" fill="freeze"/>
+    <rect x="-1" y="-1" width="1158" height="70" rx="13" fill="none"
+          stroke="#41E1B5" stroke-opacity="0">
+      <animate attributeName="stroke-opacity" values="0;0.28;0" dur="1.1s" begin="3s" repeatCount="indefinite"/>
+    </rect>
+    <rect width="1156" height="68" rx="12" fill="#0b0f19" stroke="#334155"/>
+    <text x="28" y="44"
           font-family="JetBrains Mono, SF Mono, ui-monospace, Menlo, monospace"
           font-size="22" fill="#cbd5e1">
       <tspan fill="#64748b">$ </tspan>/plugin marketplace add github:omanishay-cyber/mneme
     </text>
+    <rect x="812" y="25" width="12" height="28" fill="#41E1B5">
+      <animate attributeName="opacity" values="1;0;1" dur="1.1s" repeatCount="indefinite"/>
+    </rect>
   </g>
 
-  <!-- bottom-right repo label -->
-  <text x="1188" y="615" text-anchor="end"
+  <!-- BOTTOM-RIGHT REPO LABEL -->
+  <text x="1218" y="608" text-anchor="end"
         font-family="JetBrains Mono, SF Mono, ui-monospace, monospace"
-        font-size="18"
-        fill="#64748b">github.com/omanishay-cyber/mneme</text>
+        font-size="16" fill="#64748b">github.com/omanishay-cyber/mneme</text>
 </svg>

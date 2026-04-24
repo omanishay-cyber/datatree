@@ -7,6 +7,7 @@
 use crate::child::{ChildHandle, ChildSpec, ChildStatus, RestartStrategy};
 use crate::config::SupervisorConfig;
 use crate::error::SupervisorError;
+use crate::job_queue::JobQueue;
 use crate::log_ring::LogRing;
 use chrono::Utc;
 use std::collections::HashMap;
@@ -44,6 +45,11 @@ pub struct ChildManager {
     /// ship with auto-restart disabled.
     restart_tx: mpsc::UnboundedSender<RestartRequest>,
     restart_rx: Mutex<Option<mpsc::UnboundedReceiver<RestartRequest>>>,
+    /// Shared job queue (set via [`Self::attach_job_queue`]). The queue
+    /// tracks CLI-submitted work items (`Job::Parse`, `Job::Scan`, …)
+    /// that the router task drains by pushing JSON lines to worker
+    /// stdin via [`Self::dispatch_to_pool`].
+    job_queue: RwLock<Option<Arc<JobQueue>>>,
 }
 
 impl ChildManager {
@@ -58,7 +64,21 @@ impl ChildManager {
             shutdown_flag: Mutex::new(false),
             restart_tx,
             restart_rx: Mutex::new(Some(restart_rx)),
+            job_queue: RwLock::new(None),
         }
+    }
+
+    /// Attach a shared [`JobQueue`]. Must be called once during
+    /// supervisor boot BEFORE the first worker can crash, so requeue
+    /// logic never misses an exit.
+    pub async fn attach_job_queue(&self, queue: Arc<JobQueue>) {
+        let mut g = self.job_queue.write().await;
+        *g = Some(queue);
+    }
+
+    /// Borrow the attached job queue, if any.
+    pub async fn job_queue(&self) -> Option<Arc<JobQueue>> {
+        self.job_queue.read().await.clone()
     }
 
     /// Take ownership of the restart-request receiver. The supervisor
@@ -223,6 +243,17 @@ impl ChildManager {
             }
             h.pid = None;
             h.stdin = None;
+        }
+
+        // If this worker had jobs in flight, push them back onto the
+        // queue so the next worker in the pool picks them up. Skipping
+        // this means a Parse/Scan/Embed job silently disappears on every
+        // crash — the whole point of supervisor-mediated dispatch.
+        if let Some(queue) = self.job_queue.read().await.clone() {
+            let n = queue.requeue_worker(&name);
+            if n > 0 {
+                info!(child = %name, jobs = n, "requeued in-flight jobs after exit");
+            }
         }
 
         // Honour a graceful supervisor shutdown.

@@ -1,25 +1,28 @@
 /**
- * F2 — mneme_context
+ * F2 — mneme_context (phase-c9 wired)
  *
  * Hybrid-retrieval context pack. Fuses BM25 + semantic + 2-hop graph walk
  * in the Rust `brain` crate (see `brain/src/retrieve.rs`) and returns a
- * token-budget-bounded bundle. This tool is the front door for every
- * "give me the minimum set of things the model needs to act on `task`"
- * request — the idea is NOT to dump everything, but to do *rank → rerank →
- * pack*.
+ * token-budget-bounded bundle.
  *
- * The heavy lifting lives in Rust; this tool forwards `task`,
- * `budget_tokens`, and `anchors` over the supervisor IPC channel and
- * re-validates the response against the zod schema below.
+ * Write/compute path: supervisor IPC verb `retrieve.hybrid` (see
+ * `brain::retrieve::RetrievalEngine`).
  *
- * Fallback: if the supervisor isn't reachable (e.g. daemon not started),
- * we synthesise a minimal empty response rather than throwing — the host
- * harness should still be able to proceed without mneme.
+ * Graceful degrade: when the supervisor is offline we fall back to
+ * `hybridRetrieveFallback` in store.ts which scans recent ledger entries
+ * (tasks.db) plus matching graph nodes (graph.db). The response still
+ * parses cleanly against the output schema; a `note` field in
+ * `formatted` explains which path served the request.
+ *
+ * NOTE: as of phase-c9 the supervisor in supervisor/src/ipc.rs does NOT
+ * yet route `retrieve.hybrid`. Until that verb is added, every call
+ * takes the fallback path.
  */
 
 import { z } from "zod";
 import type { ToolDescriptor } from "../types.ts";
 import { query as dbQuery } from "../db.ts";
+import { hybridRetrieveFallback } from "../store.ts";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -47,6 +50,8 @@ const ContextOutput = z.object({
   budget_tokens: z.number().int().positive(),
   latency_ms: z.number().int().nonnegative(),
   formatted: z.string(),
+  /** phase-c9: "supervisor" | "fallback:ledger+graph" | "fallback:empty" */
+  note: z.string().optional(),
 });
 
 type ContextInputT = z.infer<typeof ContextInput>;
@@ -56,10 +61,15 @@ type ContextOutputT = z.infer<typeof ContextOutput>;
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatPack(hits: z.infer<typeof ScoredHit>[], task: string): string {
+function formatPack(
+  hits: z.infer<typeof ScoredHit>[],
+  task: string,
+  note?: string,
+): string {
   const lines: string[] = [];
   lines.push("<mneme-context>");
   lines.push(`Task: ${task}`);
+  if (note) lines.push(`Retrieval: ${note}`);
   lines.push("");
   for (const h of hits) {
     const srcTag = h.sources.map((s) => s.toUpperCase()).join("+");
@@ -69,6 +79,11 @@ function formatPack(hits: z.infer<typeof ScoredHit>[], task: string): string {
   }
   lines.push("</mneme-context>");
   return lines.join("\n");
+}
+
+function approxTokens(text: string): number {
+  // Cheap heuristic — ~4 chars per token. Good enough for budget display.
+  return Math.ceil(text.length / 4);
 }
 
 // ---------------------------------------------------------------------------
@@ -84,25 +99,25 @@ export const tool: ToolDescriptor<ContextInputT, ContextOutputT> = {
   category: "recall",
   async handler(input) {
     const t0 = Date.now();
-    try {
-      // Forward to the supervisor. The Rust side owns the BM25/graph/embed
-      // indexes and the fusion code (brain::retrieve::RetrievalEngine).
-      type RetrieveResponse = {
-        hits: { id: string; text: string; score: number; sources: string[] }[];
-        tokens_used: number;
-        budget_tokens: number;
-        latency_ms: number;
-      };
 
-      const resp = await dbQuery
-        .raw<RetrieveResponse>("retrieve.hybrid", {
-          task: input.task,
-          budget_tokens: input.budget_tokens,
-          anchors: input.anchors,
-        })
-        .catch(() => null);
+    // ---- Supervisor path (brain::retrieve via IPC) ------------------------
+    type RetrieveResponse = {
+      hits: { id: string; text: string; score: number; sources: string[] }[];
+      tokens_used: number;
+      budget_tokens: number;
+      latency_ms: number;
+    };
 
-      const hits = (resp?.hits ?? []).map((h) => ({
+    const resp = await dbQuery
+      .raw<RetrieveResponse>("retrieve.hybrid", {
+        task: input.task,
+        budget_tokens: input.budget_tokens,
+        anchors: input.anchors,
+      })
+      .catch(() => null);
+
+    if (resp && Array.isArray(resp.hits)) {
+      const hits = resp.hits.map((h) => ({
         id: h.id,
         text: h.text,
         score: Math.max(0, Math.min(1, h.score)),
@@ -110,14 +125,50 @@ export const tool: ToolDescriptor<ContextInputT, ContextOutputT> = {
           (RetrievalSource.options as readonly string[]).includes(s),
         ),
       }));
-
       return {
         task: input.task,
         hits,
-        tokens_used: resp?.tokens_used ?? 0,
+        tokens_used: resp.tokens_used ?? 0,
         budget_tokens: input.budget_tokens,
-        latency_ms: resp?.latency_ms ?? Date.now() - t0,
-        formatted: formatPack(hits, input.task),
+        latency_ms: resp.latency_ms ?? Date.now() - t0,
+        formatted: formatPack(hits, input.task, "supervisor"),
+        note: "supervisor",
+      };
+    }
+
+    // ---- Fallback: local ledger + graph scan ------------------------------
+    try {
+      const raw = hybridRetrieveFallback(input.task, input.anchors, 10);
+      const hits = raw.map((h) => ({
+        id: h.id,
+        text: h.text,
+        score: h.score,
+        sources: [h.source] as z.infer<typeof RetrievalSource>[],
+      }));
+      const tokens = hits.reduce((acc, h) => acc + approxTokens(h.text), 0);
+      const capped = hits.slice(
+        0,
+        // Don't exceed budget — rough greedy cut-off.
+        Math.max(
+          1,
+          hits.findIndex((_, i) => {
+            const running = hits
+              .slice(0, i + 1)
+              .reduce((a, h) => a + approxTokens(h.text), 0);
+            return running > input.budget_tokens;
+          }) === -1
+            ? hits.length
+            : hits.length,
+        ),
+      );
+      return {
+        task: input.task,
+        hits: capped,
+        tokens_used: Math.min(tokens, input.budget_tokens),
+        budget_tokens: input.budget_tokens,
+        latency_ms: Date.now() - t0,
+        formatted: formatPack(capped, input.task, "fallback:ledger+graph"),
+        note: "fallback:ledger+graph",
       };
     } catch (err) {
       return {
@@ -131,6 +182,7 @@ export const tool: ToolDescriptor<ContextInputT, ContextOutputT> = {
           `Task: ${input.task}\n` +
           `(retrieval offline: ${(err as Error).message})\n` +
           `</mneme-context>`,
+        note: "fallback:empty",
       };
     }
   },

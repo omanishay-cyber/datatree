@@ -1,6 +1,6 @@
 # Installing mneme
 
-> **TL;DR for v0.2.0:** prebuilt binaries attached to the release for Linux x64 / macOS arm64 / Windows x64. One-line installers below.
+> **TL;DR for v0.2.3:** prebuilt binaries attached to the release for Linux x64 / macOS arm64 / Windows x64. One-line installers below.
 
 mneme is a multi-process daemon (Rust supervisor + Bun MCP server). Multimodal extraction is pure Rust — no Python sidecar as of v0.2. The install process has three paths, sized for three kinds of users.
 
@@ -62,7 +62,7 @@ Then start the daemon:
 ./target/release/mneme-supervisor start
 ```
 
-## Path 2 — Marketplace plugin install (requires v0.1.1 + binary release)
+## Path 2 — Marketplace plugin install
 
 ```bash
 # In any Claude Code project:
@@ -70,7 +70,7 @@ Then start the daemon:
 /plugin install mneme
 ```
 
-> **v0.1.0 status:** the marketplace manifest is shipped, but the post-install step that downloads prebuilt binaries isn't wired yet. Use Path 1 for v0.1.0. v0.1.1 closes this gap.
+> Resolved in v0.2.x — prebuilt binaries are attached to each tagged release by the GitHub Actions release workflow.
 
 ## Path 3 — Bundle installer script (POSIX + Windows, alpha)
 
@@ -89,14 +89,14 @@ The bundle installer:
 4. Starts the supervisor
 5. Runs `mneme install` to configure every detected AI tool
 
-> **v0.1.0 status:** script works on a machine that already has the core dev tools. Full auto-install of Rust/Bun/Python on a blank box is exercised in v0.1.1.
+> Resolved in v0.2.x — the bundle installer auto-installs Rust/Bun/Python on a blank box as well as on a machine with pre-existing dev tools.
 
 ---
 
 ## Verify the install
 
 ```bash
-mneme --version              # should print 0.1.0
+mneme --version              # should print 0.2.3
 mneme doctor                 # runs in-process + IPC checks; prints SLA snapshot
 mneme daemon status          # live per-child JSON from the supervisor
 curl http://127.0.0.1:7777/health   # raw daemon health endpoint
@@ -137,11 +137,11 @@ mneme-supervisor install    # registers MnemeDaemon service
 
 ### "C# grammar skipped" warning
 
-Expected in v0.1.0. The `tree-sitter-c-sharp` crate version (v15 ABI) doesn't match the Tree-sitter runtime (v13–14 ABI). C# files are simply not indexed; every other language works. Bumping pending in v0.2.
+Resolved in v0.2.x. Tree-sitter was bumped 0.23 → 0.25 (ABI v15); C# is now wired alongside the rest of the Tier-1/Tier-2 grammar set.
 
 ### "bun not found" when running supervisor-spawned MCP server
 
-Only affects the optional supervisor-managed MCP child, which v0.1.0 intentionally doesn't spawn (Claude Code starts `mneme mcp stdio` itself). If you want to run the MCP server outside Claude Code, set `MNEME_BUN` env var to the absolute path of your `bun` binary.
+Only affects the optional supervisor-managed MCP child — Claude Code starts `mneme mcp stdio` itself. If you want to run the MCP server outside Claude Code, set `MNEME_BUN` env var to the absolute path of your `bun` binary.
 
 ### Build fails on Windows with "link.exe not found"
 
@@ -191,6 +191,6 @@ All file writes are marker-wrapped (`<!-- mneme-start v1.0 -->` / `<!-- mneme-en
 ## Next steps
 
 - Read [docs/architecture.md](docs/architecture.md) to understand the system
-- Read [docs/mcp-tools.md](docs/mcp-tools.md) for the 46 MCP tool reference
+- Read [docs/mcp-tools.md](docs/mcp-tools.md) for the 47 MCP tool reference
 - Read [docs/faq.md](docs/faq.md) for common questions
 - Open an [Issue](https://github.com/omanishay-cyber/mneme/issues) or a [Discussion](https://github.com/omanishay-cyber/mneme/discussions) if you hit something not covered here

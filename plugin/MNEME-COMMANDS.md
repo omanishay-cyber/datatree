@@ -53,7 +53,7 @@
 
 ---
 
-## 🛠 All 46 MCP tools (surface)
+## 🛠 All 47 MCP tools (surface)
 
 ### Retrieval (12)
 - `mneme_context(task, budget_tokens, anchors)` — hybrid BM25 + semantic + graph-walk with RRF fusion + reranker, greedy pack to budget

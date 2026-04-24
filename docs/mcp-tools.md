@@ -1,8 +1,8 @@
 # mneme MCP tools reference
 
-33+ tools, grouped by category. Every tool is callable from Claude Code, Codex, Cursor, or any MCP-aware AI client once `mneme install` has registered the MCP server.
+47 tools (40 wired, 6 supervisor-only pending, 1 hybrid-retrieval), grouped by category. Every tool is callable from Claude Code, Codex, Cursor, or any MCP-aware AI client once `mneme install` has registered the MCP server.
 
-> **v0.1.0 status:** 3 flagship tools (`blast_radius`, `recall_concept`, `health`) return real data from the live SQLite shard. The other 30 tools return structured stubs (same schema, empty results) until they're wired in v0.2 — pattern is identical, just needs the `store.ts` helper call.
+> **v0.2.3 status:** 40 of 47 tools wired to real data; see [`BENCHMARKS.md`](../benchmarks/BENCHMARKS.md) for the measured harness. Remaining 6 are legitimately supervisor-only write/dispatch ops (context, refactor_apply, surprising_connections, step_plan_from, rebuild, snapshot) + 1 hybrid-retrieval surface still landing.
 
 ---
 
@@ -90,7 +90,7 @@ Claude picks up the MCP server automatically after `mneme install` has written t
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"blast_radius","arguments":{"target":"src/auth/login.ts","depth":2}}}' | mneme mcp stdio
 ```
 
-### Example output (real, from running mneme v0.1.0)
+### Example output (real, from running mneme v0.2.3)
 
 ```json
 {

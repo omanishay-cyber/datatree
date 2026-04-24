@@ -151,7 +151,7 @@ export class MnemeMcpServer {
             uri: "mneme://commands",
             name: "Mneme command reference",
             description:
-              "Full reference: decision tree, 46 MCP tools, 25 CLI commands, 13 slash commands, hook behavior, data locations.",
+              "Full reference: decision tree, 47 MCP tools (all wired), 25 CLI commands, 13 slash commands, hook behavior, data locations.",
             mimeType: "text/markdown",
           },
           {

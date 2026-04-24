@@ -14,6 +14,9 @@ name = "mneme_brain"
 path = "src/lib.rs"
 
 [features]
+# Default: hashing-trick fallback only. No ONNX / native deps.
+# This is the safest baseline — `cargo check --workspace` works on any
+# machine regardless of ONNX Runtime install state, Windows DLL state, etc.
 default = []
 # Optional local LLM (Phi-3-mini-4k Q4_K_M via llama.cpp).
 # Enabling pulls in a native build of llama.cpp; disabled by default to keep
@@ -23,6 +26,27 @@ llm = ["dep:llama-cpp-2"]
 # requires a fastembed build that ships the reranker model surface, which
 # is not yet stable across all tier-1 targets. See brain/src/reranker.rs.
 reranker = []
+# Real BGE-small-en-v1.5 embeddings via the `ort` crate (direct ONNX
+# Runtime bindings).
+#
+# OFF by default because ORT Runtime requires a system-installed
+# `onnxruntime.dll` / `libonnxruntime.so` OR an explicit `ORT_DYLIB_PATH`
+# env var. Enabling this without a working ORT install produces runtime
+# load errors (not compile errors — `load-dynamic` defers linking to
+# runtime).
+#
+# Typical enablement flow:
+#   1. `cargo install --features real-embeddings`
+#   2. Drop `onnxruntime.dll` on PATH or set `ORT_DYLIB_PATH=...`
+#   3. `mneme models install <path-to-bge-small-en-v1.5.onnx>`
+#
+# If the feature is enabled but the DLL/model is missing at runtime, the
+# embedder gracefully falls back to the hashing-trick backend.
+real-embeddings = ["dep:ort", "dep:ndarray"]
+# Back-compat alias — older `cli` crate wiring references `brain/fastembed`
+# to enable the install path. Map it to the new feature so the workspace
+# keeps compiling without touching cli/Cargo.toml.
+fastembed = ["real-embeddings"]
 
 [dependencies]
 # Workspace sibling — provides shared types (NodeId, EdgeKind, etc.).
@@ -42,19 +66,6 @@ tokio = { version = "1", features = [
     "signal",
 ] }
 
-# v0.2: real BGE-small-en-v1.5 embeddings via fastembed-rs (ONNX Runtime).
-# - Offline-safe after first `mneme models install` (model cached to
-#   ~/.mneme/llm/).
-# - If the model is missing at runtime, Embedder transparently falls back
-#   to the pure-Rust hashing-trick backend so a fresh install still works.
-# The `fastembed` crate is behind a feature flag so the rest of the
-# workspace continues to build in environments without a C++ toolchain
-# (ONNX Runtime needs one). Enabled by default on tier-1 platforms.
-fastembed = { version = "4", optional = true, default-features = false, features = [
-    "ort-download-binaries",
-    "hf-hub-native-tls",
-] }
-
 # HuggingFace tokenizers (pure-Rust; no network at load time when given a
 # local tokenizer.json path). Used by the fallback hashing-trick backend
 # for consistent token-level segmentation.
@@ -64,7 +75,17 @@ tokenizers = { version = "0.20", default-features = false, features = [
 
 # Graph + numerics
 petgraph = { version = "0.6", features = ["serde-1"] }
-ndarray = { version = "0.15", features = ["serde"] }
+# ndarray — pulled in when `real-embeddings` feature is enabled.
+# Version 0.17 matches what `ort 2.0.0-rc.12` re-exports; using 0.16 here
+# creates two parallel ndarray crates in the dep graph and ort's
+# `Value::from_array` will not accept our `Array2`.
+ndarray = { version = "0.17", optional = true, features = ["serde"] }
+
+# Direct ONNX Runtime bindings — only compiled in when `real-embeddings`
+# feature is active. We rely on the `load-dynamic` feature so compilation
+# never fails because of a missing `onnxruntime.dll`; linking is deferred
+# to runtime. See brain/src/embeddings.rs::RealBackend for the load path.
+ort = { workspace = true, optional = true, features = ["load-dynamic"] }
 
 # Serde + IO
 serde = { version = "1", features = ["derive"] }

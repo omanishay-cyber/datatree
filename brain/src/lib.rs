@@ -83,7 +83,7 @@ pub use conventions::{
     Violation,
 };
 pub use embed_store::{EmbedStore, NearestHit};
-pub use embeddings::{install_default_model, Embedder, EMBEDDING_DIM};
+pub use embeddings::{cosine_similarity, install_default_model, Embedder, EMBEDDING_DIM};
 pub use error::{BrainError, BrainResult as BrainOutcome};
 pub use federated::{
     minhash_k, simhash_64, FederatedCounts, FederatedStore, PatternFingerprint, MINHASH_K,

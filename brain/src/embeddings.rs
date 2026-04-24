@@ -3,35 +3,34 @@
 //! # Two-tier backend strategy
 //!
 //! Mneme embeds code/text into 384-dim vectors for semantic recall. The
-//! quality of those vectors directly controls retrieval hit-rate (`recall_concept`,
-//! `blast_radius` secondary ranking, `find_references` across renames, etc).
+//! quality of those vectors directly controls retrieval hit-rate
+//! (`recall_concept`, `blast_radius` secondary ranking, `find_references`
+//! across renames, etc).
 //!
-//! v0.1 shipped a pure-Rust **hashing-trick** backend: cheap, offline-safe,
-//! zero dependencies, mediocre paraphrase quality.
+//! The embedder selects its backend at runtime:
 //!
-//! v0.2 adds a real **BGE-Small-En-v1.5** backend via `fastembed` (ONNX
-//! Runtime under the hood). The upgrade is transparent:
+//! 1. **`real-embeddings` feature ON** — tries to load BGE-small-en-v1.5
+//!    via the `ort` crate (ONNX Runtime) + `tokenizers`. Requires:
+//!    * an `onnxruntime.dll` / `libonnxruntime.so` on `PATH`, **or**
+//!    * the `ORT_DYLIB_PATH` env var pointing at the shared library, **and**
+//!    * the model + tokenizer at `$MNEME_HOME/models/` (or the default
+//!      `~/.mneme/models/`).
+//!    If any of those are missing, we log `warn!` and fall back to the
+//!    hashing-trick backend — **never panic**.
 //!
-//! 1. On first call, [`Embedder::new`] tries to load BGE from
-//!    `~/.mneme/llm/bge-small/` (or the default `fastembed` cache dir).
-//! 2. If the model is present, all subsequent `embed*` calls go through the
-//!    real transformer and produce semantically meaningful vectors.
-//! 3. If the model is missing (fresh machine, offline), the backend falls
-//!    back to the hashing trick and logs a warning. The workspace still
-//!    compiles and runs; retrieval is just less accurate.
+//! 2. **`real-embeddings` feature OFF** (the default on Windows, and on
+//!    any tier where ORT DLL loading is unreliable): the embedder always
+//!    uses the pure-Rust hashing-trick backend. Zero native deps, zero
+//!    DLLs, identical public API. Quality is lower on abstract paraphrase
+//!    but competitive on code (where token overlap dominates).
 //!
 //! Switching backends requires no caller change — the public API
 //! ([`Embedder::embed`], [`Embedder::embed_batch`]) is identical.
 //!
 //! # Offline-first
 //!
-//! Mneme never makes unsolicited network calls. The BGE model is fetched
-//! exactly once, by an explicit user action:
-//!
-//! ```text
-//! $ mneme models install        # ~130 MB download to ~/.mneme/llm/
-//! ```
-//!
+//! Mneme never makes unsolicited network calls. The BGE model must be
+//! installed explicitly by the user (`mneme models install <path.onnx>`).
 //! After that, everything is local.
 
 use std::path::{Path, PathBuf};
@@ -82,10 +81,14 @@ impl std::fmt::Debug for Embedder {
 }
 
 impl Embedder {
-    /// Build an embedder from the default `~/.mneme/llm/bge-small/` path.
+    /// Build an embedder from the default `$MNEME_HOME/models/` path
+    /// (or `~/.mneme/models/` if `MNEME_HOME` is unset).
     pub fn from_default_path() -> BrainResult<Self> {
         let base = default_model_dir();
-        Self::new(&base.join("model.onnx"), &base.join("tokenizer.json"))
+        Self::new(
+            &base.join("bge-small-en-v1.5.onnx"),
+            &base.join("tokenizer.json"),
+        )
     }
 
     /// Build an embedder from explicit paths. Missing files are tolerated —
@@ -108,8 +111,9 @@ impl Embedder {
                     ),
                     Backend::Fallback(_) => warn!(
                         model = %model_path.display(),
-                        "BGE model missing — embedder running in fallback mode. \
-                         Run `mneme models install` for full retrieval quality."
+                        "BGE model missing or ORT unavailable — embedder running in \
+                         hashing-trick fallback mode. Run `mneme models install <path>` \
+                         and (if needed) set ORT_DYLIB_PATH for full retrieval quality."
                     ),
                     Backend::Uninitialized => unreachable!(),
                 }
@@ -216,18 +220,19 @@ enum Backend {
 
 impl Backend {
     fn load(model_path: &Path, tokenizer_path: &Path) -> Self {
-        #[cfg(feature = "fastembed")]
+        #[cfg(feature = "real-embeddings")]
         {
-            match RealBackend::try_new(model_path) {
+            match RealBackend::try_new(model_path, tokenizer_path) {
                 Ok(b) => return Backend::Real(b),
                 Err(e) => {
                     warn!(
                         error = %e,
-                        "fastembed init failed — using hashing-trick fallback"
+                        "ort/BGE init failed — using hashing-trick fallback"
                     );
                 }
             }
         }
+        let _ = (model_path, tokenizer_path); // silence unused warnings on default build
         Backend::Fallback(FallbackBackend::try_load(tokenizer_path))
     }
 
@@ -249,36 +254,46 @@ impl Backend {
 }
 
 // ---------------------------------------------------------------------------
-// Real backend (fastembed / BGE-Small-En-v1.5)
+// Real backend (direct `ort` + `tokenizers`, BGE-Small-En-v1.5)
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "fastembed")]
+#[cfg(feature = "real-embeddings")]
 struct RealBackend {
-    model: fastembed::TextEmbedding,
+    session: ort::session::Session,
+    tokenizer: Tokenizer,
 }
 
-#[cfg(feature = "fastembed")]
+#[cfg(feature = "real-embeddings")]
 impl RealBackend {
-    fn try_new(model_path: &Path) -> BrainResult<Self> {
-        use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+    fn try_new(model_path: &Path, tokenizer_path: &Path) -> BrainResult<Self> {
+        use ort::session::Session;
 
-        // fastembed caches models under cache_dir. Point it at our own path so
-        // the same model dir works whether loaded via `mneme models install`
-        // or explicitly specified.
-        let cache_dir = model_path
-            .parent()
-            .and_then(|p| p.parent())
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| default_model_dir().parent().unwrap().to_path_buf());
+        if !model_path.exists() {
+            return Err(BrainError::ModelMissing {
+                path: model_path.display().to_string(),
+            });
+        }
+        if !tokenizer_path.exists() {
+            return Err(BrainError::TokenizerMissing {
+                path: tokenizer_path.display().to_string(),
+            });
+        }
 
-        let opts = InitOptions::new(EmbeddingModel::BGESmallENV15)
-            .with_cache_dir(cache_dir)
-            .with_show_download_progress(false);
+        // Dynamic ORT loading. Honors ORT_DYLIB_PATH if set; otherwise
+        // searches PATH / LD_LIBRARY_PATH for `onnxruntime.{dll,so,dylib}`.
+        //
+        // We do NOT call `ort::init()` ourselves — the crate's global init
+        // is lazy and will pick up ORT_DYLIB_PATH on first session build.
 
-        let model = TextEmbedding::try_new(opts).map_err(|e| {
-            BrainError::Embedding(format!("fastembed init: {e}"))
-        })?;
-        Ok(Self { model })
+        let tokenizer = Tokenizer::from_file(tokenizer_path)
+            .map_err(|e| BrainError::Tokenizer(format!("load {}: {e}", tokenizer_path.display())))?;
+
+        let session = Session::builder()
+            .map_err(|e| BrainError::Onnx(format!("Session::builder: {e}")))?
+            .commit_from_file(model_path)
+            .map_err(|e| BrainError::Onnx(format!("commit_from_file {}: {e}", model_path.display())))?;
+
+        Ok(Self { session, tokenizer })
     }
 
     fn embed_one(&mut self, text: &str) -> BrainResult<Vec<f32>> {
@@ -287,36 +302,120 @@ impl RealBackend {
     }
 
     fn embed_batch(&mut self, texts: &[&str]) -> BrainResult<Vec<Vec<f32>>> {
-        let documents: Vec<&str> = texts.to_vec();
-        let embeddings = self
-            .model
-            .embed(documents, None)
-            .map_err(|e| BrainError::Embedding(format!("fastembed embed: {e}")))?;
+        use ndarray::{Array2, Axis};
+        use ort::inputs;
+        use ort::value::Value;
 
-        // fastembed returns Vec<Vec<f32>> already L2-normalised and of the
-        // correct dimension. Defensive check.
-        for v in &embeddings {
-            if v.len() != EMBEDDING_DIM {
-                return Err(BrainError::Embedding(format!(
-                    "fastembed returned {} dims, expected {}",
-                    v.len(),
-                    EMBEDDING_DIM
-                )));
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Tokenize. We truncate to MAX_TOKENS and pad to the longest in batch.
+        let encodings = self
+            .tokenizer
+            .encode_batch(texts.to_vec(), true)
+            .map_err(|e| BrainError::Tokenizer(format!("encode_batch: {e}")))?;
+
+        let batch = encodings.len();
+        let max_len = encodings
+            .iter()
+            .map(|e| e.get_ids().len().min(MAX_TOKENS))
+            .max()
+            .unwrap_or(0)
+            .max(1);
+
+        let mut ids = Array2::<i64>::zeros((batch, max_len));
+        let mut attn = Array2::<i64>::zeros((batch, max_len));
+        let mut toks = Array2::<i64>::zeros((batch, max_len));
+
+        for (i, enc) in encodings.iter().enumerate() {
+            let src_ids = enc.get_ids();
+            let src_attn = enc.get_attention_mask();
+            let src_toks = enc.get_type_ids();
+            let n = src_ids.len().min(max_len);
+            for j in 0..n {
+                ids[[i, j]] = src_ids[j] as i64;
+                attn[[i, j]] = src_attn[j] as i64;
+                toks[[i, j]] = src_toks[j] as i64;
             }
         }
-        Ok(embeddings)
+
+        let ids_val = Value::from_array(ids.clone())
+            .map_err(|e| BrainError::Onnx(format!("Value::from_array ids: {e}")))?;
+        let attn_val = Value::from_array(attn.clone())
+            .map_err(|e| BrainError::Onnx(format!("Value::from_array attn: {e}")))?;
+        let toks_val = Value::from_array(toks.clone())
+            .map_err(|e| BrainError::Onnx(format!("Value::from_array toks: {e}")))?;
+
+        let outputs = self
+            .session
+            .run(inputs![
+                "input_ids" => ids_val,
+                "attention_mask" => attn_val,
+                "token_type_ids" => toks_val,
+            ])
+            .map_err(|e| BrainError::Onnx(format!("session.run: {e}")))?;
+
+        // BGE-small output: "last_hidden_state" shape [batch, seq, 384].
+        // Some exports use index 0; try name first, fall back to positional.
+        let (_name, out_val) = outputs
+            .iter()
+            .next()
+            .ok_or_else(|| BrainError::Onnx("model produced no outputs".into()))?;
+
+        let (shape, data) = out_val
+            .try_extract_tensor::<f32>()
+            .map_err(|e| BrainError::Onnx(format!("extract_tensor f32: {e}")))?;
+
+        if shape.len() != 3 || shape[2] as usize != EMBEDDING_DIM {
+            return Err(BrainError::Onnx(format!(
+                "unexpected output shape {:?}, want [batch, seq, {}]",
+                shape, EMBEDDING_DIM
+            )));
+        }
+        let seq = shape[1] as usize;
+
+        // Mean-pool over the sequence dim, masked by the attention_mask.
+        let mut results: Vec<Vec<f32>> = Vec::with_capacity(batch);
+        for b in 0..batch {
+            let mut pooled = vec![0f32; EMBEDDING_DIM];
+            let mut n_valid: f32 = 0.0;
+            for t in 0..seq {
+                if t >= max_len || attn[[b, t]] == 0 {
+                    continue;
+                }
+                n_valid += 1.0;
+                let base = (b * seq + t) * EMBEDDING_DIM;
+                for d in 0..EMBEDDING_DIM {
+                    pooled[d] += data[base + d];
+                }
+            }
+            if n_valid > 0.0 {
+                for v in &mut pooled {
+                    *v /= n_valid;
+                }
+            }
+            l2_normalise(&mut pooled);
+            results.push(pooled);
+        }
+
+        // ndarray `Axis` unused marker to keep import list stable if model
+        // export changes later. (Not load-bearing.)
+        let _ = Axis(0);
+
+        Ok(results)
     }
 }
 
-#[cfg(not(feature = "fastembed"))]
+#[cfg(not(feature = "real-embeddings"))]
 struct RealBackend;
 
-#[cfg(not(feature = "fastembed"))]
+#[cfg(not(feature = "real-embeddings"))]
 impl RealBackend {
     #[allow(dead_code)]
-    fn try_new(_model_path: &Path) -> BrainResult<Self> {
+    fn try_new(_model_path: &Path, _tokenizer_path: &Path) -> BrainResult<Self> {
         Err(BrainError::Embedding(
-            "fastembed feature disabled at compile time".into(),
+            "`real-embeddings` feature disabled at compile time".into(),
         ))
     }
 
@@ -463,51 +562,229 @@ fn l2_normalise(v: &mut [f32]) {
     }
 }
 
-/// Default model directory, e.g. `~/.mneme/llm/bge-small/`.
+/// Default model directory.
+///
+/// Resolution order:
+///   1. `$MNEME_HOME/models/`
+///   2. `~/.mneme/models/`
+///   3. `./.mneme/models/` (cwd fallback if no home dir)
 pub fn default_model_dir() -> PathBuf {
-    if let Some(home) = dirs::home_dir() {
-        home.join(".mneme").join("llm").join("bge-small")
-    } else {
-        PathBuf::from(".mneme/llm/bge-small")
+    if let Ok(home) = std::env::var("MNEME_HOME") {
+        return PathBuf::from(home).join("models");
     }
+    if let Some(home) = dirs::home_dir() {
+        return home.join(".mneme").join("models");
+    }
+    PathBuf::from(".mneme/models")
 }
 
 /// Explicit model-install entry point, used by `mneme models install`.
 ///
-/// This is the ONE network call mneme is allowed to make, and only when
-/// the user asks for it. It initialises fastembed with `show_download_progress
-/// = true` so the CLI can stream a progress bar.
-///
-/// Returns `Ok(())` on success. Errors when network is unreachable or the
-/// fastembed feature wasn't compiled in.
-#[cfg(feature = "fastembed")]
+/// As of v0.2 this function only *validates* that files exist on the
+/// machine — it does **not** download anything. The CLI handler copies
+/// user-supplied local files into `default_model_dir()`. Network downloads,
+/// if ever added, must be behind an explicit `--from-url` flag with user
+/// opt-in.
 pub fn install_default_model() -> BrainResult<()> {
-    use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+    let dir = default_model_dir();
+    std::fs::create_dir_all(&dir).ok();
 
-    let cache_dir = default_model_dir()
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from(".mneme/llm"));
+    let onnx = dir.join("bge-small-en-v1.5.onnx");
+    let tok = dir.join("tokenizer.json");
 
-    std::fs::create_dir_all(&cache_dir).ok();
-
-    let opts = InitOptions::new(EmbeddingModel::BGESmallENV15)
-        .with_cache_dir(cache_dir.clone())
-        .with_show_download_progress(true);
-
-    let _model = TextEmbedding::try_new(opts)
-        .map_err(|e| BrainError::Embedding(format!("fastembed install: {e}")))?;
-
-    // Drop marker so the CLI can show "already installed" on subsequent runs.
-    let marker = cache_dir.join("bge-small").join(".installed");
-    std::fs::create_dir_all(marker.parent().unwrap()).ok();
-    std::fs::write(&marker, b"v0.2 BGESmallENV15 via fastembed\n").ok();
+    if !onnx.exists() || !tok.exists() {
+        return Err(BrainError::ModelMissing {
+            path: format!(
+                "{} or {} not present — drop the BGE-small-en-v1.5 files in {} \
+                 or use `mneme models install --from-path <dir>`",
+                onnx.display(),
+                tok.display(),
+                dir.display()
+            ),
+        });
+    }
+    let marker = dir.join(".installed");
+    std::fs::write(&marker, b"v0.2 bge-small-en-v1.5 validated\n").ok();
     Ok(())
 }
 
-#[cfg(not(feature = "fastembed"))]
-pub fn install_default_model() -> BrainResult<()> {
-    Err(BrainError::Embedding(
-        "this mneme build was compiled without the `fastembed` feature".into(),
-    ))
+/// Cosine similarity between two same-length f32 vectors.
+///
+/// Returns `0.0` when either vector has zero magnitude. Output is in
+/// `[-1.0, 1.0]` for nonzero inputs. Exposed publicly because the
+/// retrieval and benchmark layers share this math.
+pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let mut dot = 0f32;
+    let mut na = 0f32;
+    let mut nb = 0f32;
+    for i in 0..a.len() {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+    }
+    let denom = na.sqrt() * nb.sqrt();
+    if denom > 1e-12 {
+        dot / denom
+    } else {
+        0.0
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::Instant;
+
+    /// Locate the installed BGE model, if any. Returns `None` when the
+    /// user hasn't dropped the files in `~/.mneme/models/`.
+    fn find_installed_model() -> Option<(PathBuf, PathBuf)> {
+        let dir = default_model_dir();
+        let onnx = dir.join("bge-small-en-v1.5.onnx");
+        let tok = dir.join("tokenizer.json");
+        if onnx.exists() && tok.exists() {
+            Some((onnx, tok))
+        } else {
+            None
+        }
+    }
+
+    #[test]
+    fn hashing_trick_is_deterministic_and_normalised() {
+        let bogus = PathBuf::from("/definitely/nonexistent/model.onnx");
+        let toks = PathBuf::from("/definitely/nonexistent/tokenizer.json");
+        let e = Embedder::new(&bogus, &toks).expect("build embedder in fallback");
+        let v = e.embed("the quick brown fox").unwrap();
+        assert_eq!(v.len(), EMBEDDING_DIM);
+        // L2 norm == 1 (within float slop).
+        let n: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!((n - 1.0).abs() < 1e-4, "fallback vector not L2-normalised: {n}");
+    }
+
+    #[test]
+    fn cosine_similarity_basic_properties() {
+        let a: Vec<f32> = (0..EMBEDDING_DIM).map(|i| (i as f32) * 0.01).collect();
+        let mut b = a.clone();
+        // Identical vectors → cosine == 1.
+        assert!((cosine_similarity(&a, &b) - 1.0).abs() < 1e-4);
+        // Zero vector → 0.
+        b.iter_mut().for_each(|x| *x = 0.0);
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
+    }
+
+    /// Verifies the real BGE backend produces *semantic* similarity — two
+    /// paraphrases should score > 0.7 cosine while the hashing trick would
+    /// score near-zero on this pair (no token overlap).
+    ///
+    /// Skipped with a log line when the model isn't installed so CI and
+    /// fresh checkouts don't fail. Enable by running
+    /// `mneme models install --from-path <dir>` first.
+    #[cfg(feature = "real-embeddings")]
+    #[test]
+    fn bge_semantic_similarity_exceeds_hashing_floor() {
+        let Some((model, tok)) = find_installed_model() else {
+            eprintln!(
+                "bge_semantic_similarity_exceeds_hashing_floor: \
+                 model not installed, skipping"
+            );
+            return;
+        };
+        let e = Embedder::new(&model, &tok).expect("build embedder");
+        if !e.is_ready() {
+            eprintln!(
+                "bge_semantic_similarity_exceeds_hashing_floor: \
+                 real backend failed to init (likely ORT DLL missing), skipping"
+            );
+            return;
+        }
+        let v1 = e.embed("blast radius").unwrap();
+        let v2 = e.embed("explosion radius").unwrap();
+        let cos = cosine_similarity(&v1, &v2);
+        assert!(
+            cos > 0.7,
+            "expected cos('blast radius','explosion radius') > 0.7 under BGE, got {cos}"
+        );
+    }
+
+    /// Throughput benchmark — embeds N fixed strings and reports
+    /// strings-per-second. The hashing-trick baseline is effectively
+    /// memory-bandwidth-bound; the real backend is ONNX-inference-bound.
+    ///
+    /// The test is a smoke-level check that throughput is at least non-zero
+    /// in fallback mode. The printed numbers are useful for manual
+    /// comparison against the BGE path.
+    #[test]
+    fn embed_throughput_smoke() {
+        let bogus = PathBuf::from("/definitely/nonexistent/model.onnx");
+        let toks = PathBuf::from("/definitely/nonexistent/tokenizer.json");
+        let e = Embedder::new(&bogus, &toks).expect("build embedder in fallback");
+
+        let corpus: Vec<&str> = vec![
+            "fn compute_blast_radius(node: NodeId) -> BlastReport",
+            "pub fn embed(text: &str) -> Vec<f32>",
+            "SELECT * FROM edges WHERE src = ?",
+            "async fn dispatch_job(req: Request) -> Response",
+            "let store = EmbedStore::open(dir)?;",
+            "impl Iterator for Graph { type Item = NodeId; }",
+            "/// returns nearest K neighbours by cosine",
+            "error[E0277]: trait bound not satisfied",
+            "use std::collections::HashMap;",
+            "return Err(BrainError::ModelMissing { path });",
+        ];
+        let n_iters = 500usize;
+        e.clear_cache();
+
+        let t0 = Instant::now();
+        for _ in 0..n_iters {
+            for s in &corpus {
+                let _ = e.embed(s).unwrap();
+            }
+        }
+        let elapsed = t0.elapsed();
+        let total = (n_iters * corpus.len()) as f64;
+        let rate = total / elapsed.as_secs_f64();
+        eprintln!(
+            "hashing-trick throughput ({}): {:.0} strings/s over {} texts in {:?} (cache hit)",
+            e.backend_name(),
+            rate,
+            total as usize,
+            elapsed
+        );
+        assert!(rate > 0.0, "throughput was zero — embedder hung?");
+    }
+
+    /// Measure *cold* throughput (first embed, no cache), separately for
+    /// hashing trick and BGE. When BGE isn't installed, only the fallback
+    /// number is printed.
+    #[test]
+    fn embed_throughput_cold_uncached() {
+        let bogus = PathBuf::from("/definitely/nonexistent/model.onnx");
+        let toks = PathBuf::from("/definitely/nonexistent/tokenizer.json");
+        let e = Embedder::new(&bogus, &toks).expect("build embedder in fallback");
+
+        // Generate unique strings so the cache is bypassed on every iter.
+        let n = 500usize;
+        let texts: Vec<String> = (0..n).map(|i| format!("code snippet number {i} end")).collect();
+        let refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
+
+        let t0 = Instant::now();
+        let _ = e.embed_batch(&refs).unwrap();
+        let elapsed = t0.elapsed();
+        let rate = (n as f64) / elapsed.as_secs_f64();
+        eprintln!(
+            "COLD throughput ({}): {:.0} strings/s ({} in {:?})",
+            e.backend_name(),
+            rate,
+            n,
+            elapsed
+        );
+        assert!(rate > 100.0, "hashing-trick should do > 100/s, got {rate:.0}");
+    }
 }

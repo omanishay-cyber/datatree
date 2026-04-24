@@ -43,7 +43,9 @@ pub async fn run(args: SessionPrimeArgs, socket_override: Option<PathBuf>) -> Cl
         }
         Ok(IpcResponse::Pong)
         | Ok(IpcResponse::Status { .. })
-        | Ok(IpcResponse::Logs { .. }) => String::new(),
+        | Ok(IpcResponse::Logs { .. })
+        | Ok(IpcResponse::JobQueued { .. })
+        | Ok(IpcResponse::JobQueue { .. }) => String::new(),
         Err(e) => {
             warn!(error = %e, "supervisor unreachable");
             String::new()

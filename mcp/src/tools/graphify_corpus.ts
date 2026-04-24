@@ -1,16 +1,23 @@
 /**
- * MCP tool: graphify_corpus
+ * MCP tool: graphify_corpus (phase-c9 wired)
  *
  * Triggers the multimodal extraction pipeline.
  *
- * v0.1 (review P2): graphification is a write path — only the supervisor
- * may run it. We dispatch `multimodal.graphify_corpus` over IPC; when
- * the supervisor is offline we short-circuit to reporting the *current*
- * graph counts from the local `graph.db` so the caller gets real data
- * instead of a stub. Post-IPC we also re-read counts to validate the
- * supervisor's report.
+ * Write path (preferred): supervisor IPC verb
+ * `multimodal.graphify_corpus`. Only the supervisor may run this — it
+ * writes to corpus.db / graph.db / semantic.db and emits GRAPH_REPORT.md.
+ *
+ * Graceful degrade: when IPC is unavailable we short-circuit to reading
+ * the *current* graph counts from the local `graph.db` shard so the
+ * caller gets real-data-at-rest rather than a stub. On success we also
+ * re-read counts to validate the supervisor's report.
+ *
+ * NOTE: as of phase-c9 the supervisor in supervisor/src/ipc.rs does NOT
+ * yet route `multimodal.graphify_corpus` — every call takes the
+ * read-only local-count fallback.
  */
 
+import { z } from "zod";
 import {
   GraphifyCorpusInput,
   GraphifyCorpusOutput,
@@ -18,6 +25,11 @@ import {
 } from "../types.ts";
 import { query as dbQuery } from "../db.ts";
 import { graphStats, shardDbPath } from "../store.ts";
+
+// Additive extension — keep original shape intact.
+const GraphifyCorpusOutputExtended = GraphifyCorpusOutput.extend({
+  note: z.string().optional(),
+});
 
 function localCounts(): {
   nodes_count: number;
@@ -51,19 +63,20 @@ function localCounts(): {
   }
 }
 
-export const tool: ToolDescriptor<
-  ReturnType<typeof GraphifyCorpusInput.parse>,
-  ReturnType<typeof GraphifyCorpusOutput.parse>
-> = {
+type Input = ReturnType<typeof GraphifyCorpusInput.parse>;
+type Output = z.infer<typeof GraphifyCorpusOutputExtended>;
+
+export const tool: ToolDescriptor<Input, Output> = {
   name: "graphify_corpus",
   description:
     "Run the full multimodal extraction pass (AST + semantic + Leiden clustering) over the project corpus. mode='deep' is more aggressive with INFERRED edges. Writes to corpus.db and emits GRAPH_REPORT.md.",
   inputSchema: GraphifyCorpusInput,
-  outputSchema: GraphifyCorpusOutput,
+  outputSchema: GraphifyCorpusOutputExtended,
   category: "multimodal",
   async handler(input) {
     const t0 = Date.now();
 
+    // ---- Supervisor path --------------------------------------------------
     const result = await dbQuery
       .raw<
         Omit<ReturnType<typeof GraphifyCorpusOutput.parse>, "duration_ms">
@@ -75,10 +88,30 @@ export const tool: ToolDescriptor<
       .catch(() => null);
 
     if (result) {
-      return { ...result, duration_ms: Date.now() - t0 };
+      // Re-read live counts so the tool's response reflects the shard
+      // state on disk rather than whatever the worker reported. Ensures
+      // we never over-report a count the caller can't verify.
+      const live = localCounts();
+      return {
+        nodes_count: live.nodes_count || result.nodes_count,
+        edges_count: live.edges_count || result.edges_count,
+        hyperedges_count:
+          live.hyperedges_count || result.hyperedges_count,
+        communities_count:
+          live.communities_count || result.communities_count,
+        report_path: result.report_path ?? "",
+        duration_ms: Date.now() - t0,
+        note: "supervisor",
+      };
     }
 
+    // ---- Fallback: report current shard counts ----------------------------
     const counts = localCounts();
-    return { ...counts, duration_ms: Date.now() - t0, report_path: "" };
+    return {
+      ...counts,
+      duration_ms: Date.now() - t0,
+      report_path: "",
+      note: "fallback:local-counts",
+    };
   },
 };

@@ -104,8 +104,27 @@ CREATE TABLE IF NOT EXISTS files (
 
 CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
     name, qualified_name, file_path, signature, summary,
-    content='nodes', content_rowid='id', tokenize='porter'
+    content='nodes', content_rowid='id', tokenize='porter unicode61'
 );
+
+-- FTS5 sync triggers (phase-c10). Keep nodes_fts in lock-step with the base
+-- nodes table. Idempotent via CREATE TRIGGER IF NOT EXISTS. The INSERT OR
+-- REPLACE writer path in cli/build.rs + supervisor/watcher.rs triggers
+-- DELETE then INSERT on conflicts, which fires both sync triggers in order.
+CREATE TRIGGER IF NOT EXISTS nodes_ai AFTER INSERT ON nodes BEGIN
+    INSERT INTO nodes_fts(rowid, name, qualified_name, file_path, signature, summary)
+    VALUES (new.id, new.name, new.qualified_name, new.file_path, new.signature, new.summary);
+END;
+CREATE TRIGGER IF NOT EXISTS nodes_ad AFTER DELETE ON nodes BEGIN
+    INSERT INTO nodes_fts(nodes_fts, rowid, name, qualified_name, file_path, signature, summary)
+    VALUES ('delete', old.id, old.name, old.qualified_name, old.file_path, old.signature, old.summary);
+END;
+CREATE TRIGGER IF NOT EXISTS nodes_au AFTER UPDATE ON nodes BEGIN
+    INSERT INTO nodes_fts(nodes_fts, rowid, name, qualified_name, file_path, signature, summary)
+    VALUES ('delete', old.id, old.name, old.qualified_name, old.file_path, old.signature, old.summary);
+    INSERT INTO nodes_fts(rowid, name, qualified_name, file_path, signature, summary)
+    VALUES (new.id, new.name, new.qualified_name, new.file_path, new.signature, new.summary);
+END;
 
 CREATE TABLE IF NOT EXISTS hyperedges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

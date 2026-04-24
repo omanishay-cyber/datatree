@@ -9,7 +9,7 @@ If you're a user *consuming* mneme as an MCP plugin, see [README.md](README.md) 
 ## Project context
 
 - **Owner / sole copyright holder**: Anish Trivedi.
-- **License**: Apache-2.0. See [LICENSE](LICENSE). Source-available; use freely for your own work; no selling, hosting as a service, deriving competing MCPs, or training AI models.
+- **License**: Apache-2.0. See [LICENSE](LICENSE). Permissive: use, modify, distribute, sublicense, including commercially. Requires attribution + NOTICE file preservation.
 - **Status**: alpha — actively being iterated.
 - **Architecture**: multi-process (Rust supervisor + Bun TS MCP + Bun TS Vision app + Python multimodal sidecar). Architecture overview in [`docs/architecture.md`](docs/architecture.md).
 
@@ -71,7 +71,7 @@ If you're modifying source code:
 | `multimodal-bridge/` | Rust shim for Python sidecar | hand-written |
 | `cli/` | `mneme` CLI (install/build/audit/recall/step/etc.) | agent-generated |
 | `workers/multimodal/` | Python sidecar (PDF/Whisper/OCR) | agent-generated |
-| `mcp/` | Bun TS MCP server (33+ tools, 6 hooks) | agent-generated |
+| `mcp/` | Bun TS MCP server (47 tools, 6 hooks) | agent-generated |
 | `vision/` | Tauri + Bun TS app (14 views + Command Center) | agent-generated |
 | `plugin/` | plugin.json + templates + agents + skills + commands | agent-generated |
 | `scripts/` | Install scripts (POSIX + PowerShell), runtime deps | agent-generated |

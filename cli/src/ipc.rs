@@ -193,6 +193,16 @@ pub enum IpcRequest {
         /// Arbitrary JSON payload.
         payload: serde_json::Value,
     },
+    /// (v0.3) Queue a supervisor-mediated job. Maps to supervisor's
+    /// `DispatchJob` — the CLI uses this in `mneme build --dispatch`
+    /// to hand parse/scan/embed work to the worker pool.
+    DispatchJob {
+        /// The job to queue (parse/scan/embed/ingest).
+        job: common::jobs::Job,
+    },
+    /// (v0.3) Fetch a snapshot of the supervisor's job queue. Used by
+    /// the CLI build watchdog to know when all dispatched work is done.
+    JobQueueStatus,
 }
 
 /// One response from the supervisor. Wire format mirrors the supervisor's
@@ -218,6 +228,16 @@ pub enum IpcResponse {
     Ok {
         /// Optional message.
         message: Option<String>,
+    },
+    /// (v0.3) Job accepted by the supervisor.
+    JobQueued {
+        /// Supervisor-minted job id.
+        job_id: common::jobs::JobId,
+    },
+    /// (v0.3) Snapshot of the supervisor job queue.
+    JobQueue {
+        /// Snapshot shape mirrors `supervisor::JobQueueSnapshot`.
+        snapshot: serde_json::Value,
     },
     /// Error payload.
     Error {

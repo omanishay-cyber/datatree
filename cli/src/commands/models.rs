@@ -27,9 +27,29 @@ pub struct ModelsArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum Op {
-    /// Download default embedding model into `~/.mneme/llm/`.
+    /// Install BGE-small-en-v1.5 from a local directory you already have.
+    ///
+    /// Either pass `--from-path <dir>` pointing at a directory that
+    /// contains `bge-small-en-v1.5.onnx` and `tokenizer.json`, or (with
+    /// `fastembed-install` feature enabled at build time) omit the flag
+    /// to let fastembed download the default model.
+    ///
+    /// Network download via an arbitrary URL is only available when
+    /// `--from-url <url>` is passed explicitly — there are no implicit
+    /// network calls.
     Install {
-        /// Force re-download even if cached.
+        /// Local directory containing `bge-small-en-v1.5.onnx` +
+        /// `tokenizer.json`. Files are copied into `~/.mneme/models/`.
+        #[arg(long, value_name = "DIR")]
+        from_path: Option<PathBuf>,
+
+        /// Explicit download URL (opt-in network). Not yet implemented —
+        /// documented for forward compatibility so users know this is the
+        /// only path that can make a network call.
+        #[arg(long, value_name = "URL")]
+        from_url: Option<String>,
+
+        /// Force re-install even if already cached.
         #[arg(long)]
         force: bool,
     },
@@ -41,38 +61,94 @@ pub enum Op {
 
 pub fn run(args: ModelsArgs) -> CliResult<()> {
     match args.op {
-        Op::Install { force } => install(force),
+        Op::Install {
+            from_path,
+            from_url,
+            force,
+        } => install(from_path, from_url, force),
         Op::Status => status(),
         Op::Path => path_cmd(),
     }
 }
 
+/// Model root. Honors `$MNEME_HOME` first, then `~/.mneme/`.
 fn model_root() -> PathBuf {
+    if let Ok(h) = std::env::var("MNEME_HOME") {
+        return PathBuf::from(h).join("models");
+    }
     dirs::home_dir()
-        .map(|h| h.join(".mneme").join("llm"))
-        .unwrap_or_else(|| PathBuf::from(".mneme/llm"))
+        .map(|h| h.join(".mneme").join("models"))
+        .unwrap_or_else(|| PathBuf::from(".mneme/models"))
 }
 
-fn install(force: bool) -> CliResult<()> {
+fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) -> CliResult<()> {
     let root = model_root();
     fs::create_dir_all(&root).ok();
 
-    let bge_dir = root.join("bge-small");
-    let marker = bge_dir.join(".installed");
-    if marker.exists() && !force {
-        println!("mneme: BGE-Small-En-v1.5 already installed at {}", bge_dir.display());
-        println!("        · run with --force to reinstall");
+    let marker = root.join(".installed");
+    let target_onnx = root.join("bge-small-en-v1.5.onnx");
+    let target_tok = root.join("tokenizer.json");
+
+    if marker.exists() && !force && from_path.is_none() && from_url.is_none() {
+        println!("mneme: BGE-Small-En-v1.5 already installed at {}", root.display());
+        println!("        · run with --force or --from-path to reinstall");
         return Ok(());
     }
 
-    println!("mneme: installing BGE-Small-En-v1.5 (~130 MB) into {}", bge_dir.display());
-    println!("        · this is the ONLY network call mneme will make");
+    // --- from-url: explicit opt-in network download. Not yet implemented ---
+    if from_url.is_some() {
+        eprintln!("mneme: --from-url is not yet wired. Current policy: no implicit network.");
+        eprintln!("        · workaround: download manually, then re-run with --from-path <dir>");
+        return Ok(());
+    }
+
+    // --- from-path: copy local files (NO network) ---
+    if let Some(src_dir) = from_path {
+        if !src_dir.is_dir() {
+            eprintln!("mneme: --from-path {} is not a directory", src_dir.display());
+            return Ok(());
+        }
+        let src_onnx = src_dir.join("bge-small-en-v1.5.onnx");
+        let src_tok = src_dir.join("tokenizer.json");
+
+        if !src_onnx.exists() {
+            eprintln!("mneme: missing {}", src_onnx.display());
+            eprintln!("        · expected BGE-small-en-v1.5 ONNX export");
+            return Ok(());
+        }
+        if !src_tok.exists() {
+            eprintln!("mneme: missing {}", src_tok.display());
+            eprintln!("        · expected BGE tokenizer.json");
+            return Ok(());
+        }
+
+        println!("mneme: copying BGE-Small-En-v1.5 from {}", src_dir.display());
+        println!("       into {}", root.display());
+
+        if let Err(e) = fs::copy(&src_onnx, &target_onnx) {
+            eprintln!("mneme: copy onnx failed: {e}");
+            return Ok(());
+        }
+        if let Err(e) = fs::copy(&src_tok, &target_tok) {
+            eprintln!("mneme: copy tokenizer.json failed: {e}");
+            return Ok(());
+        }
+
+        fs::write(&marker, b"v0.2 bge-small-en-v1.5 via --from-path\n").ok();
+        let size_mb = fs::metadata(&target_onnx).map(|m| m.len() / 1_048_576).unwrap_or(0);
+        println!("mneme: model installed ({} MB)", size_mb);
+        println!("        · enable `real-embeddings` feature at build time to use it");
+        println!("        · on Windows also set ORT_DYLIB_PATH or place onnxruntime.dll on PATH");
+        return Ok(());
+    }
+
+    // --- default install path: fastembed download (feature-gated) ---
+    println!("mneme: installing BGE-Small-En-v1.5 (~130 MB) into {}", root.display());
 
     #[cfg(feature = "fastembed-install")]
     {
         match ::brain::install_default_model() {
             Ok(()) => {
-                fs::create_dir_all(&bge_dir).ok();
                 fs::write(&marker, b"v0.2 BGESmallENV15 via fastembed\n").ok();
                 println!("mneme: model installed");
             }
@@ -80,17 +156,24 @@ fn install(force: bool) -> CliResult<()> {
                 eprintln!("mneme: install failed: {e}");
                 eprintln!("        · the embedder will run in fallback (hashing-trick) mode");
                 eprintln!("        · retry: mneme models install --force");
+                eprintln!(
+                    "        · or manual install: drop bge-small-en-v1.5.onnx + \
+                     tokenizer.json into {} and re-run with --from-path",
+                    root.display()
+                );
             }
         }
     }
 
     #[cfg(not(feature = "fastembed-install"))]
     {
-        let _ = &bge_dir;
-        let _ = &marker;
+        let _ = (&target_onnx, &target_tok, &marker);
         println!("        · this mneme build was compiled without the `fastembed-install` feature.");
-        println!("          rebuild with `--features fastembed-install` or drop model files manually into:");
-        println!("            {}", bge_dir.display());
+        println!("          Two ways forward:");
+        println!("           1. rebuild with `--features fastembed-install` (pulls fastembed).");
+        println!("           2. manual: download BGE-small-en-v1.5.onnx + tokenizer.json and run:");
+        println!("                mneme models install --from-path <download-dir>");
+        println!("          Target directory: {}", root.display());
     }
 
     Ok(())
@@ -100,12 +183,39 @@ fn status() -> CliResult<()> {
     let root = model_root();
     println!("mneme model root: {}", root.display());
 
-    let bge = root.join("bge-small");
-    if bge.join(".installed").exists() {
-        let size = directory_size(&bge).unwrap_or(0);
-        println!("  [x] bge-small-en-v1.5    {} MB   {}", size / 1_048_576, bge.display());
+    // New layout (v0.2.4+): files directly under root.
+    let onnx = root.join("bge-small-en-v1.5.onnx");
+    let tok = root.join("tokenizer.json");
+    let marker = root.join(".installed");
+
+    // Legacy layout (v0.2.0-v0.2.3): everything under `bge-small/` subdir.
+    let legacy = root.join("bge-small");
+    let legacy_marker = legacy.join(".installed");
+
+    let installed = marker.exists() || legacy_marker.exists();
+    if installed {
+        let size = if onnx.exists() {
+            fs::metadata(&onnx).map(|m| m.len()).unwrap_or(0)
+        } else {
+            directory_size(&legacy).unwrap_or(0)
+        };
+        println!(
+            "  [x] bge-small-en-v1.5    {} MB   {}",
+            size / 1_048_576,
+            root.display()
+        );
+        println!(
+            "       onnx:      {} {}",
+            if onnx.exists() { "[x]" } else { "[ ]" },
+            onnx.display()
+        );
+        println!(
+            "       tokenizer: {} {}",
+            if tok.exists() { "[x]" } else { "[ ]" },
+            tok.display()
+        );
     } else {
-        println!("  [ ] bge-small-en-v1.5    not installed — run `mneme models install`");
+        println!("  [ ] bge-small-en-v1.5    not installed — run `mneme models install --from-path <dir>`");
     }
     Ok(())
 }

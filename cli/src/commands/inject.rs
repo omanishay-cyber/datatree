@@ -57,7 +57,9 @@ pub async fn run(args: InjectArgs, socket_override: Option<PathBuf>) -> CliResul
         }
         Ok(IpcResponse::Pong)
         | Ok(IpcResponse::Status { .. })
-        | Ok(IpcResponse::Logs { .. }) => String::new(),
+        | Ok(IpcResponse::Logs { .. })
+        | Ok(IpcResponse::JobQueued { .. })
+        | Ok(IpcResponse::JobQueue { .. }) => String::new(),
         Err(e) => {
             warn!(error = %e, "supervisor unreachable; emitting empty additional_context");
             String::new()

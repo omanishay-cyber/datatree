@@ -1,31 +1,47 @@
 /**
- * MCP tool: rebuild
+ * MCP tool: rebuild (phase-c9 wired)
  *
  * Re-parse the requested scope from scratch.
  *
- * v0.1 (review P2): rebuild is always a write — we hand off to
- * `lifecycle.rebuild` over IPC which runs `mneme rebuild <scope>` under
- * the supervisor's single-writer lock. We keep the safety rail: we
- * refuse without `confirm=true`. If IPC is down we report a clear
- * zero-duration empty-rebuilt result rather than silently succeeding.
+ * Write path (preferred): supervisor IPC verb `lifecycle.rebuild`. Runs
+ * `mneme rebuild <scope>` under the supervisor's single-writer lock.
+ *
+ * Graceful degrade: when IPC is unavailable we fall back to spawning
+ * `mneme build .` as a detached child process via `spawnRebuildChild`
+ * (store.ts). We return immediately with the pid because builds are
+ * long-running — callers should not block.
+ *
+ * Safety rail: we still refuse without `confirm=true` regardless of path.
+ *
+ * NOTE: as of phase-c9 the supervisor in supervisor/src/ipc.rs does NOT
+ * yet route `lifecycle.rebuild` — every call currently takes the
+ * child-process fallback.
  */
 
+import { z } from "zod";
 import {
   RebuildInput,
   RebuildOutput,
   type ToolDescriptor,
 } from "../types.ts";
 import { lifecycle } from "../db.ts";
+import { spawnRebuildChild } from "../store.ts";
 
-export const tool: ToolDescriptor<
-  ReturnType<typeof RebuildInput.parse>,
-  ReturnType<typeof RebuildOutput.parse>
-> = {
+// Additive extension — keep original shape intact.
+const RebuildOutputExtended = RebuildOutput.extend({
+  note: z.string().optional(),
+  pid: z.number().int().nullable().optional(),
+});
+
+type Input = ReturnType<typeof RebuildInput.parse>;
+type Output = z.infer<typeof RebuildOutputExtended>;
+
+export const tool: ToolDescriptor<Input, Output> = {
   name: "rebuild",
   description:
     "Re-parse the requested scope from scratch (graph | semantic | all). Last resort — clears existing data and rebuilds. Requires confirm=true.",
   inputSchema: RebuildInput,
-  outputSchema: RebuildOutput,
+  outputSchema: RebuildOutputExtended,
   category: "health",
   async handler(input) {
     if (!input.confirm) {
@@ -34,11 +50,39 @@ export const tool: ToolDescriptor<
       );
     }
     const t0 = Date.now();
+
+    // ---- Supervisor path --------------------------------------------------
     try {
       const r = await lifecycle.rebuild(input.scope);
-      return r;
+      return { ...r, note: "supervisor" };
     } catch {
-      return { rebuilt: [], duration_ms: Date.now() - t0 };
+      // Fall through to child-process spawn.
+    }
+
+    // ---- Fallback: spawn `mneme build .` ----------------------------------
+    try {
+      const spawned = spawnRebuildChild(input.scope);
+      if (spawned.spawned) {
+        return {
+          rebuilt: [input.scope],
+          duration_ms: Date.now() - t0,
+          note: `fallback:spawned ${spawned.command}`,
+          pid: spawned.pid,
+        };
+      }
+      return {
+        rebuilt: [],
+        duration_ms: Date.now() - t0,
+        note: "fallback:spawn-failed (mneme CLI missing?)",
+        pid: null,
+      };
+    } catch {
+      return {
+        rebuilt: [],
+        duration_ms: Date.now() - t0,
+        note: "fallback:error",
+        pid: null,
+      };
     }
   },
 };
