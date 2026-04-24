@@ -462,6 +462,30 @@ See [INSTALL.md](INSTALL.md) for troubleshooting and platform-specific notes.
 
 Full reference: [`docs/mcp-tools.md`](docs/mcp-tools.md).
 
+## 🧠 20 Expert Skills + 4 Workflow Codewords (v0.3.1+)
+
+Mneme ships 19 **fireworks skills** + a **codewords skill** that give Claude instant expertise on
+whatever you're doing — and four single-word verbs that switch how Claude engages:
+
+**Codewords:**
+
+| Word | Meaning |
+|---|---|
+| `coldstart` | Pause. Observe only. Read context, draft a plan, do not touch code. |
+| `hotstart` | Resume with discipline. Numbered roadmap, `step_verify` after each step. |
+| `firestart` | Maximum loadout. Load all fireworks skills + prime mneme graph + hotstart. |
+| `CHS` | "Check my screenshot" — read the latest file in your Screenshots folder. |
+
+**Fireworks skills (auto-dispatched by keyword):**
+
+`architect` · `charts` · `config` · `debug` · `design` · `devops` · `estimation` ·
+`flutter` · `patterns` · `performance` · `react` · `refactor` · `research` · `review` ·
+`security` · `taskmaster` · `test` · `vscode` · `workflow`
+
+Each skill is a full package — `SKILL.md` (trigger rules + protocol) plus a `references/`
+folder of deep how-to docs. Skills are keyword-gated: a Rust task never fires the React skill.
+They sleep until relevant, then activate automatically.
+
 ## 🎯 Philosophy
 
 1. **100% local** — no cloud, no telemetry, no API keys. Every model runs on your CPU.
