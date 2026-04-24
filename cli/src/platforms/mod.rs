@@ -41,6 +41,7 @@ pub mod opencode;
 pub mod qoder;
 pub mod qwen;
 pub mod trae;
+pub mod vscode;
 pub mod windsurf;
 pub mod zed;
 
@@ -112,6 +113,8 @@ pub enum Platform {
     Hermes,
     /// Alibaba Qwen Code.
     Qwen,
+    /// VS Code (Copilot Chat + Claude Code extension — shared MCP config).
+    VsCode,
 }
 
 impl Platform {
@@ -136,6 +139,7 @@ impl Platform {
             Platform::OpenClaw => "openclaw",
             Platform::Hermes => "hermes",
             Platform::Qwen => "qwen",
+            Platform::VsCode => "vscode",
         }
     }
 
@@ -160,6 +164,7 @@ impl Platform {
             Platform::OpenClaw => "OpenClaw",
             Platform::Hermes => "Hermes",
             Platform::Qwen => "Qwen Code",
+            Platform::VsCode => "VS Code",
         }
     }
 
@@ -195,6 +200,7 @@ impl Platform {
             Platform::OpenClaw,
             Platform::Hermes,
             Platform::Qwen,
+            Platform::VsCode,
         ]
     }
 
@@ -219,6 +225,7 @@ impl Platform {
             Platform::OpenClaw => Box::new(openclaw::OpenClaw),
             Platform::Hermes => Box::new(hermes::Hermes),
             Platform::Qwen => Box::new(qwen::Qwen),
+            Platform::VsCode => Box::new(vscode::VsCode),
         }
     }
 }

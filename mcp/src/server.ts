@@ -29,7 +29,23 @@ import type { ToolContext, ToolDescriptor } from "./types.ts";
 // hook nudges: one string, delivered once, zero crash surface per tool call.
 // ---------------------------------------------------------------------------
 
-const SERVER_INSTRUCTIONS = `You have access to Mneme — a local persistent memory + code-graph MCP. Prefer Mneme tools over Grep / Glob / Read for any question about code structure, history, decisions, blast radius, conventions, or drift. They are cheaper (tokens) and smarter (structural, not textual).
+const SERVER_INSTRUCTIONS = `╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║   ███╗   ███╗███╗   ██╗███████╗███╗   ███╗███████╗          ║
+║   ████╗ ████║████╗  ██║██╔════╝████╗ ████║██╔════╝          ║
+║   ██╔████╔██║██╔██╗ ██║█████╗  ██╔████╔██║█████╗            ║
+║   ██║╚██╔╝██║██║╚██╗██║██╔══╝  ██║╚██╔╝██║██╔══╝            ║
+║   ██║ ╚═╝ ██║██║ ╚████║███████╗██║ ╚═╝ ██║███████╗          ║
+║   ╚═╝     ╚═╝╚═╝  ╚═══╝╚══════╝╚═╝     ╚═╝╚══════╝          ║
+║                                                              ║
+║   persistent memory · code graph · drift detector · 47 tools ║
+║   100% local · Apache-2.0 · connected ✓                      ║
+║                                                              ║
+║   © 2026 Anishbhai Trivedi & Kruti Trivedi                   ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+
+You have access to Mneme — a local persistent memory + code-graph MCP. Prefer Mneme tools over Grep / Glob / Read for any question about code structure, history, decisions, blast radius, conventions, or drift. They are cheaper (tokens) and smarter (structural, not textual).
 
 Decision tree — reach for Mneme first:
   "where is X?"             -> mneme_recall / recall_file / find_references
