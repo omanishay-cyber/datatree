@@ -78,33 +78,42 @@ Write-Info ("elevated : {0}" -f (Test-IsElevated))
 Write-Host ""
 
 # ============================================================================
-# Step 1 — Ensure Bun is installed (the only runtime dep)
+# Step 1 — Check + install runtime prerequisites
 # ============================================================================
 #
-# Bun is required because mneme's MCP server (`~/.mneme/mcp/`) is
-# TypeScript that `mneme mcp stdio` launches via `bun`. We detect an
-# existing install first to respect the user's setup, then fall back to
-# the official installer — which is maintained by Oven (Bun's company),
-# user-scope, no admin required, and handles PATH correctly.
+# Three tools matter for a full mneme + Claude-Code experience:
 #
-# Rust is NOT needed: mneme is shipped pre-built.
-# Node is NOT needed: Bun is the runtime.
-# Python is NOT needed for v0.3.1: the multimodal sidecar is feature-gated.
+#   Bun       — mneme's MCP server (`mneme mcp stdio`) launches TypeScript
+#               via `bun`. Required for `/mn-*` commands in Claude Code.
+#   Node.js   — only needed if the user wants the Claude Code CLI
+#               (`npm install -g @anthropic-ai/claude-code`). Not strictly
+#               required to run mneme itself, but the whole point of mneme
+#               is to serve Claude Code, so we install it by default.
+#   git       — only needed for `mneme build` on git repos (so mneme can
+#               pin the indexed commit SHA per project). Mneme works
+#               without it; just no git metadata in the graph.
+#
+# Rust is deliberately NOT installed — mneme ships pre-built binaries.
+# Python is not needed for v0.3.1 (multimodal sidecar is feature-gated).
+#
+# Every check below follows the same pattern: detect on PATH, detect at
+# standard user-scope install path, install if missing. All installs are
+# user-scope where possible (no admin required); fall back to system
+# installer where the official path does. Idempotent on every re-run.
 
-Write-Step "step 1/8 — checking Bun runtime"
-
-$BunExe = $null
-# Respect existing bun on PATH (might be user-installed elsewhere).
-$CmdBun = Get-Command bun -ErrorAction SilentlyContinue
-if ($CmdBun) {
-    $BunExe = $CmdBun.Source
-} else {
-    # Fall back to the standard user-scope install path.
-    $candidate = Join-Path $env:USERPROFILE '.bun\bin\bun.exe'
-    if (Test-Path $candidate) {
-        $BunExe = $candidate
-    }
+function Test-Tool {
+    param([string]$Name, [string]$FallbackPath)
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    if ($FallbackPath -and (Test-Path $FallbackPath)) { return $FallbackPath }
+    return $null
 }
+
+# --- 1a. Bun (required for MCP server) --------------------------------------
+Write-Step "step 1/8 — Bun runtime (required for mneme MCP)"
+
+$BunFallback = Join-Path $env:USERPROFILE '.bun\bin\bun.exe'
+$BunExe = Test-Tool -Name 'bun' -FallbackPath $BunFallback
 
 if ($BunExe) {
     try {
@@ -114,28 +123,90 @@ if ($BunExe) {
         Write-OK ("bun present at $BunExe (version check failed, continuing)")
     }
 } else {
-    Write-Info "bun not found — running official Bun installer (user-scope, no admin)"
+    Write-Info "bun not found — installing via direct GitHub release download"
     try {
-        iwr -useb https://bun.sh/install.ps1 | iex
-        # The Bun installer drops the binary here regardless of PATH state.
-        $candidate = Join-Path $env:USERPROFILE '.bun\bin\bun.exe'
-        if (Test-Path $candidate) {
-            $BunExe = $candidate
-            # Add Bun to current session PATH so this script's later steps
-            # can find it. The Bun installer has already added it to the
-            # persistent user PATH.
-            $env:PATH = "$env:PATH;$(Split-Path $candidate -Parent)"
-            $BunVer = (& $BunExe --version 2>$null).Trim()
-            Write-OK ("bun $BunVer installed at $BunExe")
-        } else {
-            Write-Warn "Bun installer ran but bun.exe not found at expected path"
-            Write-Warn "mneme's MCP server (Claude Code /mn- commands) will not work"
-            Write-Warn "Manual install: iwr -useb https://bun.sh/install.ps1 | iex"
+        # The bun.sh/install.ps1 script uses `curl.exe -#` which errors in
+        # non-interactive sessions (see v0.3.0 install-report). We pull the
+        # release ZIP ourselves — works in any shell context.
+        $bunBin = Join-Path $env:USERPROFILE '.bun\bin'
+        New-Item -ItemType Directory -Force -Path $bunBin | Out-Null
+        $bunZip = Join-Path $env:TEMP 'bun-windows-x64.zip'
+        Invoke-WebRequest -Uri 'https://github.com/oven-sh/bun/releases/latest/download/bun-windows-x64.zip' -OutFile $bunZip -UseBasicParsing
+        Expand-Archive -Path $bunZip -DestinationPath $env:TEMP -Force
+        Copy-Item (Join-Path $env:TEMP 'bun-windows-x64\bun.exe') $bunBin -Force
+        # Persist PATH (user-scope)
+        $userPath = [Environment]::GetEnvironmentVariable('PATH','User')
+        if ($userPath -notmatch [regex]::Escape($bunBin)) {
+            [Environment]::SetEnvironmentVariable('PATH', "$userPath;$bunBin", 'User')
         }
+        $env:PATH = "$env:PATH;$bunBin"
+        $BunExe = Join-Path $bunBin 'bun.exe'
+        Write-OK ("bun $((& $BunExe --version 2>$null).Trim()) installed at $BunExe")
     } catch {
         Write-Warn ("Bun install failed: {0}" -f $_.Exception.Message)
         Write-Warn "mneme CLI will still work, but MCP tools in Claude Code will not"
-        Write-Warn "Manual install later: iwr -useb https://bun.sh/install.ps1 | iex"
+        Write-Warn "Manual install later: https://bun.sh/install"
+    }
+}
+
+# --- 1b. Node.js + npm (for Claude Code CLI) --------------------------------
+Write-Step "step 1b/8 — Node.js + npm (for Claude Code CLI)"
+
+$NodeExe = Test-Tool -Name 'node' -FallbackPath 'C:\Program Files\nodejs\node.exe'
+
+if ($NodeExe) {
+    $NodeVer = (& $NodeExe --version 2>$null).Trim()
+    Write-OK ("node $NodeVer present at $NodeExe")
+} else {
+    Write-Info "node not found — installing Node.js LTS via direct MSI"
+    try {
+        $nodeUrl = 'https://nodejs.org/dist/v22.13.1/node-v22.13.1-x64.msi'
+        $nodeMsi = Join-Path $env:TEMP 'node-lts.msi'
+        Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeMsi -UseBasicParsing
+        $p = Start-Process msiexec.exe -ArgumentList '/i', "`"$nodeMsi`"", '/qn', '/norestart' -Wait -PassThru
+        if ($p.ExitCode -eq 0) {
+            # Refresh session PATH so subsequent steps find npm
+            $env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH','User')
+            $NodeExe = Test-Tool -Name 'node' -FallbackPath 'C:\Program Files\nodejs\node.exe'
+            if ($NodeExe) {
+                Write-OK ("node $((& $NodeExe --version 2>$null).Trim()) installed")
+            } else {
+                Write-Warn "node installer exited 0 but node not on PATH — re-open shell"
+            }
+        } else {
+            Write-Warn ("node MSI exited with code {0}" -f $p.ExitCode)
+        }
+    } catch {
+        Write-Warn ("Node.js install failed: {0}" -f $_.Exception.Message)
+        Write-Warn "Claude Code CLI will not be installable until Node is present"
+        Write-Warn "Manual install: https://nodejs.org/"
+    }
+}
+
+# --- 1c. git (optional, for `mneme build` on git repos) ---------------------
+Write-Step "step 1c/8 — git (optional, for richer project metadata)"
+
+$GitExe = Test-Tool -Name 'git' -FallbackPath 'C:\Program Files\Git\cmd\git.exe'
+
+if ($GitExe) {
+    $GitVer = (& $GitExe --version 2>$null).Trim()
+    Write-OK ("git $GitVer present at $GitExe")
+} else {
+    Write-Info "git not found — installing Git for Windows (silent)"
+    try {
+        $gitUrl = 'https://github.com/git-for-windows/git/releases/download/v2.48.1.windows.1/Git-2.48.1-64-bit.exe'
+        $gitExe = Join-Path $env:TEMP 'git-setup.exe'
+        Invoke-WebRequest -Uri $gitUrl -OutFile $gitExe -UseBasicParsing
+        $p = Start-Process $gitExe -ArgumentList '/VERYSILENT','/NORESTART','/NOCANCEL','/SP-','/SUPPRESSMSGBOXES' -Wait -PassThru
+        if ($p.ExitCode -eq 0) {
+            $env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH','User')
+            Write-OK "git installed"
+        } else {
+            Write-Warn ("git installer exited with code {0}" -f $p.ExitCode)
+        }
+    } catch {
+        Write-Warn ("git install failed: {0}" -f $_.Exception.Message)
+        Write-Warn "mneme will still work without git; just no commit-SHA metadata"
     }
 }
 
@@ -301,16 +372,16 @@ if (-not (Test-Path $MnemeBin)) {
     Write-Warn "mneme.exe not present, skipping MCP registration"
 } else {
     try {
-        & $MnemeBin install --platform claude-code --skip-manifest --skip-hooks 2>&1 | ForEach-Object { Write-Info $_ }
+        & $MnemeBin register-mcp --platform claude-code 2>&1 | ForEach-Object { Write-Info $_ }
         if ($LASTEXITCODE -eq 0) {
             Write-OK "Claude Code MCP registration complete"
         } else {
-            Write-Warn ("mneme install exited {0} — MCP may not be registered" -f $LASTEXITCODE)
-            Write-Warn "run manually later: mneme install --platform claude-code --skip-manifest --skip-hooks"
+            Write-Warn ("mneme register-mcp exited {0} — MCP may not be registered" -f $LASTEXITCODE)
+            Write-Warn "run manually later: mneme register-mcp --platform claude-code"
         }
     } catch {
         Write-Warn ("MCP registration error: {0}" -f $_.Exception.Message)
-        Write-Warn "run manually later: mneme install --platform claude-code --skip-manifest --skip-hooks"
+        Write-Warn "run manually later: mneme register-mcp --platform claude-code"
     }
 }
 

@@ -55,10 +55,24 @@ impl PlatformAdapter for ClaudeCode {
         true
     }
 
+    /// Manifest location — v0.3.1 fix for F-008 / F-017.
+    ///
+    /// Claude Code reads user-scope instructions from `~/.claude/CLAUDE.md`.
+    /// Earlier mneme versions wrote to `~/CLAUDE.md` (the user's home
+    /// directory root), which is a different file — it's only loaded by
+    /// Claude Code when it happens to be the current working directory
+    /// project file. That caused the manifest to be picked up
+    /// inconsistently and left a stray `CLAUDE.md` in user homes across
+    /// projects. Correct target is `~/.claude/CLAUDE.md`.
+    ///
+    /// Project-scope stays `<project_root>/CLAUDE.md` (that IS the
+    /// correct per-project file).
     fn manifest_path(&self, ctx: &AdapterContext) -> PathBuf {
         match ctx.scope {
             InstallScope::Project => ctx.project_root.join("CLAUDE.md"),
-            InstallScope::User | InstallScope::Global => ctx.home.join("CLAUDE.md"),
+            InstallScope::User | InstallScope::Global => {
+                ctx.home.join(".claude").join("CLAUDE.md")
+            }
         }
     }
 

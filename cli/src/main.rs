@@ -73,6 +73,15 @@ enum Command {
     Install(commands::install::InstallArgs),
     /// Reverse of `install`.
     Uninstall(commands::uninstall::UninstallArgs),
+    /// Register ONLY the MCP server entry with the target platform —
+    /// no hooks, no CLAUDE.md manifest. Preferred by the one-line
+    /// installer and anyone who just wants the MCP tools without
+    /// touching their settings.json or instructions file.
+    #[command(name = "register-mcp")]
+    RegisterMcp(commands::register_mcp::RegisterMcpArgs),
+    /// Remove ONLY the MCP server entry. Inverse of `register-mcp`.
+    #[command(name = "unregister-mcp")]
+    UnregisterMcp(commands::register_mcp::RegisterMcpArgs),
     /// Manage local models (embeddings, optional LLM).
     Models(commands::models::ModelsArgs),
     /// Initial full project ingest.
@@ -163,6 +172,8 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
     match cli.cmd {
         Command::Install(args) => commands::install::run(args).await,
         Command::Uninstall(args) => commands::uninstall::run(args).await,
+        Command::RegisterMcp(args) => commands::register_mcp::register(args).await,
+        Command::UnregisterMcp(args) => commands::register_mcp::unregister(args).await,
         Command::Models(args) => commands::models::run(args),
         Command::Build(args) => commands::build::run(args, socket_override).await,
         Command::Update(args) => commands::update::run(args, socket_override).await,

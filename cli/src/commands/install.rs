@@ -63,7 +63,9 @@ pub struct InstallArgs {
     /// `platforms/claude_code.rs` module docstring for why). This flag is
     /// kept for forward-compat with future platforms that will wire hooks
     /// against their own hook files, not Claude Code's settings.json.
-    #[arg(long)]
+    ///
+    /// `--no-hooks` is accepted as a clearer alias for the same behaviour.
+    #[arg(long, alias = "no-hooks")]
     pub skip_hooks: bool,
 
     /// Skip the CLAUDE.md / AGENTS.md manifest write (MCP + hooks only).
@@ -86,8 +88,8 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
         .with_dry_run(args.dry_run)
         .with_force(args.force);
 
-    let targets: Vec<Platform> = match args.platform {
-        Some(id) => vec![Platform::from_id(&id)?],
+    let targets: Vec<Platform> = match args.platform.as_deref() {
+        Some(id) => vec![Platform::from_id(id)?],
         None => {
             let detected =
                 PlatformDetector::detect_installed(scope, &project_root);
@@ -99,6 +101,24 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
     if targets.is_empty() {
         warn!("no platforms detected; nothing to install");
         return Ok(());
+    }
+
+    // Gentle guardrail — warn if Claude Code appears to be running and
+    // we're about to modify its files. In v0.3.1 MCP-only installs are
+    // safe while CC is running (CC re-reads mcpServers on next launch),
+    // but manifest writes can create stale cached state. Not a block;
+    // just a heads-up.
+    let claude_is_target = targets
+        .iter()
+        .any(|p| matches!(p, Platform::ClaudeCode));
+    let writing_anything_but_mcp = !args.skip_manifest || !args.skip_hooks;
+    if claude_is_target && writing_anything_but_mcp && !args.dry_run {
+        if claude_code_likely_running() {
+            warn!(
+                "Claude Code appears to be running — close it before \
+                 re-launching so it picks up mneme cleanly. Continuing."
+            );
+        }
     }
 
     let bar = make_bar(targets.len() as u64);
@@ -205,4 +225,46 @@ fn scope_label(scope: InstallScope) -> &'static str {
 struct InstallReport {
     platform: Platform,
     outcome: String,
+}
+
+/// Lightweight probe: is Claude Code likely running on this host?
+///
+/// Windows: shells out to `tasklist /FI "IMAGENAME eq Claude.exe"` and
+/// checks stdout for the executable name. Falsy on any error (the probe
+/// is advisory, not authoritative).
+///
+/// Unix: shells out to `pgrep -f claude` and checks the exit code. Same
+/// falsy-on-error semantics.
+///
+/// This is deliberately a *warning* not a *block* — authoritative
+/// process checks require more plumbing (sysinfo crate, elevated lookups
+/// on Windows) than the v0.3.1 scope allows. The architectural fix for
+/// the v0.3.0 settings.json poisoning (see `platforms/claude_code.rs`)
+/// means even running-Claude-Code installs are safe today; this probe
+/// exists to prevent the cosmetic "stale config in memory" issue.
+fn claude_code_likely_running() -> bool {
+    #[cfg(windows)]
+    {
+        let out = std::process::Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq Claude.exe", "/NH", "/FO", "CSV"])
+            .output();
+        if let Ok(o) = out {
+            let s = String::from_utf8_lossy(&o.stdout);
+            // tasklist emits `INFO: No tasks are running which match...`
+            // on stdout when nothing matches. A positive hit contains
+            // the image name in one of the CSV fields.
+            return s.contains("Claude.exe") || s.contains("claude.exe");
+        }
+        false
+    }
+    #[cfg(not(windows))]
+    {
+        let out = std::process::Command::new("pgrep")
+            .args(["-f", "claude"])
+            .output();
+        if let Ok(o) = out {
+            return o.status.success() && !o.stdout.is_empty();
+        }
+        false
+    }
 }
