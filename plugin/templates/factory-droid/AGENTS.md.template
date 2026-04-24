@@ -1,27 +1,27 @@
-<!-- datatree-start v1.0 -->
-# Datatree (Factory Droid)
+<!-- mneme-start v1.0 -->
+# Mneme (Factory Droid)
 
 Factory Droid reads `AGENTS.md` for project context and supports MCP
-servers via `.factory/mcp.json`. Datatree is exposed there as the
-`datatree` server, backed by the per-user `datatree-supervisor` daemon.
+servers via `.factory/mcp.json`. Mneme is exposed there as the
+`mneme` server, backed by the per-user `mneme-supervisor` daemon.
 
 ## Tool usage rules (MANDATORY)
 
-**Call datatree MCP tools BEFORE Droid's built-in code search and read
+**Call mneme MCP tools BEFORE Droid's built-in code search and read
 tools** for structural or semantic questions about the codebase.
 
 On every task:
 
-1. `datatree.minimal_context(task="<description>")` — ~100 tokens.
-2. Iterate with `datatree.query`, `datatree.impact`, `datatree.search`
+1. `mneme.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`
    at `detail_level="minimal"`.
 3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
 4. Edits trigger incremental graph updates via the supervisor.
 
 ## Step ledger / drift / compaction
 
-- Ledger: `~/.datatree/projects/<id>/steps.jsonl`. Recover with
-  `datatree.last_steps(n=10)`.
+- Ledger: `~/.mneme/projects/<id>/steps.jsonl`. Recover with
+  `mneme.last_steps(n=10)`.
 - Address symbol/doc/test drift before declaring done.
-- After any reset, re-prime with `datatree.minimal_context(...)`.
-<!-- datatree-end -->
+- After any reset, re-prime with `mneme.minimal_context(...)`.
+<!-- mneme-end -->

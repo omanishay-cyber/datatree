@@ -31,7 +31,7 @@ struct Cli {
     config: Option<PathBuf>,
 
     /// Override the IPC socket / pipe path for client subcommands.
-    #[arg(long, env = "DATATREE_IPC")]
+    #[arg(long, env = "MNEME_IPC")]
     ipc: Option<PathBuf>,
 
     #[command(subcommand)]
@@ -75,7 +75,7 @@ enum Cmd {
         #[arg(long)]
         project: Option<PathBuf>,
         /// Optional livebus IPC socket path to emit events on.
-        #[arg(long, env = "DATATREE_LIVEBUS")]
+        #[arg(long, env = "MNEME_LIVEBUS")]
         livebus: Option<PathBuf>,
         /// Debounce window in milliseconds.
         #[arg(long, default_value_t = 250)]
@@ -110,7 +110,7 @@ fn main() -> std::process::ExitCode {
 
 fn init_tracing() {
     let filter = EnvFilter::try_from_env("MNEME_LOG")
-        .unwrap_or_else(|_| EnvFilter::new("info,datatree_supervisor=info"));
+        .unwrap_or_else(|_| EnvFilter::new("info,mneme_supervisor=info"));
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .json()

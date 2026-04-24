@@ -226,11 +226,11 @@ fn default_ipc_path(_root: &Path) -> PathBuf {
 }
 
 /// Locate the Bun binary for child specs. Priority:
-///   1. `DATATREE_BUN` env var (absolute path)
+///   1. `MNEME_BUN` env var (absolute path)
 ///   2. `%LOCALAPPDATA%\Microsoft\WinGet\Links\bun.exe` (winget default)
 ///   3. `bun` / `bun.exe` on PATH
 pub fn resolve_bun() -> String {
-    if let Ok(p) = std::env::var("DATATREE_BUN") {
+    if let Ok(p) = std::env::var("MNEME_BUN") {
         if Path::new(&p).exists() {
             return p;
         }

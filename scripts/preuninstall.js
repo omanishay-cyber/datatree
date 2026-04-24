@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * datatree preuninstall hook.
+ * mneme preuninstall hook.
  * Stops the daemon before plugin files are removed. Does NOT touch
  * user data — the uninstall script handles that, gated by --purge.
  */
@@ -10,7 +10,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-function log(msg) { process.stdout.write('[datatree-preuninstall] ' + msg + '\n'); }
+function log(msg) { process.stdout.write('[mneme-preuninstall] ' + msg + '\n'); }
 
 const scriptsDir = __dirname;
 let cmd, args;
@@ -25,6 +25,6 @@ if (os.platform() === 'win32') {
 log('stopping daemon: ' + cmd + ' ' + args.join(' '));
 const result = spawnSync(cmd, args, { stdio: 'inherit', env: process.env });
 if (result.status !== 0) {
-    process.stderr.write('[datatree-preuninstall] WARN: stop-daemon exited ' + result.status + '\n');
+    process.stderr.write('[mneme-preuninstall] WARN: stop-daemon exited ' + result.status + '\n');
 }
 process.exit(0);

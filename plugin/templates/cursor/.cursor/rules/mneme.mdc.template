@@ -1,0 +1,59 @@
+---
+description: Mneme knowledge graph — use MCP tools first, then shell.
+globs: "**/*"
+alwaysApply: true
+---
+
+<!-- mneme-start v1.0 -->
+# Mneme (Cursor — modern .mdc rule)
+
+Mneme is a persistent, incrementally-updated knowledge graph of this
+project. It is exposed to Cursor via the `mneme` MCP server (see
+`.cursor/mcp.json`) and kept fresh by the `mneme-supervisor` daemon.
+
+## Tool usage rules (MANDATORY)
+
+**Use mneme MCP tools BEFORE Cursor's built-in code search, file
+read, or @-symbol lookup** for any structural or semantic question.
+Built-in tools are for reading a specific file that mneme already
+located, or when mneme's `next_tool_suggestions` says so.
+
+On every task:
+
+1. Call `mneme.minimal_context(task="<one-sentence description>")`.
+   ~100 tokens; returns the files/symbols/recent-changes that matter.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`,
+   defaulting to `detail_level="minimal"`.
+3. Only then open files. Budget: <= 5 mneme calls and <= 800 tokens
+   of graph context per task.
+4. Edits fire mneme's afterFileEdit hook, which incrementally updates
+   the graph; you do not need to rebuild manually.
+
+## Step ledger
+
+Each non-trivial step is appended to
+`~/.mneme/projects/<id>/steps.jsonl`. Use
+`mneme.last_steps(n=10)` to recover after any reset.
+
+## Drift detection
+
+Mneme warns on:
+
+- **Symbol drift** — public signature changed without caller updates.
+- **Doc drift** — behaviour changed but docs did not.
+- **Test drift** — source changed without matching test edits.
+
+Address every drift before declaring the task done.
+
+## Compaction resilience
+
+Cursor may compact the conversation. The persistent graph + step ledger
+let you re-prime with one `mneme.minimal_context(...)` call after a
+compaction.
+
+## Locations
+
+- MCP server: `.cursor/mcp.json` -> `mcpServers.mneme`
+- Hooks:      `.cursor/hooks.json` (sessionStart, afterFileEdit)
+- Daemon:     `~/.mneme/`
+<!-- mneme-end -->

@@ -1,6 +1,6 @@
-# datatree :: check-runtime.ps1
+# mneme :: check-runtime.ps1
 # Read-only health check: reports presence + version of every runtime dep
-# datatree needs on Windows.  Never installs, never modifies anything.
+# mneme needs on Windows.  Never installs, never modifies anything.
 #
 # Exit codes:
 #   0 -- all REQUIRED deps present
@@ -20,7 +20,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$DataTreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $HOME ".datatree" }
+$DataTreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $HOME ".mneme" }
 $LogDir       = Join-Path $DataTreeHome "logs"
 $LogFile      = Join-Path $LogDir       "install.log"
 $ModelDir     = Join-Path $DataTreeHome "llm"
@@ -99,7 +99,7 @@ $rows.Add( (Check-One -Name "Tesseract" -Bin "tesseract" -Required $true) ) | Ou
 $rows.Add( (Check-One -Name "ffmpeg"    -Bin "ffmpeg"    -Required $true) ) | Out-Null
 
 # SQLite -- bundled
-$rows.Add( [pscustomobject]@{ Name="SQLite"; Present=$true; Version="(bundled in datatree-store)"; Hint=""; Required=$true } )
+$rows.Add( [pscustomobject]@{ Name="SQLite"; Present=$true; Version="(bundled in mneme-store)"; Hint=""; Required=$true } )
 
 # Models
 $bgePath     = Join-Path $ModelDir "bge-small\model.onnx"
@@ -121,15 +121,15 @@ if ($whisperPresent) { $whisperVer = "$whisperPath (~140MB)" }
 
 $rows.Add( [pscustomobject]@{
     Name="bge-small"; Present=$bgePresent; Version=$bgeVer;
-    Hint="datatree models install --required --from <dir>"; Required=$true
+    Hint="mneme models install --required --from <dir>"; Required=$true
 } )
 $rows.Add( [pscustomobject]@{
     Name="Phi-3"; Present=$phi3Present; Version=$phi3Ver;
-    Hint="datatree models install --with-phi3 --from <dir>"; Required=$false
+    Hint="mneme models install --with-phi3 --from <dir>"; Required=$false
 } )
 $rows.Add( [pscustomobject]@{
     Name="faster-whisper"; Present=$whisperPresent; Version=$whisperVer;
-    Hint="datatree models install --with-whisper --from <dir>"; Required=$false
+    Hint="mneme models install --with-whisper --from <dir>"; Required=$false
 } )
 
 # ---------------------------------------- output
@@ -142,7 +142,7 @@ if ($Json) {
     $useColor = -not $NoColor -and $Host.UI.SupportsVirtualTerminal
     function W { param($t,$c) if ($useColor) { Write-Host $t -ForegroundColor $c -NoNewline } else { Write-Host $t -NoNewline } }
     Write-Host ""
-    if ($useColor) { Write-Host "datatree :: runtime check" -ForegroundColor Cyan } else { Write-Host "datatree :: runtime check" }
+    if ($useColor) { Write-Host "mneme :: runtime check" -ForegroundColor Cyan } else { Write-Host "mneme :: runtime check" }
     Write-Host ("-" * 60)
     foreach ($r in $rows) {
         if ($r.Present) {

@@ -1,6 +1,6 @@
 //! OS service / daemon support.
 //!
-//! - On Windows, registers the supervisor as a service named `DatatreeDaemon`
+//! - On Windows, registers the supervisor as a service named `MnemeDaemon`
 //!   via the `windows-service` crate. The service entry point bridges into
 //!   [`crate::run`].
 //! - On Unix, provides a minimal `daemonize` fallback (double-fork + setsid)
@@ -48,7 +48,7 @@ mod windows_impl {
     use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
     use windows_service::{define_windows_service, service_dispatcher};
 
-    pub const SERVICE_NAME: &str = "DatatreeDaemon";
+    pub const SERVICE_NAME: &str = "MnemeDaemon";
     pub const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
     define_windows_service!(ffi_service_main, service_main);

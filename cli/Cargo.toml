@@ -5,9 +5,9 @@ edition = "2021"
 rust-version = "1.78"
 license = "MIT"
 authors = ["Anish Trivedi"]
-description = "Datatree CLI: the `datatree` command-line tool. Drives install/build/view/audit/recall/step plus all hook entry points."
+description = "Mneme CLI: the `mneme` command-line tool. Drives install/build/view/audit/recall/step plus all hook entry points."
 
-# The user-facing binary is just `datatree`.
+# The user-facing binary is just `mneme`.
 [[bin]]
 name = "mneme"
 path = "src/main.rs"
@@ -47,11 +47,11 @@ sha2 = "0.10"
 dirs = "5.0"
 walkdir = "2.5"
 
-# Pretty progress bars + colored output for `datatree build`, `install`, etc.
+# Pretty progress bars + colored output for `mneme build`, `install`, etc.
 indicatif = { version = "0.17", features = ["rayon"] }
 console = "0.15"
 
-# Workspace siblings linked in for the `datatree build` / `datatree audit`
+# Workspace siblings linked in for the `mneme build` / `mneme audit`
 # in-process pipeline (CLI drives parse + store directly so v0.1 can ingest
 # real projects without needing the supervisor to route jobs).
 common = { path = "../common", package = "mneme-common" }
@@ -78,7 +78,7 @@ default = []
 # Enables linking the workspace `common` crate. Optional so this crate
 # compiles standalone while the workspace is still being assembled.
 with-common = []
-# Wires `datatree models install` through to `brain::install_default_model`,
+# Wires `mneme models install` through to `brain::install_default_model`,
 # which triggers fastembed to download BGE-Small-En-v1.5 into ~/.mneme/llm/.
 # Off by default so the workspace builds without a C++ toolchain; release
 # builds enable it.

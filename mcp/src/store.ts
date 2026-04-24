@@ -1,5 +1,5 @@
 /**
- * Direct read-only access to a project's datatree SQLite shards.
+ * Direct read-only access to a project's mneme SQLite shards.
  *
  * MCP tools in v0.1 read from graph.db / history.db / findings.db / tasks.db
  * directly via Bun's native bun:sqlite. This is safe because SQLite WAL mode

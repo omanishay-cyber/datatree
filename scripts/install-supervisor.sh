@@ -1,6 +1,6 @@
 #!/bin/sh
-# datatree supervisor installer (POSIX)
-# Installs datatree-supervisor binary to ~/.mneme/bin/ and registers it
+# mneme supervisor installer (POSIX)
+# Installs mneme-supervisor binary to ~/.mneme/bin/ and registers it
 # with the OS service manager (launchd on macOS, systemd --user on Linux).
 #
 # Idempotent: re-running will not duplicate entries. Existing files are
@@ -11,24 +11,24 @@
 #
 # Defaults:
 #   --source-dir is ./dist/supervisor (relative to repo root)
-#   binary name resolved as datatree-supervisor-<os>-<arch>
+#   binary name resolved as mneme-supervisor-<os>-<arch>
 
 set -eu
 
 QUIET=0
 BINARY_PATH=""
 SOURCE_DIR=""
-MNEME_HOME="${MNEME_HOME:-$HOME/.datatree}"
+MNEME_HOME="${MNEME_HOME:-$HOME/.mneme}"
 BIN_DIR="$MNEME_HOME/bin"
 LOG_DIR="$MNEME_HOME/logs"
 MARKER_VERSION="v1.0"
 
 log() {
-    [ "$QUIET" -eq 0 ] && printf '[datatree-install] %s\n' "$1"
+    [ "$QUIET" -eq 0 ] && printf '[mneme-install] %s\n' "$1"
 }
 
 die() {
-    printf '[datatree-install] ERROR: %s\n' "$1" >&2
+    printf '[mneme-install] ERROR: %s\n' "$1" >&2
     exit 1
 }
 
@@ -82,7 +82,7 @@ if [ -z "$BINARY_PATH" ]; then
         SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
         SOURCE_DIR="$SCRIPT_DIR/../dist/supervisor"
     fi
-    BINARY_PATH="$SOURCE_DIR/datatree-supervisor-${OS}-${ARCH}"
+    BINARY_PATH="$SOURCE_DIR/mneme-supervisor-${OS}-${ARCH}"
 fi
 
 [ -f "$BINARY_PATH" ] || die "Binary not found: $BINARY_PATH"
@@ -97,7 +97,7 @@ mkdir -p "$MNEME_HOME/cache"
 mkdir -p "$MNEME_HOME/models"
 
 # --- install binary -----------------------------------------------------------
-DEST="$BIN_DIR/datatree-supervisor"
+DEST="$BIN_DIR/mneme-supervisor"
 if [ -f "$DEST" ]; then
     log "Backing up existing binary to ${DEST}.bak"
     cp -p "$DEST" "${DEST}.bak"
@@ -110,7 +110,7 @@ chmod 755 "$DEST"
 # --- register with service manager --------------------------------------------
 register_launchd() {
     PLIST_DIR="$HOME/Library/LaunchAgents"
-    PLIST="$PLIST_DIR/com.datatree.supervisor.plist"
+    PLIST="$PLIST_DIR/com.mneme.supervisor.plist"
     mkdir -p "$PLIST_DIR"
 
     if [ -f "$PLIST" ]; then
@@ -122,11 +122,11 @@ register_launchd() {
     log "Writing launchd plist: $PLIST"
     cat > "$PLIST" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- datatree-marker ${MARKER_VERSION} -->
+<!-- mneme-marker ${MARKER_VERSION} -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
-    <key>Label</key><string>com.datatree.supervisor</string>
+    <key>Label</key><string>com.mneme.supervisor</string>
     <key>ProgramArguments</key>
     <array>
       <string>${DEST}</string>
@@ -145,12 +145,12 @@ register_launchd() {
 PLIST_EOF
 
     launchctl load "$PLIST"
-    log "launchd service registered: com.datatree.supervisor"
+    log "launchd service registered: com.mneme.supervisor"
 }
 
 register_systemd() {
     UNIT_DIR="$HOME/.config/systemd/user"
-    UNIT="$UNIT_DIR/datatree.service"
+    UNIT="$UNIT_DIR/mneme.service"
     mkdir -p "$UNIT_DIR"
 
     if [ -f "$UNIT" ]; then
@@ -160,9 +160,9 @@ register_systemd() {
 
     log "Writing systemd unit: $UNIT"
     cat > "$UNIT" <<UNIT_EOF
-# datatree-marker ${MARKER_VERSION}
+# mneme-marker ${MARKER_VERSION}
 [Unit]
-Description=Datatree Supervisor (per-user knowledge graph daemon)
+Description=Mneme Supervisor (per-user knowledge graph daemon)
 After=default.target
 
 [Service]
@@ -180,8 +180,8 @@ UNIT_EOF
 
     if command -v systemctl >/dev/null 2>&1; then
         systemctl --user daemon-reload
-        systemctl --user enable datatree.service
-        log "systemd --user service registered: datatree.service"
+        systemctl --user enable mneme.service
+        log "systemd --user service registered: mneme.service"
     else
         log "systemctl not found; unit written but not enabled"
     fi

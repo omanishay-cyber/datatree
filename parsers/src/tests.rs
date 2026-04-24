@@ -391,38 +391,26 @@ async fn tier2_smoke(lang: Language, src: &str, filename: &str) {
     let inc = IncrementalParser::new(pool);
     let path = PathBuf::from(filename);
     let tree = parse_once(&inc, filename, lang, src).await;
-    // Core contract: the grammar must load and produce a non-empty root node.
-    // Extraction is best-effort — query patterns are per-grammar and drift
-    // across tree-sitter-<lang> crate versions. A query-compile failure here
-    // means the patterns in query_cache.rs need a grammar-version-aware
-    // refresh; it does NOT mean the grammar itself is broken.
     assert!(
         !tree.root_node().kind().is_empty(),
         "{lang} root node kind must be non-empty"
     );
     let extractor = Extractor::new(lang);
-    match extractor.extract(&tree, src.as_bytes(), &path) {
-        Ok(g) => {
-            let non_file: Vec<_> = g
-                .nodes
-                .iter()
-                .filter(|n| n.kind != NodeKind::File)
-                .collect();
-            if non_file.is_empty() {
-                eprintln!(
-                    "{lang}: extractor returned only File node — query patterns \
-                     may need a grammar-version refresh. Nodes: {:?}",
-                    g.nodes
-                );
-            }
-        }
-        Err(e) => {
-            eprintln!(
-                "{lang}: extract failed (likely query pattern drift vs current \
-                 grammar version): {e}. Grammar loaded, root parsed. Test passes."
-            );
-        }
-    }
+    let g = extractor
+        .extract(&tree, src.as_bytes(), &path)
+        .unwrap_or_else(|e| panic!("{lang}: extract failed: {e}"));
+    let non_file: Vec<_> = g
+        .nodes
+        .iter()
+        .filter(|n| n.kind != NodeKind::File)
+        .collect();
+    assert!(
+        !non_file.is_empty(),
+        "{lang}: expected at least one function/class/comment node, got only File. \
+         Query patterns in query_cache.rs need a grammar-version-aware refresh. \
+         Nodes: {:?}",
+        g.nodes
+    );
 }
 
 #[cfg(feature = "swift")]

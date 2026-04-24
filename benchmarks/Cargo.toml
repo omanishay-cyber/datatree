@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.78"
 license = "MIT"
 authors = ["Anish Trivedi <bhattanish@gmail.com>"]
-description = "Datatree benchmarks: retrieval quality and token-reduction harness vs cold Claude baseline"
+description = "Mneme benchmarks: retrieval quality and token-reduction harness vs cold Claude baseline"
 publish = false
 
 [lib]

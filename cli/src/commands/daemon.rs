@@ -23,7 +23,7 @@ pub struct DaemonArgs {
     pub op: String,
 
     /// Override path to the supervisor binary (used by `start` / `restart`).
-    #[arg(long, env = "DATATREE_SUPERVISOR_BIN")]
+    #[arg(long, env = "MNEME_SUPERVISOR_BIN")]
     pub bin: Option<PathBuf>,
 
     /// For `logs`: how many tail lines to fetch.

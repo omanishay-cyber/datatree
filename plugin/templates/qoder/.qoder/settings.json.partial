@@ -1,20 +1,20 @@
 {
-  "$comment": "datatree-marker v1.0 — merged into .qoder/settings.json. Existing keys preserved.",
+  "$comment": "mneme-marker v1.0 — merged into .qoder/settings.json. Existing keys preserved.",
   "agent": {
     "rulesFile": "QODER.md",
     "graphFirst": true
   },
   "context": {
     "providers": {
-      "datatree": {
+      "mneme": {
         "enabled": true,
         "priority": 100,
         "transport": "mcp",
-        "server": "datatree"
+        "server": "mneme"
       }
     }
   },
   "hooks": {
-    "afterEdit": "{{datatree_root}}/scripts/hooks/qoder-after-edit.sh"
+    "afterEdit": "{{mneme_root}}/scripts/hooks/qoder-after-edit.sh"
   }
 }

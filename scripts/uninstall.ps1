@@ -1,14 +1,14 @@
-# Uninstall datatree on Windows.
+# Uninstall mneme on Windows.
 # KEEPS user data unless --purge is passed.
 [CmdletBinding()]
 param([switch]$Purge, [switch]$Quiet)
 
 $ErrorActionPreference = 'Continue'
-function Write-Log([string]$msg) { if (-not $Quiet) { Write-Host "[datatree-uninstall] $msg" } }
+function Write-Log([string]$msg) { if (-not $Quiet) { Write-Host "[mneme-uninstall] $msg" } }
 
-$ServiceName  = 'DatatreeDaemon'
-$DatatreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $env:USERPROFILE '.datatree' }
-$BinDir       = Join-Path $DatatreeHome 'bin'
+$ServiceName  = 'MnemeDaemon'
+$MnemeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $env:USERPROFILE '.mneme' }
+$BinDir       = Join-Path $MnemeHome 'bin'
 
 # stop first
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -37,23 +37,23 @@ if (Test-Path $BinDir) {
     Write-Log "Removed $BinDir"
 }
 
-$LogsDir = Join-Path $DatatreeHome 'logs'
+$LogsDir = Join-Path $MnemeHome 'logs'
 if (Test-Path $LogsDir) { Remove-Item -Recurse -Force $LogsDir }
-$PidFile = Join-Path $DatatreeHome 'supervisor.pid'
+$PidFile = Join-Path $MnemeHome 'supervisor.pid'
 if (Test-Path $PidFile) { Remove-Item -Force $PidFile }
 
 if ($Purge) {
     Write-Log "WARNING: --Purge will delete projects/, cache/, models/"
     foreach ($sub in @('projects','cache','models')) {
-        $p = Join-Path $DatatreeHome $sub
+        $p = Join-Path $MnemeHome $sub
         if (Test-Path $p) { Remove-Item -Recurse -Force $p }
     }
-    if ((Test-Path $DatatreeHome) -and -not (Get-ChildItem $DatatreeHome -Force)) {
-        Remove-Item -Force $DatatreeHome
+    if ((Test-Path $MnemeHome) -and -not (Get-ChildItem $MnemeHome -Force)) {
+        Remove-Item -Force $MnemeHome
     }
     Write-Log "User data purged"
 } else {
-    Write-Log "User data preserved at $DatatreeHome (projects/, cache/, models/)"
+    Write-Log "User data preserved at $MnemeHome (projects/, cache/, models/)"
     Write-Log "Run uninstall.ps1 -Purge to delete it."
 }
 exit 0

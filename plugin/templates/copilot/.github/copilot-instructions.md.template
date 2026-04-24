@@ -1,34 +1,34 @@
-<!-- datatree-start v1.0 -->
-# Datatree (GitHub Copilot)
+<!-- mneme-start v1.0 -->
+# Mneme (GitHub Copilot)
 
 Copilot Chat (VS Code, JetBrains, GitHub.com) reads
 `.github/copilot-instructions.md` as repo-level guidance. In VS Code,
 Copilot can also call MCP tools (see `.vscode/mcp.json` ->
-`servers.datatree`).
+`servers.mneme`).
 
 ## Tool usage rules (MANDATORY)
 
-**When MCP is available, call datatree MCP tools BEFORE Copilot's
+**When MCP is available, call mneme MCP tools BEFORE Copilot's
 built-in `#codebase`, `#file`, or `#search` references.** When MCP is
 not available (Copilot Chat on GitHub.com), summarise the relevant
-slice from datatree first using the CLI and paste it into the chat.
+slice from mneme first using the CLI and paste it into the chat.
 
 On every task:
 
-1. `datatree.minimal_context(task="<description>")` — ~100 tokens.
-2. Iterate with `datatree.query`, `datatree.impact`, `datatree.search`
+1. `mneme.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`
    at `detail_level="minimal"`.
 3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
 
 ## Coding standards (Copilot)
 
-- Use the symbols datatree returns. Do not invent function/module names.
+- Use the symbols mneme returns. Do not invent function/module names.
 - When suggesting an edit that changes a public signature, also surface
-  the impact set from `datatree.impact(symbol=...)` in the explanation.
+  the impact set from `mneme.impact(symbol=...)` in the explanation.
 
 ## Step ledger / drift / compaction
 
-- Ledger: `~/.datatree/projects/<id>/steps.jsonl`.
+- Ledger: `~/.mneme/projects/<id>/steps.jsonl`.
 - Address symbol/doc/test drift before declaring done.
-- Re-prime via `datatree.minimal_context(...)` after any reset.
-<!-- datatree-end -->
+- Re-prime via `mneme.minimal_context(...)` after any reset.
+<!-- mneme-end -->

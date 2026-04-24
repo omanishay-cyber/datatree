@@ -1,4 +1,4 @@
-# datatree :: install-bundle.ps1
+# mneme :: install-bundle.ps1
 # Master end-to-end installer for Windows.  Single command does everything:
 #   1. Detect OS + arch
 #   2. Run check-runtime.ps1; collect missing
@@ -28,7 +28,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
-$DataTreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $HOME ".datatree" }
+$DataTreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $HOME ".mneme" }
 $LogDir       = Join-Path $DataTreeHome "logs"
 $LogFile      = Join-Path $LogDir       "install.log"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
@@ -93,7 +93,7 @@ if ($SkipRuntime) {
 }
 
 # --------- step 4
-Step "4. Install supervisor (datatree-supervisor)"
+Step "4. Install supervisor (mneme-supervisor)"
 $supScript = Join-Path $ScriptDir "install-supervisor.ps1"
 if (Test-Path $supScript) {
     & pwsh -NoProfile -File $supScript
@@ -120,7 +120,7 @@ if ($SkipModels) {
 if ($NoStart) {
     Write-Log "Skipping daemon start (-NoStart)"
 } else {
-    Step "6. Start datatree daemon"
+    Step "6. Start mneme daemon"
     $startScript = Join-Path $ScriptDir "start-daemon.ps1"
     if (Test-Path $startScript) {
         & pwsh -NoProfile -File $startScript
@@ -134,17 +134,17 @@ if ($NoStart) {
 Step "7. Done"
 @"
 
-   datatree is installed.
+   mneme is installed.
 
    Next:  open Claude Code in your project and run
 
-          /plugin install datatree
+          /plugin install mneme
 
    Useful commands:
      pwsh scripts\check-runtime.ps1           # health-check
      pwsh scripts\start-daemon.ps1            # start
      pwsh scripts\stop-daemon.ps1             # stop
-     pwsh scripts\uninstall-runtime.ps1       # remove deps datatree installed
+     pwsh scripts\uninstall-runtime.ps1       # remove deps mneme installed
 
 "@ | Write-Host
 

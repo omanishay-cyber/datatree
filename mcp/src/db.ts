@@ -29,7 +29,7 @@ import type {
 
 /**
  * Discover the supervisor IPC endpoint:
- *   - Windows: \\?\pipe\datatree-supervisor
+ *   - Windows: \\?\pipe\mneme-supervisor
  *   - macOS / Linux: $HOME/.mneme/supervisor.sock
  *
  * Override via MNEME_SOCKET env var.
@@ -40,7 +40,7 @@ function discoverSocketPath(): string {
     return override;
   }
   if (platform() === "win32") {
-    return "\\\\?\\pipemneme-supervisor";
+    return "\\\\?\\pipe\\mneme-supervisor";
   }
   return join(homedir(), ".mneme", "supervisor.sock");
 }

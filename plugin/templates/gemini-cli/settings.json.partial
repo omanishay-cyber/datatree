@@ -1,13 +1,13 @@
 {
-  "$comment": "datatree-marker v1.0 — merged into ~/.gemini/settings.json. Existing keys preserved.",
+  "$comment": "mneme-marker v1.0 — merged into ~/.gemini/settings.json. Existing keys preserved.",
   "mcpServers": {
-    "datatree": {
+    "mneme": {
       "command": "bun",
-      "args": ["{{datatree_root}}/mcp/index.ts"],
+      "args": ["{{mneme_root}}/mcp/index.ts"],
       "type": "stdio",
       "env": {
-        "DATATREE_HOME": "{{datatree_home}}",
-        "DATATREE_PROJECT_ROOT": "{{project_root}}"
+        "MNEME_HOME": "{{mneme_home}}",
+        "MNEME_PROJECT_ROOT": "{{project_root}}"
       }
     }
   }

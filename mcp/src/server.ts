@@ -98,7 +98,7 @@ function toMcpInputSchema(descriptor: ToolDescriptor): {
 // Server class
 // ---------------------------------------------------------------------------
 
-export class DatatreeMcpServer {
+export class MnemeMcpServer {
   private server: Server;
   private transport: StdioServerTransport | null = null;
   private ctx: ToolContext;

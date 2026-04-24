@@ -1,11 +1,11 @@
-# datatree :: install-runtime.ps1
-# Detects and (optionally) installs the runtime dependencies datatree needs on
+# mneme :: install-runtime.ps1
+# Detects and (optionally) installs the runtime dependencies mneme needs on
 # Windows: bun >=1.0, python >=3.10, tesseract >=5.0, ffmpeg.
-# SQLite is bundled inside datatree-store via rusqlite's `bundled` feature.
+# SQLite is bundled inside mneme-store via rusqlite's `bundled` feature.
 #
 # LOCAL-ONLY rule: this script never reaches the internet by itself.  When
 # -AutoInstall is passed, it delegates to winget / scoop / choco -- those
-# package managers may go to the network on the user's behalf, but datatree
+# package managers may go to the network on the user's behalf, but mneme
 # itself never does.  With -From <dir>, no network access at all.
 #
 # Usage:
@@ -29,7 +29,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 # ----------------------------------------------------------- config
-$DataTreeHome    = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $HOME ".datatree" }
+$DataTreeHome    = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $HOME ".mneme" }
 $LogDir          = Join-Path $DataTreeHome "logs"
 $LogFile         = Join-Path $LogDir       "install.log"
 $ManifestFile    = Join-Path $DataTreeHome "install-manifest.json"
@@ -260,11 +260,11 @@ function Install-Dep {
 
 # ---------------------------------------------------- manifest writer
 function Write-Manifest {
-    param([string[]]$InstalledByDatatree, [string[]]$Preexisting)
+    param([string[]]$InstalledByMneme, [string[]]$Preexisting)
     $obj = [ordered]@{
-        datatree_version       = $DataTreeVersion
+        mneme_version          = $DataTreeVersion
         installed_at           = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-        installed_by_datatree  = @($InstalledByDatatree)
+        installed_by_mneme     = @($InstalledByMneme)
         preexisting            = @($Preexisting)
         models                 = @{}
     }
@@ -274,7 +274,7 @@ function Write-Manifest {
 }
 
 # ============================================================ main
-Write-Log "INFO" "datatree runtime installer v$DataTreeVersion starting"
+Write-Log "INFO" "mneme runtime installer v$DataTreeVersion starting"
 Write-Log "INFO" "AutoInstall=$AutoInstall  From=$From"
 
 Refresh-Path
@@ -301,7 +301,7 @@ foreach ($d in $RequiredDeps) {
 
 if ($missing.Count -eq 0) {
     Write-Log "OK" "All required runtime deps already present.  Nothing to do."
-    Write-Manifest -InstalledByDatatree @() -Preexisting $preexisting
+    Write-Manifest -InstalledByMneme @() -Preexisting $preexisting
     exit 0
 }
 
@@ -341,6 +341,6 @@ foreach ($d in $missing) {
     $installed += $d
 }
 
-Write-Manifest -InstalledByDatatree $installed -Preexisting $preexisting
-Write-Log "OK" "datatree runtime install complete."
+Write-Manifest -InstalledByMneme $installed -Preexisting $preexisting
+Write-Log "OK" "mneme runtime install complete."
 exit 0

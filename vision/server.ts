@@ -1,6 +1,6 @@
 // Vision web server — runs under Bun (`bun server.ts`).
 // Binds to 127.0.0.1 only (NEVER 0.0.0.0). Serves built dist/, proxies /api/graph
-// to the datatree IPC, and forwards a WebSocket /ws upgrade to the livebus.
+// to the mneme IPC, and forwards a WebSocket /ws upgrade to the livebus.
 //
 // Local-only by policy. Voice nav is stubbed for v1 (Phase 5 ships real voice).
 
@@ -31,7 +31,7 @@ const PORT = Number(process.env.VISION_PORT ?? 7777);
 const DIST_DIR = join(import.meta.dir, "dist");
 
 // Backend services the server proxies to.
-const DATATREE_IPC = process.env.DATATREE_IPC ?? "http://127.0.0.1:7780";
+const MNEME_IPC = process.env.MNEME_IPC ?? "http://127.0.0.1:7780";
 const LIVEBUS_WS = process.env.LIVEBUS_WS ?? "ws://127.0.0.1:7778/ws";
 const DAEMON_HEALTH = process.env.DAEMON_HEALTH ?? "http://127.0.0.1:7777/health";
 
@@ -78,7 +78,7 @@ async function serveStatic(pathname: string): Promise<Response> {
   return new Response("not built — run `vite build`", { status: 404 });
 }
 
-// Direct shard reader for a single view. Mirrors the datatree IPC
+// Direct shard reader for a single view. Mirrors the mneme IPC
 // shape — the fallback path when IPC is unreachable or not started.
 function serveViewFromShard(view: string, url: URL): Response {
   const limit = Number(url.searchParams.get("limit") ?? "2000");
@@ -195,7 +195,7 @@ async function proxyGraph(req: Request, url: URL): Promise<Response> {
   }
 
   try {
-    const upstream = await fetch(`${DATATREE_IPC}/graph`, {
+    const upstream = await fetch(`${MNEME_IPC}/graph`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(envelope),
@@ -241,7 +241,7 @@ const server = Bun.serve({
         ok: true,
         host: HOST,
         port: PORT,
-        datatreeIpc: DATATREE_IPC,
+        mnemeIpc: MNEME_IPC,
         livebusWs: LIVEBUS_WS,
         ts: Date.now(),
       });

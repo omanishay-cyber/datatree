@@ -1,4 +1,4 @@
-# Install datatree ML models from a LOCAL source path.
+# Install mneme ML models from a LOCAL source path.
 # REFUSES internet downloads. Models must be pre-staged locally.
 [CmdletBinding()]
 param(
@@ -10,17 +10,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-function Write-Log([string]$msg) { if (-not $Quiet) { Write-Host "[datatree-models] $msg" } }
+function Write-Log([string]$msg) { if (-not $Quiet) { Write-Host "[mneme-models] $msg" } }
 
 if (-not $From) {
     Write-Host @"
 ERROR: -From <local-path> is required.
 
-datatree REFUSES to fetch models from the internet. Models are large and
+mneme REFUSES to fetch models from the internet. Models are large and
 must be installed from a verified, locally-staged copy. Download the
 models bundle separately, then point this script at the unpacked folder:
 
-    install_models.ps1 -From C:\path\to\datatree-models
+    install_models.ps1 -From C:\path\to\mneme-models
 
 Required:  bge-small-en-v1.5.onnx
 Optional:  phi-3-mini-q4_k_m.gguf, faster-whisper-base\
@@ -33,8 +33,8 @@ if (-not (Test-Path $From -PathType Container)) {
     exit 1
 }
 
-$DatatreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $env:USERPROFILE '.datatree' }
-$ModelDir     = Join-Path $DatatreeHome 'models'
+$MnemeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $env:USERPROFILE '.mneme' }
+$ModelDir     = Join-Path $MnemeHome 'models'
 if (-not (Test-Path $ModelDir)) { New-Item -ItemType Directory -Force -Path $ModelDir | Out-Null }
 
 function Copy-Model($srcRel, $name, $label) {

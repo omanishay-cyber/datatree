@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
-# datatree :: uninstall-runtime.sh
-# Removes the runtime dependencies datatree installed.  Reads the install
+# mneme :: uninstall-runtime.sh
+# Removes the runtime dependencies mneme installed.  Reads the install
 # manifest at ~/.mneme/install-manifest.json to know which deps were
-# installed by datatree (vs. preexisting on the user's machine).
+# installed by mneme (vs. preexisting on the user's machine).
 #
 # Flags:
 #   --keep-shared   : do NOT remove anything listed under "preexisting"
@@ -19,7 +19,7 @@
 
 set -eu
 
-MNEME_HOME="${MNEME_HOME:-${HOME}/.datatree}"
+MNEME_HOME="${MNEME_HOME:-${HOME}/.mneme}"
 LOG_DIR="${MNEME_HOME}/logs"
 LOG_FILE="${LOG_DIR}/install.log"
 MANIFEST_FILE="${MNEME_HOME}/install-manifest.json"
@@ -64,7 +64,7 @@ confirm() {
 
 if [ ! -f "$MANIFEST_FILE" ]; then
     err "Install manifest not found: $MANIFEST_FILE"
-    err "Either datatree was never installed, or you wiped \$MNEME_HOME."
+    err "Either mneme was never installed, or you wiped \$MNEME_HOME."
     exit 1
 fi
 
@@ -102,13 +102,13 @@ parse_array() {
     ' "$MANIFEST_FILE"
 }
 
-INSTALLED_BY_DT="$(parse_array installed_by_datatree | tr '\n' ' ')"
+INSTALLED_BY_DT="$(parse_array installed_by_mneme | tr '\n' ' ')"
 PREEXISTING="$(parse_array preexisting | tr '\n' ' ')"
 
-log "manifest: installed_by_datatree=[$INSTALLED_BY_DT]  preexisting=[$PREEXISTING]"
+log "manifest: installed_by_mneme=[$INSTALLED_BY_DT]  preexisting=[$PREEXISTING]"
 
 if [ -z "$(echo "$INSTALLED_BY_DT" | tr -d ' ')" ] && [ $KEEP_SHARED -eq 1 ]; then
-    log "Nothing to uninstall (no deps were installed by datatree)."
+    log "Nothing to uninstall (no deps were installed by mneme)."
     exit 0
 fi
 
@@ -205,7 +205,7 @@ done
 # Update manifest -- strip the removed entries
 if [ -n "$(echo "$REMOVED" | tr -d ' ')" ]; then
     log "Updating manifest"
-    # very small awk filter: rewrites installed_by_datatree minus REMOVED entries
+    # very small awk filter: rewrites installed_by_mneme minus REMOVED entries
     _now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
     _new_installed=""
     for d in $INSTALLED_BY_DT; do
@@ -236,9 +236,9 @@ if [ -n "$(echo "$REMOVED" | tr -d ' ')" ]; then
     }
     cat > "$MANIFEST_FILE" <<EOF
 {
-  "datatree_version": "0.1.0",
+  "mneme_version": "0.1.0",
   "installed_at": "${_now}",
-  "installed_by_datatree": $(_to_json "$_new_installed"),
+  "installed_by_mneme": $(_to_json "$_new_installed"),
   "preexisting": $(_to_json "$_new_preexisting"),
   "models": {}
 }

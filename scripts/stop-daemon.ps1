@@ -1,11 +1,11 @@
-# Stop the datatree Windows service or Task Scheduler task.
+# Stop the mneme Windows service or Task Scheduler task.
 [CmdletBinding()]
 param([switch]$Quiet)
 
 $ErrorActionPreference = 'Continue'
-function Write-Log([string]$msg) { if (-not $Quiet) { Write-Host "[datatree-stop] $msg" } }
+function Write-Log([string]$msg) { if (-not $Quiet) { Write-Host "[mneme-stop] $msg" } }
 
-$ServiceName = 'DatatreeDaemon'
+$ServiceName = 'MnemeDaemon'
 
 $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($svc) {
@@ -24,9 +24,9 @@ if ($task) {
 }
 
 # also kill any stray supervisor process
-Get-Process -Name 'datatree-supervisor' -ErrorAction SilentlyContinue | ForEach-Object {
+Get-Process -Name 'mneme-supervisor' -ErrorAction SilentlyContinue | ForEach-Object {
     try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue } catch {}
-    Write-Log ("Killed datatree-supervisor pid {0}" -f $_.Id)
+    Write-Log ("Killed mneme-supervisor pid {0}" -f $_.Id)
 }
 
 exit 0

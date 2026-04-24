@@ -15,12 +15,12 @@ body:
     id: proposal
     attributes:
       label: Proposed feature
-      description: How datatree could help. A sketch is fine.
+      description: How mneme could help. A sketch is fine.
 
   - type: dropdown
     id: category
     attributes:
-      label: Which part of datatree?
+      label: Which part of mneme?
       options:
         - MCP tool (new or improved)
         - Scanner (new drift rule)

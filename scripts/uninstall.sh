@@ -1,5 +1,5 @@
 #!/bin/sh
-# Uninstall datatree binaries + service registrations.
+# Uninstall mneme binaries + service registrations.
 # KEEPS user data ($MNEME_HOME/projects, /cache, /models) by default.
 # Pass --purge to also delete user data.
 set -eu
@@ -20,7 +20,7 @@ for arg in "$@"; do
     esac
 done
 
-MNEME_HOME="${MNEME_HOME:-$HOME/.datatree}"
+MNEME_HOME="${MNEME_HOME:-$HOME/.mneme}"
 BIN_DIR="$MNEME_HOME/bin"
 
 # stop daemon first
@@ -32,7 +32,7 @@ fi
 OS="$(uname -s)"
 case "$OS" in
     Darwin)
-        PLIST="$HOME/Library/LaunchAgents/com.datatree.supervisor.plist"
+        PLIST="$HOME/Library/LaunchAgents/com.mneme.supervisor.plist"
         if [ -f "$PLIST" ]; then
             launchctl unload "$PLIST" 2>/dev/null || true
             rm -f "$PLIST"
@@ -40,11 +40,11 @@ case "$OS" in
         fi
         ;;
     Linux)
-        UNIT="$HOME/.config/systemd/user/datatree.service"
+        UNIT="$HOME/.config/systemd/user/mneme.service"
         if [ -f "$UNIT" ]; then
             if command -v systemctl >/dev/null 2>&1; then
-                systemctl --user disable datatree.service 2>/dev/null || true
-                systemctl --user stop    datatree.service 2>/dev/null || true
+                systemctl --user disable mneme.service 2>/dev/null || true
+                systemctl --user stop    mneme.service 2>/dev/null || true
             fi
             rm -f "$UNIT"
             command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload || true

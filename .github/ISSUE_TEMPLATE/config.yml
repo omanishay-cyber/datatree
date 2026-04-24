@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: 💬 Discussions
-    url: https://github.com/omanishay-cyber/datatree/discussions
+    url: https://github.com/omanishay-cyber/mneme/discussions
     about: Architecture questions, use cases, "is this a good idea?" — anything open-ended
   - name: 🔒 Security report
     url: mailto:(GitHub Issues or Discussions)
     about: Please do not file public issues for security vulnerabilities — email instead
   - name: 💼 Commercial licensing
     url: mailto:(GitHub Issues or Discussions)
-    about: Hosting datatree as a service, building a derivative product, training on it — all require a commercial agreement
+    about: Hosting mneme as a service, building a derivative product, training on it — all require a commercial agreement

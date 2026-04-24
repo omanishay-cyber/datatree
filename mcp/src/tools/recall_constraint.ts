@@ -3,7 +3,7 @@
  *
  * Returns active constraints (rules) for the current project, file, or global
  * scope. Constraints originate from CLAUDE.md, .claude/rules/, and the
- * project's datatree.json.
+ * project's mneme.json.
  *
  * v0.1 (review P2): reads `memory.db → constraints` via `bun:sqlite`
  * read-only. Query shape: scope-filtered WHERE + client-side glob match over
@@ -44,7 +44,7 @@ export const tool: ToolDescriptor<
 > = {
   name: "recall_constraint",
   description:
-    "Get active constraints (rules) for the current scope. Constraints are sourced from CLAUDE.md, .claude/rules/, and project datatree.json. Use BEFORE any Edit/Write to check what rules apply to the file you are about to change.",
+    "Get active constraints (rules) for the current scope. Constraints are sourced from CLAUDE.md, .claude/rules/, and project mneme.json. Use BEFORE any Edit/Write to check what rules apply to the file you are about to change.",
   inputSchema: RecallConstraintInput,
   outputSchema: RecallConstraintOutput,
   category: "recall",

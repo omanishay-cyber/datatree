@@ -22,7 +22,7 @@
  * mcpServers entry, hooks via the hooks entry).
  */
 
-import { DatatreeMcpServer } from "./server.ts";
+import { MnemeMcpServer } from "./server.ts";
 import { registry } from "./tools/index.ts";
 import { runSessionPrime } from "./hooks/session_prime.ts";
 import { runInject } from "./hooks/inject.ts";
@@ -137,11 +137,11 @@ async function startMcp(): Promise<void> {
   registry.watch();
 
   const ctx = {
-    sessionId: process.env.DATATREE_SESSION_ID ?? "stdio-default",
+    sessionId: process.env.MNEME_SESSION_ID ?? "stdio-default",
     cwd: process.cwd(),
   };
 
-  const server = new DatatreeMcpServer(ctx);
+  const server = new MnemeMcpServer(ctx);
   await server.start();
 
   // Lifecycle: shut down cleanly on SIGINT/SIGTERM.

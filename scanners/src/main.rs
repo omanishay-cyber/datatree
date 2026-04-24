@@ -31,7 +31,7 @@ const CHANNEL_CAP: usize = 1024;
 async fn main() -> std::io::Result<()> {
     init_tracing();
 
-    let worker_count = std::env::var("DATATREE_SCAN_WORKERS")
+    let worker_count = std::env::var("MNEME_SCAN_WORKERS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or_else(|| (num_cpus_or_default() * 2).max(2));

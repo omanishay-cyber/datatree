@@ -1,5 +1,5 @@
 /**
- * Datatree MCP — shared type definitions and zod schemas.
+ * Mneme MCP — shared type definitions and zod schemas.
  *
  * Every MCP tool input/output is validated against a zod schema declared here.
  * Hooks emit a strict JSON shape consumed by Claude Code (and 17 other AI
