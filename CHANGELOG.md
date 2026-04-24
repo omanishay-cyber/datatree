@@ -5,14 +5,101 @@ All notable changes to mneme will be recorded here.
 Format loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] — v0.3.1 fix cycle (in progress, version unbumped)
 
-### Planned
-- Workers emit `WorkerCompleteJob` IPC (~80 LoC per worker) so dispatched `Job::Parse` results persist through the supervisor path (currently workers still write via stdout).
-- `Job::Scan` / `Job::Embed` / `Job::Ingest` variants exposed in CLI (only `Job::Parse` is submitted today).
+The v0.3.0 install catastrophe (see `mneme-install-report/report-002.md`
+for the forensic record — Claude Code bricked by schema-mismatched
+hooks + CLI-vs-STDIN self-trap) drove a targeted fix sweep. No new
+features; every change below closes a specific failure mode documented
+in that report or improves the install UX that caused the break.
+
+### Fixed — nuclear items (v0.3.0 install incident)
+
+- **No hooks written to `~/.claude/settings.json`** (C0a, commit `2a675b2`).
+  `cli/src/platforms/claude_code.rs::write_hooks` is now a no-op.
+  Falls through to the trait default (`Ok(None)`). Eliminates the
+  entire F-011 schema-rejection attack surface that poisoned the
+  host's hook/permission/plugin config on v0.3.0 install.
+- **`mneme daemon start` works out-of-the-box** (C0d, commit `2a675b2`).
+  Wrapper now finds `mneme-daemon.exe` (the actual shipped binary
+  name) + passes the `start` subcommand + detaches stdio. Closes
+  F-004 and F-005.
+- **Hook binaries read STDIN JSON** (C0b, commit `a948ecf`). All 8
+  hook binaries (`pre-tool`, `post-tool`, `inject`, `turn-end`,
+  `session-prime`, `session-end`, `--subagent` and `--pre-compact`
+  variants) now accept Claude Code's STDIN payload in addition to
+  the traditional CLI flags. Shared helper `cli/src/hook_payload.rs`
+  keeps the 8 binaries from drifting. Every hook exits 0 on internal
+  error — NEVER blocks the user's operation because of our bug. F-012
+  self-trap is architecturally impossible now.
+- **`mneme rollback` command with per-install receipts** (C0c full,
+  commit pending). `cli/src/receipts.rs` + `cli/src/commands/rollback.rs`
+  — every install records a JSON receipt at
+  `~/.mneme/install-receipts/<ts>-<id>.json` with every file touched,
+  its sha256 before + after, and the backup path. `mneme rollback`
+  restores byte-for-byte with drift detection (refuses to clobber
+  files edited externally). Closes F-014. `mneme rollback --list`
+  shows history; `--dry-run` previews.
+- **`mneme build` guards against indexing the whole home dir** (C0e,
+  commit `caa690b`). New `-y/--yes` flag + `BIG_PROJECT_FILE_THRESHOLD`
+  guard (10k files). Expanded default ignores to cover Windows
+  user-profile traps (AppData, OneDrive, Recycle.Bin) and Electron
+  build dirs (.vite, dist-electron, release). Closes F-010.
+- **`.mnemeignore` + `.gitignore` support** (P16). Full gitignore-spec
+  matcher via the `ignore` crate — negation, directory-only patterns,
+  globs. Applied on top of the hard-coded `is_ignored` safety net
+  across all 4 walker sites (inline build, dispatched build,
+  multimodal pass, pre-flight count).
+
+### Added — v0.3.1
+
+- **Zero-prereq one-line installer** (`scripts/install.ps1` rewritten).
+  Detects + installs Bun (required, direct GitHub ZIP avoids the
+  `bun.sh/install.ps1` curl.exe -# breakage on non-interactive shells),
+  Node.js LTS (for Claude Code CLI, via direct MSI), and git (for build
+  metadata, via direct installer). Rust intentionally NOT installed —
+  mneme ships pre-built.
+- **Windows Defender exclusion** (P5.5). Installer auto-registers
+  `~/.mneme/` and `~/.claude/` as Defender exclusions (admin-gated
+  with clear manual fallback) to prevent the `Trojan:Script/SAgent.HAG!MTB`
+  generic ML false positive on agent-automation memory/log files.
+- **`mneme register-mcp` / `mneme unregister-mcp`** (P3.6). First-class
+  MCP-only install commands. Thin wrappers over `install --skip-manifest
+  --skip-hooks`. Replaces the awkward incantation with a named command.
+
+### Changed — v0.3.1
+
+- **Manifest now written to `~/.claude/CLAUDE.md`** (P8). Previously
+  `~/CLAUDE.md` (user home root), only loaded when Claude Code launched
+  from that exact CWD. Closes F-008 / F-017.
+- **CLI `recall` / `blast` / `godnodes` bypass the supervisor** (C1,
+  commit `5eba6f6`). Query `graph.db` directly via rusqlite — same
+  pattern the MCP tools already use via `bun:sqlite`. Closes F-009.
+  Pre-fix these returned "unknown variant" from the supervisor IPC.
+- **`backup_then_write` timestamps every `.bak`** (C0c minimum, commit
+  `2520fca`). `<path>.mneme-YYYYMMDD-HHMMSS.bak` survives re-installs;
+  a stable `<path>.bak` alias points at the most recent backup for
+  tooling compat.
+
+### Deferred to v0.4 (documented explicitly, not silently punted)
+
+- **Workers emit `WorkerCompleteJob` IPC** (~80 LoC per worker × 4).
+  Dispatched `Job::Parse` results still flow via stdout; supervisor
+  can't track completion cleanly. Real change but architectural +
+  scoped to a release where the worker dispatch path gains
+  observability layers (metrics, audit, per-project locks).
+- **Supervisor routing for `Recall` / `Blast` / `GodNodes` / `History`
+  / `Snapshot`** (C1 architectural cleanup). CLI uses direct-DB today,
+  which works end-to-end. Routing through supervisor adds centralized
+  caching + query-count metrics + audit log, but none of those layers
+  exist yet. Lands with the observability work in v0.4.
+- `Job::Scan` / `Job::Embed` / `Job::Ingest` variants exposed in CLI
+  (only `Job::Parse` is submitted today).
 - Durable SQLite-backed supervisor queue (replaces in-memory `JobQueue`).
-- Audio / video / OCR multimodal extractors behind `whisper` / `ffmpeg` / `tesseract` feature flags.
-- True per-page bbox + heading extraction for PDFs (lopdf / pdfium-render swap).
+- Audio / video / OCR multimodal extractors behind `whisper` / `ffmpeg`
+  / `tesseract` feature flags.
+- True per-page bbox + heading extraction for PDFs (lopdf / pdfium-render
+  swap).
 - 60-second demo video (user task).
 - Domain + landing page (user task).
 

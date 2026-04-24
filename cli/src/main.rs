@@ -82,6 +82,11 @@ enum Command {
     /// Remove ONLY the MCP server entry. Inverse of `register-mcp`.
     #[command(name = "unregister-mcp")]
     UnregisterMcp(commands::register_mcp::RegisterMcpArgs),
+    /// Reverse a previous install using its receipt. Restores every
+    /// file mneme touched to its pre-install state (with sha256 drift
+    /// detection so hand-edits aren't clobbered). Receipts live at
+    /// `~/.mneme/install-receipts/`.
+    Rollback(commands::rollback::RollbackArgs),
     /// Manage local models (embeddings, optional LLM).
     Models(commands::models::ModelsArgs),
     /// Initial full project ingest.
@@ -174,6 +179,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
         Command::Uninstall(args) => commands::uninstall::run(args).await,
         Command::RegisterMcp(args) => commands::register_mcp::register(args).await,
         Command::UnregisterMcp(args) => commands::register_mcp::unregister(args).await,
+        Command::Rollback(args) => commands::rollback::run(args).await,
         Command::Models(args) => commands::models::run(args),
         Command::Build(args) => commands::build::run(args, socket_override).await,
         Command::Update(args) => commands::update::run(args, socket_override).await,

@@ -27,6 +27,7 @@ use crate::error::CliResult;
 use crate::platforms::{
     AdapterContext, InstallScope, Platform, PlatformDetector,
 };
+use crate::receipts::{sha256_of_file, Receipt, ReceiptAction};
 
 /// CLI args for `mneme install`.
 #[derive(Debug, Args)]
@@ -124,6 +125,12 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
     let bar = make_bar(targets.len() as u64);
     let mut report: Vec<InstallReport> = Vec::with_capacity(targets.len());
 
+    // Receipt — records every file write, MCP registration, etc.
+    // Persisted at `~/.mneme/install-receipts/<stamp>-<id>.json` at the
+    // end of the install so `mneme rollback` can reverse it atomically.
+    // Only written on non-dry-run.
+    let mut receipt = Receipt::new();
+
     for platform in targets {
         bar.set_message(platform.display_name().to_string());
         let r = install_one(
@@ -132,6 +139,7 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
             args.skip_mcp,
             args.skip_hooks,
             args.skip_manifest,
+            &mut receipt,
         );
         report.push(InstallReport {
             platform,
@@ -147,6 +155,15 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
     }
 
     bar.finish_with_message("done");
+
+    // Persist the receipt so `mneme rollback` can reverse this install.
+    // Skipped in dry-run — no writes happened so no rollback is possible.
+    if !args.dry_run && !receipt.actions.is_empty() {
+        match receipt.save() {
+            Ok(path) => info!(path = %path.display(), "install receipt written"),
+            Err(e) => warn!(error = %e, "failed to write install receipt (install succeeded but rollback will be manual)"),
+        }
+    }
 
     println!();
     println!(
@@ -170,31 +187,142 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
 
 /// Run one platform's adapter. Order matters: manifest first (so the user
 /// sees mneme even if MCP/hook write fails), then MCP, then hooks.
+///
+/// Each write records a [`ReceiptAction`] into `receipt` so
+/// `mneme rollback` can reverse this install later.
 fn install_one(
     platform: Platform,
     ctx: &AdapterContext,
     skip_mcp: bool,
     skip_hooks: bool,
     skip_manifest: bool,
+    receipt: &mut Receipt,
 ) -> CliResult<()> {
     let adapter = platform.adapter();
+
     if !skip_manifest {
+        let target = adapter.manifest_path(ctx);
+        let existed_before = target.exists();
+        let sha_before = if existed_before { sha256_of_file(&target) } else { String::new() };
+
         let manifest = adapter.write_manifest(ctx)?;
         info!(platform = platform.id(), path = %manifest.display(), "manifest written");
+
+        if !ctx.dry_run {
+            let sha_after = sha256_of_file(&manifest);
+            if existed_before {
+                if let Some(backup) = find_latest_mneme_bak(&manifest) {
+                    receipt.push(ReceiptAction::FileModified {
+                        path: manifest.clone(),
+                        backup_path: backup,
+                        sha256_before: sha_before,
+                        sha256_after: sha_after,
+                    });
+                }
+            } else {
+                receipt.push(ReceiptAction::FileCreated {
+                    path: manifest.clone(),
+                    sha256_after: sha_after,
+                });
+            }
+        }
     } else {
         info!(platform = platform.id(), "manifest skipped (--skip-manifest)");
     }
 
     if !skip_mcp {
+        let target = adapter.mcp_config_path(ctx);
+        let existed_before = target.exists();
+        let sha_before = if existed_before { sha256_of_file(&target) } else { String::new() };
+
         let mcp = adapter.write_mcp_config(ctx)?;
         info!(platform = platform.id(), path = %mcp.display(), "mcp config written");
+
+        if !ctx.dry_run {
+            let sha_after = sha256_of_file(&mcp);
+            if existed_before {
+                if let Some(backup) = find_latest_mneme_bak(&mcp) {
+                    receipt.push(ReceiptAction::FileModified {
+                        path: mcp.clone(),
+                        backup_path: backup,
+                        sha256_before: sha_before,
+                        sha256_after: sha_after,
+                    });
+                }
+            } else {
+                receipt.push(ReceiptAction::FileCreated {
+                    path: mcp.clone(),
+                    sha256_after: sha_after,
+                });
+            }
+            // Also record the MCP registration semantically — lets
+            // `mneme rollback` strip the mneme entry specifically
+            // without touching neighbors in mcp_config_path.
+            receipt.push(ReceiptAction::McpRegistered {
+                platform: platform.id().to_string(),
+                host_file: mcp.clone(),
+            });
+        }
     }
+
     if !skip_hooks {
         if let Some(hooks) = adapter.write_hooks(ctx)? {
             info!(platform = platform.id(), path = %hooks.display(), "hooks written");
+            // If any platform adapter starts writing hooks in the future,
+            // record them here. In v0.3.1 the ClaudeCode adapter returns
+            // None (see `platforms/claude_code.rs` module docstring) so
+            // this branch is effectively unreachable for Claude Code.
+            if !ctx.dry_run {
+                let sha_after = sha256_of_file(&hooks);
+                if let Some(backup) = find_latest_mneme_bak(&hooks) {
+                    receipt.push(ReceiptAction::FileModified {
+                        path: hooks.clone(),
+                        backup_path: backup,
+                        sha256_before: String::new(),
+                        sha256_after: sha_after,
+                    });
+                }
+            }
         }
     }
     Ok(())
+}
+
+/// Find the newest `<target>.mneme-YYYYMMDD-HHMMSS.bak` alongside `target`
+/// — that's the timestamped backup `backup_then_write` just created.
+/// Returns None if no such file exists (e.g. target is a fresh create).
+fn find_latest_mneme_bak(target: &std::path::Path) -> Option<PathBuf> {
+    let parent = target.parent()?;
+    let stem = target
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+
+    let mut candidates: Vec<PathBuf> = std::fs::read_dir(parent)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .map(|name| {
+                    // Match <stem>.mneme-<timestamp>.bak where stem = target's filename
+                    // or the pre-extension stem (we accept both shapes).
+                    name.starts_with(&format!("{stem}.mneme-"))
+                        || name.starts_with(&format!(
+                            "{}.mneme-",
+                            target
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("")
+                        ))
+                })
+                .unwrap_or(false)
+        })
+        .collect();
+    candidates.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+    candidates.into_iter().next()
 }
 
 fn make_bar(n: u64) -> ProgressBar {

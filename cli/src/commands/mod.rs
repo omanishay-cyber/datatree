@@ -22,6 +22,7 @@ pub mod pre_tool;
 pub mod rebuild;
 pub mod recall;
 pub mod register_mcp;
+pub mod rollback;
 pub mod session_end;
 pub mod session_prime;
 pub mod snap;

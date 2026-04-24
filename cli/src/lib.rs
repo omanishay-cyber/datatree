@@ -31,6 +31,7 @@ pub mod hook_payload;
 pub mod ipc;
 pub mod markers;
 pub mod platforms;
+pub mod receipts;
 
 #[cfg(test)]
 pub mod tests;

@@ -46,6 +46,10 @@ sha2 = "0.10"
 # Filesystem helpers.
 dirs = "5.0"
 walkdir = "2.5"
+# ripgrep's gitignore parser — powers `.mnemeignore` + `.gitignore`
+# support in `mneme build` (P16). Supports nested ignore files and the
+# full gitignore spec (negation, directory-only, etc.).
+ignore = "0.4"
 
 # Pretty progress bars + colored output for `mneme build`, `install`, etc.
 indicatif = { version = "0.17", features = ["rayon"] }

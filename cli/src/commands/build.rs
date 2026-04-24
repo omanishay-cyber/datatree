@@ -143,10 +143,16 @@ async fn run_dispatched(
         .map_err(|e| CliError::Other(format!("cannot hash project path: {e}")))?;
     let shard_root = paths.project_root(&project_id);
 
+    let gi = load_project_ignore(project);
+    let gi_ref = gi.as_ref();
     let walker = walkdir::WalkDir::new(project)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !is_ignored(e.path()));
+        .filter_entry(|e| {
+            let p = e.path();
+            if is_ignored(p) { return false; }
+            !project_ignore_matches(gi_ref, p, e.file_type().is_dir())
+        });
 
     let mut submitted = 0usize;
     let mut total = 0usize;
@@ -264,11 +270,19 @@ async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<()> {
     }
     let inc = Arc::new(IncrementalParser::new(pool.clone()));
 
-    // 3. Walk the project. Respect common ignore patterns.
+    // 3. Walk the project. Respect:
+    //    - hard-coded is_ignored() safety net
+    //    - user-controlled .mnemeignore / .gitignore (P16)
+    let gi = load_project_ignore(&project);
+    let gi_ref = gi.as_ref();
     let walker = walkdir::WalkDir::new(&project)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !is_ignored(e.path()));
+        .filter_entry(|e| {
+            let p = e.path();
+            if is_ignored(p) { return false; }
+            !project_ignore_matches(gi_ref, p, e.file_type().is_dir())
+        });
 
     let mut total = 0usize;
     let mut indexed = 0usize;
@@ -488,10 +502,16 @@ async fn run_multimodal_pass(
     let start = Instant::now();
     let registry = MmRegistry::default_wired();
 
+    let gi = load_project_ignore(project);
+    let gi_ref = gi.as_ref();
     let walker = walkdir::WalkDir::new(project)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !is_ignored(e.path()));
+        .filter_entry(|e| {
+            let p = e.path();
+            if is_ignored(p) { return false; }
+            !project_ignore_matches(gi_ref, p, e.file_type().is_dir())
+        });
 
     for entry in walker {
         let entry = match entry {
@@ -815,14 +835,62 @@ fn is_ignored(path: &Path) -> bool {
     )
 }
 
+/// P16: Build an `ignore::gitignore::Gitignore` matcher from project
+/// root's `.mnemeignore` (preferred) or `.gitignore` (fallback).
+/// Returns `None` if no ignore file exists.
+///
+/// Semantics: full gitignore spec — supports negation (`!foo`),
+/// directory-only patterns (`foo/`), nested paths, and glob wildcards.
+/// Applied on top of the hard-coded `is_ignored` list above, not instead
+/// of it, so the safety-net defaults (node_modules, .git, AppData, ...)
+/// always apply regardless of what the user's ignore file says.
+fn load_project_ignore(root: &Path) -> Option<ignore::gitignore::Gitignore> {
+    use ignore::gitignore::GitignoreBuilder;
+    // Try .mnemeignore first, fall back to .gitignore.
+    for name in [".mnemeignore", ".gitignore"] {
+        let p = root.join(name);
+        if p.exists() {
+            let mut builder = GitignoreBuilder::new(root);
+            if let Some(err) = builder.add(&p) {
+                warn!(path = %p.display(), error = %err, "failed to read ignore file; skipping");
+                continue;
+            }
+            match builder.build() {
+                Ok(gi) => return Some(gi),
+                Err(e) => {
+                    warn!(path = %p.display(), error = %e, "failed to build ignore matcher");
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Returns true if `path` should be skipped per the project ignore file.
+/// Returns false when no ignore is passed or the path isn't matched.
+fn project_ignore_matches(gi: Option<&ignore::gitignore::Gitignore>, path: &Path, is_dir: bool) -> bool {
+    let Some(gi) = gi else { return false };
+    matches!(gi.matched(path, is_dir), ignore::Match::Ignore(_))
+}
+
 /// First-pass walker — counts how many candidate source files are under
-/// `root` after `is_ignored` filters. Stops early once `cap` is exceeded
-/// so the guard pre-flight doesn't pay the full walk cost on huge trees.
+/// `root` after `is_ignored` + `.mnemeignore/.gitignore` filters. Stops
+/// early once `cap` is exceeded so the guard pre-flight doesn't pay the
+/// full walk cost on huge trees.
 fn count_candidate_files(root: &Path, cap: usize) -> usize {
+    let gi = load_project_ignore(root);
+    let gi_ref = gi.as_ref();
     let walker = walkdir::WalkDir::new(root)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !is_ignored(e.path()));
+        .filter_entry(|e| {
+            let p = e.path();
+            if is_ignored(p) {
+                return false;
+            }
+            let is_dir = e.file_type().is_dir();
+            !project_ignore_matches(gi_ref, p, is_dir)
+        });
 
     let mut n = 0usize;
     for entry in walker {
