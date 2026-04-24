@@ -605,16 +605,32 @@ fn strip_mcp_toml(existing: &str) -> CliResult<String> {
     Ok(toml::to_string_pretty(&doc)?)
 }
 
-/// Atomic-ish backup-then-write. Always writes a `<path>.bak` snapshot of
+/// Atomic-ish backup-then-write. Always writes a timestamped snapshot of
 /// the current file (if any) before clobbering. Failure to write the
 /// backup aborts the whole operation — better to refuse than to lose data.
+///
+/// The snapshot filename format is:
+///   `<path>.mneme-YYYYMMDD-HHMMSS.bak`
+///
+/// Every install creates a new snapshot (no overwrite), so re-running
+/// `mneme install` never destroys the previous state. `mneme uninstall`
+/// finds the most recent snapshot via the timestamp prefix.
+///
+/// Also keeps a stable `<path>.bak` pointing at the latest snapshot for
+/// compatibility with tooling that expects the single-`.bak` shape.
 pub fn backup_then_write(path: &Path, new_contents: &[u8]) -> CliResult<()> {
     if path.exists() {
-        let bak = path.with_extension(extension_with_bak(path));
-        std::fs::copy(path, &bak).map_err(|e| CliError::BackupFailed {
+        // Primary snapshot: timestamped, never overwritten.
+        let timestamped = path.with_extension(extension_with_mneme_bak(path));
+        std::fs::copy(path, &timestamped).map_err(|e| CliError::BackupFailed {
             path: path.to_path_buf(),
-            reason: e.to_string(),
+            reason: format!("timestamped backup: {e}"),
         })?;
+        // Compat alias: `<path>.bak` always points at the most recent write.
+        let legacy = path.with_extension(extension_with_bak(path));
+        // Best-effort — if the alias copy fails, the timestamped backup is
+        // still intact, which is what actually matters for recovery.
+        let _ = std::fs::copy(&timestamped, &legacy);
     }
     std::fs::write(path, new_contents).map_err(|e| CliError::io(path, e))
 }
@@ -624,6 +640,55 @@ fn extension_with_bak(path: &Path) -> String {
         Some(ext) if !ext.is_empty() => format!("{ext}.bak"),
         _ => "bak".into(),
     }
+}
+
+/// Timestamped variant — `<path>.mneme-20260424-160000.bak`. Uses UTC so
+/// sort-order matches wall-clock order across timezones, and the prefix
+/// `mneme-` makes these easy to discover and to distinguish from any
+/// user-generated `.bak` files.
+fn extension_with_mneme_bak(path: &Path) -> String {
+    let now = chrono_like_utc_stamp();
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) if !ext.is_empty() => format!("{ext}.mneme-{now}.bak"),
+        _ => format!("mneme-{now}.bak"),
+    }
+}
+
+/// Tiny UTC stamp without pulling in the `chrono` crate (cli already depends
+/// on workspace `chrono` but platforms/mod.rs intentionally stays thin).
+fn chrono_like_utc_stamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    // Seconds since epoch, then convert to YYYYMMDD-HHMMSS UTC without
+    // any date-library dependency. This is a stamp, not a locale string.
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Days since 1970-01-01, then break into Y/M/D via the standard
+    // proleptic-Gregorian algorithm.
+    let days = (secs / 86_400) as i64;
+    let secs_of_day = secs % 86_400;
+    let hh = secs_of_day / 3600;
+    let mm = (secs_of_day % 3600) / 60;
+    let ss = secs_of_day % 60;
+    let (y, m, d) = ymd_from_epoch_days(days);
+    format!("{y:04}{m:02}{d:02}-{hh:02}{mm:02}{ss:02}")
+}
+
+/// Days since 1970-01-01 → (year, month, day). Proleptic-Gregorian.
+/// Lifted from Howard Hinnant's "date" paper (public domain).
+fn ymd_from_epoch_days(days: i64) -> (i32, u32, u32) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z / 146_097 } else { (z - 146_096) / 146_097 };
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { (mp + 3) as u32 } else { (mp - 9) as u32 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y as i32, m, d)
 }
 
 #[cfg(test)]
