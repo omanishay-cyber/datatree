@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { runMneme } from "./mneme";
+import { getConfig, onConfigChange } from "./util/config";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -8,18 +9,21 @@ const POLL_INTERVAL_MS = 30_000;
  *
  * Returns a Disposable that disposes both the StatusBarItem and the polling
  * timer. The caller should push it onto `context.subscriptions`.
+ *
+ * v0.2: respects `mneme.showStatusBar`. When disabled, the item is hidden
+ * and polling pauses.
  */
 export function startStatusBar(channel: vscode.OutputChannel): vscode.Disposable {
   const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   item.command = "mneme.doctor";
   item.text = "$(sync~spin) mneme";
   item.tooltip = "Checking mneme daemon status...";
-  item.show();
+  applyVisibility(item);
 
   let disposed = false;
 
   const poll = async (): Promise<void> => {
-    if (disposed) {
+    if (disposed || !getConfig().showStatusBar) {
       return;
     }
     try {
@@ -44,23 +48,31 @@ export function startStatusBar(channel: vscode.OutputChannel): vscode.Disposable
     }
   };
 
-  // Kick off the first poll immediately, then on interval.
   void poll();
   const timer = setInterval(() => {
     void poll();
   }, POLL_INTERVAL_MS);
 
+  const configWatcher = onConfigChange(() => {
+    applyVisibility(item);
+  });
+
   return new vscode.Disposable(() => {
     disposed = true;
     clearInterval(timer);
+    configWatcher.dispose();
     item.dispose();
   });
 }
 
-/**
- * Builds the status bar tooltip from a header line plus the last 3 lines of
- * stdout / stderr from the most recent poll.
- */
+function applyVisibility(item: vscode.StatusBarItem): void {
+  if (getConfig().showStatusBar) {
+    item.show();
+  } else {
+    item.hide();
+  }
+}
+
 function buildTooltip(header: string, output: string): string {
   const lines = output
     .split(/\r?\n/)
