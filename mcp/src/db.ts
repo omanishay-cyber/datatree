@@ -11,6 +11,7 @@
  */
 
 import { createConnection, type Socket } from "node:net";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
@@ -161,6 +162,38 @@ class IpcClient {
 
   private async ensureConnected(): Promise<void> {
     if (this.socket && !this.socket.destroyed) return;
+
+    // First attempt — if the pipe is simply missing (daemon dead),
+    // try to revive it exactly once before entering the reconnect loop.
+    // Closes the "mneme is unhealthy / supervisor pipe -NNN not found"
+    // self-inflicted failure reported against v0.3.0.
+    let autoStarted = false;
+    try {
+      await this.connect();
+      return;
+    } catch (err) {
+      const msg = (err as { message?: string })?.message ?? String(err);
+      // Pipe-not-found patterns: ENOENT on Unix, `cannot find the file`
+      // on Windows named pipe.
+      const missingPipe =
+        msg.includes("ENOENT") ||
+        msg.includes("cannot find") ||
+        msg.includes("No such file");
+      if (missingPipe && !autoStarted) {
+        console.error(
+          "[mneme-mcp] supervisor pipe missing — attempting to start daemon...",
+        );
+        autoStarted = true;
+        await this.spawnDaemonAndWait();
+        try {
+          await this.connect();
+          return;
+        } catch {
+          // fall through to the reconnect loop below for a second chance.
+        }
+      }
+    }
+
     while (this.reconnectAttempts < this.MAX_RECONNECT) {
       try {
         await this.connect();
@@ -169,7 +202,47 @@ class IpcClient {
         this.reconnectAttempts++;
         const backoff = Math.min(1000 * 2 ** this.reconnectAttempts, 5000);
         await new Promise((r) => setTimeout(r, backoff));
-        if (this.reconnectAttempts >= this.MAX_RECONNECT) throw err;
+        if (this.reconnectAttempts >= this.MAX_RECONNECT) {
+          console.error(
+            "[mneme-mcp] could not reach the mneme daemon after retries.\n" +
+              "  Try: mneme daemon start\n" +
+              "  Pipe: " +
+              this.socketPath,
+          );
+          throw err;
+        }
+      }
+    }
+  }
+
+  /** Spawn `mneme daemon start` detached and wait for the pipe to appear. */
+  private async spawnDaemonAndWait(): Promise<void> {
+    try {
+      const child = spawn("mneme", ["daemon", "start"], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      child.unref();
+    } catch (err) {
+      console.error("[mneme-mcp] spawn mneme daemon failed:", err);
+      return;
+    }
+    // Give the supervisor up to 5s to come up and write its pipe.
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 250));
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const probe = createConnection(this.socketPath, () => {
+            probe.end();
+            resolve();
+          });
+          probe.on("error", reject);
+        });
+        return;
+      } catch {
+        // keep waiting
       }
     }
   }

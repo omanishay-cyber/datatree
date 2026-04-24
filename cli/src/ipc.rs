@@ -299,15 +299,60 @@ impl IpcClient {
         let body = serde_json::to_vec(&request)?;
         let payload = framed(&body);
 
-        let response = tokio::time::timeout(self.timeout, self.round_trip(payload))
-            .await
-            .map_err(|_| CliError::Ipc(format!(
-                "timeout after {:?} talking to supervisor at {}",
-                self.timeout,
-                self.socket_path.display()
-            )))??;
+        // First attempt.
+        let first = tokio::time::timeout(self.timeout, self.round_trip(payload.clone())).await;
+        match first {
+            Ok(Ok(resp)) => return Ok(resp),
+            Ok(Err(e)) => {
+                // Connection errors (pipe missing / socket absent) are
+                // the signal that the daemon is dead. Auto-spawn once
+                // and retry. Any other error (framing, timeout inside
+                // round_trip, response parse) is NOT an excuse to
+                // spawn — those would re-occur on a live daemon.
+                let msg = format!("{e}");
+                let looks_like_dead_daemon =
+                    msg.contains("could not connect")
+                        || msg.contains("No such file")
+                        || msg.contains("cannot find");
+                if !looks_like_dead_daemon {
+                    return Err(e);
+                }
+                // Don't auto-spawn when the caller IS the spawn — avoid
+                // infinite re-launch loops on daemon-internal commands.
+                if matches!(request, IpcRequest::Stop | IpcRequest::Ping) {
+                    return Err(e);
+                }
+                tracing::warn!(
+                    socket = %self.socket_path.display(),
+                    "supervisor unreachable — auto-starting daemon"
+                );
+                if let Err(se) = spawn_daemon_detached() {
+                    tracing::warn!(error = %se, "could not spawn daemon; giving up");
+                    return Err(e);
+                }
+                // Give the daemon ~3s to come up + write its pipe.
+                wait_for_supervisor(&self.socket_path, Duration::from_secs(3)).await;
+            }
+            Err(_) => {
+                return Err(CliError::Ipc(format!(
+                    "timeout after {:?} talking to supervisor at {}",
+                    self.timeout,
+                    self.socket_path.display()
+                )));
+            }
+        }
 
-        Ok(response)
+        // Retry once, with the same timeout budget.
+        let retried = tokio::time::timeout(self.timeout, self.round_trip(payload))
+            .await
+            .map_err(|_| {
+                CliError::Ipc(format!(
+                    "timeout after {:?} talking to supervisor at {} (after auto-start)",
+                    self.timeout,
+                    self.socket_path.display()
+                ))
+            })??;
+        Ok(retried)
     }
 
     /// Connect, ping, disconnect. Returns `true` iff the supervisor is up.
@@ -394,6 +439,36 @@ async fn connect_stream(socket_path: &std::path::Path) -> CliResult<interprocess
                 "could not connect to supervisor pipe '{pipe_name}': {e}"
             ))
         })
+    }
+}
+
+/// Spawn `mneme daemon start` fully detached so the supervisor keeps
+/// running after the current CLI process exits. Used by the auto-start
+/// fallback in [`IpcClient::request`].
+fn spawn_daemon_detached() -> std::io::Result<()> {
+    use std::process::{Command, Stdio};
+    // We shell out to `mneme daemon start` (the same wrapper `main.rs`
+    // dispatches) rather than directly to `mneme-daemon.exe`, so the
+    // binary-discovery + `start` subcommand logic in commands/daemon.rs
+    // stays the single source of truth.
+    Command::new("mneme")
+        .args(["daemon", "start"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    Ok(())
+}
+
+/// Poll for the supervisor's pipe/socket until it accepts a connection
+/// or `deadline` elapses. Non-blocking on failure — returns either way.
+async fn wait_for_supervisor(socket_path: &std::path::Path, deadline: Duration) {
+    let start = std::time::Instant::now();
+    while start.elapsed() < deadline {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        if connect_stream(socket_path).await.is_ok() {
+            return;
+        }
     }
 }
 
