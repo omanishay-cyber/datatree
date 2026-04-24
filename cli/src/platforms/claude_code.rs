@@ -1,18 +1,44 @@
 //! Anthropic Claude Code adapter.
 //!
-//! Manifest: `CLAUDE.md` + `.claude/settings.json`
-//! MCP: `.mcp.json` (project-scope) or `~/.claude.json` (user-scope)
-//! Hooks: full hook surface — written into `.claude/settings.json`
+//! Manifest: `CLAUDE.md` (optional @include line, opt-in via `mneme link-claude-md`)
+//! MCP:      `~/.claude.json` (user-scope) or `.mcp.json` (project-scope)
+//! Hooks:    **not written**. Mneme never touches `~/.claude/settings.json`.
 //!
-//! Claude Code is the only platform that gets the *full* 7-event hook map.
+//! Architecture note (v0.3.1 — 2026-04-24)
+//! ========================================
+//! Prior versions wrote an 8-event hook map into `~/.claude/settings.json`.
+//! That code emitted a flat `{command, owner}` shape which Claude Code's
+//! schema validator rejected, causing the validator to discard the entire
+//! file (not just the malformed entries). Every unrelated hook, permission,
+//! and plugin the user had configured became silently inert on next boot.
+//!
+//! The self-trap was amplified because mneme's hook binaries required
+//! `--tool / --params / --session-id` CLI flags, while Claude Code delivers
+//! payload on STDIN as JSON. Every PreToolUse call exited non-zero, which
+//! Claude Code correctly interpreted as BLOCK — locking the agent out of
+//! every tool, including the ones it needed to roll mneme back.
+//!
+//! Fix (v0.3.1): we simply do not register hooks with Claude Code anymore.
+//! The critical mneme surface (persistent memory, recall, blast, step
+//! ledger) is delivered via the MCP server, which Claude Code calls on
+//! demand. The hook binaries (`mneme pre-tool`, `mneme inject`, etc.) still
+//! exist in the CLI so power users can wire them manually once we ship
+//! STDIN-parsing support in v0.3.2, but they are **not** auto-registered.
+//!
+//! What this means for the user:
+//!   - `mneme install --platform claude-code` writes ONLY two things:
+//!       1. an MCP server entry in `~/.claude.json` (tiny, schema-validated)
+//!       2. optionally (behind `--link-claude-md`) a single @include line in
+//!          `~/.claude/CLAUDE.md` pointing at `~/.mneme/CLAUDE.md`
+//!   - `~/.claude/settings.json` is never touched.
+//!   - No hook schema mismatch is possible because no hook is emitted.
+//!
+//! See `report-002.md §F-011 / §F-012` in the mneme install-report for the
+//! forensic record of the v0.3.0 incident this fix prevents.
 
-use serde_json::json;
 use std::path::PathBuf;
 
-use crate::error::CliResult;
-use crate::platforms::{
-    backup_then_write, AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter,
-};
+use crate::platforms::{AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter};
 
 /// Adapter struct (zero-sized; all behaviour is in the impl).
 #[derive(Debug, Clone, Copy, Default)]
@@ -47,74 +73,14 @@ impl PlatformAdapter for ClaudeCode {
         McpFormat::JsonObject
     }
 
-    /// Claude Code reads hooks out of `.claude/settings.json`. We write the
-    /// six events from design §6, plus PreCompact (§4) for compaction-aware
-    /// step-ledger flushing.
-    fn write_hooks(&self, ctx: &AdapterContext) -> CliResult<Option<PathBuf>> {
-        let settings_path = match ctx.scope {
-            InstallScope::Project => ctx.project_root.join(".claude").join("settings.json"),
-            InstallScope::User | InstallScope::Global => {
-                ctx.home.join(".claude").join("settings.json")
-            }
-        };
-
-        if let Some(parent) = settings_path.parent() {
-            if !ctx.dry_run {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| crate::error::CliError::io(parent, e))?;
-            }
-        }
-
-        let existing = if settings_path.exists() {
-            std::fs::read_to_string(&settings_path)
-                .map_err(|e| crate::error::CliError::io(&settings_path, e))?
-        } else {
-            "{}".into()
-        };
-
-        let mut value: serde_json::Value =
-            serde_json::from_str(if existing.trim().is_empty() { "{}" } else { &existing })?;
-        let root = value.as_object_mut().ok_or_else(|| {
-            crate::error::CliError::Other("settings.json root is not an object".into())
-        })?;
-
-        let hooks = root
-            .entry("hooks".to_string())
-            .or_insert_with(|| json!({}));
-        let hooks_obj = hooks
-            .as_object_mut()
-            .ok_or_else(|| crate::error::CliError::Other("`hooks` is not an object".into()))?;
-
-        // The full Claude Code hook map for mneme.
-        let dt_hooks = json!({
-            "SessionStart":     [{ "command": "mneme session-prime", "owner": "mneme" }],
-            "UserPromptSubmit": [{ "command": "mneme inject",       "owner": "mneme" }],
-            "PreToolUse":       [{ "command": "mneme pre-tool",     "owner": "mneme" }],
-            "PostToolUse":      [{ "command": "mneme post-tool",    "owner": "mneme" }],
-            "Stop":             [{ "command": "mneme turn-end",     "owner": "mneme" }],
-            "SessionEnd":       [{ "command": "mneme session-end",  "owner": "mneme" }],
-            "PreCompact":       [{ "command": "mneme turn-end --pre-compact", "owner": "mneme" }],
-            "SubagentStop":     [{ "command": "mneme turn-end --subagent",    "owner": "mneme" }]
-        });
-
-        for (event, hook_array) in dt_hooks.as_object().unwrap() {
-            let target = hooks_obj
-                .entry(event.clone())
-                .or_insert_with(|| json!([]));
-            let arr = target.as_array_mut().ok_or_else(|| {
-                crate::error::CliError::Other(format!("hooks.{event} is not an array"))
-            })?;
-            // Drop any prior mneme-owned entry to keep this idempotent.
-            arr.retain(|e| e.get("owner").and_then(|o| o.as_str()) != Some("mneme"));
-            for entry in hook_array.as_array().unwrap() {
-                arr.push(entry.clone());
-            }
-        }
-
-        let serialized = serde_json::to_string_pretty(&value)? + "\n";
-        if !ctx.dry_run {
-            backup_then_write(&settings_path, serialized.as_bytes())?;
-        }
-        Ok(Some(settings_path))
-    }
+    // `write_hooks` intentionally omitted — falls through to the trait's
+    // default `Ok(None)` no-op. See the module docstring above for the
+    // full architectural rationale. DO NOT restore hook-injection into
+    // `~/.claude/settings.json` without first fixing all of:
+    //   (a) hook JSON schema (must use `{matcher?, hooks:[{type,command}]}`)
+    //   (b) hook binary STDIN contract (payload via stdin, not CLI flags)
+    //   (c) rollback receipt (sha256 snapshot + byte-for-byte uninstall)
+    //   (d) `settings.json` lock — refuse write if Claude Code is running
+    //   (e) a `--no-hooks` escape hatch for recovery
+    // All five land together, or none do. See `NOT-PROPERLY-DONE.md`.
 }

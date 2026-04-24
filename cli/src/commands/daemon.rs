@@ -1,14 +1,19 @@
 //! `mneme daemon <op>` — start/stop/restart/status/logs subcommands for
 //! the supervisor process.
 //!
-//! `start` and `restart` shell out to the supervisor binary (which lives
-//! in the same directory as `mneme`, or on PATH as
-//! `mneme-supervisor`). `stop`, `status`, and `logs` go over the IPC
-//! socket so we never have to know the supervisor's PID.
+//! `start` and `restart` shell out to the supervisor binary. It ships as
+//! `mneme-daemon` (see `supervisor/Cargo.toml`), with a legacy search
+//! fallback to `mneme-supervisor` for older installs. The wrapper always
+//! passes the `start` subcommand — the binary itself is a clap CLI that
+//! requires a subcommand; invoking bare prints help and exits, which is
+//! what F-004/F-005 in the v0.3.0 install-report were reporting.
+//!
+//! `stop`, `status`, and `logs` go over the IPC socket so we never have to
+//! know the supervisor's PID.
 
 use clap::Args;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::Duration;
 use tracing::{info, warn};
 
@@ -58,10 +63,17 @@ fn start_daemon(bin: Option<PathBuf>) -> CliResult<()> {
             path.display()
         )));
     }
+    // Always pass `start` — the supervisor binary is a clap CLI with
+    // required subcommand. Detach stdio so the spawned daemon does not
+    // hold the calling shell open (F-004 / F-005 regression gate).
     Command::new(&path)
+        .arg("start")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| CliError::io(&path, e))?;
-    println!("supervisor started ({})", path.display());
+    println!("supervisor started ({} start)", path.display());
     Ok(())
 }
 
@@ -103,19 +115,35 @@ async fn logs_daemon(socket_override: Option<PathBuf>, lines: usize) -> CliResul
 }
 
 fn default_supervisor_binary() -> PathBuf {
-    // Look for `mneme-supervisor` next to the current binary first.
+    // The supervisor is shipped as `mneme-daemon` (see `supervisor/Cargo.toml`
+    // `[[bin]] name = "mneme-daemon"`). Older 0.1.x / 0.2.x manual workarounds
+    // expected `mneme-supervisor` — we keep that as a legacy fallback so users
+    // with `$env:MNEME_SUPERVISOR_BIN` or older PATH entries are not broken.
+    //
+    // Search order, first match wins:
+    //   1. `<dir-of-mneme>/mneme-daemon[.exe]`     — shipped binary
+    //   2. `<dir-of-mneme>/mneme-supervisor[.exe]` — legacy symlink / rename
+    //   3. `mneme-daemon[.exe]` on PATH
+    //   4. `mneme-supervisor[.exe]` on PATH          (legacy)
+    let candidates = ["mneme-daemon", "mneme-supervisor"];
+
     if let Ok(this) = std::env::current_exe() {
         if let Some(parent) = this.parent() {
-            let mut candidate = parent.join("mneme-supervisor");
-            if cfg!(windows) {
-                candidate.set_extension("exe");
-            }
-            if candidate.exists() {
-                return candidate;
+            for name in candidates {
+                let mut c = parent.join(name);
+                if cfg!(windows) {
+                    c.set_extension("exe");
+                }
+                if c.exists() {
+                    return c;
+                }
             }
         }
     }
-    let mut p = PathBuf::from("mneme-supervisor");
+
+    // PATH fallback — return the first name so the caller's error message
+    // is informative if nothing resolves.
+    let mut p = PathBuf::from(candidates[0]);
     if cfg!(windows) {
         p.set_extension("exe");
     }
