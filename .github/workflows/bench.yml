@@ -64,6 +64,12 @@ jobs:
         run: |
           just bench-all . 1> bench-run.csv 2> bench-run.log
           if ($LASTEXITCODE -ne 0) { Write-Host "bench-all exited $LASTEXITCODE; continuing to capture outputs" }
+          # PowerShell auto-propagates a native command's non-zero LASTEXITCODE
+          # to the step result even after a soft-handle above. Reset so the
+          # step succeeds and the later "Extract JSON summary" / "Upload bench
+          # artifacts" steps can still run and preserve partial output.
+          $global:LASTEXITCODE = 0
+          exit 0
 
       - name: Extract JSON summary from stderr log
         shell: bash
