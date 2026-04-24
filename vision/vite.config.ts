@@ -41,7 +41,7 @@ export default defineConfig({
       },
     },
   },
-  // Allow `datatree export --view <name>` to inline the bundle into a single .html
+  // Allow `mneme export --view <name>` to inline the bundle into a single .html
   // by setting VITE_INLINE_EXPORT=1 at build time.
   define: {
     __INLINE_EXPORT__: JSON.stringify(process.env.VITE_INLINE_EXPORT === "1"),

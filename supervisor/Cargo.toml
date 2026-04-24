@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.78"
 license = "MIT"
 authors = ["Anish Trivedi"]
-description = "Datatree master supervisor: spawns and watches all worker child processes."
+description = "Mneme master supervisor: spawns and watches all worker child processes."
 
 [[bin]]
 name = "mneme-daemon"

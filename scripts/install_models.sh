@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install datatree ML models from a LOCAL source path. Internet downloads
+# Install mneme ML models from a LOCAL source path. Internet downloads
 # are intentionally REFUSED — pass --from <path> pointing at a directory
 # containing the prebundled model files.
 #
@@ -40,11 +40,11 @@ if [ -z "$FROM" ]; then
     cat >&2 <<EOF
 ERROR: --from <local-path> is required.
 
-datatree REFUSES to fetch models from the internet. Models are large and
+mneme REFUSES to fetch models from the internet. Models are large and
 must be installed from a verified, locally-staged copy. Download the
 models bundle separately, then point this script at the unpacked folder:
 
-    install_models.sh --from /path/to/datatree-models
+    install_models.sh --from /path/to/mneme-models
 
 Required:  bge-small-en-v1.5.onnx
 Optional:  phi-3-mini-q4_k_m.gguf, faster-whisper-base/
@@ -54,7 +54,7 @@ fi
 
 [ -d "$FROM" ] || { echo "ERROR: --from path is not a directory: $FROM" >&2; exit 1; }
 
-MNEME_HOME="${MNEME_HOME:-$HOME/.datatree}"
+MNEME_HOME="${MNEME_HOME:-$HOME/.mneme}"
 MODEL_DIR="$MNEME_HOME/models"
 mkdir -p "$MODEL_DIR"
 

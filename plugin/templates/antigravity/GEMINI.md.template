@@ -1,36 +1,36 @@
-<!-- datatree-start v1.0 -->
-# Datatree (Google Antigravity — GEMINI.md)
+<!-- mneme-start v1.0 -->
+# Mneme (Google Antigravity — GEMINI.md)
 
 This file is Gemini-specific guidance for Antigravity. The shared agent
-rules live in `AGENTS.md` (also installed by datatree). When both files
+rules live in `AGENTS.md` (also installed by mneme). When both files
 are present, treat them as one merged context.
 
-Datatree is a persistent knowledge graph of this project, exposed via
-the `datatree` MCP server (see `mcp_config.json`).
+Mneme is a persistent knowledge graph of this project, exposed via
+the `mneme` MCP server (see `mcp_config.json`).
 
 ## Gemini tool usage rules (MANDATORY)
 
-**Call datatree MCP tools BEFORE Gemini's built-in `read_file`,
+**Call mneme MCP tools BEFORE Gemini's built-in `read_file`,
 `search_codebase`, or `list_directory` tools** for structural or
 semantic questions about the codebase.
 
 On every task:
 
-1. `datatree.minimal_context(task="<description>")` — ~100 tokens.
-2. Iterate with `datatree.query`, `datatree.impact`, `datatree.search`
+1. `mneme.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`
    at `detail_level="minimal"`.
 3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
 
 ## Long-context behaviour
 
 Gemini's million-token context tempts you to slurp the whole repo.
-**Don't.** Datatree's minimal context is denser per token than raw
-file contents. Reach for full files only after `datatree.minimal_context`
+**Don't.** Mneme's minimal context is denser per token than raw
+file contents. Reach for full files only after `mneme.minimal_context`
 identifies the few files that actually matter for this task.
 
 ## Step ledger / drift / compaction
 
-Same as AGENTS.md: ledger at `~/.datatree/projects/<id>/steps.jsonl`,
+Same as AGENTS.md: ledger at `~/.mneme/projects/<id>/steps.jsonl`,
 symbol/doc/test drift must be addressed, re-prime via
-`datatree.minimal_context` after any reset.
-<!-- datatree-end -->
+`mneme.minimal_context` after any reset.
+<!-- mneme-end -->

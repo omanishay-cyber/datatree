@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
-# datatree :: check-runtime.sh
+# mneme :: check-runtime.sh
 # Read-only health check: reports presence + version of every runtime dep
-# datatree needs.  Never installs, never modifies anything.
+# mneme needs.  Never installs, never modifies anything.
 #
 # Exit codes:
 #   0 -- all REQUIRED deps present
@@ -16,7 +16,7 @@
 
 set -eu
 
-MNEME_HOME="${MNEME_HOME:-${HOME}/.datatree}"
+MNEME_HOME="${MNEME_HOME:-${HOME}/.mneme}"
 LOG_DIR="${MNEME_HOME}/logs"
 LOG_FILE="${LOG_DIR}/install.log"
 MODEL_DIR="${MNEME_HOME}/llm"
@@ -138,7 +138,7 @@ RAW="$(
 )"
 
 # SQLite is bundled, so always reported OK.
-SQLITE_LINE="SQLite\t1\t(bundled in datatree-store)\t\t1"
+SQLITE_LINE="SQLite\t1\t(bundled in mneme-store)\t\t1"
 
 # Models
 BGE_PATH="${MODEL_DIR}/bge-small/model.onnx"
@@ -181,7 +181,7 @@ if [ "$JSON" -eq 1 ]; then
 else
     # text table
     printf '\n'
-    printf '%s%s%s\n' "$CYAN" "datatree :: runtime check  (OS=$OS)" "$RESET"
+    printf '%s%s%s\n' "$CYAN" "mneme :: runtime check  (OS=$OS)" "$RESET"
     printf '%s\n' "------------------------------------------------------------"
     printf '%s\n' "$ALL_ROWS" | while IFS="$(printf '\t')" read -r name present ver hint required; do
         [ -z "$name" ] && continue
@@ -207,11 +207,11 @@ printf '%s\n' "$ALL_ROWS" | while IFS="$(printf '\t')" read -r name present ver 
     if [ "$present" = "0" ] && [ "$required" = "1" ]; then
         echo "miss"
     fi
-done > /tmp/.datatree-check.$$
-if [ -s /tmp/.datatree-check.$$ ]; then
+done > /tmp/.mneme-check.$$
+if [ -s /tmp/.mneme-check.$$ ]; then
     MISSING_REQUIRED=1
 fi
-rm -f /tmp/.datatree-check.$$
+rm -f /tmp/.mneme-check.$$
 
 log "result: missing_required=$MISSING_REQUIRED"
 exit "$MISSING_REQUIRED"

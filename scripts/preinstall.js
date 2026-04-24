@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * datatree preinstall hook.
+ * mneme preinstall hook.
  * Invoked by the Claude Code plugin install lifecycle (and equivalent
  * lifecycles on other platforms). Detects the host OS and dispatches to
  * the matching shell installer with the bundled binary path.
@@ -17,10 +17,10 @@ const fs = require('fs');
 const { spawnSync } = require('child_process');
 
 function log(msg) {
-    process.stdout.write('[datatree-preinstall] ' + msg + '\n');
+    process.stdout.write('[mneme-preinstall] ' + msg + '\n');
 }
 function die(msg, code) {
-    process.stderr.write('[datatree-preinstall] ERROR: ' + msg + '\n');
+    process.stderr.write('[mneme-preinstall] ERROR: ' + msg + '\n');
     process.exit(typeof code === 'number' ? code : 1);
 }
 

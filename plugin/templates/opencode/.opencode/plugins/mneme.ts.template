@@ -1,20 +1,20 @@
-// datatree-marker v1.0
-// OpenCode plugin: keeps the datatree graph fresh and nudges the agent
+// mneme-marker v1.0
+// OpenCode plugin: keeps the mneme graph fresh and nudges the agent
 // toward graph-first reads.
 //
 // Hooks:
 //   - file.edited            -> incremental graph update
 //   - tool.execute.before    -> warn when grep/read/glob runs without a
-//                               prior datatree.* call this turn
+//                               prior mneme.* call this turn
 //
-// The plugin talks to the datatree daemon over its local HTTP API
+// The plugin talks to the mneme daemon over its local HTTP API
 // (default http://127.0.0.1:7777). It never blocks tool execution; if
 // the daemon is unavailable, hooks degrade to a no-op.
 
 import type { Plugin } from "@opencode/plugin";
 
-const DATATREE_ROOT = "{{datatree_root}}";
-const DATATREE_HOME = "{{datatree_home}}";
+const MNEME_ROOT = "{{mneme_root}}";
+const MNEME_HOME = "{{mneme_home}}";
 const DAEMON_URL    = "http://127.0.0.1:7777";
 
 const SHELL_READ_TOOLS = new Set([
@@ -22,7 +22,7 @@ const SHELL_READ_TOOLS = new Set([
     "tail", "read", "read_file", "glob", "list_files",
 ]);
 
-let datatreeUsedThisTurn = false;
+let mnemeUsedThisTurn = false;
 let turnId = 0;
 
 async function safePost(path: string, body: unknown): Promise<void> {
@@ -39,12 +39,12 @@ async function safePost(path: string, body: unknown): Promise<void> {
 }
 
 const plugin: Plugin = {
-    name: "datatree",
+    name: "mneme",
     version: "1.0.0",
 
     async onTurnStart() {
         turnId += 1;
-        datatreeUsedThisTurn = false;
+        mnemeUsedThisTurn = false;
     },
 
     hooks: {
@@ -60,15 +60,15 @@ const plugin: Plugin = {
         "tool.execute.before": async ({ tool, args, abort }) => {
             const name = (tool?.name ?? "").toLowerCase();
 
-            if (name.startsWith("datatree.") || name === "datatree") {
-                datatreeUsedThisTurn = true;
+            if (name.startsWith("mneme.") || name === "mneme") {
+                mnemeUsedThisTurn = true;
                 return;
             }
 
-            if (SHELL_READ_TOOLS.has(name) && !datatreeUsedThisTurn) {
+            if (SHELL_READ_TOOLS.has(name) && !mnemeUsedThisTurn) {
                 console.warn(
-                    "[datatree] " + name + " invoked without a prior datatree.* call. " +
-                    "Graph-first usage is recommended — call datatree.minimal_context first " +
+                    "[mneme] " + name + " invoked without a prior mneme.* call. " +
+                    "Graph-first usage is recommended — call mneme.minimal_context first " +
                     "(see AGENTS.md). Continuing anyway."
                 );
                 // intentionally NOT calling abort() — this is a nudge, not a block
@@ -77,8 +77,8 @@ const plugin: Plugin = {
     },
 
     meta: {
-        datatreeRoot: DATATREE_ROOT,
-        datatreeHome: DATATREE_HOME,
+        mnemeRoot: MNEME_ROOT,
+        mnemeHome: MNEME_HOME,
     },
 };
 

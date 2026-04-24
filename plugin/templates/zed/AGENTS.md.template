@@ -1,47 +1,47 @@
-<!-- datatree-start v1.0 -->
-# Datatree (Zed)
+<!-- mneme-start v1.0 -->
+# Mneme (Zed)
 
 Zed reads `AGENTS.md` to teach its Assistant about project conventions.
-This block describes the datatree knowledge graph and how to use it
+This block describes the mneme knowledge graph and how to use it
 through Zed's MCP context server (see `settings.json` ->
-`context_servers.datatree`).
+`context_servers.mneme`).
 
-## What datatree is
+## What mneme is
 
 A persistent, incrementally-updated graph of this project, kept fresh
-by the per-user `datatree-supervisor` daemon. It survives across
+by the per-user `mneme-supervisor` daemon. It survives across
 sessions, branches, and context compactions.
 
 ## Tool usage rules (MANDATORY)
 
-**Use datatree MCP tools BEFORE Zed's built-in search/read.** Built-in
-tools are for reading a file datatree already located, or when datatree
+**Use mneme MCP tools BEFORE Zed's built-in search/read.** Built-in
+tools are for reading a file mneme already located, or when mneme
 explicitly suggests them.
 
 On every task:
 
-1. `datatree.minimal_context(task="<description>")` — ~100 tokens.
-2. Iterate via `datatree.query`, `datatree.impact`, `datatree.search`
+1. `mneme.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate via `mneme.query`, `mneme.impact`, `mneme.search`
    with `detail_level="minimal"`.
-3. Open files only as datatree directs you. Budget: <= 5 calls + <= 800 tokens.
+3. Open files only as mneme directs you. Budget: <= 5 calls + <= 800 tokens.
 4. Edits incrementally update the graph via the supervisor's filesystem watcher.
 
 ## Step ledger
 
-Steps append to `~/.datatree/projects/<id>/steps.jsonl`. Recover with
-`datatree.last_steps(n=10)`.
+Steps append to `~/.mneme/projects/<id>/steps.jsonl`. Recover with
+`mneme.last_steps(n=10)`.
 
 ## Drift detection
 
-Datatree flags symbol/doc/test drift. Address all flags before done.
+Mneme flags symbol/doc/test drift. Address all flags before done.
 
 ## Compaction resilience
 
-After a context truncation, one `datatree.minimal_context(...)` call
+After a context truncation, one `mneme.minimal_context(...)` call
 restores situational awareness. The graph is the source of truth.
 
 ## Locations
 
-- Context server config: `settings.json` -> `context_servers.datatree`
-- Daemon:                `~/.datatree/`
-<!-- datatree-end -->
+- Context server config: `settings.json` -> `context_servers.mneme`
+- Daemon:                `~/.mneme/`
+<!-- mneme-end -->

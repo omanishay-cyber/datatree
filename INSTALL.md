@@ -132,7 +132,7 @@ mneme-supervisor start
 
 On Windows, you can also install it as a service that auto-starts on login:
 ```bash
-mneme-supervisor install    # registers DatatreeDaemon service
+mneme-supervisor install    # registers MnemeDaemon service
 ```
 
 ### "C# grammar skipped" warning
@@ -141,7 +141,7 @@ Expected in v0.1.0. The `tree-sitter-c-sharp` crate version (v15 ABI) doesn't ma
 
 ### "bun not found" when running supervisor-spawned MCP server
 
-Only affects the optional supervisor-managed MCP child, which v0.1.0 intentionally doesn't spawn (Claude Code starts `mneme mcp stdio` itself). If you want to run the MCP server outside Claude Code, set `DATATREE_BUN` env var to the absolute path of your `bun` binary.
+Only affects the optional supervisor-managed MCP child, which v0.1.0 intentionally doesn't spawn (Claude Code starts `mneme mcp stdio` itself). If you want to run the MCP server outside Claude Code, set `MNEME_BUN` env var to the absolute path of your `bun` binary.
 
 ### Build fails on Windows with "link.exe not found"
 

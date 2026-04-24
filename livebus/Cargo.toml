@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.78"
 license = "MIT"
 authors = ["Anish Trivedi"]
-description = "Datatree Live Bus: local SSE/WebSocket fan-out of worker events for Claude Code, vision app, and multi-agent sessions."
+description = "Mneme Live Bus: local SSE/WebSocket fan-out of worker events for Claude Code, vision app, and multi-agent sessions."
 
 [[bin]]
 name = "mneme-livebus"

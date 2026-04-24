@@ -1,36 +1,36 @@
-<!-- datatree-start v1.0 -->
-# Datatree (Aider — CONVENTIONS.md)
+<!-- mneme-start v1.0 -->
+# Mneme (Aider — CONVENTIONS.md)
 
-Aider does NOT speak MCP. Datatree integrates with Aider in two ways:
+Aider does NOT speak MCP. Mneme integrates with Aider in two ways:
 
-1. **CLI bridge.** Run `datatree query`, `datatree impact`, etc. from
+1. **CLI bridge.** Run `mneme query`, `mneme impact`, etc. from
    the shell and paste the (small) output into Aider's chat as context.
    The supervisor daemon keeps the graph fresh in the background.
 2. **Add-file hint.** When you need Aider to edit a file, first ask
-   datatree which files actually need to change:
-       datatree impact --symbol <name> --format aider-add
+   mneme which files actually need to change:
+       mneme impact --symbol <name> --format aider-add
    It prints `aider /add <path>` lines you can paste back.
 
 ## Tool usage rules (MANDATORY)
 
-**Run datatree CLI BEFORE adding files to Aider's chat.** Do NOT
-`/add` whole directories. Datatree exists to keep your Aider context
+**Run mneme CLI BEFORE adding files to Aider's chat.** Do NOT
+`/add` whole directories. Mneme exists to keep your Aider context
 small and on-target.
 
 On every task:
 
-1. `datatree minimal-context "<description>"` — ~100 tokens, paste it
+1. `mneme minimal-context "<description>"` — ~100 tokens, paste it
    into the chat as the first message.
-2. `datatree impact --symbol <name>` to find what else changes.
-3. `aider /add <files datatree returned>` — nothing more.
+2. `mneme impact --symbol <name>` to find what else changes.
+3. `aider /add <files mneme returned>` — nothing more.
 4. After Aider commits, the supervisor's filesystem watcher updates the
    graph automatically.
 
 ## Step ledger / drift / compaction
 
-- Ledger: `~/.datatree/projects/<id>/steps.jsonl`. Inspect with
-  `datatree last-steps -n 10`.
-- Symbol/doc/test drift is reported by `datatree review-hints`.
-- Aider's `--restore-chat-history` benefits from datatree because graph
+- Ledger: `~/.mneme/projects/<id>/steps.jsonl`. Inspect with
+  `mneme last-steps -n 10`.
+- Symbol/doc/test drift is reported by `mneme review-hints`.
+- Aider's `--restore-chat-history` benefits from mneme because graph
   state survives across sessions.
-<!-- datatree-end -->
+<!-- mneme-end -->

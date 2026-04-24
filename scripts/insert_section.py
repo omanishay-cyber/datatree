@@ -6,13 +6,13 @@ with open(filepath, 'r', encoding='utf-8') as f:
 section_13_5 = '''
 ## 13.5 Database Operations Layer
 
-This section is the single source of truth for how every part of datatree touches SQLite. No module outside this layer constructs file paths, issues raw SQL, or holds a database connection directly. All access flows through these seven sub-layers.
+This section is the single source of truth for how every part of mneme touches SQLite. No module outside this layer constructs file paths, issues raw SQL, or holds a database connection directly. All access flows through these seven sub-layers.
 
 ---
 
 ### 13.5.1 DB Builder
 
-**Responsibility**: Given a project path, produce the full 21-shard directory tree under `~/.datatree/projects/<sha256(canonical_path)>/`, apply all schema DDL, set PRAGMAs, and record the schema version. Idempotent: skip files already at the current version, run migration scripts if version is behind.
+**Responsibility**: Given a project path, produce the full 21-shard directory tree under `~/.mneme/projects/<sha256(canonical_path)>/`, apply all schema DDL, set PRAGMAs, and record the schema version. Idempotent: skip files already at the current version, run migration scripts if version is behind.
 
 **Public API - Rust trait**
 
@@ -108,7 +108,7 @@ interface DbFinder {
 
 **Lookup strategy chain (tried in order; first hit wins)**
 
-1. **Hash exact match**: 64-char hex input, check `~/.datatree/projects/<hash>/shard_manifest.json`. O(1), no DB query.
+1. **Hash exact match**: 64-char hex input, check `~/.mneme/projects/<hash>/shard_manifest.json`. O(1), no DB query.
 2. **Path hash**: canonicalize input path, compute sha256, check if shard directory exists. O(1).
 3. **CWD ancestor traversal**: walk parent directories from `current_dir()` until canonical hash matches a row in `meta.db`. Stops at filesystem root or 32 levels.
 4. **Partial name match**: `SELECT hash FROM projects WHERE display_name LIKE ?` in `meta.db`. Single match returns it; multiple matches return `FinderError::Ambiguous`.
@@ -127,7 +127,7 @@ interface DbFinder {
 | Failure | Behavior |
 |---|---|
 | No shard found | `FinderError::NotFound`; caller can invoke `build_project` |
-| `meta.db` missing | Rebuild by scanning `~/.datatree/projects/*/shard_manifest.json` |
+| `meta.db` missing | Rebuild by scanning `~/.mneme/projects/*/shard_manifest.json` |
 | `shard_manifest.json` missing | `FinderError::Corrupted`; trigger `rebuild_shard` |
 | Ancestor traversal exceeds 32 levels | Return `FinderError::NotFound` |
 
@@ -137,14 +137,14 @@ interface DbFinder {
 
 ### 13.5.3 Access Path Manager
 
-**Responsibility**: Single source of truth for every file path in the datatree directory tree. No other module constructs paths with string concatenation.
+**Responsibility**: Single source of truth for every file path in the mneme directory tree. No other module constructs paths with string concatenation.
 
 **Public API - Rust**
 
 ```rust
 // store/src/paths.rs
 pub struct PathManager {
-    root: PathBuf,  // ~/.datatree, overridable via DATATREE_HOME env var
+    root: PathBuf,  // ~/.mneme, overridable via MNEME_HOME env var
 }
 
 impl PathManager {
@@ -195,7 +195,7 @@ type ShardName =
 - `PathManager::new()` called exactly once at process start, stored as `Arc<PathManager>`. No module calls `dirs::home_dir()` independently.
 - `ShardName` is a compile-time guarantee against typos. Adding a shard requires updating the enum; the compiler enforces completeness via exhaustive match in `ShardName::filename()`.
 - WAL and SHM companion files always co-located with parent `.db`; `shard_wal` and `shard_shm` derive from `shard` mechanically.
-- `DATATREE_HOME` overrides the default root for testing and CI.
+- `MNEME_HOME` overrides the default root for testing and CI.
 
 ---
 
@@ -470,9 +470,9 @@ interface LifecycleManager {
 
 `repair`: On failure: (1) WAL replay from `-wal` companion file, (2) restore from most recent snapshot if still corrupt, (3) `DbBuilder::rebuild_shard` if no snapshot -- data for that shard is lost; other shards untouched. Emits `system.degraded_mode` during repair.
 
-`archive`: Compresses project shard directory to `.tar.zst`, moves to `~/.datatree/archive/`, removes live directory. Updates `meta.db` row with `status = 'archived'`. Used for projects inactive 90+ days.
+`archive`: Compresses project shard directory to `.tar.zst`, moves to `~/.mneme/archive/`, removes live directory. Updates `meta.db` row with `status = 'archived'`. Used for projects inactive 90+ days.
 
-`purge`: Removes shard directory and `meta.db` row. Irreversible. Requires `confirmed: true` -- default `false` returns `LifecycleError::ConfirmationRequired`. Never exposed through MCP tools; CLI only: `datatree purge --project <hash> --confirm`.
+`purge`: Removes shard directory and `meta.db` row. Irreversible. Requires `confirmed: true` -- default `false` returns `LifecycleError::ConfirmationRequired`. Never exposed through MCP tools; CLI only: `mneme purge --project <hash> --confirm`.
 
 **Key invariants**
 
@@ -488,7 +488,7 @@ interface LifecycleManager {
 ### 13.5.8 Unified Module Layout
 
 ```
-datatree/
+mneme/
 +-- store/
     +-- src/
         +-- lib.rs             -- builds the DaLayer struct composing all 7 sub-layers
@@ -516,7 +516,7 @@ datatree/
             +-- injection_test.rs
             +-- lifecycle_test.rs
 
-datatree/
+mneme/
 +-- mcp/
     +-- src/
         +-- db/

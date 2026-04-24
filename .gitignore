@@ -20,11 +20,14 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
-# Datatree runtime data (per-user; never commit)
+# Mneme runtime data (per-user; never commit)
+# Keeps the old `.datatree/` pattern too so orphan dirs from pre-rename installs remain ignored.
+~/.mneme/
+.mneme/
 ~/.datatree/
 .datatree/
 
-# Models (large; user installs via datatree models install)
+# Models (large; user installs via `mneme models install`)
 *.onnx
 *.gguf
 *.bin
@@ -53,7 +56,7 @@ tmp/
 # Snapshot output of any indexed project
 .code-review-graph/
 
-# Backup files made by datatree's idempotent installer
+# Backup files made by mneme's idempotent installer
 *.bak
 
 # Generated docs (regenerated from source)

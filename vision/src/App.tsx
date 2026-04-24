@@ -168,7 +168,7 @@ export function App(): JSX.Element {
       <aside className="vz-nav" aria-label="View navigation">
         <header className="vz-nav-header">
           <span className="vz-brand-mark" aria-hidden="true" />
-          <span className="vz-brand-text">datatree · vision</span>
+          <span className="vz-brand-text">mneme · vision</span>
         </header>
         {Object.entries(grouped).map(([group, items]) => (
           <div key={group}>

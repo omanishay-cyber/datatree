@@ -18,7 +18,7 @@ path = "src/lib.rs"
 # Dependencies
 # ---------------------------------------------------------------------------
 [dependencies]
-# Datatree shared types (Node/Edge/Confidence) — sibling crate.
+# Mneme shared types (Node/Edge/Confidence) — sibling crate.
 # Falls back to in-tree definitions when the workspace doesn't yet include it
 # (common has not been generated yet — see brain/ for the future location).
 common = { path = "../common", package = "mneme-common" }
@@ -82,7 +82,7 @@ streaming-iterator = "0.1"
 # ---------------------------------------------------------------------------
 # Tree-sitter language grammars
 #
-# Tier 1 (always built — datatree core matrix §21.3.1):
+# Tier 1 (always built — mneme core matrix §21.3.1):
 #   ts/tsx, js/jsx, python, rust, go, java, c, c++, c#, ruby, php,
 #   bash, lua, json, toml, yaml, markdown
 #

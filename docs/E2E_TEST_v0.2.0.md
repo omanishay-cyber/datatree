@@ -190,7 +190,7 @@ Source confirms it prints exactly 6 lines (5 health lines + supervisor block) an
 
 Additional concern independent of the sandbox: `mneme mcp stdio` (see `cli/src/main.rs::launch_mcp`) does **not** run the MCP server in-process. It `exec`'s into **Bun** running `mcp/src/index.ts`, searched in this order:
 
-1. `$DATATREE_MCP_PATH`
+1. `$MNEME_MCP_PATH`
 2. `~/.mneme/mcp/src/index.ts`
 3. `~/.mneme/mcp/index.ts`
 4. `./mcp/src/index.ts`
@@ -199,10 +199,10 @@ Additional concern independent of the sandbox: `mneme mcp stdio` (see `cli/src/m
 A v0.2.0 release zip that only ships the Rust `.exe` bundle (which is what we extracted — 8 `.exe` files, no `mcp/` folder) will not satisfy any of those paths unless the user ran `mneme install` first to drop the MCP sources into `~/.mneme/mcp/`. With `HOME=/c/tmp/mneme-e2e-test` and no prior install, `launch_mcp` will fail with:
 
 ```
-mcp/index.ts not found — set DATATREE_MCP_PATH or install the MCP server
+mcp/index.ts not found — set MNEME_MCP_PATH or install the MCP server
 ```
 
-That's a real gap for anyone trying to evaluate the zip standalone — *the MCP server cannot be launched from a fresh zip extract alone.* They must also either (a) run `mneme install` first (which requires `~/` to be writable and performs per-platform manifest injection), or (b) set `DATATREE_MCP_PATH` pointing at a separately obtained `mcp/src/index.ts` plus a Bun install.
+That's a real gap for anyone trying to evaluate the zip standalone — *the MCP server cannot be launched from a fresh zip extract alone.* They must also either (a) run `mneme install` first (which requires `~/` to be writable and performs per-platform manifest injection), or (b) set `MNEME_MCP_PATH` pointing at a separately obtained `mcp/src/index.ts` plus a Bun install.
 
 ---
 
@@ -258,7 +258,7 @@ No daemon is running, nothing to stop. The created test home and fixture will be
 
 1. A shell where executing `mneme.exe` is allowed (plain `powershell` or `cmd.exe` outside Claude Code, or a CI runner with no sandbox).
 2. Same env var overrides (`USERPROFILE`, `HOME`, `MNEME_CONFIG` → `C:\tmp\mneme-e2e-test\`).
-3. For Steps 6/7 specifically: either `mneme install --platform=none` (if such a flag exists — to be confirmed) to populate `~/.mneme/mcp/`, or set `DATATREE_MCP_PATH` to a checked-out `mcp/src/index.ts` and have Bun on PATH.
+3. For Steps 6/7 specifically: either `mneme install --platform=none` (if such a flag exists — to be confirmed) to populate `~/.mneme/mcp/`, or set `MNEME_MCP_PATH` to a checked-out `mcp/src/index.ts` and have Bun on PATH.
 
 The fixture files at `C:\tmp\mneme-fixture\` and the empty test home at `C:\tmp\mneme-e2e-test\` are already in place, so the user (or a non-sandboxed run) can pick up from Step 2 directly.
 

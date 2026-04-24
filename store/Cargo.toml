@@ -3,7 +3,7 @@ name = "mneme-store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Database Operations Layer (Builder/Finder/Path/Query/Inject/Lifecycle) for datatree"
+description = "Database Operations Layer (Builder/Finder/Path/Query/Inject/Lifecycle) for mneme"
 
 [lib]
 name = "mneme_store"

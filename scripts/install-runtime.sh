@@ -1,14 +1,14 @@
 #!/usr/bin/env sh
-# datatree :: install-runtime.sh
-# Detects and (optionally) installs the runtime dependencies datatree needs:
+# mneme :: install-runtime.sh
+# Detects and (optionally) installs the runtime dependencies mneme needs:
 #   bun >=1.0, python3 >=3.10, tesseract >=5.0, ffmpeg
-# SQLite is bundled inside datatree-store via rusqlite's `bundled` feature, so
+# SQLite is bundled inside mneme-store via rusqlite's `bundled` feature, so
 # it is intentionally NOT listed here.
 #
 # LOCAL-ONLY rule: this script never reaches the internet by itself.  When the
 # user passes --auto-install, it delegates to the platform package manager
 # (brew/apt/dnf/pacman/winget) -- those tools may go to the network on the
-# user's behalf, but datatree itself never does.
+# user's behalf, but mneme itself never does.
 #
 # Usage:
 #   sh install-runtime.sh                  # detect only, print install hints
@@ -29,11 +29,11 @@
 set -eu
 
 # --------------------------------------------------------------------- config
-MNEME_HOME="${MNEME_HOME:-${HOME}/.datatree}"
+MNEME_HOME="${MNEME_HOME:-${HOME}/.mneme}"
 LOG_DIR="${MNEME_HOME}/logs"
 LOG_FILE="${LOG_DIR}/install.log"
 MANIFEST_FILE="${MNEME_HOME}/install-manifest.json"
-DATATREE_VERSION="0.1.0"
+MNEME_VERSION="0.1.0"
 
 REQUIRED_DEPS="bun python3 tesseract ffmpeg"
 
@@ -404,9 +404,9 @@ write_manifest() {
     _now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
     cat > "$MANIFEST_FILE" <<EOF
 {
-  "datatree_version": "${DATATREE_VERSION}",
+  "mneme_version": "${MNEME_VERSION}",
   "installed_at": "${_now}",
-  "installed_by_datatree": $(_to_json_array "$_installed"),
+  "installed_by_mneme": $(_to_json_array "$_installed"),
   "preexisting": $(_to_json_array "$PREEXISTING"),
   "models": {}
 }
@@ -416,7 +416,7 @@ EOF
 
 # =========================================================== main flow
 
-log INFO "datatree runtime installer v${DATATREE_VERSION} starting"
+log INFO "mneme runtime installer v${MNEME_VERSION} starting"
 log INFO "AUTO_INSTALL=$AUTO_INSTALL  FROM=${FROM_DIR:-<none>}"
 
 MISSING=""
@@ -472,5 +472,5 @@ for d in $MISSING; do
 done
 
 write_manifest "$INSTALLED"
-log OK "datatree runtime install complete."
+log OK "mneme runtime install complete."
 exit 0

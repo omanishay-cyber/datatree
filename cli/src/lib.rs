@@ -51,7 +51,7 @@ pub const DEFAULT_IPC_SOCKET_NAME: &str = "mneme-supervisor.sock";
 /// for its IPC socket and pidfile. Mirrors the supervisor's resolution logic
 /// so the CLI can connect without out-of-band config.
 pub fn runtime_dir() -> std::path::PathBuf {
-    if let Ok(custom) = std::env::var("DATATREE_RUNTIME_DIR") {
+    if let Ok(custom) = std::env::var("MNEME_RUNTIME_DIR") {
         return std::path::PathBuf::from(custom);
     }
     if let Some(home) = dirs::home_dir() {
@@ -64,7 +64,7 @@ pub fn runtime_dir() -> std::path::PathBuf {
 /// crash dumps). Per design §13: every panic writes a minidump to
 /// `~/.mneme/crashes/`.
 pub fn state_dir() -> std::path::PathBuf {
-    if let Ok(custom) = std::env::var("DATATREE_STATE_DIR") {
+    if let Ok(custom) = std::env::var("MNEME_STATE_DIR") {
         return std::path::PathBuf::from(custom);
     }
     if let Some(home) = dirs::home_dir() {

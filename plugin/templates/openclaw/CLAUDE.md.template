@@ -1,32 +1,32 @@
-<!-- datatree-start v1.0 -->
-# Datatree (OpenClaw)
+<!-- mneme-start v1.0 -->
+# Mneme (OpenClaw)
 
 OpenClaw is a Claude-Code-compatible OSS shell. It reads the same
 `CLAUDE.md` and `.mcp.json` formats. The block below mirrors the
 Claude Code template with OpenClaw-specific framing where relevant.
 
-Datatree is a persistent knowledge graph of this project, exposed via
-the `datatree` MCP server (see `.mcp.json`) and kept fresh by the
-per-user `datatree-supervisor` daemon.
+Mneme is a persistent knowledge graph of this project, exposed via
+the `mneme` MCP server (see `.mcp.json`) and kept fresh by the
+per-user `mneme-supervisor` daemon.
 
 ## Tool usage rules (MANDATORY)
 
-**Use datatree MCP tools BEFORE OpenClaw's built-in Grep / Glob / Read
+**Use mneme MCP tools BEFORE OpenClaw's built-in Grep / Glob / Read
 equivalents** for any structural or semantic question. OpenClaw's
 hook config matches Claude Code's, so the PreToolUse / PostToolUse
-hooks installed by datatree work without modification.
+hooks installed by mneme work without modification.
 
 On every task:
 
-1. `datatree.minimal_context(task="<description>")` — ~100 tokens.
-2. Iterate with `datatree.query`, `datatree.impact`, `datatree.search`
+1. `mneme.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`
    at `detail_level="minimal"`.
 3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
 4. Edits update the graph incrementally via the post-tool hook.
 
 ## Step ledger / drift / compaction
 
-- Ledger: `~/.datatree/projects/<id>/steps.jsonl`.
+- Ledger: `~/.mneme/projects/<id>/steps.jsonl`.
 - Address symbol/doc/test drift before declaring done.
-- After any reset, re-prime with `datatree.minimal_context(...)`.
-<!-- datatree-end -->
+- After any reset, re-prime with `mneme.minimal_context(...)`.
+<!-- mneme-end -->

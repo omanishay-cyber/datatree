@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# datatree :: install-bundle.sh
+# mneme :: install-bundle.sh
 # Master end-to-end installer.  Single command does everything in order:
 #   1. Detect OS + arch
 #   2. Run check-runtime.sh; collect missing
@@ -23,7 +23,7 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-MNEME_HOME="${MNEME_HOME:-${HOME}/.datatree}"
+MNEME_HOME="${MNEME_HOME:-${HOME}/.mneme}"
 LOG_DIR="${MNEME_HOME}/logs"
 LOG_FILE="${LOG_DIR}/install.log"
 
@@ -119,7 +119,7 @@ else
 fi
 
 # ---------- step 4: supervisor
-step "4. Install supervisor (datatree-supervisor)"
+step "4. Install supervisor (mneme-supervisor)"
 if [ -f "$SCRIPT_DIR/install-supervisor.sh" ]; then
     sh "$SCRIPT_DIR/install-supervisor.sh" \
         || die "install-supervisor.sh failed" 4
@@ -145,7 +145,7 @@ fi
 if [ $NO_START -eq 1 ]; then
     log "Skipping daemon start (--no-start)"
 else
-    step "6. Start datatree daemon"
+    step "6. Start mneme daemon"
     if [ -f "$SCRIPT_DIR/start-daemon.sh" ]; then
         sh "$SCRIPT_DIR/start-daemon.sh" \
             || die "start-daemon.sh failed" 6
@@ -158,17 +158,17 @@ fi
 step "7. Done"
 cat <<'BANNER'
 
-   datatree is installed.
+   mneme is installed.
 
    Next:  open Claude Code in your project and run
 
-          /plugin install datatree
+          /plugin install mneme
 
    Useful commands:
      sh scripts/check-runtime.sh           # health-check
      sh scripts/start-daemon.sh            # start
      sh scripts/stop-daemon.sh             # stop
-     sh scripts/uninstall-runtime.sh       # remove deps datatree installed
+     sh scripts/uninstall-runtime.sh       # remove deps mneme installed
 
 BANNER
 

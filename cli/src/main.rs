@@ -193,7 +193,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
 }
 
 /// Exec into the Bun MCP server. Searches for `mcp/index.ts` at:
-///   1. $DATATREE_MCP_PATH (env var)
+///   1. $MNEME_MCP_PATH (env var)
 ///   2. ~/.mneme/mcp/index.ts (production install)
 ///   3. ./mcp/index.ts (development, relative to cwd)
 async fn launch_mcp(transport: String) -> CliResult<()> {
@@ -203,7 +203,7 @@ async fn launch_mcp(transport: String) -> CliResult<()> {
         )));
     }
     let candidates: Vec<PathBuf> = [
-        std::env::var("DATATREE_MCP_PATH").ok().map(PathBuf::from),
+        std::env::var("MNEME_MCP_PATH").ok().map(PathBuf::from),
         dirs::home_dir().map(|h| h.join(".mneme").join("mcp").join("src").join("index.ts")),
         dirs::home_dir().map(|h| h.join(".mneme").join("mcp").join("index.ts")),
         Some(PathBuf::from("mcp/src/index.ts")),
@@ -218,7 +218,7 @@ async fn launch_mcp(transport: String) -> CliResult<()> {
         .cloned()
         .ok_or_else(|| {
             CliError::Other(
-                "mcp/index.ts not found — set DATATREE_MCP_PATH or install the MCP server".into(),
+                "mcp/index.ts not found — set MNEME_MCP_PATH or install the MCP server".into(),
             )
         })?;
     let bun = which_bun();
@@ -238,7 +238,7 @@ async fn launch_mcp(transport: String) -> CliResult<()> {
 
 fn which_bun() -> String {
     // Prefer explicit env, then common Windows locations, then "bun" on PATH.
-    if let Ok(p) = std::env::var("DATATREE_BUN") {
+    if let Ok(p) = std::env::var("MNEME_BUN") {
         return p;
     }
     #[cfg(windows)]

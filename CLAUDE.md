@@ -22,7 +22,7 @@ If you're a user *consuming* mneme as an MCP plugin, see [README.md](README.md) 
 - All errors via `thiserror`; no `.unwrap()` on user-input paths.
 - All async via `tokio`; no `block_on` inside an async context.
 - Per-shard single-writer invariant in store crate is sacred. Reads can come from anywhere; writes always go through the writer task for that shard. Do not bypass.
-- All paths constructed via `datatree_common::PathManager`. Never join paths manually.
+- All paths constructed via `mneme_common::PathManager`. Never join paths manually.
 - `panic = "abort"` in release profile. Don't change this.
 
 ### TypeScript (mcp/ and vision/)

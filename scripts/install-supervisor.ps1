@@ -1,6 +1,6 @@
-# datatree supervisor installer (Windows PowerShell 5.1+)
-# Installs datatree-supervisor.exe to %USERPROFILE%mneme\bin\
-# Registers a Windows service via sc.exe (DatatreeDaemon).
+# mneme supervisor installer (Windows PowerShell 5.1+)
+# Installs mneme-supervisor.exe to %USERPROFILE%mneme\bin\
+# Registers a Windows service via sc.exe (MnemeDaemon).
 # Falls back to a Task Scheduler entry at user logon if elevation is denied.
 # Idempotent: re-running does not duplicate entries; existing files .bak'd.
 
@@ -15,11 +15,11 @@ $ErrorActionPreference = 'Stop'
 $MarkerVersion = 'v1.0'
 
 function Write-Log([string]$msg) {
-    if (-not $Quiet) { Write-Host "[datatree-install] $msg" }
+    if (-not $Quiet) { Write-Host "[mneme-install] $msg" }
 }
 
 function Die([string]$msg) {
-    Write-Host "[datatree-install] ERROR: $msg" -ForegroundColor Red
+    Write-Host "[mneme-install] ERROR: $msg" -ForegroundColor Red
     exit 1
 }
 
@@ -32,11 +32,11 @@ $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
 Write-Log "Detected platform: windows/$arch"
 
 # --- paths -------------------------------------------------------------------
-$DatatreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $env:USERPROFILE '.datatree' }
-$BinDir = Join-Path $DatatreeHome 'bin'
-$LogDir = Join-Path $DatatreeHome 'logs'
+$MnemeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $env:USERPROFILE '.mneme' }
+$BinDir = Join-Path $MnemeHome 'bin'
+$LogDir = Join-Path $MnemeHome 'logs'
 
-foreach ($d in @($DatatreeHome, $BinDir, $LogDir, (Join-Path $DatatreeHome 'projects'), (Join-Path $DatatreeHome 'cache'), (Join-Path $DatatreeHome 'models'))) {
+foreach ($d in @($MnemeHome, $BinDir, $LogDir, (Join-Path $MnemeHome 'projects'), (Join-Path $MnemeHome 'cache'), (Join-Path $MnemeHome 'models'))) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
 }
 
@@ -46,12 +46,12 @@ if (-not $BinaryPath) {
         $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
         $SourceDir = Join-Path $ScriptDir '..\dist\supervisor'
     }
-    $BinaryPath = Join-Path $SourceDir "datatree-supervisor-windows-$arch.exe"
+    $BinaryPath = Join-Path $SourceDir "mneme-supervisor-windows-$arch.exe"
 }
 
 if (-not (Test-Path $BinaryPath)) { Die "Binary not found: $BinaryPath" }
 
-$Dest = Join-Path $BinDir 'datatree-supervisor.exe'
+$Dest = Join-Path $BinDir 'mneme-supervisor.exe'
 if (Test-Path $Dest) {
     Write-Log "Backing up existing binary to $Dest.bak"
     Copy-Item -Path $Dest -Destination "$Dest.bak" -Force
@@ -60,8 +60,8 @@ Write-Log "Installing binary to $Dest"
 Copy-Item -Path $BinaryPath -Destination $Dest -Force
 
 # --- service registration ----------------------------------------------------
-$ServiceName = 'DatatreeDaemon'
-$DisplayName = 'Datatree Supervisor (datatree-marker ' + $MarkerVersion + ')'
+$ServiceName = 'MnemeDaemon'
+$DisplayName = 'Mneme Supervisor (mneme-marker ' + $MarkerVersion + ')'
 
 function Test-Admin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -82,14 +82,14 @@ function Register-Service {
     & sc.exe create $ServiceName binPath= $binPath start= auto DisplayName= $DisplayName | Out-Null
     if ($LASTEXITCODE -ne 0) { return $false }
 
-    & sc.exe description $ServiceName "Datatree per-user knowledge graph daemon" | Out-Null
+    & sc.exe description $ServiceName "Mneme per-user knowledge graph daemon" | Out-Null
     & sc.exe failure     $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/10000 | Out-Null
     Write-Log "Service registered: $ServiceName"
     return $true
 }
 
 function Register-ScheduledTask {
-    $taskName = 'DatatreeDaemon'
+    $taskName = 'MnemeDaemon'
     $existing = & schtasks.exe /Query /TN $taskName 2>$null
     if ($LASTEXITCODE -eq 0) {
         Write-Log "Scheduled task $taskName exists; deleting for reconfigure"

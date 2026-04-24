@@ -1,56 +1,56 @@
-<!-- datatree-start v1.0 -->
-# Datatree (Claude Code)
+<!-- mneme-start v1.0 -->
+# Mneme (Claude Code)
 
-**Datatree** is a persistent, incrementally-updated knowledge graph of this
-project. It is exposed to Claude Code through the `datatree` MCP server
+**Mneme** is a persistent, incrementally-updated knowledge graph of this
+project. It is exposed to Claude Code through the `mneme` MCP server
 (see `.mcp.json`) and surfaced as tools, prompts, and slash commands.
 
 The graph is built once, kept fresh by a background daemon
-(`datatree-supervisor`), and survives across sessions, branches, and
+(`mneme-supervisor`), and survives across sessions, branches, and
 context compactions. Use it as your first read on any unfamiliar file.
 
 ## Tool usage rules (MANDATORY)
 
-**Use datatree MCP tools BEFORE Grep, Glob, or Read** for any structural
+**Use mneme MCP tools BEFORE Grep, Glob, or Read** for any structural
 or semantic question about the codebase. Reach for shell tools only when
-datatree explicitly tells you to (e.g. `next_tool_suggestions: ["read:..."]`)
-or when you are reading a file you already located through datatree.
+mneme explicitly tells you to (e.g. `next_tool_suggestions: ["read:..."]`)
+or when you are reading a file you already located through mneme.
 
 Order of operations on EVERY task:
 
-1. `datatree.minimal_context(task="<one-sentence description>")`
+1. `mneme.minimal_context(task="<one-sentence description>")`
    ~100 tokens, returns the relevant files, symbols, recent changes,
    and tool suggestions for this exact task.
-2. Iterate with `datatree.query(target=...)`, `datatree.impact(symbol=...)`,
-   or `datatree.search(query=...)` — all default to `detail_level="minimal"`.
-3. Only THEN open files with Read/Grep/Glob, scoped to what datatree returned.
-4. After any edit, datatree's `PostToolUse` hook updates the graph
+2. Iterate with `mneme.query(target=...)`, `mneme.impact(symbol=...)`,
+   or `mneme.search(query=...)` — all default to `detail_level="minimal"`.
+3. Only THEN open files with Read/Grep/Glob, scoped to what mneme returned.
+4. After any edit, mneme's `PostToolUse` hook updates the graph
    incrementally — you do not need to rebuild manually.
 
-Budget: aim for **<= 5 datatree tool calls per task** and
+Budget: aim for **<= 5 mneme tool calls per task** and
 **<= 800 tokens of graph context** before writing code.
 
 ## Step ledger
 
-Every non-trivial task is recorded in `~/.datatree/projects/<id>/steps.jsonl`
+Every non-trivial task is recorded in `~/.mneme/projects/<id>/steps.jsonl`
 as an append-only ledger:
 
 - One row per step: `{ts, task, tool, args_hash, result_hash, files_touched}`.
 - The ledger is the source of truth for "what did I just do" — read it
-  with `datatree.last_steps(n=10)` after any context loss.
-- Never edit the ledger by hand. Datatree compacts and rotates it.
+  with `mneme.last_steps(n=10)` after any context loss.
+- Never edit the ledger by hand. Mneme compacts and rotates it.
 
 ## Drift detection
 
-Datatree watches three signals and warns when your edits drift from the
+Mneme watches three signals and warns when your edits drift from the
 graph's understanding:
 
 - **Symbol drift**: an edit changes a public symbol's signature without
-  updating its callers. Flagged in `datatree.impact()`.
+  updating its callers. Flagged in `mneme.impact()`.
 - **Doc drift**: a function's behaviour changed but its docstring/comments
-  did not. Flagged in `datatree.review_hints()`.
+  did not. Flagged in `mneme.review_hints()`.
 - **Test drift**: source changed without a corresponding test edit.
-  Flagged in `datatree.coverage_delta()`.
+  Flagged in `mneme.coverage_delta()`.
 
 When you see a drift warning, **address it before declaring the task done**.
 Do not silence drift warnings — fix them or document why the drift is
@@ -59,11 +59,11 @@ intentional in the commit message.
 ## Compaction resilience
 
 Claude Code's context compaction discards intermediate messages but keeps
-this CLAUDE.md, the system prompt, and the latest tool results. Datatree
+this CLAUDE.md, the system prompt, and the latest tool results. Mneme
 is designed for this:
 
 - Re-prime after any compaction with a single
-  `datatree.minimal_context(task=...)` call — it rebuilds your situational
+  `mneme.minimal_context(task=...)` call — it rebuilds your situational
   awareness from the persistent graph in ~100 tokens.
 - The step ledger (above) lets you recover "what was I doing" without
   scrolling lost messages.
@@ -73,18 +73,18 @@ is designed for this:
 
 - MCP server config:  `.mcp.json`
 - Hook config:        `.claude/settings.json`
-- Daemon home:        `~/.datatree/`
-- Project graph:      `~/.datatree/projects/<project_id>/graph.db`
-- Step ledger:        `~/.datatree/projects/<project_id>/steps.jsonl`
-- Logs:               `~/.datatree/logs/supervisor.{out,err}.log`
+- Daemon home:        `~/.mneme/`
+- Project graph:      `~/.mneme/projects/<project_id>/graph.db`
+- Step ledger:        `~/.mneme/projects/<project_id>/steps.jsonl`
+- Logs:               `~/.mneme/logs/supervisor.{out,err}.log`
 
 ## Commands
 
 ```
-datatree status              # daemon health + graph stats for cwd
-datatree build               # full (re)build of the project graph
-datatree update              # incremental update (auto-runs via hook)
-datatree query <target>      # ad-hoc query against the graph
-datatree visualize           # generate D3.js HTML graph
+mneme status              # daemon health + graph stats for cwd
+mneme build               # full (re)build of the project graph
+mneme update              # incremental update (auto-runs via hook)
+mneme query <target>      # ad-hoc query against the graph
+mneme visualize           # generate D3.js HTML graph
 ```
-<!-- datatree-end -->
+<!-- mneme-end -->

@@ -1,28 +1,28 @@
-<!-- datatree-start v1.0 -->
-# Datatree (Windsurf)
+<!-- mneme-start v1.0 -->
+# Mneme (Windsurf)
 
-Datatree is a persistent knowledge graph of this project, exposed to
-Windsurf's Cascade agent via the `datatree` MCP server
-(see `mcp_config.json`). A per-user daemon (`datatree-supervisor`)
+Mneme is a persistent knowledge graph of this project, exposed to
+Windsurf's Cascade agent via the `mneme` MCP server
+(see `mcp_config.json`). A per-user daemon (`mneme-supervisor`)
 keeps it fresh in the background.
 
 ## Tool usage rules (MANDATORY)
 
-**Use datatree MCP tools BEFORE Cascade's built-in code search, file
+**Use mneme MCP tools BEFORE Cascade's built-in code search, file
 read, or symbol lookup** for any structural or semantic question.
 
 On every task:
 
-1. `datatree.minimal_context(task="<one-sentence description>")` — ~100 tokens.
-2. Iterate with `datatree.query`, `datatree.impact`, `datatree.search`
+1. `mneme.minimal_context(task="<one-sentence description>")` — ~100 tokens.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`
    at `detail_level="minimal"`.
-3. Only then read files. Budget: <= 5 datatree calls + <= 800 tokens.
+3. Only then read files. Budget: <= 5 mneme calls + <= 800 tokens.
 4. Edits update the graph incrementally via the supervisor.
 
 ## Step ledger
 
-Steps append to `~/.datatree/projects/<id>/steps.jsonl`.
-Use `datatree.last_steps(n=10)` to recover after a reset.
+Steps append to `~/.mneme/projects/<id>/steps.jsonl`.
+Use `mneme.last_steps(n=10)` to recover after a reset.
 
 ## Drift detection
 
@@ -31,10 +31,10 @@ Symbol/doc/test drift are flagged. Address them before done.
 ## Compaction resilience
 
 If Cascade truncates context, re-prime with one
-`datatree.minimal_context(...)` call. The graph is persistent.
+`mneme.minimal_context(...)` call. The graph is persistent.
 
 ## Locations
 
-- MCP config: `mcp_config.json` -> `mcpServers.datatree`
-- Daemon:     `~/.datatree/`
-<!-- datatree-end -->
+- MCP config: `mcp_config.json` -> `mcpServers.mneme`
+- Daemon:     `~/.mneme/`
+<!-- mneme-end -->

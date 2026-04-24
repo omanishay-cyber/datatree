@@ -4,7 +4,7 @@
   "mneme_version": "0.2.0",
   "installed_at": "2026-04-23T15:00:00Z",
 
-  "installed_by_datatree": [
+  "installed_by_mneme": [
     "bun",
     "tesseract"
   ],

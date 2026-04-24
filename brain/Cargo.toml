@@ -43,7 +43,7 @@ tokio = { version = "1", features = [
 ] }
 
 # v0.2: real BGE-small-en-v1.5 embeddings via fastembed-rs (ONNX Runtime).
-# - Offline-safe after first `datatree models install` (model cached to
+# - Offline-safe after first `mneme models install` (model cached to
 #   ~/.mneme/llm/).
 # - If the model is missing at runtime, Embedder transparently falls back
 #   to the pure-Rust hashing-trick backend so a fresh install still works.

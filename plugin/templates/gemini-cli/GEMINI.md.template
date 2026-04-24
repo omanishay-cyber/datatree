@@ -1,21 +1,21 @@
-<!-- datatree-start v1.0 -->
-# Datatree (Gemini CLI)
+<!-- mneme-start v1.0 -->
+# Mneme (Gemini CLI)
 
 Gemini CLI reads `GEMINI.md` from the project root and your home
-directory. This block teaches Gemini how to use the datatree knowledge
+directory. This block teaches Gemini how to use the mneme knowledge
 graph, exposed as an MCP server (see `~/.gemini/settings.json` ->
-`mcpServers.datatree`).
+`mcpServers.mneme`).
 
 ## Tool usage rules (MANDATORY)
 
-**Call datatree MCP tools BEFORE Gemini's built-in `read_file`,
+**Call mneme MCP tools BEFORE Gemini's built-in `read_file`,
 `grep`, `glob`, or `shell` tools** for any structural or semantic
 question about this codebase.
 
 On every task:
 
-1. `datatree.minimal_context(task="<description>")` — ~100 tokens.
-2. Iterate with `datatree.query`, `datatree.impact`, `datatree.search`
+1. `mneme.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`
    at `detail_level="minimal"`.
 3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
 4. Edits update the graph incrementally via the supervisor's watcher.
@@ -23,13 +23,13 @@ On every task:
 ## Long-context discipline
 
 Gemini's huge context window is not a license to dump the repo into the
-prompt. Datatree's minimal context is far denser per token. Use full
-files only after datatree narrows the search.
+prompt. Mneme's minimal context is far denser per token. Use full
+files only after mneme narrows the search.
 
 ## Step ledger / drift / compaction
 
-- Ledger: `~/.datatree/projects/<id>/steps.jsonl`,
-  read with `datatree.last_steps(n=10)`.
+- Ledger: `~/.mneme/projects/<id>/steps.jsonl`,
+  read with `mneme.last_steps(n=10)`.
 - Address symbol/doc/test drift before done.
-- After any reset, re-prime with `datatree.minimal_context(...)`.
-<!-- datatree-end -->
+- After any reset, re-prime with `mneme.minimal_context(...)`.
+<!-- mneme-end -->

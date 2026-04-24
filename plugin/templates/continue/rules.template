@@ -1,36 +1,36 @@
-<!-- datatree-start v1.0 -->
-# Datatree (Continue)
+<!-- mneme-start v1.0 -->
+# Mneme (Continue)
 
-Continue exposes datatree as an MCP server (see `config.json` ->
-`mcpServers[].datatree`). The graph is built and kept fresh by the
-per-user `datatree-supervisor` daemon.
+Continue exposes mneme as an MCP server (see `config.json` ->
+`mcpServers[].mneme`). The graph is built and kept fresh by the
+per-user `mneme-supervisor` daemon.
 
 ## Tool usage rules (MANDATORY)
 
-**Use datatree MCP tools BEFORE Continue's @codebase, @file, or @folder
+**Use mneme MCP tools BEFORE Continue's @codebase, @file, or @folder
 context providers** for structural or semantic questions. Built-in
-context providers are for pulling in a specific file that datatree
+context providers are for pulling in a specific file that mneme
 already located.
 
 On every task:
 
-1. `datatree.minimal_context(task="<description>")` — ~100 tokens.
-2. Iterate with `datatree.query`, `datatree.impact`, `datatree.search`
+1. `mneme.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`
    at `detail_level="minimal"`.
 3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
 4. Edits update the graph incrementally via the supervisor.
 
 ## Step ledger
 
-Steps append to `~/.datatree/projects/<id>/steps.jsonl`. Recover with
-`datatree.last_steps(n=10)`.
+Steps append to `~/.mneme/projects/<id>/steps.jsonl`. Recover with
+`mneme.last_steps(n=10)`.
 
 ## Drift detection
 
-Datatree flags symbol/doc/test drift. Address all flags before done.
+Mneme flags symbol/doc/test drift. Address all flags before done.
 
 ## Compaction resilience
 
-After a context reset, one `datatree.minimal_context(...)` call restores
+After a context reset, one `mneme.minimal_context(...)` call restores
 situational awareness from the persistent graph.
-<!-- datatree-end -->
+<!-- mneme-end -->

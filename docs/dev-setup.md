@@ -141,7 +141,7 @@ v0.1.0 ships with skeleton tests; rigorous test expansion is ongoing.
 MNEME_LOG=trace cargo run --bin mneme-supervisor -- start
 
 # Single-subsystem trace
-MNEME_LOG=datatree_store=trace,info cargo run --bin mneme-supervisor -- start
+MNEME_LOG=mneme_store=trace,info cargo run --bin mneme-supervisor -- start
 
 # Inspect the daemon's log ring over IPC
 cargo run --bin mneme -- daemon logs

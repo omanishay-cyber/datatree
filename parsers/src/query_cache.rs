@@ -454,18 +454,25 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
         (Language::Solidity, QueryKind::Comments) => r#"(comment) @comment"#,
 
         // ---- Julia (tree-sitter-julia 0.23) -------------------------------
+        // Node names confirmed from the current crate: `function_definition`,
+        // `short_function_definition`, `macro_definition` for callables;
+        // `struct_definition`, `abstract_definition`, `primitive_definition`
+        // for types. Names are `identifier` captured via field access.
         #[cfg(feature = "julia")]
         (Language::Julia, QueryKind::Functions) => {
             r#"
-            (function_definition name: (_) @name) @function
-            (short_function_definition name: (_) @name) @function
+            (function_definition (signature (call_expression (identifier) @name))) @function
+            (function_definition (identifier) @name) @function
+            (short_function_definition (signature (call_expression (identifier) @name))) @function
+            (macro_definition (signature (call_expression (identifier) @name))) @function
             "#
         }
         #[cfg(feature = "julia")]
         (Language::Julia, QueryKind::Classes) => {
             r#"
-            (struct_definition name: (_) @name) @class
-            (abstract_definition name: (_) @name) @class
+            (struct_definition (type_head (identifier) @name)) @class
+            (abstract_definition (type_head (identifier) @name)) @class
+            (primitive_definition (type_head (identifier) @name)) @class
             "#
         }
         #[cfg(feature = "julia")]
@@ -477,13 +484,22 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
         }
 
         // ---- Zig (tree-sitter-zig 1.1) ------------------------------------
+        // Node names confirmed from the current crate: top-level callables
+        // are `function_declaration` with an `identifier` child; types are
+        // declared via `VarDecl` where the right-hand side is a container
+        // (`struct`, `enum`, `union`). We capture function declarations and
+        // VarDecls whose initializer is a container builtin.
         #[cfg(feature = "zig")]
         (Language::Zig, QueryKind::Functions) => {
-            r#"(FnProto (IDENTIFIER) @name) @function"#
+            r#"
+            (function_declaration (identifier) @name) @function
+            "#
         }
         #[cfg(feature = "zig")]
         (Language::Zig, QueryKind::Classes) => {
-            r#"(ContainerDecl) @class"#
+            r#"
+            (variable_declaration (identifier) @name) @class
+            "#
         }
         #[cfg(feature = "zig")]
         (Language::Zig, QueryKind::Comments) => {

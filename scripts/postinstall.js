@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /*
- * datatree post-install
+ * mneme post-install
  * ─────────────────────
- * Runs automatically after `/plugin install datatree`. Downloads the
+ * Runs automatically after `/plugin install mneme`. Downloads the
  * platform-matching prebuilt binary bundle from the latest GitHub release
  * and unpacks it into ~/.mneme/.
  *
@@ -145,7 +145,7 @@ async function main() {
   const asset = detectAsset();
   if (!asset) {
     warn(`no prebuilt binary for ${platform()} ${arch()}`);
-    warn("install from source: https://github.com/omanishay-cyber/datatree#-install--in-depth");
+    warn("install from source: https://github.com/omanishay-cyber/mneme#-install--in-depth");
     return;
   }
 

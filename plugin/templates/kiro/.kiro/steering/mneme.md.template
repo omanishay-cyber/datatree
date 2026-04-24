@@ -1,0 +1,34 @@
+---
+inclusion: always
+description: "Mneme knowledge graph — graph-first tool usage, drift detection, step ledger."
+---
+
+<!-- mneme-start v1.0 -->
+# Mneme (Kiro steering rule)
+
+Kiro reads steering files in `.kiro/steering/`. With `inclusion: always`
+this rule is loaded on every task and treated as a hard policy.
+
+Mneme is a persistent knowledge graph of this project, exposed to
+Kiro via the `mneme` MCP server (see `.kiro/settings/mcp.json`) and
+kept fresh by the per-user `mneme-supervisor` daemon.
+
+## Tool usage rules (MANDATORY)
+
+**Call mneme MCP tools BEFORE Kiro's built-in code search, file
+read, or grep** for any structural or semantic question.
+
+On every task:
+
+1. `mneme.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`
+   at `detail_level="minimal"`.
+3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
+4. Edits update the graph incrementally via the supervisor.
+
+## Step ledger / drift / compaction
+
+- Ledger: `~/.mneme/projects/<id>/steps.jsonl`.
+- Address symbol/doc/test drift before declaring done.
+- After any reset, re-prime with `mneme.minimal_context(...)`.
+<!-- mneme-end -->

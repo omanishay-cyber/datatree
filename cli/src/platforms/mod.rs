@@ -397,7 +397,7 @@ pub trait PlatformAdapter: Send + Sync {
 /// The canonical mneme MCP entry written into JSON-object configs.
 /// Kept as `serde_json::Value` so individual adapters can mutate fields
 /// before serializing (e.g. Cursor wants `transport: "stdio"`).
-pub fn datatree_mcp_entry() -> serde_json::Value {
+pub fn mneme_mcp_entry() -> serde_json::Value {
     serde_json::json!({
         "command": "mneme",
         "args": ["mcp", "stdio"],
@@ -506,7 +506,7 @@ fn merge_mcp_json_object(existing: &str) -> CliResult<String> {
     let servers_obj = servers
         .as_object_mut()
         .ok_or_else(|| CliError::Other("`mcpServers` is not a JSON object".into()))?;
-    servers_obj.insert("mneme".into(), datatree_mcp_entry());
+    servers_obj.insert("mneme".into(), mneme_mcp_entry());
     Ok(serde_json::to_string_pretty(&value)? + "\n")
 }
 
@@ -536,7 +536,7 @@ fn merge_mcp_json_array(existing: &str) -> CliResult<String> {
         .as_array_mut()
         .ok_or_else(|| CliError::Other("`mcpServers` is not a JSON array".into()))?;
     arr.retain(|s| s.get("name").and_then(|n| n.as_str()) != Some("mneme"));
-    let mut entry = datatree_mcp_entry();
+    let mut entry = mneme_mcp_entry();
     entry
         .as_object_mut()
         .unwrap()
@@ -663,7 +663,7 @@ mod tests {
     }
 
     #[test]
-    fn merge_mcp_json_object_inserts_datatree() {
+    fn merge_mcp_json_object_inserts_mneme() {
         let starting = r#"{"mcpServers":{"other":{"command":"other"}}}"#;
         let merged = merge_mcp_json_object(starting).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&merged).unwrap();
@@ -672,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn merge_mcp_json_array_dedupes_datatree() {
+    fn merge_mcp_json_array_dedupes_mneme() {
         let starting = r#"{"mcpServers":[{"name":"mneme","command":"old"}]}"#;
         let merged = merge_mcp_json_array(starting).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&merged).unwrap();

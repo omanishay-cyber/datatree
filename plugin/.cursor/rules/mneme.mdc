@@ -1,20 +1,20 @@
 ---
-description: Datatree — local persistent project memory + live code graph + 30+ MCP tools. Always prefer datatree tools over Grep/Glob/Read for structural questions.
+description: Mneme — local persistent project memory + live code graph + 47 MCP tools. Always prefer mneme tools over Grep/Glob/Read for structural questions.
 globs: ["**/*"]
 alwaysApply: true
 ---
 
-<!-- datatree-start v1.0 -->
-# Datatree — Cursor Rule
+<!-- mneme-start v1.0 -->
+# Mneme — Cursor Rule
 
-This project has the **datatree** local daemon installed. Datatree provides
+This project has the **mneme** local daemon installed. Mneme provides
 Cursor with persistent SQLite memory, a live code graph, drift detection,
-a compaction-resilient step ledger, and 30+ MCP tools (exposed via the
+a compaction-resilient step ledger, and 47 MCP tools (exposed via the
 stdio MCP server registered in `.cursor/mcp.json`).
 
 ## Cursor-specific Tool Routing
 
-Cursor's "Apply" loop benefits from these datatree calls before any change:
+Cursor's "Apply" loop benefits from these mneme calls before any change:
 
 1. `recall_file(path)` — get the indexed summary + last-read hash. If
    unchanged, skip the Read.
@@ -23,12 +23,12 @@ Cursor's "Apply" loop benefits from these datatree calls before any change:
 3. `blast_radius(target=path)` — see every caller, dependent, and test
    that will be affected. **Block large blast radii unless approved.**
 
-After the apply, datatree's PostToolUse hook captures the diff to
+After the apply, mneme's PostToolUse hook captures the diff to
 history.db automatically.
 
 ## Tool Catalog (when to use which)
 
-| Need | Datatree tool | Use instead of |
+| Need | Mneme tool | Use instead of |
 |---|---|---|
 | Find usages | `find_references(symbol)` | `@codebase` grep |
 | Trace impact | `blast_radius(target)` | manual exploration |
@@ -54,11 +54,11 @@ For multi-step Cursor sessions, anchor in the step ledger:
 ## Drift Redirects
 
 If your responses diverge from the goal twice in a row, the next prompt
-is prefixed with `<datatree-redirect>`. Re-anchor immediately.
+is prefixed with `<mneme-redirect>`. Re-anchor immediately.
 
 ## Local Only
 
-Datatree makes zero outbound network calls. Everything stays in
-`~/.datatree/projects/`.
+Mneme makes zero outbound network calls. Everything stays in
+`~/.mneme/projects/`.
 
-<!-- datatree-end v1.0 -->
+<!-- mneme-end v1.0 -->

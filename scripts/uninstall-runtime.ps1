@@ -1,7 +1,7 @@
-# datatree :: uninstall-runtime.ps1
-# Removes the runtime dependencies datatree installed on Windows.  Reads
+# mneme :: uninstall-runtime.ps1
+# Removes the runtime dependencies mneme installed on Windows.  Reads
 # ~/.mneme/install-manifest.json to distinguish deps installed by
-# datatree from deps that already existed on the machine.
+# mneme from deps that already existed on the machine.
 #
 # Flags:
 #   -KeepShared    (default ON)  do NOT remove anything in "preexisting"
@@ -20,7 +20,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$DataTreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $HOME ".datatree" }
+$DataTreeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $HOME ".mneme" }
 $LogDir       = Join-Path $DataTreeHome "logs"
 $LogFile      = Join-Path $LogDir       "install.log"
 $ManifestFile = Join-Path $DataTreeHome "install-manifest.json"
@@ -50,7 +50,7 @@ function Confirm-Action {
 
 if (-not (Test-Path $ManifestFile)) {
     Write-Log "ERROR" "Install manifest not found: $ManifestFile"
-    Write-Log "ERROR" "Either datatree was never installed, or MNEME_HOME was wiped."
+    Write-Log "ERROR" "Either mneme was never installed, or MNEME_HOME was wiped."
     exit 1
 }
 
@@ -61,15 +61,15 @@ try {
     exit 1
 }
 
-$installedByDatatree = @()
-if ($manifest.installed_by_datatree) { $installedByDatatree = @($manifest.installed_by_datatree) }
+$installedByMneme = @()
+if ($manifest.installed_by_mneme) { $installedByMneme = @($manifest.installed_by_mneme) }
 $preexisting = @()
 if ($manifest.preexisting) { $preexisting = @($manifest.preexisting) }
 
-Write-Log "INFO" ("manifest: installed_by_datatree=[{0}]  preexisting=[{1}]" -f ($installedByDatatree -join ','), ($preexisting -join ','))
+Write-Log "INFO" ("manifest: installed_by_mneme=[{0}]  preexisting=[{1}]" -f ($installedByMneme -join ','), ($preexisting -join ','))
 
 # build target set
-$targets = @($installedByDatatree)
+$targets = @($installedByMneme)
 if (-not $KeepShared) { $targets += $preexisting }
 $targets = $targets | Where-Object { $_ } | Select-Object -Unique
 
@@ -172,15 +172,15 @@ foreach ($d in $targets) {
 
 # update manifest
 if ($removed.Count -gt 0) {
-    $newInstalled = $installedByDatatree | Where-Object { $removed -notcontains $_ }
+    $newInstalled = $installedByMneme | Where-Object { $removed -notcontains $_ }
     $newPreexisting = $preexisting
     if (-not $KeepShared) {
         $newPreexisting = $preexisting | Where-Object { $removed -notcontains $_ }
     }
     $obj = [ordered]@{
-        datatree_version       = if ($manifest.datatree_version) { $manifest.datatree_version } else { "0.1.0" }
+        mneme_version          = if ($manifest.mneme_version) { $manifest.mneme_version } else { "0.1.0" }
         installed_at           = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-        installed_by_datatree  = @($newInstalled)
+        installed_by_mneme     = @($newInstalled)
         preexisting            = @($newPreexisting)
         models                 = if ($manifest.models) { $manifest.models } else { @{} }
     }

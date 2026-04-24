@@ -1,25 +1,25 @@
 #!/bin/sh
-# Stop the datatree supervisor daemon.
+# Stop the mneme supervisor daemon.
 set -eu
 
-MNEME_HOME="${MNEME_HOME:-$HOME/.datatree}"
+MNEME_HOME="${MNEME_HOME:-$HOME/.mneme}"
 PID_FILE="$MNEME_HOME/supervisor.pid"
 
 OS="$(uname -s)"
 case "$OS" in
     Darwin)
-        PLIST="$HOME/Library/LaunchAgents/com.datatree.supervisor.plist"
+        PLIST="$HOME/Library/LaunchAgents/com.mneme.supervisor.plist"
         if [ -f "$PLIST" ]; then
-            launchctl stop com.datatree.supervisor 2>/dev/null || true
-            echo "datatree daemon stopped (launchd)"
+            launchctl stop com.mneme.supervisor 2>/dev/null || true
+            echo "mneme daemon stopped (launchd)"
             exit 0
         fi
         ;;
     Linux)
         if command -v systemctl >/dev/null 2>&1 && \
-           systemctl --user list-unit-files datatree.service >/dev/null 2>&1; then
-            systemctl --user stop datatree.service
-            echo "datatree daemon stopped (systemd --user)"
+           systemctl --user list-unit-files mneme.service >/dev/null 2>&1; then
+            systemctl --user stop mneme.service
+            echo "mneme daemon stopped (systemd --user)"
             exit 0
         fi
         ;;
@@ -38,10 +38,10 @@ if [ -f "$PID_FILE" ]; then
         if kill -0 "$PID" 2>/dev/null; then
             kill -9 "$PID" 2>/dev/null || true
         fi
-        echo "datatree daemon stopped (pid $PID)"
+        echo "mneme daemon stopped (pid $PID)"
     fi
     rm -f "$PID_FILE"
 else
-    echo "datatree daemon not running"
+    echo "mneme daemon not running"
 fi
 exit 0

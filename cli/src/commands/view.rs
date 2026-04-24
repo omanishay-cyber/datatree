@@ -28,7 +28,7 @@ pub struct ViewArgs {
     pub url: String,
 
     /// Override the path to the native binary.
-    #[arg(long, env = "DATATREE_VISION_BIN")]
+    #[arg(long, env = "MNEME_VISION_BIN")]
     pub bin: Option<PathBuf>,
 }
 
