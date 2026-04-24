@@ -17,12 +17,28 @@ targets = [
 # Run via the GitHub-hosted RUSTSEC advisory database. Refresh on every CI run.
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/RustSec/advisory-db"]
-# v0.1 records but does not enforce. v0.2 flips `vulnerability` and
-# `unmaintained` to "deny". Today we want visibility without blocking CI.
+# v0.1 records but does not enforce. v0.2 flips things to "deny". Today we
+# want visibility without blocking CI.
+# cargo-deny 0.15+ accepts "all" | "workspace" | "transitive" | "none" on
+# `unmaintained` (old "warn" is gone). "all" is the most permissive + logs.
 yanked = "warn"
-unmaintained = "warn"
-notice = "warn"
-ignore = []
+unmaintained = "all"
+ignore = [
+    # paste — upstream author archived the repo; alternatives (pastey,
+    # with_builtin_macros) exist but switching requires a tokenizers fork.
+    # No CVE, just unmaintained.
+    "RUSTSEC-2024-0436",
+    # number_prefix — used transitively by indicatif for progress bar units.
+    # Upstream alternative: unit-prefix. Waiting on indicatif upstream fix.
+    "RUSTSEC-2025-0119",
+    # lru::IterMut stacked-borrow unsoundness. We do not use IterMut anywhere
+    # in mneme; only LruCache::{get, put, peek}. Safe in practice; flagged
+    # for visibility. Will upgrade lru when 0.13.x lands.
+    "RUSTSEC-2026-0002",
+    # bincode v1.3.3 — upstream says v2 is the new line; v1 is unmaintained.
+    # We use it for the embedding-cache serde. Migrate to bincode v2 in v0.4.
+    "RUSTSEC-2025-0141",
+]
 
 [licenses]
 # Apache-2.0-compatible licenses we accept upstream.
@@ -42,8 +58,9 @@ allow = [
     "0BSD",
     "OpenSSL",
 ]
-# Known-banned (copyleft) — flag immediately.
-deny = ["AGPL-3.0", "GPL-2.0", "GPL-3.0", "LGPL-2.1", "LGPL-3.0"]
+# cargo-deny 0.15+ removed `deny = [...]` — use allow-only model. Anything
+# not in `allow` above is rejected by default. To flag copyleft explicitly,
+# rely on the absence from `allow`.
 # Be lenient on confidence — many crates have ambiguous license text.
 confidence-threshold = 0.8
 exceptions = []
