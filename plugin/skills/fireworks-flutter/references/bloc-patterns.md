@@ -481,7 +481,7 @@ void main() {
         return AuthBloc(mockRepo);
       },
       act: (bloc) => bloc.add(
-        LoginRequested(email: 'test@test.com', password: 'pass123'),
+        LoginRequested(email: 'test@test.com', password: FIXTURE_VALUE /* redacted-for-docs */),
       ),
       expect: () => [
         isA<AuthLoading>(),
@@ -490,7 +490,7 @@ void main() {
       verify: (_) {
         verify(() => mockRepo.login(
           email: 'test@test.com',
-          password: 'pass123',
+          password: FIXTURE_VALUE /* redacted-for-docs */,
         )).called(1);
       },
     );
@@ -505,7 +505,7 @@ void main() {
         return AuthBloc(mockRepo);
       },
       act: (bloc) => bloc.add(
-        LoginRequested(email: 'bad@test.com', password: 'wrong'),
+        LoginRequested(email: 'bad@test.com', password: FIXTURE_VALUE /* redacted-for-docs */),
       ),
       expect: () => [
         isA<AuthLoading>(),

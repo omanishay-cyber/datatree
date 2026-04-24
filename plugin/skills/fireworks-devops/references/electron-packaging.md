@@ -99,7 +99,7 @@ nsis:
 ```yaml
 win:
   certificateFile: "path/to/certificate.pfx"
-  certificatePassword: ""  # Set via CSC_KEY_PASSWORD env var
+  certificatePassword: FIXTURE_VALUE /* redacted-for-docs */  # Set via CSC_KEY_PASSWORD env var
   # Or use certificate from Windows cert store:
   certificateSubjectName: "Company Name"
   certificateSha1: "THUMBPRINT"

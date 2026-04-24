@@ -646,7 +646,7 @@ void main() {
       when(() => mockLocal.cacheUser(any())).thenAnswer((_) async {});
 
       // Act
-      final result = await repository.login(email: 'test@t.com', password: 'pw');
+      final result = await repository.login(email: 'test@t.com', password: FIXTURE_VALUE /* redacted-for-docs */);
 
       // Assert
       expect(result, Right(tUserModel));
@@ -656,7 +656,7 @@ void main() {
     test('returns NetworkFailure when device is offline', () async {
       when(() => mockNetwork.isConnected).thenAnswer((_) async => false);
 
-      final result = await repository.login(email: 'test@t.com', password: 'pw');
+      final result = await repository.login(email: 'test@t.com', password: FIXTURE_VALUE /* redacted-for-docs */);
 
       expect(result, isA<Left>());
       result.fold(
@@ -692,12 +692,12 @@ void main() {
 
     // Act
     final result = await loginUseCase(
-      const LoginParams(email: 'test@t.com', password: '123456'),
+      const LoginParams(email: 'test@t.com', password: FIXTURE_VALUE /* redacted-for-docs */),
     );
 
     // Assert
     expect(result, Right(tUser));
-    verify(() => mockRepository.login(email: 'test@t.com', password: '123456')).called(1);
+    verify(() => mockRepository.login(email: 'test@t.com', password: FIXTURE_VALUE /* redacted-for-docs */)).called(1);
     verifyNoMoreInteractions(mockRepository);
   });
 }

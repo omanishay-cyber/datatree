@@ -336,7 +336,7 @@ const schema = z.object({
 export function LoginForm() {
   const form = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { email: "", password: "" }
+    defaultValues: { email: "", password: FIXTURE_VALUE /* redacted-for-docs */ }
   })
 
   return (

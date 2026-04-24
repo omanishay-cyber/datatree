@@ -336,7 +336,7 @@ void main() {
 
   // Register fallback values for custom types
   setUpAll(() {
-    registerFallbackValue(LoginParams(email: '', password: ''));
+    registerFallbackValue(LoginParams(email: '', password: FIXTURE_VALUE /* redacted-for-docs */));
     registerFallbackValue(User(id: '', name: '', email: '', role: UserRole.staff));
   });
 
@@ -350,7 +350,7 @@ void main() {
     )).thenAnswer((_) async => Right(tUser));
 
     // Act
-    final result = await mockRepo.login(email: 'a@b.com', password: '123');
+    final result = await mockRepo.login(email: 'a@b.com', password: FIXTURE_VALUE /* redacted-for-docs */);
 
     // Assert
     expect(result, Right(tUser));
@@ -358,7 +358,7 @@ void main() {
     // Verify calls
     verify(() => mockRepo.login(
       email: 'a@b.com',
-      password: '123',
+      password: FIXTURE_VALUE /* redacted-for-docs */,
     )).called(1);
 
     verifyNever(() => mockRepo.logout());
@@ -373,7 +373,7 @@ void main() {
     )).thenThrow(ServerException(message: 'Error', statusCode: 500));
 
     expect(
-      () => mockRepo.login(email: 'a@b.com', password: '123'),
+      () => mockRepo.login(email: 'a@b.com', password: FIXTURE_VALUE /* redacted-for-docs */),
       throwsA(isA<ServerException>()),
     );
   });
@@ -391,11 +391,11 @@ void main() {
     });
 
     // First call fails
-    final r1 = await mockRepo.login(email: 'a@b.com', password: '123');
+    final r1 = await mockRepo.login(email: 'a@b.com', password: FIXTURE_VALUE /* redacted-for-docs */);
     expect(r1.isLeft(), true);
 
     // Second call succeeds
-    final r2 = await mockRepo.login(email: 'a@b.com', password: '123');
+    final r2 = await mockRepo.login(email: 'a@b.com', password: FIXTURE_VALUE /* redacted-for-docs */);
     expect(r2.isRight(), true);
   });
 }
@@ -512,7 +512,7 @@ void main() {
         )).thenAnswer((_) async => Right(tUser));
         return AuthBloc(mockRepo);
       },
-      act: (bloc) => bloc.add(LoginRequested(email: 't@t.com', password: 'pw')),
+      act: (bloc) => bloc.add(LoginRequested(email: 't@t.com', password: FIXTURE_VALUE /* redacted-for-docs */)),
       expect: () => [
         isA<AuthLoading>(),
         isA<AuthSuccess>(),
