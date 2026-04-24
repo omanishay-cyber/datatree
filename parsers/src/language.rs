@@ -145,7 +145,7 @@ impl Language {
             "md" | "mdx" | "markdown" => Language::Markdown,
             "swift" => Language::Swift,
             "kt" | "kts" => Language::Kotlin,
-            "scala" | "sc" => Language::Scala,
+            "scala" | "sc" | "sbt" => Language::Scala,
             "vue" => Language::Vue,
             "svelte" => Language::Svelte,
             "sol" => Language::Solidity,

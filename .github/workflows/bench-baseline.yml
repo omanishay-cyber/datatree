@@ -1,0 +1,124 @@
+name: Benchmark Baseline
+
+# Manually-triggered workflow that publishes a new benchmark baseline. The
+# artifact name is stable (`bench-baseline-<os>`) so bench.yml can look it up
+# from the latest successful run of this workflow. Run this from the Actions
+# tab on `main` any time you want to reset what PRs are compared against.
+
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: "Why are you refreshing the baseline? (logged only)"
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: ""
+
+jobs:
+  baseline:
+    name: Baseline (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: bench-${{ matrix.os }}
+
+      - name: Install just (cargo)
+        run: cargo install just --locked
+
+      - name: Build bench binary
+        run: cargo build --release -p benchmarks --bin bench_retrieval
+
+      - name: Run bench-all (bash)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          just bench-all . > bench-run.csv 2> bench-run.log || echo "bench-all exited non-zero; continuing to capture outputs"
+
+      - name: Run bench-all (powershell)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          just bench-all . 1> bench-run.csv 2> bench-run.log
+          if ($LASTEXITCODE -ne 0) { Write-Host "bench-all exited $LASTEXITCODE; continuing to capture outputs" }
+
+      - name: Extract JSON summary from stderr log
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, sys
+          raw = pathlib.Path("bench-run.log").read_text(encoding="utf-8", errors="replace")
+          start = raw.rfind("{")
+          end = raw.rfind("}")
+          if start == -1 or end == -1 or end <= start:
+              pathlib.Path("bench-run.json").write_text("{}")
+              sys.exit(0)
+          blob = raw[start:end+1]
+          try:
+              obj = json.loads(blob)
+          except Exception:
+              obj = {}
+          pathlib.Path("bench-run.json").write_text(json.dumps(obj, indent=2))
+          PY
+
+      - name: Record baseline metadata
+        shell: bash
+        env:
+          BASELINE_SHA: ${{ github.sha }}
+          BASELINE_OS: ${{ matrix.os }}
+          BASELINE_RUN_ID: ${{ github.run_id }}
+          BASELINE_NOTE: ${{ github.event.inputs.note }}
+        run: |
+          set -euo pipefail
+          export BASELINE_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python3 - <<'PY'
+          import json, os, pathlib
+          meta = {
+              "sha":    os.environ.get("BASELINE_SHA", ""),
+              "date":   os.environ.get("BASELINE_DATE", ""),
+              "os":     os.environ.get("BASELINE_OS", ""),
+              "run_id": os.environ.get("BASELINE_RUN_ID", ""),
+              "note":   os.environ.get("BASELINE_NOTE", ""),
+          }
+          pathlib.Path("baseline-meta.json").write_text(json.dumps(meta, indent=2))
+          PY
+
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-baseline-${{ matrix.os }}
+          path: |
+            bench-run.csv
+            bench-run.log
+            bench-run.json
+            baseline-meta.json
+          if-no-files-found: error
+          retention-days: 90
