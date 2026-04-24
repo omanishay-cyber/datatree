@@ -81,6 +81,119 @@ in that report or improves the install UX that caused the break.
   a stable `<path>.bak` alias points at the most recent backup for
   tooling compat.
 
+### Added — polish pass (2026-04-24 evening)
+
+- **19 fireworks skills + `mneme-codewords`** (commit `76f943d`). Mneme
+  now ships a complete skill arsenal under `plugin/skills/`. The 19
+  fireworks skills (architect, charts, config, debug, design, devops,
+  estimation, flutter, patterns, performance, react, refactor, research,
+  review, security, taskmaster, test, vscode, workflow) are each a full
+  package with SKILL.md + a `references/` folder of deep how-to docs.
+  Skills are keyword-gated, so a Rust task never fires the React skill
+  and a Python task never fires Flutter — zero context bloat. The
+  `mneme-codewords` skill defines the four signature verbs below.
+- **Workflow codewords** — `coldstart` (observe only, don't touch code),
+  `hotstart` (disciplined step-ledger execution with verify gates),
+  `firestart` (maximum loadout: load all fireworks skills + prime the
+  mneme graph + hotstart), `CHS` (check my screenshot — read the latest
+  file in `~/Pictures/Screenshots/`). These are mneme's developer-
+  ergonomics differentiator: every AI tool has tools; nobody else ships
+  workflow verbs that change how the AI engages.
+- **`mneme doctor` per-MCP-tool probe** (commit `67cd737`). The doctor
+  command now spawns `mneme mcp stdio` as a child, runs the JSON-RPC
+  `initialize` + `tools/list` handshake, renders a check-mark line per
+  live tool, and prints a "N tools exposed (expected >= 40) ✓" summary.
+  On POS2 it returns all 46 live tools in 0.64 s. Graceful degrade to
+  `✗ probe : could not probe MCP server — <reason>` on any failure
+  path; doctor never errors out. `--skip-mcp-probe` flag for the cheap
+  path. Also teaches `which_bun()` to find `~/.bun/bin/bun.exe` (the
+  official PowerShell-installer location).
+- **`docs/INSTALL.md`** — canonical AI-readable install protocol
+  (commit `600bcc6`). Contains: TL;DR one-liner per OS, what gets
+  written to disk, clean-reinstall sequence, rollback flow, per-AI
+  registration table (18 platforms), verification commands, protocol
+  for AI agents when a user says "install mneme", and troubleshooting.
+- **`docs/dev/v0.4-backlog.md`** — everything documented for later, not
+  silently punted. Marketplace listings, CLAUDE.md template updates,
+  per-language fireworks skills (go/python/rust), install.sh parity
+  audit, uninstall parity, homebrew/scoop/winget formulas, hosted
+  dashboard. Every item has an acceptance target.
+- **GitHub Pages arsenal section** (commit `76f943d`). `docs/index.html`
+  gains a Skills + Codewords section: chip grid of the 19 fireworks
+  names + a table for the four codewords. Replaces the dropped
+  graphify comparison table with a tree-sitter vs mneme table (nine
+  rows, every number sourced from `benchmarks/` or the repo tree).
+
+### Fixed — polish pass (2026-04-24 evening)
+
+- **`mneme history` SQL schema** (commit `803acdd`). The v0.3.1 rewrite
+  referenced columns `created_at` and `body` that never existed on
+  `ledger_entries`. Correct columns per `store/src/schema.rs` are
+  `timestamp` (INTEGER unix ms), `kind`, `summary`, `rationale`.
+  Rewrote the query against the real schema + split into two SQL
+  branches so `?N` placeholders always match the param count. On the
+  VM harness, `history "test" --project ... --limit 5` went from
+  `exit 1: no such column: created_at` to `exit 0: no history entries
+  match \`test\``.
+- **UTF-8 BOM in JSON reads** (commit `803acdd`). Windows PowerShell's
+  `Set-Content -Encoding UTF8` writes a BOM that `serde_json::from_str`
+  rejects with `expected value at line 1 column 1`. Bricked
+  `mneme register-mcp --platform claude-code` on the strict-clean VM
+  install. `strip_bom` helper runs at all four JSON read sites in
+  `cli/src/platforms/mod.rs` (merge + strip, object + array). After
+  the fix: `register-mcp: ok`.
+- **Cross-project `cli/src/main.rs::which_bun()`** — also checks
+  `~/.bun/bin/bun.exe` + POSIX equivalents, not just PATH. The
+  PowerShell official Bun installer writes to the user profile and
+  does NOT append to session PATH, which left doctor reporting
+  `bun: not on PATH` even on a freshly-installed box.
+- **`install.ps1` mojibake** (commit `3cdf608`). Scrubbed 129 non-ASCII
+  bytes (em-dashes, curly quotes, ellipsis) from the installer to
+  prevent cp1252 garbling under Windows PowerShell 5.1. Zero remaining.
+- **`install.ps1` step 0 — stop daemon before extract** (commit
+  `3cdf608`). Upgrade path was silently-broken: a running daemon
+  held `mneme.exe` file-locked, `Expand-Archive` skipped the locked
+  binary, leaving a mixed-version install with `--version = 0.3.1`
+  but a 0.3.0 binary body. Step 0 kills every `mneme*` process with
+  up to 5 retries before downloading. No-op on a fresh install.
+- **`install.ps1` step 6 — true background daemon start** (commit
+  `7e27589`). Piping `& mneme daemon start | Out-Null` hung for 10+
+  minutes on first-run Defender scan even with the exclusion in
+  step 4 (ML scan fires once before the service tick picks up the
+  new path). Replaced with `Start-Process -WindowStyle Hidden` +
+  a polling loop that calls `mneme daemon status` every 500 ms for
+  up to 15 s and only reports `ok: daemon started` on a real liveness
+  check. Also falls back to a clear warning (not a failure) if the
+  poll times out.
+- **`plugin/plugin.json` no longer declares hooks** (commit `dac33a3`).
+  Belt-and-suspenders on top of C0a. The plugin.json `hooks: []`
+  empty array makes `/plugin install mneme` architecturally unable
+  to register hooks, even if `write_hooks` were somehow re-enabled
+  in the future.
+- **`omanishay-cyber/graphify` references removed** (commit `67cd737`).
+  The mneme README linked a `graphify` repo that does not exist at
+  that URL. The actual Graphify project lives at
+  `safishamsi/graphify`. We stripped the comparison entirely — the
+  README's job is to market mneme, not to market other people's
+  projects. The tree-sitter comparison on the GitHub page remains
+  because tree-sitter is a parser library mneme uses, not a
+  competitor.
+
+### Verified — shipping gate (2026-04-24)
+
+- **Strict-clean install + 26-case functional harness on AWS VM: 26/26
+  PASS**. Runs on a fresh Windows Server 2025 EC2 t3.micro. Covers
+  daemon + core CLI + build + every query command + every lifecycle
+  command + all 8 hook binaries (STDIN JSON contract) + MCP direct
+  JSON-RPC + plugin commands + register/unregister round-trip.
+  Fastest hook: 49 ms. Slowest non-build op: 11.7 s (`claude mcp list`,
+  not mneme's fault).
+- **`iwr install.ps1 | iex` end-to-end on fresh VM: PASS**. The real
+  user flow — single command from a stock Windows box — produces a
+  working mneme + Claude Code MCP connection (`mneme: mneme mcp stdio
+  ✓ Connected` under `claude mcp list`) in about 90 seconds. Tiny
+  Markdown project was indexed and recalled against immediately after.
+
 ### Deferred to v0.4 (documented explicitly, not silently punted)
 
 - **Workers emit `WorkerCompleteJob` IPC** (~80 LoC per worker × 4).

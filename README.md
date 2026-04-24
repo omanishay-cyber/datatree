@@ -207,14 +207,35 @@ iwr -useb `
 Then, in any project:
 
 ```bash
-mneme-daemon start                 # spin up the supervisor (40 workers, 7777/health)
+mneme daemon start                 # spin up the supervisor (40 workers, 7777/health)
 mneme build .                      # index the project → ~/.mneme/projects/<sha>/
 mneme recall "where is auth?"      # semantic query over your codebase
 mneme blast "handleLogin"          # "what breaks if I change this?"
-mneme doctor                       # verify everything's wired
+mneme doctor                       # verify everything's wired (prints all 46 MCP tools live)
 ```
 
 **That's it.** Claude Code auto-discovers Mneme on its next invocation. No configuration, no API keys, no cloud. Tested on **Windows 11**, **macOS 14+ (Apple Silicon)**, **Ubuntu 22.04+**.
+
+### Using the workflow codewords
+
+Inside any AI coding tool (Claude Code, Cursor, etc.) — drop a codeword into your next message:
+
+```
+User: firestart — let's refactor the auth middleware
+
+AI (with mneme):
+  1. [skill-prescription] fireworks-refactor + fireworks-architect loaded
+  2. [context-prime]      god_nodes() + audit_corpus() + recall_decision("auth")
+  3. [plan]               numbered 7-step ledger drafted, step_verify gates
+                          enabled, ready to execute
+  4. [step 1]             audit current call sites via call_graph("handleLogin")
+                          ...
+```
+
+Want minimal engagement? `coldstart` — AI only observes, drafts a plan, does NOT touch code.
+Want normal discipline? `hotstart` — numbered roadmap, verify after each step, no skipping.
+Max loadout? `firestart` — all 19 fireworks skills + mneme graph priming + ledger.
+Visual context? `CHS` — AI reads the latest screenshot in your Pictures folder.
 
 ---
 
