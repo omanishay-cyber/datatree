@@ -58,9 +58,21 @@ pub struct InstallArgs {
     #[arg(long)]
     pub skip_mcp: bool,
 
-    /// Skip the hook writes (manifest + MCP only).
+    /// Skip the hook writes (manifest + MCP only). In v0.3.1+ no platform
+    /// actually registers hooks in the host's settings.json anymore (see
+    /// `platforms/claude_code.rs` module docstring for why). This flag is
+    /// kept for forward-compat with future platforms that will wire hooks
+    /// against their own hook files, not Claude Code's settings.json.
     #[arg(long)]
     pub skip_hooks: bool,
+
+    /// Skip the CLAUDE.md / AGENTS.md manifest write (MCP + hooks only).
+    /// The one-line installer (`scripts/install.ps1`) sets this so a
+    /// clean install touches only the platform's MCP registry and
+    /// nothing else. Power users who want the manifest block can run
+    /// `mneme install --platform=claude-code` without this flag later.
+    #[arg(long)]
+    pub skip_manifest: bool,
 }
 
 /// Entry point used by `main.rs`.
@@ -94,7 +106,13 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
 
     for platform in targets {
         bar.set_message(platform.display_name().to_string());
-        let r = install_one(platform, &ctx, args.skip_mcp, args.skip_hooks);
+        let r = install_one(
+            platform,
+            &ctx,
+            args.skip_mcp,
+            args.skip_hooks,
+            args.skip_manifest,
+        );
         report.push(InstallReport {
             platform,
             outcome: match &r {
@@ -137,10 +155,15 @@ fn install_one(
     ctx: &AdapterContext,
     skip_mcp: bool,
     skip_hooks: bool,
+    skip_manifest: bool,
 ) -> CliResult<()> {
     let adapter = platform.adapter();
-    let manifest = adapter.write_manifest(ctx)?;
-    info!(platform = platform.id(), path = %manifest.display(), "manifest written");
+    if !skip_manifest {
+        let manifest = adapter.write_manifest(ctx)?;
+        info!(platform = platform.id(), path = %manifest.display(), "manifest written");
+    } else {
+        info!(platform = platform.id(), "manifest skipped (--skip-manifest)");
+    }
 
     if !skip_mcp {
         let mcp = adapter.write_mcp_config(ctx)?;
