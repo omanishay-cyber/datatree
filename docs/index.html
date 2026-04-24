@@ -764,6 +764,62 @@
         <tr><td class="bar-cell">Multimodal (PDF / audio / video)<span class="bar" style="--bar-w: 100%;"></span></td><td>❌</td><td><strong>✅</strong></td><td>—</td></tr>
       </tbody>
     </table>
+
+    <h2 style="margin-top:56px;">With <span class="accent">tree-sitter</span> alone, vs. with mneme</h2>
+    <p class="lead">Tree-sitter is a parser library, not a code-graph or MCP server. This table is what you get out of the box with raw tree-sitter against what mneme gives you by wiring tree-sitter into a persistent SQLite graph with 47 MCP tools.</p>
+
+    <table class="bench-table" id="benchTableTreeSitter">
+      <thead>
+        <tr><th>Surface</th><th>Raw tree-sitter</th><th>mneme (tree-sitter + SQLite + MCP)</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <!-- Source: parsers/Cargo.toml Tier-1 + Tier-2 grammar list; parsers/src/language.rs enum -->
+        <tr><td class="bar-cell">Languages available<span class="bar" style="--bar-w: 60%;"></span></td><td>150+ community grammars (any you build yourself)</td><td><strong>27 Language enum variants, 25 grammar crates bundled by default</strong> (TS, TSX, JS, JSX, Python, Rust, Go, Java, C, C++, C#, Ruby, PHP, Bash, JSON, Lua, TOML, YAML, Markdown, Swift, Kotlin, Scala, Svelte, Solidity, Julia, Zig, Haskell; Vue variant reserved)</td><td>tree-sitter has more raw grammars; mneme bundles the ones with working query patterns</td></tr>
+        <!-- Source: tree-sitter CLI docs (init, test, build, parse, query) -->
+        <tr><td class="bar-cell">Code-graph queries shipped<span class="bar" style="--bar-w: 100%;"></span></td><td>- (you write .scm files by hand)</td><td><strong>7 canonical query kinds per language</strong>: Functions, Classes, Calls, Imports, Decorators, Comments, Errors (parsers/src/query_cache.rs)</td><td>mneme compiles the queries once, caches in a DashMap, reuses across every file</td></tr>
+        <!-- Source: mcp/src/tools/index.ts STATIC_TOOL_FILES list -->
+        <tr><td class="bar-cell">MCP tools<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>47</strong></td><td>tree-sitter has no MCP surface; mneme wires every query through a typed MCP tool</td></tr>
+        <!-- Source: parsers/src/parser_pool.rs + parsers/src/incremental.rs -->
+        <tr><td class="bar-cell">Incremental parsing<span class="bar" style="--bar-w: 60%;"></span></td><td>Yes (edit-tree API, but no caching layer)</td><td><strong>LRU-cached previous trees per file + tokio worker pool (cpu_count * 4)</strong></td><td>mneme amortises the edit-tree cost; raw tree-sitter leaves it to the caller</td></tr>
+        <!-- Source: store/src/schema.rs + store/src/inject.rs -->
+        <tr><td class="bar-cell">Persistent store<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>22 sharded SQLite DBs (graph.db, history.db, corpus.db, decisions.db, ...) + global meta.db</strong></td><td>tree-sitter is stateless; mneme persists every node and edge</td></tr>
+        <!-- Source: benchmarks/BENCHMARKS.md measured 2026-04-23 -->
+        <tr><td class="bar-cell">Incremental update latency<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>p50 = 0 ms, p95 = 0 ms, max = 2 ms on 100 samples</strong> (single-file inject)</td><td>measured v0.2.3 on the mneme repo itself; raw tree-sitter has no persist step to measure</td></tr>
+        <!-- Source: brain/src/embed_store.rs + benchmarks/BENCHMARKS.md -->
+        <tr><td class="bar-cell">Semantic embeddings<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>pure-Rust hashing-trick default, opt-in bge-small from local path</strong></td><td>100% local; no tree-sitter equivalent</td></tr>
+        <!-- Source: scanners/src/scanners/ directory (11 scanner modules) -->
+        <tr><td class="bar-cell">Scanners built on top<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>11 (theme, types, security, a11y, perf, drift, ipc, md-drift, secrets, refactor, architecture)</strong></td><td>each scanner is a tree-sitter query + SQLite write</td></tr>
+        <!-- Source: livebus/src/ + mcp/src/compaction_guard.ts + step_resume tool -->
+        <tr><td class="bar-cell">Compaction-survival Step Ledger<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>numbered, verification-gated, SQLite-persisted, resumption bundle ~5K tokens</strong></td><td>architectural, not a parser concern</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:40px; font-size:1.05rem; color: var(--muted);">How to reproduce</h3>
+    <p class="lead" style="font-size:0.95rem;">Every mneme number above is from <code>benchmarks/</code> in this repo or directly measurable in source. To get your own numbers:</p>
+    <pre><code>## 1. Clone and build
+git clone https://github.com/omanishay-cyber/mneme &amp;&amp; cd mneme
+cargo build --release -p benchmarks --bin bench_retrieval
+
+## 2. Index the repo you want to measure
+cargo run --release -p cli --bin mneme -- build /path/to/repo
+
+## 3. Run the full benchmark suite on that repo
+./target/release/bench_retrieval.exe bench-all /path/to/repo \
+    &gt; benchmarks/results/$(date -I).csv \
+    2&gt; benchmarks/results/$(date -I).stderr
+
+## 4. Individual benches (cold, warm, incremental, viz-scale, recall, compare)
+./target/release/bench_retrieval.exe bench-first-build  /path/to/repo --format json
+./target/release/bench_retrieval.exe bench-incremental  /path/to/repo --format json
+./target/release/bench_retrieval.exe bench-recall       /path/to/repo benchmarks/fixtures/golden.json --format json
+./target/release/bench_retrieval.exe bench-token-reduction /path/to/repo --format json
+
+## 5. CRG head-to-head (requires Python 3.10+)
+cd benchmarks/crg-compare
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install code-review-graph
+python run_crg_bench.py</code></pre>
+    <p class="lead" style="font-size:0.9rem; color: var(--muted);">Raw results from mneme's own run: <code>benchmarks/results/2026-04-23.csv</code> + <code>benchmarks/results/crg-2026-04-23.json</code>. Full methodology and caveats in <a href="https://github.com/omanishay-cyber/mneme/blob/main/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
   </section>
 
   <!-- ============================================================ -->

@@ -260,9 +260,17 @@ fn which_bun() -> String {
     }
     #[cfg(windows)]
     {
+        // 1. WinGet shim — official `winget install Oven-sh.Bun`.
         if let Ok(la) = std::env::var("LOCALAPPDATA") {
             let candidate =
                 std::path::Path::new(&la).join(r"Microsoft\WinGet\Links\bun.exe");
+            if candidate.exists() {
+                return candidate.to_string_lossy().into();
+            }
+        }
+        // 2. Official PowerShell installer drops to `%USERPROFILE%\.bun\bin\bun.exe`.
+        if let Some(home) = dirs::home_dir() {
+            let candidate = home.join(".bun").join("bin").join("bun.exe");
             if candidate.exists() {
                 return candidate.to_string_lossy().into();
             }

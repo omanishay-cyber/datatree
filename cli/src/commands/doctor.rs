@@ -4,9 +4,15 @@
 //! install-report — prior output was an unbounded raw-JSON dump),
 //! optional `--json` for machine output. Diagnostics run in-process
 //! (version, runtime/state dir writable) plus a live supervisor ping.
+//! v0.3.1+: per-MCP-tool probe — spawns a fresh `mneme mcp stdio`
+//! child, runs a JSON-RPC `initialize` + `tools/list` handshake, and
+//! reports a ✓ for every tool the MCP server actually exposes.
 
 use clap::Args;
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
+use std::process::{Command as StdCommand, Stdio};
+use std::time::{Duration, Instant};
 use tracing::warn;
 
 use crate::commands::build::make_client;
@@ -24,6 +30,13 @@ pub struct DoctorArgs {
     /// summary only).
     #[arg(long)]
     pub json: bool,
+
+    /// Skip the per-MCP-tool health probe (spawns a fresh
+    /// `mneme mcp stdio` child to enumerate the live tool set). The
+    /// probe is usually <2s on POS2 but can be skipped for a faster
+    /// run in CI / automated scripts.
+    #[arg(long)]
+    pub skip_mcp_probe: bool,
 }
 
 /// Entry point used by `main.rs`.
@@ -82,6 +95,14 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
     );
     if !is_up {
         println!("└─────────────────────────────────────────────────────────┘");
+        println!();
+        // Even without the supervisor, the MCP bridge + per-tool probe
+        // are useful — the Bun MCP server spawns independently of the
+        // Rust supervisor for `tools/list`.
+        render_mcp_bridge_box();
+        if !args.skip_mcp_probe {
+            render_mcp_tool_probe_box();
+        }
         println!();
         println!("start the daemon with:  mneme daemon start");
         return Ok(());
@@ -203,36 +224,15 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
 
         // MCP bridge health — does `~/.mneme/mcp/src/index.ts` exist?
         // Is `bun` on PATH?
-        println!();
-        println!("┌─────────────────────────────────────────────────────────┐");
-        println!("│ MCP bridge                                              │");
-        println!("├─────────────────────────────────────────────────────────┤");
-        let home = dirs::home_dir();
-        let mcp_entry = home
-            .as_ref()
-            .map(|h| h.join(".mneme").join("mcp").join("src").join("index.ts"));
-        let mcp_exists = mcp_entry
-            .as_ref()
-            .map(|p| p.exists())
-            .unwrap_or(false);
-        line(
-            if mcp_exists { "✓ MCP entry" } else { "✗ MCP entry" },
-            mcp_entry
-                .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "?".into())
-                .as_str(),
-        );
-        let bun_on_path = which_on_path("bun");
-        line(
-            if bun_on_path.is_some() {
-                "✓ bun runtime"
-            } else {
-                "✗ bun runtime"
-            },
-            bun_on_path.as_deref().unwrap_or("not on PATH"),
-        );
-        println!("└─────────────────────────────────────────────────────────┘");
+        render_mcp_bridge_box();
+
+        // Per-MCP-tool probe — spawn a fresh `mneme mcp stdio` child,
+        // run the JSON-RPC handshake, and list every tool the server
+        // actually exposes. Gated behind --skip-mcp-probe so CI / very
+        // slow disks can opt out.
+        if !args.skip_mcp_probe {
+            render_mcp_tool_probe_box();
+        }
 
         if args.json {
             println!();
@@ -244,6 +244,71 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         warn!(?resp, "supervisor returned non-status response");
     }
     Ok(())
+}
+
+/// Render the "MCP bridge" box (entry path + bun runtime). Split out
+/// so we can emit it on both the supervisor-up and supervisor-down
+/// paths without duplicating the box-drawing.
+fn render_mcp_bridge_box() {
+    println!();
+    println!("┌─────────────────────────────────────────────────────────┐");
+    println!("│ MCP bridge                                              │");
+    println!("├─────────────────────────────────────────────────────────┤");
+    let home = dirs::home_dir();
+    let mcp_entry = home
+        .as_ref()
+        .map(|h| h.join(".mneme").join("mcp").join("src").join("index.ts"));
+    let mcp_exists = mcp_entry
+        .as_ref()
+        .map(|p| p.exists())
+        .unwrap_or(false);
+    line(
+        if mcp_exists { "✓ MCP entry" } else { "✗ MCP entry" },
+        mcp_entry
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "?".into())
+            .as_str(),
+    );
+    let bun_on_path = which_on_path("bun");
+    line(
+        if bun_on_path.is_some() {
+            "✓ bun runtime"
+        } else {
+            "✗ bun runtime"
+        },
+        bun_on_path.as_deref().unwrap_or("not on PATH"),
+    );
+    println!("└─────────────────────────────────────────────────────────┘");
+}
+
+/// Render the "per-MCP-tool health" box — spawn a fresh mneme child,
+/// enumerate tools via JSON-RPC, show one ✓ per live tool. Split out
+/// so we can emit it on both the supervisor-up and supervisor-down
+/// paths.
+fn render_mcp_tool_probe_box() {
+    println!();
+    println!("┌─────────────────────────────────────────────────────────┐");
+    println!("│ per-MCP-tool health                                     │");
+    println!("├─────────────────────────────────────────────────────────┤");
+    match probe_mcp_tools(Duration::from_secs(10)) {
+        Ok(tools) => {
+            for t in &tools {
+                line(&format!("✓ {t}"), "live");
+            }
+            let count = tools.len();
+            let summary = if count >= 40 {
+                format!("{count} tools exposed (expected >= 40) ✓")
+            } else {
+                format!("{count} tools exposed (expected >= 40) ✗")
+            };
+            line("total", &summary);
+        }
+        Err(reason) => {
+            line("✗ probe", &format!("could not probe MCP server — {reason}"));
+        }
+    }
+    println!("└─────────────────────────────────────────────────────────┘");
 }
 
 /// Locate an executable on PATH. Returns the absolute path if found.
@@ -279,6 +344,200 @@ fn line(label: &str, value: &str) {
         String::new()
     };
     println!("{content}{pad}│");
+}
+
+/// Spawn a fresh `mneme mcp stdio` child, drive the MCP JSON-RPC
+/// handshake, and return the list of tool names the server publishes
+/// via `tools/list`.
+///
+/// Fails fast (and cleanly — never hangs the main doctor command) if:
+///   - the current exe path cannot be resolved
+///   - spawning the child fails
+///   - stdin/stdout pipes can't be captured
+///   - the child doesn't respond within `deadline`
+///   - the `tools/list` response is malformed
+///
+/// Always kills the child before returning so no zombie Bun processes
+/// linger.
+fn probe_mcp_tools(deadline: Duration) -> Result<Vec<String>, String> {
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("current_exe unavailable: {e}"))?;
+
+    let mut child = StdCommand::new(&exe)
+        .arg("mcp")
+        .arg("stdio")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        // Silence the MCP server's own stderr banner / diagnostic
+        // logs so nothing contaminates the probe; stderr is piped to
+        // null anyway, but belt-and-braces for any SDK that reads env.
+        .env("MNEME_LOG", "error")
+        .env("NO_COLOR", "1")
+        .spawn()
+        .map_err(|e| format!("spawn failed: {e}"))?;
+
+    let start = Instant::now();
+
+    // Take ownership of stdin/stdout handles. If either is missing the
+    // child is unusable — kill it and bail.
+    let mut stdin = match child.stdin.take() {
+        Some(s) => s,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("no stdin pipe".into());
+        }
+    };
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("no stdout pipe".into());
+        }
+    };
+
+    // Run the actual JSON-RPC handshake on a worker thread so we can
+    // enforce the deadline from this thread without blocking forever
+    // on a stuck `read_line`.
+    let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<String>, String>>();
+
+    // Handshake thread — owns stdout reader, writes to stdin via the
+    // handle it captures, posts result to the channel.
+    std::thread::spawn(move || {
+        let res = handshake_and_list(&mut stdin, stdout);
+        let _ = tx.send(res);
+    });
+
+    // Wait for the worker to finish, bounded by `deadline`.
+    let remaining = deadline.saturating_sub(start.elapsed());
+    let result = match rx.recv_timeout(remaining) {
+        Ok(res) => res,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            Err(format!("timed out after {}s", deadline.as_secs()))
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err("handshake thread died".into())
+        }
+    };
+
+    // Always kill the child and reap it before returning.
+    let _ = child.kill();
+    let _ = child.wait();
+
+    result
+}
+
+/// Drive the MCP JSON-RPC handshake: initialize → initialized →
+/// tools/list. Returns the tool names in the order the server
+/// returned them.
+fn handshake_and_list(
+    stdin: &mut std::process::ChildStdin,
+    stdout: std::process::ChildStdout,
+) -> Result<Vec<String>, String> {
+    let initialize = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "mneme-doctor",
+                "version": env!("CARGO_PKG_VERSION"),
+            },
+        },
+    });
+    let initialized = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {},
+    });
+    let tools_list = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+        "params": {},
+    });
+
+    // Write initialize, then wait for its response.
+    write_frame(stdin, &initialize)?;
+
+    let mut reader = BufReader::new(stdout);
+
+    // Consume the initialize response (match id == 1). The server may
+    // interleave log lines on stdout in some transports, but the MCP
+    // SDK uses pure JSON-RPC framing on stdio — one JSON object per
+    // line — so we just read until we see id == 1.
+    let _init_resp = read_response_with_id(&mut reader, 1)?;
+
+    // Tell the server initialization is complete.
+    write_frame(stdin, &initialized)?;
+
+    // Ask for the tool list.
+    write_frame(stdin, &tools_list)?;
+
+    // Read until we find the response with id == 2.
+    let resp = read_response_with_id(&mut reader, 2)?;
+
+    let tools = resp
+        .get("result")
+        .and_then(|r| r.get("tools"))
+        .and_then(|t| t.as_array())
+        .ok_or_else(|| "tools/list response missing result.tools[]".to_string())?;
+
+    let mut names = Vec::with_capacity(tools.len());
+    for t in tools {
+        if let Some(n) = t.get("name").and_then(|v| v.as_str()) {
+            names.push(n.to_string());
+        }
+    }
+    Ok(names)
+}
+
+/// Write one JSON-RPC frame (`{json}\n`) to the child's stdin.
+fn write_frame<W: Write>(w: &mut W, value: &serde_json::Value) -> Result<(), String> {
+    let s = serde_json::to_string(value)
+        .map_err(|e| format!("encode failed: {e}"))?;
+    w.write_all(s.as_bytes())
+        .map_err(|e| format!("stdin write failed: {e}"))?;
+    w.write_all(b"\n")
+        .map_err(|e| format!("stdin newline failed: {e}"))?;
+    w.flush()
+        .map_err(|e| format!("stdin flush failed: {e}"))?;
+    Ok(())
+}
+
+/// Read lines from the child's stdout until we find a JSON object
+/// with `id == want_id`. Intermediate lines (other responses,
+/// notifications, blank lines) are skipped.
+fn read_response_with_id<R: BufRead>(
+    reader: &mut R,
+    want_id: u64,
+) -> Result<serde_json::Value, String> {
+    loop {
+        let mut buf = String::new();
+        let n = reader
+            .read_line(&mut buf)
+            .map_err(|e| format!("stdout read failed: {e}"))?;
+        if n == 0 {
+            return Err("child closed stdout before response arrived".into());
+        }
+        let trimmed = buf.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let value: serde_json::Value = match serde_json::from_str(trimmed) {
+            Ok(v) => v,
+            Err(_) => continue, // Skip non-JSON lines defensively.
+        };
+        if let Some(id) = value.get("id").and_then(|v| v.as_u64()) {
+            if id == want_id {
+                return Ok(value);
+            }
+        }
+    }
 }
 
 fn is_writable(path: &std::path::Path) -> bool {
