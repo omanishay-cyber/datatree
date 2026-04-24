@@ -1,0 +1,16 @@
+repo,query,mneme_top1,mneme_tokens,mneme_ms,cold_top1,cold_tokens,cold_ms,precision_at_5
+repo,where is DbLayer defined,-,0,18,fixtures/golden.json,804,23,0
+repo,callers of inject_file,-,0,7,fixtures/golden.json,804,22,0
+repo,drift detection,-,0,5,design/2026-04-23-datatree-design.md,28735,23,0
+repo,blast radius implementation,-,0,4,fixtures/golden.json,388,21,0
+repo,PathManager,src/lib.rs,18008,5,design/2026-04-23-datatree-design.md,44243,22,0
+repo,build_or_migrate,-,0,7,src/lib.rs,15968,22,0
+repo,Store::new,-,0,4,src/federated.rs,20435,21,0
+repo,parser pool,-,0,4,commands/build.rs,36717,23,0
+repo,embedding store,-,0,4,fixtures/golden.json,3275,23,0
+repo,schema version,-,0,4,design/2026-04-23-datatree-design.md,33761,21,0
+repo,META:token_reduction_mean,ratio,1338,0,ratio,1518,3541,0
+repo,META:first_build,cold_ms,4970,5557,warm_ms,11417,26708,0
+repo,META:incremental_inject,p50_ms,0,0,p95_ms,0,2,100
+repo,META:viz_scale,bytes_per_node,1083,463,bytes_per_edge,11417,26708,12365824
+repo,META:precision_at_10,pct,10,2,hits,19,10,0
