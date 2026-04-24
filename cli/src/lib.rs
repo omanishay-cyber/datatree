@@ -27,6 +27,7 @@
 
 pub mod commands;
 pub mod error;
+pub mod hook_payload;
 pub mod ipc;
 pub mod markers;
 pub mod platforms;
