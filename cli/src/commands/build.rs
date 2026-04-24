@@ -52,12 +52,58 @@ pub struct BuildArgs {
     /// flag exists to let future defaults flip without breaking scripts.
     #[arg(long, conflicts_with = "dispatch")]
     pub inline: bool,
+
+    /// Skip the pre-flight confirmation prompt when the project contains
+    /// more than `BIG_PROJECT_FILE_THRESHOLD` files after ignores. CI and
+    /// the `install.ps1` one-liner set this; humans running
+    /// `mneme build ~` or similar see the prompt and can decline.
+    #[arg(long, short = 'y')]
+    pub yes: bool,
 }
+
+/// File-count threshold above which `mneme build` prompts the user to
+/// confirm before proceeding. Tuned so indexing a typical repo (1k-5k
+/// source files) is silent, but pointing at a home directory or an
+/// unfiltered monorepo requires explicit consent.
+///
+/// Rationale: F-010 in the v0.3.0 install report — `mneme build
+/// C:\Users\POS` kicked off indexing node_modules, .git, AppData,
+/// OneDrive, Screenshots, every plugin cache, on track for hundreds of
+/// thousands of files. Exit path was "kill the daemon". Unacceptable
+/// default behavior for a tool that runs unattended.
+const BIG_PROJECT_FILE_THRESHOLD: usize = 10_000;
 
 /// Entry point used by `main.rs`.
 pub async fn run(args: BuildArgs, socket_override: Option<PathBuf>) -> CliResult<()> {
     let project = resolve_project(args.project.clone())?;
     info!(project = %project.display(), full = args.full, dispatch = args.dispatch, "building mneme graph");
+
+    // Pre-flight guard — refuse to chew through tens of thousands of files
+    // without explicit consent. See BIG_PROJECT_FILE_THRESHOLD docstring
+    // for the incident this guards against.
+    if !args.yes {
+        let count = count_candidate_files(&project, BIG_PROJECT_FILE_THRESHOLD + 1);
+        if count > BIG_PROJECT_FILE_THRESHOLD {
+            eprintln!();
+            eprintln!(
+                "mneme build: {} matches more than {} files (post-ignore).",
+                project.display(),
+                BIG_PROJECT_FILE_THRESHOLD
+            );
+            eprintln!("This is usually a mistake — did you mean to index a subdirectory?");
+            eprintln!();
+            eprintln!("Indexing will:");
+            eprintln!("  * read every matched source file end-to-end");
+            eprintln!("  * write node/edge rows to ~/.mneme/projects/<id>/graph.db");
+            eprintln!("  * take many minutes to finish on this scale");
+            eprintln!();
+            eprintln!("To proceed anyway: re-run with `--yes` (or `-y`).");
+            eprintln!("To limit the ingest for a smoke test: `--limit 500`.");
+            return Err(CliError::Other(
+                "aborted (too many files; pass --yes to confirm)".into(),
+            ));
+        }
+    }
 
     // --dispatch: try the supervisor path; fall back to inline if the
     // daemon isn't running. --inline: force the in-process pipeline
@@ -717,23 +763,81 @@ fn is_ignored(path: &Path) -> bool {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     matches!(
         name,
+        // Build outputs (language-agnostic, node, rust, .NET, Java, electron)
         "target"
             | "node_modules"
             | ".git"
+            | ".hg"
+            | ".svn"
             | "dist"
+            | "dist-electron"
+            | "release"
+            | "out"
             | "build"
+            | "bin"
+            | "obj"
             | ".next"
             | ".nuxt"
+            | ".vite"
+            | ".parcel-cache"
+            | ".turbo"
             | ".svelte-kit"
+            | ".astro"
+            // Python
             | ".venv"
             | "venv"
             | "__pycache__"
             | ".pytest_cache"
             | ".mypy_cache"
             | ".ruff_cache"
+            | ".tox"
+            | "site-packages"
+            // Editors + tooling
             | ".idea"
             | ".vscode"
+            | ".vs"
+            | ".DS_Store"
+            | ".cache"
+            | ".yarn"
+            | ".pnpm-store"
+            // Windows user profile nightmares (F-010 repros)
+            | "AppData"
+            | "OneDrive"
+            | "$Recycle.Bin"
+            | "NTUSER.DAT"
+            // macOS / Linux user profile dirs
+            | "Library"
+            | ".Trash"
+            | "Applications"
+            // Mneme's own tree — never reindex ourselves
+            | ".mneme"
+            | ".claude"
     )
+}
+
+/// First-pass walker — counts how many candidate source files are under
+/// `root` after `is_ignored` filters. Stops early once `cap` is exceeded
+/// so the guard pre-flight doesn't pay the full walk cost on huge trees.
+fn count_candidate_files(root: &Path, cap: usize) -> usize {
+    let walker = walkdir::WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| !is_ignored(e.path()));
+
+    let mut n = 0usize;
+    for entry in walker {
+        let Ok(entry) = entry else { continue };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if Language::from_filename(entry.path()).is_some() {
+            n += 1;
+            if n > cap {
+                return n;
+            }
+        }
+    }
+    n
 }
 
 /// Heuristic: treat any byte slice whose first 512 bytes contain a NUL as
