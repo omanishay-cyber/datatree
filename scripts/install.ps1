@@ -379,10 +379,33 @@ if (-not (Test-Path $MnemeBin)) {
     Write-Warn ("mneme.exe not found at {0} - did extraction succeed?" -f $MnemeBin)
     Write-Warn "skipping daemon start. run manually later: mneme daemon start"
 } else {
+    # Use Start-Process with -WindowStyle Hidden so PowerShell does NOT
+    # inherit the daemon's stdout handle. Piping `& mneme daemon start`
+    # to Out-Null hangs on first-run anti-virus scan delay on Windows
+    # (even with Defender excluded at step 4, the exclusion doesn't
+    # always apply until the next service refresh tick). Start-Process
+    # detaches fully and returns immediately; we then poll daemon status
+    # to confirm it came up.
     try {
-        & $MnemeBin daemon start | Out-Null
-        Start-Sleep -Milliseconds 500
-        Write-OK "daemon started"
+        Start-Process -FilePath $MnemeBin -ArgumentList 'daemon','start' -WindowStyle Hidden -ErrorAction Stop | Out-Null
+        # Poll for the supervisor pipe — don't trust a blind sleep.
+        $waited = 0
+        $up = $false
+        while ($waited -lt 15000) {
+            Start-Sleep -Milliseconds 500
+            $waited += 500
+            $statusOut = & $MnemeBin daemon status 2>&1 | Out-String
+            if ($statusOut -match 'running|healthy|"pid"') {
+                $up = $true
+                break
+            }
+        }
+        if ($up) {
+            Write-OK "daemon started"
+        } else {
+            Write-Warn "daemon did not report healthy within 15s — it may still be coming up"
+            Write-Warn "check later: mneme doctor"
+        }
     } catch {
         Write-Warn ("daemon start failed: {0}" -f $_.Exception.Message)
         Write-Warn "run manually later: mneme daemon start"
