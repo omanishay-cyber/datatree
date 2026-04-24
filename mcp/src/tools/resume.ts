@@ -6,21 +6,20 @@
  * implementations, open questions, and a timeline in chronological order.
  *
  * Prefers the Rust supervisor path (`ledger.resume_summary`); falls back
- * to direct `bun:sqlite` reads of the per-project tasks.db so the tool
- * still works when the daemon is down.
+ * to the shared store helper `ledgerResumeBundle` which reads the per-
+ * project tasks.db directly. The shared helper uses the canonical
+ * ProjectId (full SHA-256 of canonical path) — the legacy inline
+ * `hash.slice(0,16)` resolver pointed at the wrong directory.
  */
-
-import { Database } from "bun:sqlite";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { createHash } from "node:crypto";
 import {
   MnemeResumeInput,
   MnemeResumeOutput,
   type LedgerEntry,
+  type LedgerKind,
   type ToolDescriptor,
 } from "../types.ts";
 import { query as dbQuery } from "../db.ts";
+import { ledgerResumeBundle, type LedgerRawRow } from "../store.ts";
 
 export const tool: ToolDescriptor<
   ReturnType<typeof MnemeResumeInput.parse>,
@@ -69,7 +68,7 @@ export const tool: ToolDescriptor<
 };
 
 // ---------------------------------------------------------------------------
-// Local fallback
+// Local fallback — via shared store helper
 // ---------------------------------------------------------------------------
 
 function localResume(
@@ -83,90 +82,41 @@ function localResume(
   open_questions: LedgerEntry[];
   timeline: LedgerEntry[];
 } {
-  const emptyBundle = {
-    session_id: "",
+  const raw = ledgerResumeBundle(sinceMillis, cwd);
+  const recent_decisions = raw.recent_decisions.map(rowToEntry);
+  const recent_implementations = raw.recent_implementations.map(rowToEntry);
+  const timeline = raw.timeline.map(rowToEntry).reverse(); // oldest → newest
+  const open_questions = raw.open_questions.map(rowToEntry).filter((e) => {
+    const payload = (e.kind_payload ?? {}) as Record<string, unknown>;
+    return payload.resolved_by == null;
+  });
+  const session_id = timeline[timeline.length - 1]?.session_id ?? "";
+  return {
+    session_id,
     generated_at: new Date().toISOString(),
-    recent_decisions: [],
-    recent_implementations: [],
-    open_questions: [],
-    timeline: [],
+    recent_decisions,
+    recent_implementations,
+    open_questions,
+    timeline,
   };
-  const dbPath = tasksDbPath(cwd);
-  if (!dbPath) return emptyBundle;
-  let db: Database;
-  try {
-    db = new Database(dbPath, { readonly: true });
-  } catch {
-    return emptyBundle;
-  }
-  try {
-    type Binding = string | number | null;
-    const pick = (kinds: string[], limit: number): LedgerEntry[] => {
-      const sql =
-        "SELECT id, session_id, timestamp, kind, summary, rationale, " +
-        "touched_files, touched_concepts, transcript_ref, kind_payload " +
-        `FROM ledger_entries WHERE timestamp >= ? ` +
-        (kinds.length > 0 ? `AND kind IN (${kinds.map(() => "?").join(",")}) ` : "") +
-        "ORDER BY timestamp DESC LIMIT ?";
-      const params: Binding[] = [sinceMillis, ...kinds, limit];
-      return db
-        .query<Record<string, unknown>, Binding[]>(sql)
-        .all(...params)
-        .map(rowToEntry);
-    };
-    const timeline = pick([], 50).reverse();
-    const recent_decisions = pick(["decision"], 10);
-    const recent_implementations = pick(["impl", "refactor"], 10);
-    const open_questions = db
-      .query<Record<string, unknown>, []>(
-        "SELECT id, session_id, timestamp, kind, summary, rationale, " +
-          "touched_files, touched_concepts, transcript_ref, kind_payload " +
-          "FROM ledger_entries WHERE kind = 'open_question' ORDER BY timestamp DESC LIMIT 50",
-      )
-      .all()
-      .map(rowToEntry)
-      .filter((e) => {
-        const payload = (e.kind_payload ?? {}) as Record<string, unknown>;
-        return payload.resolved_by == null;
-      });
-    const session_id = timeline[timeline.length - 1]?.session_id ?? "";
-    return {
-      session_id,
-      generated_at: new Date().toISOString(),
-      recent_decisions,
-      recent_implementations,
-      open_questions,
-      timeline,
-    };
-  } finally {
-    db.close();
-  }
 }
 
-function tasksDbPath(cwd: string): string | null {
-  const home = homedir();
-  const hash = createHash("sha256").update(cwd).digest("hex");
-  const projectId = hash.slice(0, 16);
-  return join(home, ".mneme", "projects", projectId, "tasks.db");
-}
-
-function rowToEntry(row: Record<string, unknown>): LedgerEntry {
-  const safeParse = <T>(v: unknown, fallback: T): T => {
-    if (typeof v !== "string" || v.length === 0) return fallback;
+function rowToEntry(row: LedgerRawRow): LedgerEntry {
+  const safeParse = <T>(v: string | null | undefined, fallback: T): T => {
+    if (v == null || v.length === 0) return fallback;
     try {
       return JSON.parse(v) as T;
     } catch {
       return fallback;
     }
   };
-  const tsMillis = Number(row.timestamp ?? 0);
   return {
-    id: String(row.id ?? ""),
-    session_id: String(row.session_id ?? ""),
-    timestamp: new Date(tsMillis).toISOString(),
-    kind: (row.kind as LedgerEntry["kind"]) ?? "impl",
-    summary: String(row.summary ?? ""),
-    rationale: row.rationale == null ? null : String(row.rationale),
+    id: row.id,
+    session_id: row.session_id,
+    timestamp: new Date(row.timestamp).toISOString(),
+    kind: (row.kind as LedgerKind) ?? "impl",
+    summary: row.summary,
+    rationale: row.rationale,
     touched_files: safeParse<string[]>(row.touched_files, []),
     touched_concepts: safeParse<string[]>(row.touched_concepts, []),
     transcript_ref: safeParse<LedgerEntry["transcript_ref"]>(

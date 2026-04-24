@@ -453,18 +453,22 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
         #[cfg(feature = "solidity")]
         (Language::Solidity, QueryKind::Comments) => r#"(comment) @comment"#,
 
-        // ---- Julia (tree-sitter-julia 0.23) -------------------------------
-        // Node names confirmed from the current crate: `function_definition`,
-        // `short_function_definition`, `macro_definition` for callables;
-        // `struct_definition`, `abstract_definition`, `primitive_definition`
-        // for types. Names are `identifier` captured via field access.
+        // ---- Julia (tree-sitter-julia 0.23.1) -----------------------------
+        // Node names verified against the grammar's node-types.json:
+        //   callables: `function_definition`, `macro_definition`
+        //   types:     `struct_definition`, `abstract_definition`,
+        //              `primitive_definition` (each has a `type_head` child
+        //              containing an `identifier`)
+        // There is NO `short_function_definition` node — Julia's `f() = expr`
+        // short form parses as an `assignment` whose LHS is a `call_expression`.
+        // Comment nodes: `line_comment`, `block_comment`.
         #[cfg(feature = "julia")]
         (Language::Julia, QueryKind::Functions) => {
             r#"
             (function_definition (signature (call_expression (identifier) @name))) @function
-            (function_definition (identifier) @name) @function
-            (short_function_definition (signature (call_expression (identifier) @name))) @function
+            (function_definition (signature (identifier) @name)) @function
             (macro_definition (signature (call_expression (identifier) @name))) @function
+            (assignment (call_expression (identifier) @name)) @function
             "#
         }
         #[cfg(feature = "julia")]
@@ -483,16 +487,18 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
             "#
         }
 
-        // ---- Zig (tree-sitter-zig 1.1) ------------------------------------
-        // Node names confirmed from the current crate: top-level callables
-        // are `function_declaration` with an `identifier` child; types are
-        // declared via `VarDecl` where the right-hand side is a container
-        // (`struct`, `enum`, `union`). We capture function declarations and
-        // VarDecls whose initializer is a container builtin.
+        // ---- Zig (tree-sitter-zig 1.1.2) ----------------------------------
+        // Node names verified against the grammar's node-types.json:
+        //   callables: `function_declaration` (field `name: (identifier)`)
+        //   types:     `variable_declaration` (has an `identifier` child;
+        //              the grammar doesn't distinguish struct/enum/union
+        //              decls — those are initializer expressions)
+        // The grammar exposes exactly ONE comment node type: `comment`.
+        // There is NO `line_comment` or `doc_comment`.
         #[cfg(feature = "zig")]
         (Language::Zig, QueryKind::Functions) => {
             r#"
-            (function_declaration (identifier) @name) @function
+            (function_declaration name: (identifier) @name) @function
             "#
         }
         #[cfg(feature = "zig")]
@@ -504,8 +510,7 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
         #[cfg(feature = "zig")]
         (Language::Zig, QueryKind::Comments) => {
             r#"
-            (line_comment) @comment
-            (doc_comment) @comment
+            (comment) @comment
             "#
         }
 
