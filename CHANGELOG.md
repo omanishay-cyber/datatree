@@ -14,7 +14,6 @@ Versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - Register 9 Tier-2 Tree-sitter grammars (Swift, Scala, Vue, Julia, Haskell, Kotlin, Svelte, Solidity, Zig) — ABI v15 already supported by tree-sitter 0.25
 - Verify C# grammar works post-ABI-bump
 - Vision app launched against live graph.db (12 views scaffolded, not yet wired)
-- Auto-restart re-enabled (tokio::process::Child Send-recursion unblocked)
 - Multimodal Python sidecar end-to-end wired to Rust bridge; PDF ingestion first
 - Benchmark CSV published (`just bench-all` ready; numbers not yet committed)
 - 60-second demo video
@@ -53,11 +52,11 @@ Same-day follow-up to v0.1.0. Architectural depth pass.
 - `cargo test --workspace` passes — **190 green, 0 failed**.
 - Parsers: `StreamingIterator` trait import from `streaming-iterator` crate.
 - Supervisor: restored Prometheus metric names to `mneme_` prefix (fixed sed regex damage).
+- **Supervisor auto-restart re-enabled** — the `tokio::process::Child` Send-recursion cycle that blocked v0.1 is broken by decoupling the monitor task from the respawn code path via an `mpsc::UnboundedChannel<RestartRequest>` owned by `ChildManager`. The monitor owns the dead `Child` until its function returns; the dedicated restart loop (started by `ChildManager::run_restart_loop` in `lib.rs::run`) pulls requests off the channel in a fresh task with its own stack, so neither side has to prove the combined future is Send. Integration test `watchdog_respawns_crashed_worker` exercises the full crash → detect → respawn → restart_count >= 2 loop.
 
 ### Known v0.2 constraints
 - Only 3 of 47 MCP tools are wired to real data (same 3 as v0.1: `blast_radius`, `recall_concept`, `health`). The wired ratio dropped from 9% → 6% because tool *files* grew faster than wiring.
 - Supervisor still doesn't dispatch to workers — `mneme build` runs inline in CLI.
-- Auto-restart still deferred (tokio::process::Child Send issue).
 - Vision app scaffold only — views are not connected to `graph.db` yet.
 - Multimodal Python sidecar installed but Rust bridge not wired.
 - Real ONNX embeddings dep unblocked but code path still hashing-trick.

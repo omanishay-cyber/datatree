@@ -6,7 +6,8 @@
 //
 // Mirrors the pattern in `mcp/src/store.ts`: derive ProjectId by
 // SHA-256-hashing the canonical project root, look up the shard directory
-// at `~/.mneme/projects/<project-id>/`, open each `.db` read-only.
+// at `~/.datatree/projects/<project-id>/` (legacy `~/.mneme/` also honoured),
+// open each `.db` read-only.
 
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, statSync } from "node:fs";
@@ -33,7 +34,13 @@ import type {
 } from "../src/api/graph";
 import type { GraphNode, GraphEdge } from "../src/api";
 
-const MNEME_HOME = join(homedir(), ".mneme");
+// Project shards historically lived in ~/.mneme/projects; the rebrand to
+// datatree moved them to ~/.datatree/projects. We search both so an older
+// shard still resolves if a new one hasn't been built yet.
+const SHARD_HOMES: readonly string[] = [
+  join(homedir(), ".datatree"),
+  join(homedir(), ".mneme"),
+];
 
 function projectIdForPath(absPath: string): string {
   return createHash("sha256").update(absPath).digest("hex");
@@ -58,11 +65,14 @@ function resolveShardRoot(): string | null {
   const fromCwd = findProjectRoot(cwd);
   if (fromCwd) {
     const id = projectIdForPath(fromCwd);
-    const dir = join(MNEME_HOME, "projects", id);
-    if (existsSync(dir)) return dir;
+    for (const home of SHARD_HOMES) {
+      const dir = join(home, "projects", id);
+      if (existsSync(dir)) return dir;
+    }
   }
-  const projectsDir = join(MNEME_HOME, "projects");
-  if (existsSync(projectsDir)) {
+  for (const home of SHARD_HOMES) {
+    const projectsDir = join(home, "projects");
+    if (!existsSync(projectsDir)) continue;
     try {
       const entries = readdirSync(projectsDir);
       if (entries.length === 1 && entries[0]) {
@@ -954,7 +964,6 @@ export function fetchTestCoverage(limit = 2000): TestCoverageRow[] {
 
     const files = allFiles.filter((f) => !isTestPath(f.path)).slice(0, limit);
     const testPaths = new Set(allFiles.filter((f) => isTestPath(f.path)).map((f) => f.path));
-    const testPaths = new Set(testFileRows.map((r) => r.path));
 
     const testNodeCounts = graph
       .prepare(

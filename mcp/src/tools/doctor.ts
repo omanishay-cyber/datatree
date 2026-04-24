@@ -8,9 +8,17 @@
  * v0.1 (review P2):
  *   - `doctorShardSweep` queries each shard's row counts + PRAGMA
  *     integrity_check via `bun:sqlite` read-only.
+ *   - `shardSchemaVersions` reads the schema_version row from each shard
+ *     so the model knows whether a migration is pending.
  *   - A 2s GET to `http://127.0.0.1:7777/health` surfaces the SLA.
+ *   - An IPC round-trip is implied by the HTTP probe (same supervisor).
  *   - Missing / corrupt / unreachable components become individual checks
  *     with a recommendation instead of a raised exception.
+ *
+ * Output schema is fixed (see `DoctorOutput` in ../types.ts):
+ *   `{ ok, checks: [{name, passed, detail}], recommendations }`
+ * — graceful degrade: every failure path surfaces as one check + one
+ *   recommendation, never as an unhandled exception.
  */
 
 import {
@@ -18,7 +26,7 @@ import {
   DoctorOutput,
   type ToolDescriptor,
 } from "../types.ts";
-import { doctorShardSweep } from "../store.ts";
+import { doctorShardSweep, shardSchemaVersions } from "../store.ts";
 
 interface Check {
   name: string;
@@ -26,10 +34,13 @@ interface Check {
   detail: string;
 }
 
-async function probeSupervisorSla(): Promise<{
+interface SupervisorProbe {
   check: Check;
   workers_green: boolean;
-}> {
+  reachable: boolean;
+}
+
+async function probeSupervisorSla(): Promise<SupervisorProbe> {
   try {
     const res = await fetch("http://127.0.0.1:7777/health", {
       signal: AbortSignal.timeout(2000),
@@ -42,6 +53,7 @@ async function probeSupervisorSla(): Promise<{
           detail: `HTTP ${res.status} from supervisor /health`,
         },
         workers_green: false,
+        reachable: true,
       };
     }
     const h = (await res.json()) as {
@@ -59,15 +71,19 @@ async function probeSupervisorSla(): Promise<{
           : `${running}/${h.children.length} workers running`,
       },
       workers_green,
+      reachable: true,
     };
   } catch (err) {
+    // Connection refused / timeout / DNS failure — daemon almost certainly
+    // not running. Emit a dedicated check so the recommendation is precise.
     return {
       check: {
         name: "supervisor_sla",
         passed: false,
-        detail: `Could not reach supervisor /health: ${(err as Error).message}`,
+        detail: `daemon not running — could not reach supervisor /health: ${(err as Error).message}`,
       },
       workers_green: false,
+      reachable: false,
     };
   }
 }
@@ -128,10 +144,47 @@ export const tool: ToolDescriptor<
       );
     }
 
+    // Per-shard schema-version probe. Missing/stale versions become checks
+    // so the model can decide whether to trigger `mneme migrate`.
+    let anyUnversioned = false;
+    for (const v of shardSchemaVersions()) {
+      if (v.version == null) {
+        // Don't double-count shards we already marked missing — keeps the
+        // check list readable when the project has never been built.
+        const already = sweep.find((s) => s.layer === v.layer);
+        if (already && !already.exists) continue;
+        checks.push({
+          name: `schema_${v.layer}`,
+          passed: false,
+          detail: v.error ?? "schema_version unavailable",
+        });
+        anyUnversioned = true;
+      } else {
+        checks.push({
+          name: `schema_${v.layer}`,
+          passed: true,
+          detail: `v${v.version}`,
+        });
+      }
+    }
+    if (anyUnversioned) {
+      recommendations.push(
+        "One or more shards have no schema_version row — run `mneme migrate` to bring them to the latest version.",
+      );
+    }
+
     const sla = await probeSupervisorSla();
     checks.push(sla.check);
     if (!sla.check.passed) {
-      recommendations.push("Start the daemon: `mneme daemon start --detach`.");
+      if (!sla.reachable) {
+        recommendations.push(
+          "Daemon not running — start it with `mneme daemon start --detach`.",
+        );
+      } else {
+        recommendations.push(
+          "Supervisor reachable but not fully healthy — inspect `mneme health` and `mneme logs` for the failing worker.",
+        );
+      }
     }
 
     const ok = checks.every((c) => c.passed);

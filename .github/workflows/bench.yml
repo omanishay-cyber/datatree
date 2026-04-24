@@ -1,0 +1,249 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: ""
+
+jobs:
+  bench:
+    name: Bench (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-latest intentionally skipped to save CI minutes (see README CI section).
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: bench-${{ matrix.os }}
+
+      - name: Install just (cargo)
+        run: cargo install just --locked
+
+      - name: Build bench binary
+        run: cargo build --release -p benchmarks --bin bench_retrieval
+
+      - name: Run bench-all (bash)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          just bench-all . > bench-run.csv 2> bench-run.log || echo "bench-all exited non-zero; continuing to capture outputs"
+
+      - name: Run bench-all (powershell)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          just bench-all . 1> bench-run.csv 2> bench-run.log
+          if ($LASTEXITCODE -ne 0) { Write-Host "bench-all exited $LASTEXITCODE; continuing to capture outputs" }
+
+      - name: Extract JSON summary from stderr log
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, sys
+          raw = pathlib.Path("bench-run.log").read_text(encoding="utf-8", errors="replace")
+          start = raw.rfind("{")
+          end = raw.rfind("}")
+          if start == -1 or end == -1 or end <= start:
+              pathlib.Path("bench-run.json").write_text("{}")
+              sys.exit(0)
+          blob = raw[start:end+1]
+          try:
+              obj = json.loads(blob)
+          except Exception:
+              obj = {}
+          pathlib.Path("bench-run.json").write_text(json.dumps(obj, indent=2))
+          PY
+
+      - name: Upload bench artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-run-${{ matrix.os }}-${{ github.run_id }}
+          path: |
+            bench-run.csv
+            bench-run.log
+            bench-run.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      # -- Regression check: compare this run's JSON summary against the baseline
+      # artifact produced by .github/workflows/bench-baseline.yml (uploaded with
+      # a stable name "bench-baseline-<os>"). Only runs on PRs and only on
+      # ubuntu-latest to keep noise low. A >10% slowdown on any tracked metric
+      # posts a PR comment; a missing baseline posts a one-time suggestion.
+      - name: Find latest baseline run
+        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest'
+        id: baseline-lookup
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const artifactName = `bench-baseline-${{ matrix.os }}`;
+            let runs;
+            try {
+              runs = await github.rest.actions.listWorkflowRuns({
+                owner, repo,
+                workflow_id: 'bench-baseline.yml',
+                status: 'success',
+                per_page: 20,
+              });
+            } catch (e) {
+              core.warning(`Could not list bench-baseline runs: ${e.message}`);
+              core.setOutput('found', 'false');
+              return;
+            }
+            for (const run of runs.data.workflow_runs) {
+              const arts = await github.rest.actions.listWorkflowRunArtifacts({
+                owner, repo, run_id: run.id, per_page: 100,
+              });
+              const match = arts.data.artifacts.find(a => a.name === artifactName && !a.expired);
+              if (match) {
+                core.setOutput('found', 'true');
+                core.setOutput('run_id', String(run.id));
+                return;
+              }
+            }
+            core.setOutput('found', 'false');
+            core.warning(`No artifact named ${artifactName} found in recent baseline runs.`);
+        continue-on-error: true
+
+      - name: Download baseline artifact
+        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && steps.baseline-lookup.outputs.found == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-baseline-${{ matrix.os }}
+          path: baseline
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.baseline-lookup.outputs.run_id }}
+        continue-on-error: true
+
+      - name: Compare against baseline
+        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest'
+        id: compare
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f baseline/bench-run.json ]; then
+            echo "status=missing" >> "$GITHUB_OUTPUT"
+            {
+              echo "body<<BENCH_EOF"
+              echo "### Benchmark regression check"
+              echo ""
+              echo "No baseline artifact was found. Run the **bench-baseline** workflow from the Actions tab on \`main\` to publish an initial baseline; future PRs will then flag runs that are >10% slower on any tracked metric."
+              echo "BENCH_EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 - <<'PY'
+          import json, pathlib
+          cur = json.loads(pathlib.Path("bench-run.json").read_text() or "{}")
+          base = json.loads(pathlib.Path("baseline/bench-run.json").read_text() or "{}")
+          # Tracked metrics: (dotted_path, human_name, higher_is_worse)
+          tracked = [
+              ("compare_totals.mneme_total_ms", "mneme total retrieval (ms)", True),
+              ("first_build.cold_ms",           "first build cold (ms)",      True),
+              ("first_build.warm_ms",           "first build warm (ms)",      True),
+              ("incremental.p50_ms",            "incremental p50 (ms)",       True),
+              ("incremental.p95_ms",            "incremental p95 (ms)",       True),
+              ("viz_scale.bytes_per_node",      "graph.db bytes/node",        True),
+              ("viz_scale.bytes_per_edge",      "graph.db bytes/edge",        True),
+          ]
+          def dig(obj, path):
+              for part in path.split("."):
+                  if not isinstance(obj, dict) or part not in obj:
+                      return None
+                  obj = obj[part]
+              return obj
+          rows = []
+          regressed = False
+          for path, name, _ in tracked:
+              b = dig(base, path)
+              c = dig(cur, path)
+              if not (isinstance(b, (int, float)) and isinstance(c, (int, float)) and b > 0):
+                  continue
+              delta = (c - b) / b * 100.0
+              flag = ""
+              if delta > 10.0:
+                  flag = " ⚠️ **regression**"
+                  regressed = True
+              rows.append(f"| {name} | {b:.2f} | {c:.2f} | {delta:+.1f}%{flag} |")
+          out = []
+          out.append("### Benchmark regression check")
+          out.append("")
+          if not rows:
+              out.append("Baseline was present but no shared metrics could be compared (schema mismatch or empty run).")
+          else:
+              out.append("| metric | baseline | current | delta |")
+              out.append("|---|---:|---:|---:|")
+              out.extend(rows)
+              out.append("")
+              if regressed:
+                  out.append("One or more metrics regressed by more than **10%** vs the committed baseline. Investigate before merging.")
+              else:
+                  out.append("All tracked metrics are within 10% of baseline. :white_check_mark:")
+          pathlib.Path("regression.md").write_text("\n".join(out))
+          pathlib.Path("regression-status.txt").write_text("regressed" if regressed else "ok")
+          PY
+          echo "status=$(cat regression-status.txt)" >> "$GITHUB_OUTPUT"
+          {
+            echo "body<<BENCH_EOF"
+            cat regression.md
+            echo "BENCH_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post regression comment on PR
+        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && steps.compare.outputs.body != ''
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.compare.outputs.body }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const marker = "<!-- mneme-bench-regression -->";
+            const body = marker + "\n" + process.env.COMMENT_BODY;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body,
+              });
+            }

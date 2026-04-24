@@ -1652,3 +1652,414 @@ export function doctorShardSweep(cwdOverride?: string): ShardHealth[] {
   }
   return out;
 }
+
+// --- doctor.ts helpers ---------------------------------------------------
+// Used by mcp/src/tools/doctor.ts. Do not remove without updating that tool.
+
+/**
+ * Read the current schema_version from each shard. Returns one entry per
+ * shard the sweep knows about; `version` is null when the shard is missing,
+ * when the table doesn't exist yet, or when the read fails. Never throws —
+ * the doctor tool should surface failures as individual checks, not as
+ * an exception out of the whole probe.
+ */
+export function shardSchemaVersions(
+  cwdOverride?: string,
+): Array<{ layer: string; version: number | null; error: string | null }> {
+  const out: Array<{ layer: string; version: number | null; error: string | null }> = [];
+  for (const s of DOCTOR_SHARDS) {
+    const db = tryOpenShard(s.layer, cwdOverride);
+    if (!db) {
+      out.push({ layer: s.layer, version: null, error: "shard not open" });
+      continue;
+    }
+    try {
+      let version: number | null = null;
+      let error: string | null = null;
+      try {
+        const row = db
+          .prepare(
+            `SELECT version FROM schema_version ORDER BY version DESC LIMIT 1`,
+          )
+          .get() as { version: number } | undefined;
+        if (row && typeof row.version === "number") {
+          version = row.version;
+        } else {
+          error = "schema_version row missing";
+        }
+      } catch (err) {
+        error = (err as Error).message;
+      }
+      out.push({ layer: s.layer, version, error });
+    } finally {
+      try {
+        db.close();
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return out;
+}
+
+// --- god_nodes.ts helpers ------------------------------------------------
+// Used by mcp/src/tools/god_nodes.ts. Do not remove without updating that tool.
+
+/**
+ * Bulk-lookup community_id from the `semantic` shard's `community_membership`
+ * table for a set of node qualified_names. Returns a map of qualified_name →
+ * community_id. Missing shard, missing table, or missing rows all resolve
+ * to an empty map — never throws. god_nodes falls back to `null` per node.
+ */
+export function nodeCommunityIds(
+  qualifiedNames: string[],
+  cwdOverride?: string,
+): Record<string, number> {
+  if (qualifiedNames.length === 0) return {};
+  return withShard<Record<string, number>>(
+    "semantic",
+    (db) => {
+      const placeholders = qualifiedNames.map(() => "?").join(",");
+      const rows = db
+        .prepare(
+          `SELECT node_qualified AS q, community_id AS c
+           FROM community_membership
+           WHERE node_qualified IN (${placeholders})`,
+        )
+        .all(...qualifiedNames) as Array<{ q: string; c: number }>;
+      const map: Record<string, number> = {};
+      for (const r of rows) {
+        map[r.q] = r.c;
+      }
+      return map;
+    },
+    {},
+    cwdOverride,
+  );
+}
+
+// --- drift_findings helpers ---------------------------------------------------
+// Used by mcp/src/tools/drift_findings.ts. Exposes the full `findings` row
+// shape (including column_start, created_at, resolved_at) that the tool maps
+// onto its extended output schema. Kept separate from `driftFindings` so the
+// existing callers (which use only the narrow shape) are not broken.
+//
+// Schema reference — mirrors `scanners/src/findings_writer.rs` exactly:
+//   id          INTEGER PRIMARY KEY
+//   rule_id     TEXT          scanner.rule
+//   scanner     TEXT          derived from rule_id prefix
+//   severity    TEXT          "info"|"low"|"medium"|"high"|"critical"
+//   file        TEXT          absolute file path
+//   line_start  INTEGER
+//   line_end    INTEGER
+//   column_start INTEGER
+//   column_end   INTEGER
+//   message     TEXT
+//   suggestion  TEXT NULL
+//   auto_fixable INTEGER (0|1)
+//   created_at  TEXT          RFC3339 (first_seen)
+//   resolved_at TEXT NULL     RFC3339 (set when rule stops firing — last_seen)
+
+/**
+ * Extended drift-findings query: same filters as `driftFindings` but returns
+ * every column the scanners layer writes. Also returns the unfiltered total
+ * count of currently-open findings so the tool can populate `total_count`
+ * without a second round-trip.
+ *
+ * Filtering:
+ *   - severity: exact match on the `severity` column (assumed already
+ *     lower-cased and in the allowed enum before being passed in).
+ *   - scope: interpreted as a LIKE substring against `file`. The tool layer
+ *     passes "project" → undefined (no filter), or an explicit path/segment.
+ *   - limit: clamped to 1-500; defaults to 50.
+ *
+ * Ordering: `created_at DESC` (task spec — "first_seen DESC"), tiebreak by id
+ * DESC so the newest autoincrement row wins deterministically on the same
+ * timestamp.
+ */
+export function driftFindingsExtended(
+  severity: string | undefined,
+  scope: string | undefined,
+  limit: number = 50,
+  cwdOverride?: string,
+): {
+  rows: Array<{
+    id: number;
+    rule_id: string;
+    scanner: string;
+    severity: string;
+    file: string;
+    line_start: number;
+    line_end: number;
+    column_start: number;
+    column_end: number;
+    message: string;
+    suggestion: string | null;
+    auto_fixable: number;
+    created_at: string;
+    resolved_at: string | null;
+  }>;
+  total_count: number;
+} {
+  return withShard<{
+    rows: Array<{
+      id: number;
+      rule_id: string;
+      scanner: string;
+      severity: string;
+      file: string;
+      line_start: number;
+      line_end: number;
+      column_start: number;
+      column_end: number;
+      message: string;
+      suggestion: string | null;
+      auto_fixable: number;
+      created_at: string;
+      resolved_at: string | null;
+    }>;
+    total_count: number;
+  }>(
+    "findings",
+    (db) => {
+      const clauses: string[] = ["resolved_at IS NULL"];
+      const params: Array<string | number> = [];
+      if (severity) {
+        clauses.push("severity = ?");
+        params.push(severity);
+      }
+      if (scope) {
+        clauses.push("file LIKE ?");
+        params.push(`%${scope}%`);
+      }
+      const where = clauses.join(" AND ");
+      // Clamp limit: zod already validated (1..=500) but defensive.
+      const lim = Math.max(1, Math.min(500, Math.floor(limit)));
+
+      const rows = db
+        .prepare(
+          `SELECT id, rule_id, scanner, severity, file,
+                  line_start, line_end, column_start, column_end,
+                  message, suggestion, auto_fixable,
+                  created_at, resolved_at
+             FROM findings
+            WHERE ${where}
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?`,
+        )
+        .all(...params, lim) as Array<{
+        id: number;
+        rule_id: string;
+        scanner: string;
+        severity: string;
+        file: string;
+        line_start: number;
+        line_end: number;
+        column_start: number;
+        column_end: number;
+        message: string;
+        suggestion: string | null;
+        auto_fixable: number;
+        created_at: string;
+        resolved_at: string | null;
+      }>;
+
+      // Unfiltered total of currently-open findings. Explicitly not
+      // filtered so the caller can present "showing N of M".
+      const totalRow = db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM findings WHERE resolved_at IS NULL`,
+        )
+        .get() as { c: number } | undefined;
+
+      return { rows, total_count: totalRow?.c ?? 0 };
+    },
+    { rows: [], total_count: 0 },
+    cwdOverride,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// --- step ledger helpers ---
+//
+// Read-only shard access for the Step Ledger killer feature (step_status /
+// step_resume). Mirrors the Rust `SqliteLedger` reader shape (see
+// brain/src/ledger.rs, `LEDGER_INIT_SQL`) but never opens a writable
+// connection — the supervisor remains the single writer.
+//
+// Schema reference (tasks.db::ledger_entries, from ledger.rs):
+//   id TEXT PRIMARY KEY
+//   session_id TEXT NOT NULL
+//   timestamp INTEGER NOT NULL      -- unix millis
+//   kind TEXT NOT NULL              -- decision | impl | bug | open_question
+//                                   -- | refactor | experiment
+//   summary TEXT NOT NULL
+//   rationale TEXT
+//   touched_files TEXT DEFAULT '[]' -- JSON string[]
+//   touched_concepts TEXT DEFAULT '[]'
+//   transcript_ref TEXT             -- JSON {session_id, turn_index?, message_id?}
+//   kind_payload TEXT NOT NULL      -- JSON { kind: "...", ...details }
+//
+// Every helper is defensive: returns []/null on missing shard, bad JSON,
+// or SQL error — the tools graceful-degrade instead of throwing.
+// ---------------------------------------------------------------------------
+
+/** Row shape for `ledger_entries` selects that need JSON side columns. */
+export interface LedgerEntryRow {
+  id: string;
+  session_id: string;
+  kind: string;
+  summary: string;
+  rationale: string | null;
+  touched_files: string;
+  touched_concepts: string;
+  transcript_ref: string | null;
+  kind_payload: string;
+  timestamp: number;
+}
+
+/** Parse a JSON column into a string[]; returns [] on any error. */
+export function safeJsonStringArray(raw: string | null | undefined): string[] {
+  if (raw == null || raw === "") return [];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (!Array.isArray(v)) return [];
+    return v.filter((x): x is string => typeof x === "string");
+  } catch {
+    return [];
+  }
+}
+
+/** Parse a JSON column into an object; returns null on any error. */
+export function safeJsonRecord(
+  raw: string | null | undefined,
+): Record<string, unknown> | null {
+  if (raw == null || raw === "") return null;
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      return v as Record<string, unknown>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ledger entries enriched with JSON side-columns. Feeds step_resume's
+ * `transcript_refs`, `touched_files`, and kind-specific payloads.
+ */
+export function ledgerEntriesWithRefs(
+  sessionId: string | undefined,
+  sinceMs: number,
+  limit: number = 50,
+  kinds: string[] = [],
+  cwdOverride?: string,
+): LedgerEntryRow[] {
+  return withShard<LedgerEntryRow[]>(
+    "tasks",
+    (db) => {
+      const clauses: string[] = ["timestamp >= ?"];
+      const params: Array<string | number> = [sinceMs];
+      if (sessionId) {
+        clauses.push("session_id = ?");
+        params.push(sessionId);
+      }
+      if (kinds.length > 0) {
+        clauses.push(`kind IN (${kinds.map(() => "?").join(",")})`);
+        for (const k of kinds) params.push(k);
+      }
+      params.push(limit);
+      const sql = `SELECT id, session_id, kind, summary, rationale,
+                          touched_files, touched_concepts, transcript_ref,
+                          kind_payload, timestamp
+                   FROM ledger_entries
+                   WHERE ${clauses.join(" AND ")}
+                   ORDER BY timestamp DESC
+                   LIMIT ?`;
+      return db.prepare(sql).all(...params) as LedgerEntryRow[];
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+/**
+ * Best-effort "what is the session's goal?" resolver.
+ *
+ * Resolution order:
+ *   1. Root step (`parent_step_id IS NULL`) description — the plan's anchor
+ *      when `step_plan_from` seeded the session.
+ *   2. Most recent `decision` ledger entry summary — decisions establish
+ *      intent after a pivot.
+ *   3. Most recent entry summary of any kind.
+ *   4. `null` when the ledger is empty.
+ */
+export function goalForSession(
+  sessionId: string,
+  cwdOverride?: string,
+): string | null {
+  return withShard<string | null>(
+    "tasks",
+    (db) => {
+      const root = db
+        .prepare(
+          `SELECT description FROM steps
+           WHERE session_id = ? AND parent_step_id IS NULL
+           ORDER BY step_id ASC LIMIT 1`,
+        )
+        .get(sessionId) as { description: string } | undefined;
+      if (root?.description) return root.description;
+
+      const decision = db
+        .prepare(
+          `SELECT summary FROM ledger_entries
+           WHERE session_id = ? AND kind = 'decision'
+           ORDER BY timestamp DESC LIMIT 1`,
+        )
+        .get(sessionId) as { summary: string } | undefined;
+      if (decision?.summary) return decision.summary;
+
+      const any = db
+        .prepare(
+          `SELECT summary FROM ledger_entries
+           WHERE session_id = ?
+           ORDER BY timestamp DESC LIMIT 1`,
+        )
+        .get(sessionId) as { summary: string } | undefined;
+      return any?.summary ?? null;
+    },
+    null,
+    cwdOverride,
+  );
+}
+
+/**
+ * Derive the verification gate for the current step — the
+ * `acceptance_cmd` the model is expected to pass before closing the step.
+ * Prefers `in_progress` over `blocked`. Returns null when no active step,
+ * the step has no `acceptance_cmd`, or the shard is missing.
+ */
+export function verificationGateForSession(
+  sessionId: string,
+  cwdOverride?: string,
+): string | null {
+  return withShard<string | null>(
+    "tasks",
+    (db) => {
+      const row = db
+        .prepare(
+          `SELECT acceptance_cmd FROM steps
+           WHERE session_id = ? AND status IN ('in_progress','blocked')
+           ORDER BY CASE status WHEN 'in_progress' THEN 0 ELSE 1 END,
+                    step_id ASC
+           LIMIT 1`,
+        )
+        .get(sessionId) as { acceptance_cmd: string | null } | undefined;
+      return row?.acceptance_cmd ?? null;
+    },
+    null,
+    cwdOverride,
+  );
+}
