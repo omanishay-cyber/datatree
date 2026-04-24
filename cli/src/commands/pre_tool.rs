@@ -51,7 +51,9 @@ pub async fn run(args: PreToolArgs, socket_override: Option<PathBuf>) -> CliResu
         }
         Ok(IpcResponse::Pong)
         | Ok(IpcResponse::Status { .. })
-        | Ok(IpcResponse::Logs { .. }) => json!({ "skip": false }),
+        | Ok(IpcResponse::Logs { .. })
+        | Ok(IpcResponse::JobQueued { .. })
+        | Ok(IpcResponse::JobQueue { .. }) => json!({ "skip": false }),
         Err(e) => {
             warn!(error = %e, "pre-tool supervisor unreachable; passing through");
             json!({ "skip": false })

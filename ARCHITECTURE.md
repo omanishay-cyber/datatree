@@ -163,21 +163,21 @@ hand-written spec, then reviewed and tuned.
 | `common/` | Shared types (`ProjectId`, `DbLayer`, `Node`, `Edge`, `Finding`, `Step`, `Response<T>`) + `PathManager` for OS-correct file resolution. Zero other crate depends on anything *but* common for cross-crate types. | hand-written |
 | `store/` | The DB Operations Layer. Builder/Finder/Path/Query/Inject/Lifecycle modules. Owns the single-writer-per-shard invariant. Every writer is a tokio task behind an MPSC channel; every reader opens the shard directly. | hand-written |
 | `supervisor/` | Process tree, watchdog, Windows service / launchd / systemd integration, health HTTP server at `localhost:7777/health`, control-plane IPC server. | agent-generated |
-| `parsers/` | Tree-sitter pool + incremental cache + extractor dispatch. 29 grammars wired through `parsers::language::Language`. One parser instance per worker, pre-compiled query cache per `(Language, QueryKind)` pair. | agent-generated |
-| `scanners/` | 10 built-in scanners: theme, types (TS), security, a11y, perf, drift, ipc-contracts, markdown-drift, secrets, refactor. Each implements the `Scanner` trait; the `ScannerRegistry` routes files. Runs as a standalone worker. | agent-generated |
+| `parsers/` | Tree-sitter pool + incremental cache + extractor dispatch. 27 grammars wired through `parsers::language::Language`. One parser instance per worker, pre-compiled query cache per `(Language, QueryKind)` pair. | agent-generated |
+| `scanners/` | 11 built-in scanners: theme, types (TS), security, a11y, perf, drift, ipc-contracts, markdown-drift, secrets, refactor, architecture. Each implements the `Scanner` trait; the `ScannerRegistry` routes files. Runs as a standalone worker. | agent-generated |
 | `brain/` | Embedding generation (hashing-trick, 384-dim), Leiden clustering, god-node ranking (betweenness centrality), surprising-connections scorer. Writes to `semantic.db` + `insights.db`. | agent-generated |
 | `brain-stub/` | Build-time stub used when compiling without heavy deps (e.g. docs-only builds). Exposes the same API but emits zeros. | hand-written |
 | `livebus/` | SSE + WebSocket push bus. Multi-agent pub/sub (one topic per project, one per subscriber). Consumed by the Vision app; also by any second Claude session that wants to see the first's updates. | agent-generated |
 | `md-ingest/` | Walks every `.md` in the project, parses headings/links/code-fences, extracts `Decision`/`Constraint`/`Todo` records, ships them to `memory.db`. Runs as a worker. | agent-generated |
 | `multimodal-bridge/` | Rust shim that spawns, health-checks, and routes msgpack jobs to the Python sidecar. Restarts the sidecar if it crashes or stops heartbeating. | hand-written |
 | `cli/` | `mneme` binary — `install`, `build`, `watch`, `audit`, `recall`, `step`, `daemon`, `doctor`. Talks to the supervisor over the control-plane IPC, not via the file system. | agent-generated |
-| `benchmarks/` | Criterion-based micro-benchmarks used to justify claims in README (25x token reduction, <3s cold build). | hand-written |
+| `benchmarks/` | Criterion-based micro-benchmarks measured in [`BENCHMARKS.md`](benchmarks/BENCHMARKS.md) (1.338× mean / 3.542× p95 token reduction, 4,970 ms cold build on 359 files). | hand-written |
 
 ### Non-Rust workspaces
 
 | Workspace | Purpose | Owner |
 |---|---|---|
-| `mcp/` | Bun + TypeScript MCP server. 35 tools in `mcp/src/tools/`. Validates every tool I/O with `zod`. Reads shards direct via `bun:sqlite` (fastest SQLite binding in any runtime). Writes go over IPC to the store worker. Hot-reloadable: tools are side-effect-free modules. | agent-generated |
+| `mcp/` | Bun + TypeScript MCP server. 47 tools in `mcp/src/tools/`. Validates every tool I/O with `zod`. Reads shards direct via `bun:sqlite` (fastest SQLite binding in any runtime). Writes go over IPC to the store worker. Hot-reloadable: tools are side-effect-free modules. | agent-generated |
 | `vision/` | Tauri + React + WebGL desktop app. 14 views (Force Galaxy, Hierarchy Tree, Sunburst, Treemap, Sankey x2, Arc/Chord, Timeline, HeatmapGrid, Layered Architecture, Project Galaxy 3D, Test Coverage Map, Risk Dashboard, Theme Palette) + a Command Center (Step Ledger, Drift Indicator, Resumption Bundle). | agent-generated |
 | `workers/multimodal/` | Python 3.10 sidecar. PyMuPDF for PDF, Tesseract for OCR, faster-whisper for speech-to-text, python-docx and openpyxl for Office formats. Strict `Extractor` interface; every extractor is forbidden to hit the network. | agent-generated |
 | `plugin/` | Claude Code plugin manifest + templates for 18 AI tools (Claude Code, Codex, Cursor, Windsurf, Zed, Continue, OpenCode, Antigravity, Gemini CLI, Aider, Copilot, Factory Droid, Trae, Kiro, Qoder, OpenClaw, Hermes, Qwen Code). Marker-based idempotent injection. | agent-generated |

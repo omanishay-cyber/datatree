@@ -147,10 +147,66 @@ fn init_shard(paths: &PathManager, project: &ProjectId, layer: DbLayer) -> DtRes
     apply_pragmas(&conn)?;
     conn.execute_batch(schema_sql(layer)).map_err(DbError::from)?;
     record_version(&conn)?;
+    // phase-c10: for Graph shards, back-fill nodes_fts from nodes if the
+    // FTS index is empty but the base table has rows (upgrade path for
+    // graph.db files built before the sync triggers existed). Idempotent
+    // and safe to re-run on every boot.
+    if matches!(layer, DbLayer::Graph) {
+        seed_nodes_fts(&conn)?;
+    }
     if !pre_existed {
         info!(layer = ?layer, path = %path.display(), "created shard");
     } else {
         debug!(layer = ?layer, "shard already present");
+    }
+    Ok(())
+}
+
+/// One-time rebuild of `nodes_fts` from `nodes` when the FTS index is
+/// empty or stale. Uses FTS5's external-content `rebuild` command which
+/// reconciles the shadow tables from the content table in a single shot.
+/// Safe on fresh shards (rebuild is a cheap no-op when nodes is empty).
+/// Runs every boot; pays meaningful cost only on the first boot after the
+/// triggers landed for pre-existing graph.db files built before the
+/// triggers existed (or before nodes_fts was wired up at all).
+fn seed_nodes_fts(conn: &Connection) -> DtResult<()> {
+    // Skip if nodes_fts hasn't been declared (defensive: some legacy paths).
+    let has_fts: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='nodes_fts'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(DbError::from)
+        .unwrap_or(0);
+    if has_fts == 0 {
+        return Ok(());
+    }
+    let node_rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM nodes", [], |r| r.get(0))
+        .map_err(DbError::from)
+        .unwrap_or(0);
+    if node_rows == 0 {
+        return Ok(());
+    }
+    // Probe: is the index actually searchable? The raw row count is
+    // misleading for external-content FTS5 tables — COUNT(*) can report
+    // shadow rows while the inverted index is unpopulated. We issue a
+    // cheap MATCH against a keyword that any non-trivial graph.db will
+    // contain (file_path tokens like "src"). A zero-hit probe with a
+    // populated base table is the definitive "stale index" signal.
+    let probe_hits: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM nodes_fts WHERE nodes_fts MATCH 'src'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(DbError::from)
+        .unwrap_or(0);
+    if probe_hits == 0 {
+        conn.execute_batch("INSERT INTO nodes_fts(nodes_fts) VALUES('rebuild');")
+            .map_err(DbError::from)?;
+        info!(rebuilt_from = node_rows, "rebuilt nodes_fts");
     }
     Ok(())
 }

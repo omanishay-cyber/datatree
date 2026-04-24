@@ -16,7 +16,7 @@ mneme fixes all three at the architecture level (not the prompt level) by extern
 
 No. RAG chunks your documents and does embedding lookup when you ask a question. mneme is doing the opposite: it tracks **structured state** (numbered steps, decisions, constraints, verbatim conversation turns, file-by-file graph edges) and **proactively injects** the correct slice into every turn — before Claude has even thought to ask.
 
-mneme does have an embeddings store and supports semantic recall, but that's one tool among 33+. The headline feature is the Step Ledger, which is not RAG at all — it's a verified state machine.
+mneme does have an embeddings store and supports semantic recall, but that's one tool among 47. The headline feature is the Step Ledger, which is not RAG at all — it's a verified state machine.
 
 ### Do you send my code to a server?
 
@@ -24,7 +24,7 @@ No. mneme runs **100% locally**. No cloud, no telemetry, no API keys, no "phone 
 
 ### How is this different from code-review-graph or graphify?
 
-- **code-review-graph** (CRG) is the state-of-the-art deterministic code graph. mneme's structural graph builds on the same idea (Tree-sitter AST → SQLite) but adds 26 more storage layers, compaction resilience, and the Step Ledger. Benchmarks indicate ~3× better token reduction than CRG's 8.2× average.
+- **code-review-graph** (CRG) is the state-of-the-art deterministic code graph. mneme's structural graph builds on the same idea (Tree-sitter AST → SQLite) but adds 21 more storage layers, compaction resilience, and the Step Ledger. Measured p95 token reduction is 3.5× (see [BENCHMARKS.md](../benchmarks/BENCHMARKS.md)); CRG comparison pending a Linux CI run.
 - **graphify** is a multimodal knowledge-graph builder that uses LLM subagents to extract concepts from PDFs/audio/video. mneme absorbs graphify's multimodal pipeline as one of its workers — they're complementary, not competing.
 
 See the README's benchmark table for a feature-by-feature comparison.
@@ -41,7 +41,7 @@ Each is used for what it's best at:
 - **Bun + TypeScript** — MCP server and vision app. Hot-reloadable tool definitions; `bun:sqlite` is the fastest SQLite binding in any runtime.
 - **Python** — multimodal sidecar. PDF/OCR/Whisper ecosystems are irreplaceable here.
 
-The v0.1.1 release will ship prebuilt binaries so you don't need the toolchains yourself — just the runtimes.
+v0.2.0+ releases ship prebuilt binaries via GitHub Actions, so you don't need the toolchains yourself — just the runtimes.
 
 ### Install failed. What do I check?
 
@@ -150,7 +150,7 @@ PRs welcome. See [CONTRIBUTING.md](../CONTRIBUTING.md). By submitting a PR you'r
 
 ### Will it work on my 100k-file monorepo?
 
-Yes in theory. The architecture is designed for monorepo scale (WebGL visualisation handles 100k+ nodes, WAL SQLite scales to GBs of graph data, parser workers parallelise across CPU cores). In practice v0.2.0 self-indexes the Mneme source tree (1,922 nodes / 3,643 edges / 50 files) and the benchmark CI indexes Django (~300k LOC) and TypeScript (~2M LOC); larger-repo performance tuning is ongoing.
+Yes in theory. The architecture is designed for monorepo scale (WebGL visualisation handles 100k+ nodes, WAL SQLite scales to GBs of graph data, parser workers parallelise across CPU cores). In practice v0.2.3 self-indexes the Mneme source tree (11,417 nodes / 26,708 edges / 359 files, measured 2026-04-23) and the benchmark CI indexes Django (~300k LOC) and TypeScript (~2M LOC); larger-repo performance tuning is ongoing.
 
 ### How much disk does it use?
 

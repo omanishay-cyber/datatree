@@ -54,7 +54,7 @@ export function HierarchyTree(): JSX.Element {
           .attr("stroke", "#3a4a66")
           .attr("stroke-width", 1.2)
           .selectAll("path")
-          .data(root.links())
+          .data(root.links() as d3.HierarchyPointLink<HierarchyNode>[])
           .join("path")
           .attr(
             "d",
@@ -63,8 +63,8 @@ export function HierarchyTree(): JSX.Element {
                 d3.HierarchyPointLink<HierarchyNode>,
                 d3.HierarchyPointNode<HierarchyNode>
               >()
-              .x((d) => (d as d3.HierarchyPointNode<HierarchyNode>).y)
-              .y((d) => (d as d3.HierarchyPointNode<HierarchyNode>).x),
+              .x((d) => d.y)
+              .y((d) => d.x),
           );
 
         const node = g

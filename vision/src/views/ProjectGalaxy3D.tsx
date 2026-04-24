@@ -43,7 +43,7 @@ function communityColor(communityId: number | null): [number, number, number] {
 
 export function ProjectGalaxy3D(): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const deckRef = useRef<Deck | null>(null);
+  const deckRef = useRef<Deck<OrbitView> | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
   const [counts, setCounts] = useState<{ nodes: number; communities: number }>({
@@ -105,9 +105,9 @@ export function ProjectGalaxy3D(): JSX.Element {
           pickable: true,
         });
 
-        deckRef.current = new Deck({
+        deckRef.current = new Deck<OrbitView>({
           parent: containerRef.current,
-          views: [new OrbitView({ orbitAxis: "Y", fov: 50 })],
+          views: new OrbitView({ orbitAxis: "Y", fovy: 50 }),
           initialViewState: {
             target: [0, 0, 0],
             rotationX: 25,

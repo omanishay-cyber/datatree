@@ -135,6 +135,22 @@ fn security_negative_clean() {
     assert!(f.is_empty());
 }
 
+#[test]
+fn security_positive_rust_unsafe_block() {
+    let s = SecurityScanner::new();
+    let content = "fn raw() {\n    unsafe { *p = 1; }\n}";
+    let f = s.scan(&p("a.rs"), content, None);
+    assert!(f.iter().any(|x| x.rule_id == "security.rust-unsafe"));
+}
+
+#[test]
+fn security_negative_rust_forbid_unsafe_attr() {
+    let s = SecurityScanner::new();
+    let content = "#![forbid(unsafe_code)]\nfn safe() {}";
+    let f = s.scan(&p("a.rs"), content, None);
+    assert!(f.iter().all(|x| x.rule_id != "security.rust-unsafe"));
+}
+
 // ---------- A11yScanner ----------
 
 #[test]
@@ -189,6 +205,52 @@ fn perf_negative_useeffect_with_deps() {
     let content = "useEffect(() => { doThing(); }, [dep]);";
     let f = s.scan(&p("a.tsx"), content, None);
     assert!(f.iter().all(|x| x.rule_id != "perf.useeffect-no-deps"));
+}
+
+#[test]
+fn perf_positive_object_keys_foreach() {
+    let s = PerfScanner::new();
+    let content = "Object.keys(obj).forEach(k => { console.log(k); });";
+    let f = s.scan(&p("a.ts"), content, None);
+    assert!(f
+        .iter()
+        .any(|x| x.rule_id == "perf.objectkeys-foreach"));
+}
+
+#[test]
+fn perf_positive_array_from_in_loop() {
+    let s = PerfScanner::new();
+    let content = "for (const x of xs) {\n  const y = Array.from(x.values());\n}";
+    let f = s.scan(&p("a.ts"), content, None);
+    assert!(f.iter().any(|x| x.rule_id == "perf.array-from-in-loop"));
+}
+
+#[test]
+fn perf_negative_array_from_outside_loop() {
+    let s = PerfScanner::new();
+    let content = "const y = Array.from(map.values());";
+    let f = s.scan(&p("a.ts"), content, None);
+    assert!(f.iter().all(|x| x.rule_id != "perf.array-from-in-loop"));
+}
+
+#[test]
+fn perf_positive_rust_unwrap_in_async() {
+    let s = PerfScanner::new();
+    let content = "async fn load() -> usize {\n    let n = fetch().await.unwrap();\n    n\n}";
+    let f = s.scan(&p("a.rs"), content, None);
+    assert!(f
+        .iter()
+        .any(|x| x.rule_id == "perf.rust-unwrap-in-async"));
+}
+
+#[test]
+fn perf_negative_rust_unwrap_in_sync() {
+    let s = PerfScanner::new();
+    let content = "fn load() -> usize { let n = fetch().unwrap(); n }";
+    let f = s.scan(&p("a.rs"), content, None);
+    assert!(f
+        .iter()
+        .all(|x| x.rule_id != "perf.rust-unwrap-in-async"));
 }
 
 // ---------- DriftScanner ----------

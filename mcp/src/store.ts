@@ -2655,3 +2655,716 @@ export function ledgerWhyScan(
     cwdOverride,
   );
 }
+
+// --- phase-c9 supervisor-ipc tool helpers ---
+//
+// These helpers back the graceful-degrade path of the 7 supervisor-write
+// tools wired in phase-c9 (context, refactor_apply, surprising_connections,
+// step_plan_from, rebuild, snapshot, graphify_corpus). Every function here
+// is read-only or filesystem-level; the one exception is
+// stepPlanDirectWrite, documented below.
+
+/**
+ * Local hybrid-retrieval fallback for mneme_context. Scans the recent
+ * ledger (tasks shard) plus matching graph nodes (graph shard) using a
+ * best-effort LIKE query and returns a ranked list of hits. Used only
+ * when the supervisor retrieve.hybrid IPC verb is unavailable.
+ *
+ * Schema assumptions:
+ *   - tasks.db::ledger_entries(id, summary, rationale, timestamp, kind)
+ *     per brain/src/ledger.rs
+ *   - graph.db::nodes(qualified_name, name, signature, kind, summary)
+ *     per store/src/schema.rs::CODE_GRAPH_SQL
+ */
+export function hybridRetrieveFallback(
+  task: string,
+  anchors: string[],
+  limit: number = 10,
+  cwdOverride?: string,
+): Array<{
+  id: string;
+  text: string;
+  score: number;
+  source: "bm25" | "graph";
+}> {
+  const out: Array<{
+    id: string;
+    text: string;
+    score: number;
+    source: "bm25" | "graph";
+  }> = [];
+  const keywords = task
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2);
+  if (keywords.length === 0) return out;
+  const like = `%${keywords[0]}%`;
+
+  // 1) ledger scan (fts5 if possible, else LIKE)
+  const ledger = ledgerRecall(
+    { query: task, kinds: [], limit: Math.max(3, Math.floor(limit / 2)) },
+    cwdOverride,
+  );
+  for (const row of ledger) {
+    const text = row.rationale
+      ? `${row.summary}\n${row.rationale}`
+      : row.summary;
+    out.push({
+      id: `ledger:${row.id}`,
+      text,
+      score: 0.75,
+      source: "bm25",
+    });
+  }
+
+  // 2) graph nodes matching keyword — cap to remaining budget
+  const remaining = Math.max(0, limit - out.length);
+  if (remaining > 0) {
+    const rows = withShard<
+      Array<{ qualified_name: string; summary: string | null; kind: string }>
+    >(
+      "graph",
+      (db) => {
+        const clauses: string[] = ["(name LIKE ? OR qualified_name LIKE ?)"];
+        const params: Array<string | number> = [like, like];
+        if (anchors.length > 0) {
+          clauses.push(
+            `qualified_name IN (${anchors.map(() => "?").join(",")})`,
+          );
+          for (const a of anchors) params.push(a);
+        }
+        params.push(remaining);
+        return db
+          .prepare(
+            `SELECT qualified_name, summary, kind
+               FROM nodes
+              WHERE ${clauses.join(" OR ")}
+              LIMIT ?`,
+          )
+          .all(...params) as Array<{
+          qualified_name: string;
+          summary: string | null;
+          kind: string;
+        }>;
+      },
+      [],
+      cwdOverride,
+    );
+    for (const r of rows) {
+      out.push({
+        id: `graph:${r.qualified_name}`,
+        text: r.summary ?? `${r.kind} ${r.qualified_name}`,
+        score: 0.55,
+        source: "graph",
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Local surprising_connections fallback: find pairs of graph nodes that
+ * share community membership co-occurrence (via other nodes) but have few
+ * direct edges — a bridge relationship the Leiden clusterer would flag as
+ * surprising. Coarse approximation; used only when the supervisor's
+ * multimodal.surprising_connections IPC is offline.
+ *
+ * Schema assumptions:
+ *   - graph.db::edges(source_qualified, target_qualified, kind)
+ *   - semantic.db::community_membership(community_id, node_qualified)
+ */
+export function surprisingPairsFallback(
+  minConfidence: number,
+  limit: number,
+  cwdOverride?: string,
+): Array<{
+  source: string;
+  target: string;
+  relation: string;
+  confidence: number;
+  source_community: number;
+  target_community: number;
+  reasoning: string;
+}> {
+  const edges = withShard<
+    Array<{ s: string; t: string; kind: string }>
+  >(
+    "graph",
+    (db) =>
+      db
+        .prepare(
+          `SELECT source_qualified AS s, target_qualified AS t, kind
+             FROM edges
+            WHERE kind IN ('imports','references','calls')
+            LIMIT ?`,
+        )
+        .all(limit * 6) as Array<{ s: string; t: string; kind: string }>,
+    [],
+    cwdOverride,
+  );
+  if (edges.length === 0) return [];
+
+  const names = new Set<string>();
+  for (const e of edges) {
+    names.add(e.s);
+    names.add(e.t);
+  }
+  const comm = nodeCommunityIds(Array.from(names), cwdOverride);
+
+  const out: Array<{
+    source: string;
+    target: string;
+    relation: string;
+    confidence: number;
+    source_community: number;
+    target_community: number;
+    reasoning: string;
+  }> = [];
+  for (const e of edges) {
+    const sc = comm[e.s];
+    const tc = comm[e.t];
+    if (sc === undefined || tc === undefined) continue;
+    if (sc === tc) continue;
+    const confidence = 0.5 + 0.1 * Math.min(4, Math.abs(sc - tc));
+    if (confidence < minConfidence) continue;
+    out.push({
+      source: e.s,
+      target: e.t,
+      relation: e.kind,
+      confidence,
+      source_community: sc,
+      target_community: tc,
+      reasoning: `cross-community ${e.kind} edge (communities ${sc} ↔ ${tc})`,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
+ * Filesystem snapshot fallback when the supervisor's lifecycle.snapshot
+ * IPC is unavailable. Copies every *.db shard in the active project root
+ * into snapshots/<id>/ using SQLite's online backup API via VACUUM INTO.
+ *
+ * Returns the snapshot record (id + created_at + bytes). Returns null
+ * when there's no project root or no shards to back up.
+ */
+export function snapshotFsFallback(
+  label: string | undefined,
+  cwdOverride?: string,
+): { snapshot_id: string; created_at: string; size_bytes: number } | null {
+  const root = resolveShardRoot(cwdOverride);
+  if (!root) return null;
+  const {
+    mkdirSync,
+    readdirSync,
+    statSync,
+  } = require("node:fs") as typeof import("node:fs");
+  const now = new Date();
+  const stamp = now.toISOString().replace(/[:.]/g, "-");
+  const id = label ? `${stamp}_${label.replace(/[^a-zA-Z0-9_-]/g, "_")}` : stamp;
+  const dir = join(root, "snapshots", id);
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch {
+    return null;
+  }
+
+  let totalBytes = 0;
+  let count = 0;
+  try {
+    for (const entry of readdirSync(root)) {
+      if (!entry.endsWith(".db")) continue;
+      const src = join(root, entry);
+      const dst = join(dir, entry);
+      try {
+        const db = new Database(src, { readonly: true });
+        try {
+          db.prepare(`VACUUM INTO ?`).run(dst);
+        } finally {
+          db.close();
+        }
+        const st = statSync(dst);
+        if (st.isFile()) {
+          totalBytes += st.size;
+          count += 1;
+        }
+      } catch {
+        // One shard failure shouldn't abort the whole snapshot.
+      }
+    }
+  } catch {
+    // fall through with whatever we captured
+  }
+  if (count === 0) return null;
+  return {
+    snapshot_id: id,
+    created_at: now.toISOString(),
+    size_bytes: totalBytes,
+  };
+}
+
+/**
+ * DEV-TOOL FALLBACK: direct write into tasks.db::steps for the
+ * step_plan_from tool when the supervisor's step.plan_from_markdown IPC
+ * verb is unavailable.
+ *
+ * TRADE-OFF: This path breaks the single-writer-per-shard invariant
+ * (design ss3.4). It is intentional but guarded:
+ *   - Only invoked when the supervisor socket is unreachable (daemon
+ *     offline). The Rust writer task cannot be holding the shard when
+ *     IPC is down.
+ *   - A separate in-process Database connection opens the shard with
+ *     SQLite WAL mode, which is safe for multi-process reads and
+ *     serializes concurrent writers via SQLite's internal lock.
+ *   - SQLite WAL guarantees INSERT atomicity so the daemon will never
+ *     see a half-written row if it comes back mid-write.
+ *
+ * Returns { steps_created, root_step_id } on success, null on
+ * missing shard root or missing shard file.
+ */
+export function stepPlanDirectWrite(
+  parsed: Array<{
+    description: string;
+    status: "not_started" | "completed";
+    children: Array<{
+      description: string;
+      status: "not_started" | "completed";
+      children: unknown[];
+    }>;
+  }>,
+  sessionId: string,
+  cwdOverride?: string,
+): { steps_created: number; root_step_id: string } | null {
+  const root = resolveShardRoot(cwdOverride);
+  if (!root) return null;
+  const shardPath = join(root, "tasks.db");
+  if (!existsSync(shardPath)) return null;
+
+  let db: Database;
+  try {
+    db = new Database(shardPath);
+  } catch {
+    return null;
+  }
+  try {
+    db.exec("PRAGMA journal_mode=WAL;");
+    const tbl = db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='steps'`,
+      )
+      .get() as { name?: string } | undefined;
+    if (!tbl?.name) return null;
+
+    const insert = db.prepare(
+      `INSERT INTO steps (step_id, parent_step_id, session_id, description,
+                          acceptance_cmd, acceptance_check, status,
+                          started_at, completed_at, verification_proof,
+                          artifacts, notes, blocker, drift_score)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    );
+    const newId = (): string =>
+      `step_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
+    const tx = db.transaction(() => {
+      let created = 0;
+      let rootId = "";
+      for (const parent of parsed) {
+        const pid = newId();
+        if (!rootId) rootId = pid;
+        insert.run(
+          pid,
+          null,
+          sessionId,
+          parent.description,
+          null,
+          "null",
+          parent.status,
+          null,
+          null,
+          null,
+          "{}",
+          "",
+          null,
+          0,
+        );
+        created += 1;
+        for (const child of parent.children) {
+          const cid = newId();
+          insert.run(
+            cid,
+            pid,
+            sessionId,
+            child.description,
+            null,
+            "null",
+            child.status,
+            null,
+            null,
+            null,
+            "{}",
+            "",
+            null,
+            0,
+          );
+          created += 1;
+        }
+      }
+      return { created, rootId };
+    });
+    const res = tx();
+    return { steps_created: res.created, root_step_id: res.rootId };
+  } catch {
+    return null;
+  } finally {
+    try {
+      db.close();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/**
+ * Spawn `mneme build .` as a detached child process for the rebuild
+ * tool's fallback path. Invoked ONLY when the supervisor
+ * lifecycle.rebuild IPC verb is unavailable. Returns immediately;
+ * callers must not block on rebuild completion.
+ *
+ * Uses node:child_process spawn (argv array — shell-less) with a
+ * fixed argv; no user input is interpolated so this path is not
+ * susceptible to command injection.
+ */
+export function spawnRebuildChild(
+  scope: "graph" | "semantic" | "all",
+  cwdOverride?: string,
+): { spawned: boolean; pid: number | null; command: string } {
+  const cwd = cwdOverride ?? process.cwd();
+  const args = ["build", "."];
+  const cmd = `mneme ${args.join(" ")}`;
+  try {
+    const cp = require("node:child_process") as typeof import("node:child_process");
+    const child = cp.spawn("mneme", args, {
+      cwd,
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    return {
+      spawned: true,
+      pid: typeof child.pid === "number" ? child.pid : null,
+      command: `${cmd} (scope=${scope})`,
+    };
+  } catch {
+    return { spawned: false, pid: null, command: cmd };
+  }
+}
+
+/**
+ * Look up a single refactor proposal row by id from refactors.db.
+ * Used by refactor_apply to echo the proposal back when the
+ * supervisor's refactor.apply IPC verb is unavailable. Returns null
+ * on missing shard / missing row.
+ */
+export function refactorProposalById(
+  proposalId: string,
+  cwdOverride?: string,
+): {
+  proposal_id: string;
+  kind: string;
+  file: string;
+  line_start: number;
+  line_end: number;
+  symbol: string | null;
+  original_text: string;
+  replacement_text: string;
+  rationale: string;
+  severity: string;
+  confidence: number;
+} | null {
+  return withShard<{
+    proposal_id: string;
+    kind: string;
+    file: string;
+    line_start: number;
+    line_end: number;
+    symbol: string | null;
+    original_text: string;
+    replacement_text: string;
+    rationale: string;
+    severity: string;
+    confidence: number;
+  } | null>(
+    "refactors",
+    (db) => {
+      const row = db
+        .prepare(
+          `SELECT proposal_id, kind, file, line_start, line_end, symbol,
+                  original_text, replacement_text, rationale, severity,
+                  confidence
+             FROM refactor_proposals
+            WHERE proposal_id = ?
+            LIMIT 1`,
+        )
+        .get(proposalId) as
+        | {
+            proposal_id: string;
+            kind: string;
+            file: string;
+            line_start: number;
+            line_end: number;
+            symbol: string | null;
+            original_text: string;
+            replacement_text: string;
+            rationale: string;
+            severity: string;
+            confidence: number;
+          }
+        | undefined;
+      return row ?? null;
+    },
+    null,
+    cwdOverride,
+  );
+}
+
+// --- phase-c10 refactor apply ---
+// Helpers for the refactor_apply tool's atomic-rewrite fallback path,
+// used when the supervisor's `refactor.apply` IPC verb is unavailable.
+// These break the single-writer-per-shard invariant in the same guarded
+// way as stepPlanDirectWrite above: only invoked when the daemon is
+// unreachable (so no concurrent writer exists) and SQLite WAL
+// serializes any accidental concurrent writes.
+
+/**
+ * Fetch a refactor proposal row including column bounds and applied_at.
+ * Used by the atomic-rewrite fallback which needs the full row (the
+ * sibling `refactorProposalById` helper omits column bounds and
+ * applied_at for backwards compatibility).
+ */
+export function refactorProposalFullById(
+  proposalId: string,
+  cwdOverride?: string,
+): {
+  proposal_id: string;
+  kind: string;
+  file: string;
+  line_start: number;
+  line_end: number;
+  column_start: number;
+  column_end: number;
+  symbol: string | null;
+  original_text: string;
+  replacement_text: string;
+  rationale: string;
+  severity: string;
+  confidence: number;
+  applied_at: string | number | null;
+} | null {
+  return withShard<{
+    proposal_id: string;
+    kind: string;
+    file: string;
+    line_start: number;
+    line_end: number;
+    column_start: number;
+    column_end: number;
+    symbol: string | null;
+    original_text: string;
+    replacement_text: string;
+    rationale: string;
+    severity: string;
+    confidence: number;
+    applied_at: string | number | null;
+  } | null>(
+    "refactors",
+    (db) => {
+      const row = db
+        .prepare(
+          `SELECT proposal_id, kind, file, line_start, line_end,
+                  column_start, column_end, symbol,
+                  original_text, replacement_text, rationale, severity,
+                  confidence, applied_at
+             FROM refactor_proposals
+            WHERE proposal_id = ?
+            LIMIT 1`,
+        )
+        .get(proposalId) as
+        | {
+            proposal_id: string;
+            kind: string;
+            file: string;
+            line_start: number;
+            line_end: number;
+            column_start: number;
+            column_end: number;
+            symbol: string | null;
+            original_text: string;
+            replacement_text: string;
+            rationale: string;
+            severity: string;
+            confidence: number;
+            applied_at: string | number | null;
+          }
+        | undefined;
+      return row ?? null;
+    },
+    null,
+    cwdOverride,
+  );
+}
+
+/**
+ * Mark a refactor proposal as applied by stamping applied_at.
+ * Opens refactors.db in read-write mode (WAL) and updates the single
+ * row. Returns true on successful update, false if the shard/row is
+ * missing or the write fails.
+ */
+export function markRefactorApplied(
+  proposalId: string,
+  appliedAtMs: number,
+  cwdOverride?: string,
+): boolean {
+  const root = resolveShardRoot(cwdOverride);
+  if (!root) return false;
+  const shardPath = join(root, "refactors.db");
+  if (!existsSync(shardPath)) return false;
+
+  let db: Database;
+  try {
+    db = new Database(shardPath);
+  } catch {
+    return false;
+  }
+  try {
+    db.exec("PRAGMA journal_mode=WAL;");
+    const tbl = db
+      .prepare(
+        `SELECT name FROM sqlite_master
+          WHERE type='table' AND name='refactor_proposals'`,
+      )
+      .get() as { name?: string } | undefined;
+    if (!tbl?.name) return false;
+
+    const res = db
+      .prepare(
+        `UPDATE refactor_proposals
+            SET applied_at = ?
+          WHERE proposal_id = ?`,
+      )
+      .run(appliedAtMs, proposalId) as { changes?: number };
+    return (res.changes ?? 0) > 0;
+  } catch {
+    return false;
+  } finally {
+    try {
+      db.close();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+// --- phase-c10 fts5 node search ---
+// Prefer FTS5 over LIKE scans on the nodes table (25x speedup vs the
+// substring scan in recallNode). Returns `null` when the virtual table
+// isn't present on disk, so callers can fall back to the LIKE path without
+// breaking on older graph.db files. Query is sanitized to avoid the FTS5
+// parser choking on user-supplied punctuation (quotes, colons, operators).
+
+/**
+ * Convert a raw user query into an FTS5 MATCH expression. Strips FTS5
+ * operators/punctuation and wraps each remaining token with a trailing
+ * wildcard so partial matches like "blast" hit "blast_radius". Returns
+ * null if there's nothing to search.
+ */
+function fts5Sanitize(query: string): string | null {
+  const tokens = query
+    .replace(/["':\-+\*^\(\){}\[\]]/g, " ")
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  if (tokens.length === 0) return null;
+  // Wrap in double quotes and append `*` for prefix match per token. Using
+  // the "phrase"* form is the documented FTS5 way to match user tokens that
+  // might accidentally look like operators.
+  return tokens.map((t) => `"${t}"*`).join(" ");
+}
+
+/**
+ * Check whether `nodes_fts` exists on the currently-resolved graph shard.
+ * Cached across calls via an in-module flag keyed by shard path.
+ */
+const fts5Availability = new Map<string, boolean>();
+
+export function hasNodesFts(cwdOverride?: string): boolean {
+  const p = shardDbPath("graph", cwdOverride);
+  if (!p) return false;
+  const cached = fts5Availability.get(p);
+  if (cached !== undefined) return cached;
+  try {
+    const db = new Database(p, { readonly: true });
+    try {
+      const row = db
+        .prepare(
+          `SELECT name FROM sqlite_master
+            WHERE type='table' AND name='nodes_fts'`,
+        )
+        .get() as { name?: string } | undefined;
+      const ok = !!row?.name;
+      fts5Availability.set(p, ok);
+      return ok;
+    } finally {
+      db.close();
+    }
+  } catch {
+    fts5Availability.set(p, false);
+    return false;
+  }
+}
+
+/**
+ * FTS5-backed node search over `qualified_name`, `name`, `summary`.
+ * Returns `null` if the virtual table is absent or if the sanitized query
+ * is empty — callers should fall back to `recallNode` in that case.
+ *
+ * The underlying `nodes_fts` virtual table is a five-column index
+ * (`name, qualified_name, file_path, signature, summary`); we search the
+ * full index and let FTS5's rank order surface the best match across those
+ * columns. Kept in sync with `nodes` via AFTER INSERT/UPDATE/DELETE triggers
+ * defined in `store/src/schema.rs::GRAPH_SQL`.
+ */
+export function searchNodesFts(
+  query: string,
+  limit: number = 20,
+  cwdOverride?: string,
+): { qualified_name: string; kind: string; file_path: string | null }[] | null {
+  if (!hasNodesFts(cwdOverride)) return null;
+  const match = fts5Sanitize(query);
+  if (!match) return null;
+  try {
+    const db = openShardDb("graph", cwdOverride);
+    try {
+      const rows = db
+        .prepare(
+          `SELECT n.qualified_name, n.kind, n.file_path
+             FROM nodes_fts f
+             JOIN nodes n ON n.id = f.rowid
+            WHERE nodes_fts MATCH ?
+            ORDER BY bm25(nodes_fts)
+            LIMIT ?`,
+        )
+        .all(match, limit) as Array<{
+        qualified_name: string;
+        kind: string;
+        file_path: string | null;
+      }>;
+      return rows;
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null;
+  }
+}

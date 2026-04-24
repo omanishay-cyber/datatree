@@ -238,3 +238,54 @@ async fn dispatch_unknown_pool_returns_error() {
     let res = mgr.dispatch_to_pool("parser-worker-", "{}\n").await;
     assert!(res.is_err(), "dispatch with no live workers must error");
 }
+
+/// Verify that attaching a JobQueue + submitting jobs works, and that
+/// in-flight jobs are requeued when a worker exits. This is the core
+/// contract the v0.3 supervisor-mediated dispatch relies on.
+#[tokio::test]
+async fn job_queue_requeues_on_worker_exit() {
+    use crate::job_queue::JobQueue;
+    use common::jobs::Job;
+    let cfg = dummy_config();
+    let ring = Arc::new(crate::log_ring::LogRing::new(64));
+    let mgr = Arc::new(ChildManager::new(cfg, ring));
+    let queue = Arc::new(JobQueue::new(32));
+    mgr.attach_job_queue(queue.clone()).await;
+    // Submit a job, pretend the router assigned it, then simulate the
+    // worker crashing by calling requeue_worker directly (no real child
+    // in this test — the integration suite covers that path).
+    let id = queue
+        .submit(
+            Job::Parse {
+                file_path: "/tmp/x.rs".into(),
+                shard_root: "/tmp".into(),
+            },
+            None,
+        )
+        .expect("submit");
+    let (got, _) = queue.next_pending().expect("pending");
+    assert_eq!(got, id);
+    queue.mark_assigned(id, "parser-worker-0".into());
+    let n = queue.requeue_worker("parser-worker-0");
+    assert_eq!(n, 1);
+    assert_eq!(queue.snapshot().pending, 1);
+}
+
+/// Wire-compat check: the supervisor's ControlCommand serde shape must
+/// match the CLI's IpcRequest for DispatchJob, otherwise the CLI sending
+/// a DispatchJob would be rejected as malformed by the supervisor.
+#[test]
+fn dispatch_job_command_serde_shape_matches_cli() {
+    use crate::ipc::ControlCommand;
+    use common::jobs::Job;
+    let cmd = ControlCommand::DispatchJob {
+        job: Job::Parse {
+            file_path: "/a/b.rs".into(),
+            shard_root: "/shard".into(),
+        },
+    };
+    let wire = serde_json::to_value(&cmd).unwrap();
+    assert_eq!(wire["command"], "dispatch_job");
+    assert_eq!(wire["job"]["kind"], "parse");
+    assert_eq!(wire["job"]["file_path"], "/a/b.rs");
+}

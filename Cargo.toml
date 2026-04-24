@@ -93,8 +93,13 @@ console = "0.15"
 # UUID
 uuid = { version = "1.10", features = ["v4", "v7", "serde"] }
 
-# Embeddings (ONNX, optional per crate)
-ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray"] }
+# Embeddings (ONNX, optional per crate).
+#
+# `api-24` is required: ort 2.0.0-rc.12's `ep/vitis.rs` references
+# `SessionOptionsAppendExecutionProvider_VitisAI`, a symbol that only
+# exists in ort-sys's api-24 surface. Without it, compilation fails with
+# E0609 "no field on type `&'static OrtApi`".
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray", "api-24"] }
 tokenizers = { version = "0.20", default-features = false, features = ["onig"] }
 ndarray = "0.16"
 

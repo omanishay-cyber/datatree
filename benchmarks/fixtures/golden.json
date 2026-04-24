@@ -37,7 +37,10 @@
     "kind": "recall",
     "expected_top": [
       "common/src/paths.rs",
-      "common/src/lib.rs"
+      "common/src/lib.rs",
+      "store/src/lib.rs",
+      "cli/src/commands/build.rs",
+      "benchmarks/src/lib.rs"
     ]
   },
   {

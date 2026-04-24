@@ -34,7 +34,24 @@ static SET_STATE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"\bset[A-Z][A-Za-z0-9_]*\s*\(").expect("setState regex")
 });
 
-const PERF_EXTS: &[&str] = &["tsx", "jsx", "ts", "js"];
+/// `Object.keys(X).forEach(...)` chain — usually better expressed as
+/// `Object.entries(...).forEach(...)` or a plain `for...of` loop.
+static OBJECT_KEYS_FOREACH: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\bObject\.keys\s*\([^)]*\)\s*\.forEach\s*\(").expect("object.keys.forEach regex")
+});
+
+/// `Array.from(...)` inside the body of a `for (...)` loop or `while (...)`
+/// — heuristic flags the call itself; the `is_in_loop_body` helper verifies
+/// the surrounding context.
+static ARRAY_FROM: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\bArray\.from\s*\(").expect("array.from regex"));
+
+/// `.unwrap()` call — in Rust we flag these inside async functions / hot
+/// paths because a panic inside a Tokio task poisons the runtime.
+static RUST_UNWRAP: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\.unwrap\s*\(\s*\)").expect("rust unwrap regex"));
+
+const PERF_EXTS: &[&str] = &["tsx", "jsx", "ts", "js", "rs"];
 
 /// Performance scanner.
 pub struct PerfScanner;
@@ -147,8 +164,134 @@ impl Scanner for PerfScanner {
             }
         }
 
+        // 5. `Object.keys(X).forEach(...)` — usually better expressed as
+        //    `Object.entries(X).forEach(...)` or a plain `for...of` loop so
+        //    the value lookup doesn't re-happen per iteration.
+        for m in OBJECT_KEYS_FOREACH.find_iter(content) {
+            let (line, col) = line_col_of(content, m.start());
+            out.push(
+                Finding::new_line(
+                    "perf.objectkeys-foreach",
+                    Severity::Info,
+                    &file_str,
+                    line,
+                    col,
+                    col + (m.end() - m.start()) as u32,
+                    "Object.keys(...).forEach re-looks-up values — prefer Object.entries(...).forEach.",
+                )
+                .with_fix("Object.entries(".to_string()),
+            );
+        }
+
+        // 6. `Array.from(...)` inside a loop body.
+        for m in ARRAY_FROM.find_iter(content) {
+            if is_in_loop_body(content, m.start()) {
+                let (line, col) = line_col_of(content, m.start());
+                out.push(Finding::new_line(
+                    "perf.array-from-in-loop",
+                    Severity::Warning,
+                    &file_str,
+                    line,
+                    col,
+                    col + (m.end() - m.start()) as u32,
+                    "Array.from inside a loop allocates per iteration — hoist the call above the loop.",
+                ));
+            }
+        }
+
+        // 7. Rust-only pass: `.unwrap()` inside an `async` function.
+        let is_rust = file
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("rs"))
+            .unwrap_or(false);
+        if is_rust {
+            for m in RUST_UNWRAP.find_iter(content) {
+                if is_in_async_fn(content, m.start()) {
+                    let (line, col) = line_col_of(content, m.start());
+                    out.push(Finding::new_line(
+                        "perf.rust-unwrap-in-async",
+                        Severity::Warning,
+                        &file_str,
+                        line,
+                        col,
+                        col + (m.end() - m.start()) as u32,
+                        ".unwrap() inside async fn poisons the runtime on panic — propagate with ? or handle the error.",
+                    ));
+                }
+            }
+        }
+
         out
     }
+}
+
+/// True if `offset` is inside the body of a `for (...)` or `while (...)`
+/// loop in `content`. Cheap heuristic: walk backwards up to 2 KB looking
+/// for an opening `{` that is preceded by `for (` / `while (` / `for ...`
+/// at the same brace-depth.
+fn is_in_loop_body(content: &str, offset: usize) -> bool {
+    let start = offset.saturating_sub(2048);
+    let prefix = &content[start..offset];
+    let mut depth = 0i32;
+    let bytes = prefix.as_bytes();
+    let mut i = bytes.len();
+    while i > 0 {
+        i -= 1;
+        match bytes[i] {
+            b'}' => depth += 1,
+            b'{' => {
+                if depth == 0 {
+                    // We've found an enclosing `{`. Look at the text before
+                    // it for a loop keyword.
+                    let head_start = i.saturating_sub(80);
+                    let head = &prefix[head_start..i];
+                    if head.contains("for (")
+                        || head.contains("for(")
+                        || head.contains("while (")
+                        || head.contains("while(")
+                        || head.contains(".forEach(")
+                        || head.contains(".map(")
+                    {
+                        return true;
+                    }
+                    return false;
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// True if `offset` is inside an `async fn` body in `content`. Heuristic:
+/// walk backwards, find the nearest enclosing `{` at depth 0, look for
+/// `async fn` in the preceding 200 chars.
+fn is_in_async_fn(content: &str, offset: usize) -> bool {
+    let start = offset.saturating_sub(4096);
+    let prefix = &content[start..offset];
+    let mut depth = 0i32;
+    let bytes = prefix.as_bytes();
+    let mut i = bytes.len();
+    while i > 0 {
+        i -= 1;
+        match bytes[i] {
+            b'}' => depth += 1,
+            b'{' => {
+                if depth == 0 {
+                    let head_start = i.saturating_sub(200);
+                    let head = &prefix[head_start..i];
+                    return head.contains("async fn")
+                        || head.contains("async move {")
+                        || head.contains("async {");
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Given `content` and the byte index of an open `(`, return the byte

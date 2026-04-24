@@ -18,6 +18,7 @@ pub mod constraint;
 pub mod decision;
 pub mod step;
 pub mod event;
+pub mod jobs;
 
 pub use error::{DbError, DtError, DtResult};
 pub use ids::{ProjectId, RowId, SessionId, SnapshotId, StepId, NodeId, EdgeId};
@@ -33,3 +34,4 @@ pub use constraint::{Constraint, ConstraintScope};
 pub use decision::Decision;
 pub use step::{Step, StepStatus};
 pub use event::{Event, EventTopic};
+pub use jobs::{Job, JobId, JobOutcome};

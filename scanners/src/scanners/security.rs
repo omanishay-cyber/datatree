@@ -62,8 +62,15 @@ static SQL_CONCAT: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"(?i)\b(?:SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|WHERE)\b[^;`'"]{0,80}["']\s*\+\s*[A-Za-z_$]"#).expect("sql concat regex")
 });
 
+/// `unsafe { ... }` block or `unsafe fn ... { ... }` in Rust. The scanner
+/// only fires on `.rs` files, and only when a library-style crate is
+/// expected to be memory-safe (we do NOT special-case FFI crates here —
+/// projects that legitimately need `unsafe` should add a drift allowlist).
+static RUST_UNSAFE_BLOCK: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\bunsafe\s*(?:\{|fn\b)").expect("rust unsafe regex"));
+
 const SECURITY_EXTS: &[&str] = &[
-    "ts", "tsx", "js", "jsx", "mjs", "cjs", "html", "vue", "svelte",
+    "ts", "tsx", "js", "jsx", "mjs", "cjs", "html", "vue", "svelte", "rs",
 ];
 
 /// Pragmatic security scanner.
@@ -215,6 +222,29 @@ impl Scanner for SecurityScanner {
                 col + (m.end() - m.start()) as u32,
                 "Unparameterized SQL concatenation — use placeholder bindings (? or $1).",
             ));
+        }
+
+        // Rust-only pass: `unsafe { ... }` block or `unsafe fn ...`.
+        // The `#![forbid(unsafe_code)]` attribute at crate root disables
+        // this finding for crates that have already taken the hard line.
+        let is_rust = file
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("rs"))
+            .unwrap_or(false);
+        if is_rust && !content.contains("#![forbid(unsafe_code)]") {
+            for m in RUST_UNSAFE_BLOCK.find_iter(content) {
+                let (line, col) = line_col_of(content, m.start());
+                out.push(Finding::new_line(
+                    "security.rust-unsafe",
+                    Severity::Warning,
+                    &file_str,
+                    line,
+                    col,
+                    col + (m.end() - m.start()) as u32,
+                    "`unsafe` block in a crate without `#![forbid(unsafe_code)]` — justify with a // SAFETY comment or move behind a wrapper.",
+                ));
+            }
         }
 
         out

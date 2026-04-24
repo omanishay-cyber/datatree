@@ -40,6 +40,11 @@ interface ProxyEnvelope {
   query: Record<string, string>;
 }
 
+interface LivebusSocketData {
+  livebusUrl: string;
+  upstream?: WebSocket;
+}
+
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
     status,
@@ -216,7 +221,7 @@ async function proxyGraph(req: Request, url: URL): Promise<Response> {
   }
 }
 
-const server = Bun.serve({
+const server = Bun.serve<LivebusSocketData>({
   hostname: HOST,
   port: PORT,
   development: process.env.NODE_ENV !== "production",
@@ -393,7 +398,7 @@ const server = Bun.serve({
   websocket: {
     open(ws) {
       // Connect to upstream livebus and pipe both directions.
-      const data = ws.data as { livebusUrl: string; upstream?: WebSocket };
+      const data = ws.data;
       try {
         const upstream = new WebSocket(data.livebusUrl);
         data.upstream = upstream;
@@ -423,13 +428,13 @@ const server = Bun.serve({
       }
     },
     message(ws, message) {
-      const data = ws.data as { upstream?: WebSocket };
+      const data = ws.data;
       const upstream = data.upstream;
       if (!upstream || upstream.readyState !== WebSocket.OPEN) return;
       upstream.send(typeof message === "string" ? message : new Uint8Array(message));
     },
     close(ws) {
-      const data = ws.data as { upstream?: WebSocket };
+      const data = ws.data;
       try {
         data.upstream?.close();
       } catch {

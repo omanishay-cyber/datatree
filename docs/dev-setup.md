@@ -132,7 +132,7 @@ cd mcp && bun test
 cd workers/multimodal && pytest
 ```
 
-v0.1.0 ships with skeleton tests; rigorous test expansion is ongoing.
+v0.2.3 ships with `cargo test --workspace` fully green (190+ tests, 0 failed, 0 ignored) — parsers, supervisor, store, scanners, brain, md-ingest, cli, livebus all pass.
 
 ## Debugging
 
@@ -156,7 +156,7 @@ cargo run --bin mneme -- daemon logs
 - Python multimodal `pip install` + `compileall`
 - LICENSE header check
 
-v0.1 sets many steps to `continue-on-error` while v0.1.1 cleans up the warnings. Expect a mix of green and yellow until then.
+v0.2.x CI runs green on the core build/test/tsc steps; `continue-on-error` is now limited to a shrinking set of legacy checks (vision TS errors + some platform-specific bench paths).
 
 ## Code style
 

@@ -10,7 +10,9 @@
 
 use crate::child::ChildStatus;
 use crate::error::SupervisorError;
+use crate::job_queue::JobQueueSnapshot;
 use crate::manager::{ChildManager, ChildSnapshot};
+use common::jobs::{Job, JobId, JobOutcome};
 use interprocess::local_socket::tokio::{Listener, Stream};
 use interprocess::local_socket::traits::tokio::Listener as _;
 use interprocess::local_socket::traits::tokio::Stream as IpcStreamExt;
@@ -67,6 +69,25 @@ pub enum ControlCommand {
         /// JSON payload handed verbatim to the worker.
         payload: String,
     },
+    /// (v0.3) Queue a structured `Job`. Supervisor owns routing, retry
+    /// on worker crash, and back-pressure. Returns [`ControlResponse::Job
+    /// Queued`] with a [`JobId`] the CLI can poll for completion.
+    DispatchJob {
+        /// The job to queue.
+        job: Job,
+    },
+    /// (v0.3) Worker-side notification that a job finished. Payload is
+    /// opaque — the CLI interprets it based on the original `Job` kind.
+    WorkerCompleteJob {
+        /// Job identifier minted by the supervisor at `DispatchJob` time.
+        job_id: JobId,
+        /// Outcome reported by the worker.
+        outcome: JobOutcome,
+    },
+    /// (v0.3) Return the current job-queue snapshot (pending/in-flight
+    /// counts + cumulative totals). Used by `mneme status --jobs` and
+    /// the CLI wait loop.
+    JobQueueStatus,
 }
 
 /// Responses sent back over the same connection.
@@ -89,6 +110,16 @@ pub enum ControlResponse {
     Dispatched {
         /// Worker that accepted the job.
         worker: String,
+    },
+    /// (v0.3) `DispatchJob` accepted — returns the opaque `JobId`.
+    JobQueued {
+        /// Supervisor-assigned job id.
+        job_id: JobId,
+    },
+    /// (v0.3) Snapshot of the job queue.
+    JobQueue {
+        /// Queue stats.
+        snapshot: JobQueueSnapshot,
     },
     /// Generic OK acknowledgement.
     Ok {
@@ -293,6 +324,38 @@ async fn dispatch(
                 Err(e) => ControlResponse::Error {
                     message: e.to_string(),
                 },
+            }
+        }
+        ControlCommand::DispatchJob { job } => {
+            let Some(queue) = manager.job_queue().await else {
+                return ControlResponse::Error {
+                    message: "supervisor job queue is not attached".into(),
+                };
+            };
+            match queue.submit(job, None) {
+                Ok(job_id) => ControlResponse::JobQueued { job_id },
+                Err(e) => ControlResponse::Error {
+                    message: e.to_string(),
+                },
+            }
+        }
+        ControlCommand::WorkerCompleteJob { job_id, outcome } => {
+            let Some(queue) = manager.job_queue().await else {
+                return ControlResponse::Error {
+                    message: "supervisor job queue is not attached".into(),
+                };
+            };
+            queue.complete(job_id, outcome);
+            ControlResponse::Ok { message: None }
+        }
+        ControlCommand::JobQueueStatus => {
+            let Some(queue) = manager.job_queue().await else {
+                return ControlResponse::Error {
+                    message: "supervisor job queue is not attached".into(),
+                };
+            };
+            ControlResponse::JobQueue {
+                snapshot: queue.snapshot(),
             }
         }
     }
