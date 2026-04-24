@@ -111,3 +111,67 @@ jobs:
       - uses: actions/checkout@v4
       - name: LICENSE file exists
         run: test -f LICENSE && grep -qi "apache license" LICENSE
+
+  audit:
+    name: Cargo audit (RUSTSEC advisories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+      - name: Run cargo audit
+        # v0.1 tolerates findings, v0.2 flips to fail-fast. Listing them is
+        # already 80 percent of the value; we want to see them in CI logs
+        # without breaking the green light until we have a triage process.
+        run: cargo audit --json
+        continue-on-error: true
+
+  deny:
+    name: Cargo deny (license + bans + duplicates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check
+          arguments: --all-features
+        continue-on-error: true  # v0.1 tolerated, v0.2 enforced
+
+  doctor-paths:
+    name: Doctor cross-platform path tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run doctor_paths integration test
+        run: cargo test --release -p mneme-cli --test doctor_paths
+        continue-on-error: true  # v0.1 tolerated until we wire fixtures everywhere
+
+  e2e-big-repo:
+    name: E2E build + recall + blast on a real repo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build mneme release binary
+        run: cargo build --release -p mneme-cli --bin mneme
+      - name: Build supervisor
+        run: cargo build --release -p mneme-daemon
+      - name: Build all workers
+        run: cargo build --release --workspace --bins
+      - name: Run e2e (clones a fixture repo, builds, recalls, blasts)
+        env:
+          MNEME_BIN: ${{ github.workspace }}/target/release/mneme
+        run: cargo test --release -p mneme-cli --test e2e_big_repo -- --ignored --nocapture
+        continue-on-error: true  # v0.1 tolerated; v0.2 makes this gating

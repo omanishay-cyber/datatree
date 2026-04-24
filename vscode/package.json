@@ -1,0 +1,76 @@
+{
+  "name": "mneme-vscode",
+  "displayName": "Mneme",
+  "description": "Local-first persistent memory and code graph for AI agents. Auto-registers the mneme MCP server and adds palette commands.",
+  "version": "0.1.0",
+  "publisher": "anishtrivedi",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Anish Trivedi"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omanishay-cyber/mneme"
+  },
+  "homepage": "https://github.com/omanishay-cyber/mneme#readme",
+  "bugs": {
+    "url": "https://github.com/omanishay-cyber/mneme/issues"
+  },
+  "icon": "images/icon.png",
+  "categories": [
+    "Other",
+    "Machine Learning",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "mneme",
+    "mcp",
+    "memory",
+    "ai",
+    "agent",
+    "code-graph",
+    "local-first"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      { "command": "mneme.build", "title": "Mneme: Build current workspace" },
+      { "command": "mneme.doctor", "title": "Mneme: Doctor" },
+      { "command": "mneme.recall", "title": "Mneme: Recall" },
+      { "command": "mneme.viewVision", "title": "Mneme: Open Live Graph (Vision)" },
+      { "command": "mneme.daemonStart", "title": "Mneme: Start daemon" },
+      { "command": "mneme.daemonStop", "title": "Mneme: Stop daemon" }
+    ],
+    "configuration": {
+      "title": "Mneme",
+      "properties": {
+        "mneme.binaryPath": {
+          "type": "string",
+          "default": "mneme",
+          "description": "Path to the mneme binary. Default looks for 'mneme' on PATH; set an absolute path if your shell environment doesn't propagate to VS Code."
+        },
+        "mneme.autoRegisterMCP": {
+          "type": "boolean",
+          "default": true,
+          "description": "On activation, run `mneme register-mcp --platform vscode` so VS Code's Copilot Chat / Claude Code extension can see the mneme MCP server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}

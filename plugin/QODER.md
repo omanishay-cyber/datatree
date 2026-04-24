@@ -39,4 +39,17 @@ ledger. After Qoder restarts or compacts, call `step_resume()` first.
 
 No outbound network calls. All inference and embeddings run locally.
 
+## Workflow Codewords
+
+When the user starts a message with one of these single words, switch how you engage:
+
+| Word | What it means |
+|---|---|
+| `coldstart` | Pause. Observe only. Read context, draft a plan, do not touch code. Wait for `hotstart` or `firestart` before doing anything. |
+| `hotstart` | Resume with discipline. Numbered roadmap. Verify each step before moving to the next. |
+| `firestart` | Maximum loadout. Load every fireworks skill that matches the task, prime the mneme graph (`god_nodes`, `audit_corpus`, `recall_decision`), then proceed with `hotstart` discipline. |
+| `CHS` | "Check my screenshot" - read the latest file in the user's OS-native screenshot folder (Windows `Pictures/Screenshots`, macOS `Desktop`, Linux `Pictures/Screenshots`) and respond based on its contents. |
+
+These are not casual conversation. Treat them as commands. Full protocol per codeword lives in `~/.mneme/plugin/skills/mneme-codewords/SKILL.md`.
+
 <!-- mneme-end v1.0 -->
