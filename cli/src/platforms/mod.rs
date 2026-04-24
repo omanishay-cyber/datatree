@@ -498,7 +498,17 @@ pub fn remove_mcp_entry(
     Ok(())
 }
 
+/// Strip a UTF-8 BOM (EF BB BF) from the head of a string, if present.
+/// PowerShell's `Set-Content -Encoding UTF8` adds a BOM that makes
+/// `serde_json::from_str` fail with "expected value at line 1 column 1",
+/// which bricked `mneme register-mcp --platform claude-code` on the
+/// VM test harness. Strip defensively in every JSON read path.
+fn strip_bom(s: &str) -> &str {
+    s.strip_prefix('\u{feff}').unwrap_or(s)
+}
+
 fn merge_mcp_json_object(existing: &str) -> CliResult<String> {
+    let existing = strip_bom(existing);
     let mut value: serde_json::Value = if existing.trim().is_empty() {
         serde_json::json!({})
     } else {
@@ -518,6 +528,7 @@ fn merge_mcp_json_object(existing: &str) -> CliResult<String> {
 }
 
 fn strip_mcp_json_object(existing: &str) -> CliResult<String> {
+    let existing = strip_bom(existing);
     let mut value: serde_json::Value = serde_json::from_str(existing)?;
     if let Some(servers) = value
         .get_mut("mcpServers")
@@ -529,6 +540,7 @@ fn strip_mcp_json_object(existing: &str) -> CliResult<String> {
 }
 
 fn merge_mcp_json_array(existing: &str) -> CliResult<String> {
+    let existing = strip_bom(existing);
     let mut value: serde_json::Value = if existing.trim().is_empty() {
         serde_json::json!({"mcpServers": []})
     } else {
@@ -553,6 +565,7 @@ fn merge_mcp_json_array(existing: &str) -> CliResult<String> {
 }
 
 fn strip_mcp_json_array(existing: &str) -> CliResult<String> {
+    let existing = strip_bom(existing);
     let mut value: serde_json::Value = serde_json::from_str(existing)?;
     if let Some(arr) = value
         .get_mut("mcpServers")

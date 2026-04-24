@@ -116,6 +116,124 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         );
         line("restarts", &restarts.to_string());
         println!("└─────────────────────────────────────────────────────────┘");
+        println!();
+
+        // Per-worker breakdown — one row per worker with status + pid +
+        // uptime. Humans can tell which worker is failing at a glance.
+        println!("┌─────────────────────────────────────────────────────────┐");
+        println!("│ per-worker health                                       │");
+        println!("├─────────────────────────────────────────────────────────┤");
+        for child in children {
+            let name = child
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let status = child
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let pid = child
+                .get("pid")
+                .and_then(|v| v.as_u64())
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            let uptime_ms = child
+                .get("current_uptime_ms")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let restarts = child
+                .get("restart_count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let mark = match status {
+                "running" | "healthy" => "✓",
+                "pending" | "starting" => "…",
+                "failed" | "crashed" => "✗",
+                _ => "?",
+            };
+            let uptime_str = if uptime_ms > 0 {
+                format!("{}s", uptime_ms / 1000)
+            } else {
+                "-".to_string()
+            };
+            line(
+                &format!("{mark} {name}"),
+                &format!(
+                    "status={status:<9}  pid={pid:<6}  uptime={uptime_str:<6}  restarts={restarts}"
+                ),
+            );
+        }
+        println!("└─────────────────────────────────────────────────────────┘");
+
+        // Per-binary health — does every expected mneme-* binary live
+        // on disk next to `mneme.exe`?
+        println!();
+        println!("┌─────────────────────────────────────────────────────────┐");
+        println!("│ binaries on disk                                        │");
+        println!("├─────────────────────────────────────────────────────────┤");
+        let bin_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+        if let Some(dir) = bin_dir {
+            for b in [
+                "mneme.exe",
+                "mneme-daemon.exe",
+                "mneme-brain.exe",
+                "mneme-parsers.exe",
+                "mneme-scanners.exe",
+                "mneme-livebus.exe",
+                "mneme-md-ingest.exe",
+                "mneme-store.exe",
+                "mneme-multimodal.exe",
+            ] {
+                let p = dir.join(b);
+                let ok = p.exists();
+                let size = if ok {
+                    std::fs::metadata(&p)
+                        .map(|m| format!("{:.1} MB", m.len() as f64 / 1_048_576.0))
+                        .unwrap_or_else(|_| "?".to_string())
+                } else {
+                    "MISSING".to_string()
+                };
+                let mark = if ok { "✓" } else { "✗" };
+                line(&format!("{mark} {b}"), &size);
+            }
+        }
+        println!("└─────────────────────────────────────────────────────────┘");
+
+        // MCP bridge health — does `~/.mneme/mcp/src/index.ts` exist?
+        // Is `bun` on PATH?
+        println!();
+        println!("┌─────────────────────────────────────────────────────────┐");
+        println!("│ MCP bridge                                              │");
+        println!("├─────────────────────────────────────────────────────────┤");
+        let home = dirs::home_dir();
+        let mcp_entry = home
+            .as_ref()
+            .map(|h| h.join(".mneme").join("mcp").join("src").join("index.ts"));
+        let mcp_exists = mcp_entry
+            .as_ref()
+            .map(|p| p.exists())
+            .unwrap_or(false);
+        line(
+            if mcp_exists { "✓ MCP entry" } else { "✗ MCP entry" },
+            mcp_entry
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "?".into())
+                .as_str(),
+        );
+        let bun_on_path = which_on_path("bun");
+        line(
+            if bun_on_path.is_some() {
+                "✓ bun runtime"
+            } else {
+                "✗ bun runtime"
+            },
+            bun_on_path.as_deref().unwrap_or("not on PATH"),
+        );
+        println!("└─────────────────────────────────────────────────────────┘");
+
         if args.json {
             println!();
             println!("raw status:");
@@ -126,6 +244,27 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         warn!(?resp, "supervisor returned non-status response");
     }
     Ok(())
+}
+
+/// Locate an executable on PATH. Returns the absolute path if found.
+fn which_on_path(name: &str) -> Option<String> {
+    let sep = if cfg!(windows) { ';' } else { ':' };
+    let exts: &[&str] = if cfg!(windows) {
+        &[".exe", ".cmd", ".bat", ""]
+    } else {
+        &[""]
+    };
+    let path = std::env::var_os("PATH")?;
+    let s = path.to_string_lossy();
+    for dir in s.split(sep) {
+        for ext in exts {
+            let candidate = std::path::PathBuf::from(dir).join(format!("{name}{ext}"));
+            if candidate.is_file() {
+                return Some(candidate.display().to_string());
+            }
+        }
+    }
+    None
 }
 
 fn line(label: &str, value: &str) {
