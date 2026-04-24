@@ -155,6 +155,21 @@ jobs:
             echo "value=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Create GitHub release if missing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1 ; then
+            echo "Release page for $TAG not found — creating it now"
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Mneme $TAG" \
+              --generate-notes
+          else
+            echo "Release page for $TAG already exists — skipping create"
+          fi
+
       - name: Upload to GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
