@@ -8,10 +8,16 @@
  *   * top-K bridge nodes by betweenness centrality
  *   * top-K hub nodes by weighted degree
  *
- * The Rust supervisor method `architecture.overview` runs the analyser in
- * `scanners::scanners::architecture` over the current graph and, when
- * `refresh` is true, writes a fresh row to `architecture_snapshots`
- * before returning it.
+ * v0.2 (phase-c8 wiring): reads `architecture.db → architecture_snapshots`
+ * directly via `bun:sqlite` (see store.ts::latestArchitectureSnapshot).
+ * When the snapshot table is empty (the analyzer hasn't run yet), we
+ * graceful-degrade to a live overview derived from the graph + semantic
+ * shards (node/edge counts + hub_nodes via god-node degrees).
+ *
+ * `refresh=true` is honored only via the supervisor: computing a fresh
+ * Leiden partition + betweenness centrality requires the scanners layer.
+ * If the supervisor is offline we fall through to the cached snapshot and,
+ * failing that, to the live overview — never throws.
  *
  * Hot-reload safe: no module-level mutable state.
  */
@@ -22,9 +28,27 @@ import {
   type ToolDescriptor,
 } from "../types.ts";
 import { query as dbQuery } from "../db.ts";
+import {
+  architectureLiveOverview,
+  latestArchitectureSnapshot,
+  shardDbPath,
+} from "../store.ts";
 
 type Input = ReturnType<typeof ArchitectureOverviewInput.parse>;
 type Output = ReturnType<typeof ArchitectureOverviewOutput.parse>;
+
+function emptyOutput(): Output {
+  return {
+    community_count: 0,
+    node_count: 0,
+    edge_count: 0,
+    coupling_matrix: [],
+    risk_index: [],
+    bridge_nodes: [],
+    hub_nodes: [],
+    captured_at: new Date().toISOString(),
+  };
+}
 
 export const tool: ToolDescriptor<Input, Output> = {
   name: "architecture_overview",
@@ -34,35 +58,56 @@ export const tool: ToolDescriptor<Input, Output> = {
   outputSchema: ArchitectureOverviewOutput,
   category: "graph",
   async handler(input) {
-    const raw = await dbQuery
-      .raw<Partial<Output>>("architecture.overview", {
-        project: input.project,
-        refresh: input.refresh,
-        top_k: input.top_k,
-      })
-      .catch(() => null);
+    // Honor refresh=true via the supervisor — only it can run the analyzer.
+    // If the daemon is offline we silently drop through to the cached path.
+    if (input.refresh) {
+      const raw = await dbQuery
+        .raw<Partial<Output>>("architecture.overview", {
+          project: input.project,
+          refresh: true,
+          top_k: input.top_k,
+        })
+        .catch(() => null);
+      if (raw) {
+        const parsed = ArchitectureOverviewOutput.safeParse(raw);
+        if (parsed.success) return parsed.data;
+      }
+      // fall through to local read
+    }
 
-    if (!raw) {
+    // Cached snapshot — the hot path in steady state.
+    if (shardDbPath("architecture")) {
+      const snap = latestArchitectureSnapshot();
+      if (snap) {
+        const parsed = ArchitectureOverviewOutput.safeParse({
+          community_count: snap.community_count,
+          node_count: snap.node_count,
+          edge_count: snap.edge_count,
+          coupling_matrix: snap.coupling_matrix,
+          risk_index: snap.risk_index,
+          bridge_nodes: snap.bridge_nodes,
+          hub_nodes: snap.hub_nodes,
+          captured_at: snap.captured_at,
+        });
+        if (parsed.success) return parsed.data;
+      }
+    }
+
+    // Live fallback: derive what we can from graph + semantic shards.
+    if (shardDbPath("graph")) {
+      const live = architectureLiveOverview(input.top_k);
       return {
-        community_count: 0,
-        node_count: 0,
-        edge_count: 0,
+        community_count: live.community_count,
+        node_count: live.node_count,
+        edge_count: live.edge_count,
         coupling_matrix: [],
         risk_index: [],
         bridge_nodes: [],
-        hub_nodes: [],
+        hub_nodes: live.hub_nodes,
         captured_at: new Date().toISOString(),
       };
     }
-    return {
-      community_count: raw.community_count ?? 0,
-      node_count: raw.node_count ?? 0,
-      edge_count: raw.edge_count ?? 0,
-      coupling_matrix: raw.coupling_matrix ?? [],
-      risk_index: raw.risk_index ?? [],
-      bridge_nodes: raw.bridge_nodes ?? [],
-      hub_nodes: raw.hub_nodes ?? [],
-      captured_at: raw.captured_at ?? new Date().toISOString(),
-    };
+
+    return emptyOutput();
   },
 };

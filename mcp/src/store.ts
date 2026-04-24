@@ -2063,3 +2063,595 @@ export function verificationGateForSession(
     cwdOverride,
   );
 }
+
+// --- phase-c8 tool helpers ---
+// One consolidated section for the phase-c8 wiring pass. Each helper is
+// defensive: returns an empty/default value on missing shard or query error.
+//
+// Contract with the tool layer:
+//   - Read-only against one shard.
+//   - Never throws; graceful-degrade to the declared default.
+//   - All row shapes are typed at the call site so the tool can map them
+//     directly onto its zod output schema without `any`.
+
+/**
+ * Latest row from `architecture.db::architecture_snapshots`, already
+ * JSON-decoded. Returns null when the shard is missing, the table is empty,
+ * or a column fails to parse.
+ */
+export function latestArchitectureSnapshot(cwdOverride?: string): {
+  community_count: number;
+  node_count: number;
+  edge_count: number;
+  coupling_matrix: unknown[];
+  risk_index: unknown[];
+  bridge_nodes: unknown[];
+  hub_nodes: unknown[];
+  captured_at: string;
+} | null {
+  return withShard<{
+    community_count: number;
+    node_count: number;
+    edge_count: number;
+    coupling_matrix: unknown[];
+    risk_index: unknown[];
+    bridge_nodes: unknown[];
+    hub_nodes: unknown[];
+    captured_at: string;
+  } | null>(
+    "architecture",
+    (db) => {
+      const row = db
+        .prepare(
+          `SELECT captured_at, community_count, node_count, edge_count,
+                  coupling_matrix, risk_index, bridge_nodes, hub_nodes
+             FROM architecture_snapshots
+            ORDER BY captured_at DESC, id DESC
+            LIMIT 1`,
+        )
+        .get() as
+        | {
+            captured_at: string;
+            community_count: number;
+            node_count: number;
+            edge_count: number;
+            coupling_matrix: string;
+            risk_index: string;
+            bridge_nodes: string;
+            hub_nodes: string;
+          }
+        | undefined;
+      if (!row) return null;
+
+      const parseArr = (raw: string): unknown[] => {
+        try {
+          const v = JSON.parse(raw) as unknown;
+          return Array.isArray(v) ? v : [];
+        } catch {
+          return [];
+        }
+      };
+
+      return {
+        community_count: row.community_count,
+        node_count: row.node_count,
+        edge_count: row.edge_count,
+        coupling_matrix: parseArr(row.coupling_matrix),
+        risk_index: parseArr(row.risk_index),
+        bridge_nodes: parseArr(row.bridge_nodes),
+        hub_nodes: parseArr(row.hub_nodes),
+        captured_at: row.captured_at,
+      };
+    },
+    null,
+    cwdOverride,
+  );
+}
+
+/**
+ * Live fallback when no `architecture_snapshots` row exists yet: compute a
+ * minimal overview from the graph + semantic shards alone.
+ *
+ * - `community_count` from `semantic.communities`
+ * - `node_count` / `edge_count` from `graph.nodes` + `graph.edges`
+ * - `hub_nodes` derived from `godNodesTopN` + `nodeCommunityIds`
+ * - Other fields left empty — they require the architecture analyzer to
+ *   have run (we never compute Leiden or betweenness in the MCP layer).
+ */
+export function architectureLiveOverview(
+  topK: number,
+  cwdOverride?: string,
+): {
+  community_count: number;
+  node_count: number;
+  edge_count: number;
+  hub_nodes: Array<{
+    qualified_name: string;
+    community_id: number;
+    degree: number;
+  }>;
+} {
+  let community_count = 0;
+  const communityRow = withShard<{ c: number } | null>(
+    "semantic",
+    (db) =>
+      (db.prepare(`SELECT COUNT(*) AS c FROM communities`).get() as
+        | { c: number }
+        | undefined) ?? null,
+    null,
+    cwdOverride,
+  );
+  if (communityRow) community_count = communityRow.c;
+
+  let node_count = 0;
+  let edge_count = 0;
+  withShard<null>(
+    "graph",
+    (db) => {
+      const n = db.prepare(`SELECT COUNT(*) AS c FROM nodes`).get() as
+        | { c: number }
+        | undefined;
+      const e = db.prepare(`SELECT COUNT(*) AS c FROM edges`).get() as
+        | { c: number }
+        | undefined;
+      node_count = n?.c ?? 0;
+      edge_count = e?.c ?? 0;
+      return null;
+    },
+    null,
+    cwdOverride,
+  );
+
+  const hubs = godNodesTopN(topK, cwdOverride);
+  const communityMap = nodeCommunityIds(
+    hubs.map((h) => h.qualified_name),
+    cwdOverride,
+  );
+  const hub_nodes = hubs.map((h) => ({
+    qualified_name: h.qualified_name,
+    community_id: communityMap[h.qualified_name] ?? -1,
+    degree: h.degree,
+  }));
+
+  return { community_count, node_count, edge_count, hub_nodes };
+}
+
+// -- tasks shard (ledger recall / resume / why) ---------------------------
+
+/** Raw ledger row used by recall / resume / why local fallbacks. */
+export interface LedgerRawRow {
+  id: string;
+  session_id: string;
+  timestamp: number;
+  kind: string;
+  summary: string;
+  rationale: string | null;
+  touched_files: string;
+  touched_concepts: string;
+  transcript_ref: string | null;
+  kind_payload: string;
+}
+
+/**
+ * Free-form ledger recall — used by `mneme_recall` as the local fallback
+ * when the supervisor IPC is offline. Mirrors the Rust `ledger.recall` shape
+ * (text + kinds + since + session filter) but always reads the correct
+ * per-project tasks.db via the canonical ProjectId hash (NOT the legacy
+ * 16-char slice that earlier callers used).
+ */
+export function ledgerRecall(
+  args: {
+    query: string;
+    kinds: string[];
+    limit: number;
+    sinceMillis?: number;
+    sessionId?: string;
+  },
+  cwdOverride?: string,
+): LedgerRawRow[] {
+  return withShard<LedgerRawRow[]>(
+    "tasks",
+    (db) => {
+      const conds: string[] = ["1=1"];
+      const params: Array<string | number> = [];
+      if (args.kinds.length > 0) {
+        conds.push(`kind IN (${args.kinds.map(() => "?").join(",")})`);
+        for (const k of args.kinds) params.push(k);
+      }
+      if (args.sinceMillis !== undefined) {
+        conds.push("timestamp >= ?");
+        params.push(args.sinceMillis);
+      }
+      if (args.sessionId) {
+        conds.push("session_id = ?");
+        params.push(args.sessionId);
+      }
+
+      const text = args.query.trim();
+      if (text.length > 0) {
+        try {
+          const ftsExpr = text
+            .replace(/[^a-zA-Z0-9 ]+/g, " ")
+            .trim()
+            .split(/\s+/)
+            .filter((w) => w.length > 0)
+            .map((w) => `${w}*`)
+            .join(" OR ");
+          if (ftsExpr.length > 0) {
+            const hitIds = (
+              db
+                .prepare(
+                  `SELECT ledger_entries.id AS id FROM ledger_entries_fts
+                   JOIN ledger_entries
+                     ON ledger_entries._rowid_ = ledger_entries_fts.rowid
+                   WHERE ledger_entries_fts MATCH ?`,
+                )
+                .all(ftsExpr) as Array<{ id: string }>
+            ).map((r) => r.id);
+            if (hitIds.length > 0) {
+              conds.push(`id IN (${hitIds.map(() => "?").join(",")})`);
+              for (const h of hitIds) params.push(h);
+            } else {
+              conds.push("(summary LIKE ? OR rationale LIKE ?)");
+              const like = `%${text.replace(/[%_]/g, "")}%`;
+              params.push(like, like);
+            }
+          }
+        } catch {
+          conds.push("(summary LIKE ? OR rationale LIKE ?)");
+          const like = `%${text.replace(/[%_]/g, "")}%`;
+          params.push(like, like);
+        }
+      }
+
+      params.push(args.limit);
+      const sql = `SELECT id, session_id, timestamp, kind, summary, rationale,
+                          touched_files, touched_concepts, transcript_ref,
+                          kind_payload
+                   FROM ledger_entries
+                   WHERE ${conds.join(" AND ")}
+                   ORDER BY timestamp DESC
+                   LIMIT ?`;
+      return db.prepare(sql).all(...params) as LedgerRawRow[];
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+/**
+ * Resume bundle source rows for `mneme_resume`. Reads four slices in a
+ * single shard open: timeline, recent decisions, recent impls/refactors,
+ * open_questions (full; client-side filters by resolved_by).
+ */
+export function ledgerResumeBundle(
+  sinceMillis: number,
+  cwdOverride?: string,
+): {
+  timeline: LedgerRawRow[];
+  recent_decisions: LedgerRawRow[];
+  recent_implementations: LedgerRawRow[];
+  open_questions: LedgerRawRow[];
+} {
+  return withShard<{
+    timeline: LedgerRawRow[];
+    recent_decisions: LedgerRawRow[];
+    recent_implementations: LedgerRawRow[];
+    open_questions: LedgerRawRow[];
+  }>(
+    "tasks",
+    (db) => {
+      const baseCols =
+        "id, session_id, timestamp, kind, summary, rationale, " +
+        "touched_files, touched_concepts, transcript_ref, kind_payload";
+
+      const pick = (kinds: string[], limit: number): LedgerRawRow[] => {
+        const kindClause =
+          kinds.length > 0
+            ? `AND kind IN (${kinds.map(() => "?").join(",")})`
+            : "";
+        const sql = `SELECT ${baseCols} FROM ledger_entries
+                     WHERE timestamp >= ? ${kindClause}
+                     ORDER BY timestamp DESC LIMIT ?`;
+        const params: Array<string | number> = [sinceMillis, ...kinds, limit];
+        return db.prepare(sql).all(...params) as LedgerRawRow[];
+      };
+
+      const timeline = pick([], 50);
+      const recent_decisions = pick(["decision"], 10);
+      const recent_implementations = pick(["impl", "refactor"], 10);
+      const open_questions = db
+        .prepare(
+          `SELECT ${baseCols} FROM ledger_entries
+           WHERE kind = 'open_question'
+           ORDER BY timestamp DESC LIMIT 50`,
+        )
+        .all() as LedgerRawRow[];
+
+      return {
+        timeline,
+        recent_decisions,
+        recent_implementations,
+        open_questions,
+      };
+    },
+    {
+      timeline: [],
+      recent_decisions: [],
+      recent_implementations: [],
+      open_questions: [],
+    },
+    cwdOverride,
+  );
+}
+
+/**
+ * Fetch one wiki page by slug + version from `wiki.db::wiki_pages`.
+ * When `version` is null/undefined, returns the highest-version row for
+ * that slug. Missing shard or missing row → null.
+ */
+export function wikiPageGet(
+  slug: string,
+  version: number | null | undefined,
+  cwdOverride?: string,
+): {
+  slug: string;
+  title: string;
+  community_id: number;
+  version: number;
+  markdown: string;
+  risk_score: number;
+  generated_at: string;
+} | null {
+  return withShard<{
+    slug: string;
+    title: string;
+    community_id: number;
+    version: number;
+    markdown: string;
+    risk_score: number;
+    generated_at: string;
+  } | null>(
+    "wiki",
+    (db) => {
+      let row:
+        | {
+            slug: string;
+            title: string;
+            community_id: number | null;
+            version: number;
+            markdown: string;
+            risk_score: number | null;
+            generated_at: string;
+          }
+        | undefined;
+      if (version != null) {
+        row = db
+          .prepare(
+            `SELECT slug, title, community_id, version, markdown, risk_score,
+                    generated_at
+               FROM wiki_pages
+              WHERE slug = ? AND version = ?
+              LIMIT 1`,
+          )
+          .get(slug, version) as typeof row;
+      } else {
+        row = db
+          .prepare(
+            `SELECT slug, title, community_id, version, markdown, risk_score,
+                    generated_at
+               FROM wiki_pages
+              WHERE slug = ?
+              ORDER BY version DESC
+              LIMIT 1`,
+          )
+          .get(slug) as typeof row;
+      }
+      if (!row) return null;
+      return {
+        slug: row.slug,
+        title: row.title,
+        community_id: row.community_id ?? -1,
+        version: row.version,
+        markdown: row.markdown,
+        risk_score: row.risk_score ?? 0,
+        generated_at: row.generated_at,
+      };
+    },
+    null,
+    cwdOverride,
+  );
+}
+
+/**
+ * List the latest wiki page per slug (for `wiki_generate` list views).
+ * Returns highest-`version` row for every distinct slug, ordered by
+ * generated_at DESC. Includes file_count + entry_point_count parsed from
+ * the respective JSON columns.
+ */
+export function wikiPagesLatest(
+  limit: number = 200,
+  cwdOverride?: string,
+): Array<{
+  slug: string;
+  title: string;
+  community_id: number;
+  version: number;
+  risk_score: number;
+  file_count: number;
+  entry_point_count: number;
+  generated_at: string;
+}> {
+  return withShard<
+    Array<{
+      slug: string;
+      title: string;
+      community_id: number;
+      version: number;
+      risk_score: number;
+      file_count: number;
+      entry_point_count: number;
+      generated_at: string;
+    }>
+  >(
+    "wiki",
+    (db) => {
+      // Per-slug latest version — join back for the JSON columns.
+      const rows = db
+        .prepare(
+          `SELECT wp.slug, wp.title, wp.community_id, wp.version,
+                  wp.risk_score, wp.file_paths, wp.entry_points,
+                  wp.generated_at
+             FROM wiki_pages wp
+             INNER JOIN (
+               SELECT slug, MAX(version) AS v FROM wiki_pages GROUP BY slug
+             ) m ON m.slug = wp.slug AND m.v = wp.version
+            ORDER BY wp.generated_at DESC
+            LIMIT ?`,
+        )
+        .all(limit) as Array<{
+        slug: string;
+        title: string;
+        community_id: number | null;
+        version: number;
+        risk_score: number | null;
+        file_paths: string;
+        entry_points: string;
+        generated_at: string;
+      }>;
+      const countArr = (raw: string): number => {
+        try {
+          const v = JSON.parse(raw) as unknown;
+          return Array.isArray(v) ? v.length : 0;
+        } catch {
+          return 0;
+        }
+      };
+      return rows.map((r) => ({
+        slug: r.slug,
+        title: r.title,
+        community_id: r.community_id ?? -1,
+        version: r.version,
+        risk_score: r.risk_score ?? 0,
+        file_count: countArr(r.file_paths),
+        entry_point_count: countArr(r.entry_points),
+        generated_at: r.generated_at,
+      }));
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+/**
+ * Open refactor proposals from `refactors.db::refactor_proposals`.
+ * "Open" = applied_at IS NULL. Optional scope (file filter) + kinds filter.
+ * Returns empty array on missing shard; never throws.
+ */
+export function refactorProposalsOpen(
+  file: string | undefined,
+  kinds: string[] | undefined,
+  limit: number = 100,
+  cwdOverride?: string,
+): Array<{
+  proposal_id: string;
+  kind: string;
+  file: string;
+  line_start: number;
+  line_end: number;
+  column_start: number;
+  column_end: number;
+  symbol: string | null;
+  original_text: string;
+  replacement_text: string;
+  rationale: string;
+  severity: string;
+  confidence: number;
+}> {
+  return withShard<
+    Array<{
+      proposal_id: string;
+      kind: string;
+      file: string;
+      line_start: number;
+      line_end: number;
+      column_start: number;
+      column_end: number;
+      symbol: string | null;
+      original_text: string;
+      replacement_text: string;
+      rationale: string;
+      severity: string;
+      confidence: number;
+    }>
+  >(
+    "refactors",
+    (db) => {
+      const clauses: string[] = ["applied_at IS NULL"];
+      const params: Array<string | number> = [];
+      if (file) {
+        clauses.push("file = ?");
+        params.push(file);
+      }
+      if (kinds && kinds.length > 0) {
+        clauses.push(`kind IN (${kinds.map(() => "?").join(",")})`);
+        for (const k of kinds) params.push(k);
+      }
+      params.push(limit);
+      return db
+        .prepare(
+          `SELECT proposal_id, kind, file, line_start, line_end,
+                  column_start, column_end, symbol, original_text,
+                  replacement_text, rationale, severity, confidence
+             FROM refactor_proposals
+            WHERE ${clauses.join(" AND ")}
+            ORDER BY created_at DESC
+            LIMIT ?`,
+        )
+        .all(...params) as Array<{
+        proposal_id: string;
+        kind: string;
+        file: string;
+        line_start: number;
+        line_end: number;
+        column_start: number;
+        column_end: number;
+        symbol: string | null;
+        original_text: string;
+        replacement_text: string;
+        rationale: string;
+        severity: string;
+        confidence: number;
+      }>;
+    },
+    [],
+    cwdOverride,
+  );
+}
+
+/**
+ * `mneme_why` local fallback — LIKE scan of decisions + refactors whose
+ * summary/rationale contain the question keywords.
+ */
+export function ledgerWhyScan(
+  question: string,
+  limit: number,
+  cwdOverride?: string,
+): LedgerRawRow[] {
+  return withShard<LedgerRawRow[]>(
+    "tasks",
+    (db) => {
+      const like = `%${question.replace(/[%_]/g, "")}%`;
+      const sql = `SELECT id, session_id, timestamp, kind, summary, rationale,
+                          touched_files, touched_concepts, transcript_ref,
+                          kind_payload
+                   FROM ledger_entries
+                   WHERE kind IN ('decision','refactor')
+                     AND (summary LIKE ? OR rationale LIKE ?)
+                   ORDER BY timestamp DESC LIMIT ?`;
+      return db.prepare(sql).all(like, like, limit) as LedgerRawRow[];
+    },
+    [],
+    cwdOverride,
+  );
+}

@@ -11,21 +11,23 @@
  * The formatted blob is suitable for direct inclusion in the assistant's
  * reply. Output is deterministic (no model call) so it's cheap and
  * quotable.
+ *
+ * Local fallback now routes through the shared store helper
+ * `ledgerWhyScan`, which uses the canonical ProjectId (matches the Rust
+ * path resolver — the legacy inline 16-char slice was wrong).
  */
 
-import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { homedir } from "node:os";
-import { join } from "node:path";
 
 import {
   MnemeWhyInput,
   MnemeWhyOutput,
   type LedgerEntry,
+  type LedgerKind,
   type ToolDescriptor,
 } from "../types.ts";
 import { query as dbQuery } from "../db.ts";
+import { ledgerWhyScan, type LedgerRawRow } from "../store.ts";
 
 export const tool: ToolDescriptor<
   ReturnType<typeof MnemeWhyInput.parse>,
@@ -49,7 +51,9 @@ export const tool: ToolDescriptor<
         limit: input.limit,
       });
     } catch {
-      decisions = localRecall(input.question, input.limit, ctx.cwd);
+      decisions = ledgerWhyScan(input.question, input.limit, ctx.cwd).map(
+        rowToEntry,
+      );
     }
 
     // 2) git log --grep — best-effort; empty on failure.
@@ -78,31 +82,6 @@ export const tool: ToolDescriptor<
 // ---------------------------------------------------------------------------
 // Local helpers
 // ---------------------------------------------------------------------------
-
-function localRecall(query: string, limit: number, cwd: string): LedgerEntry[] {
-  const dbPath = tasksDbPath(cwd);
-  if (!dbPath) return [];
-  let db: Database;
-  try {
-    db = new Database(dbPath, { readonly: true });
-  } catch {
-    return [];
-  }
-  try {
-    const like = `%${query.replace(/[%_]/g, "")}%`;
-    const sql =
-      "SELECT id, session_id, timestamp, kind, summary, rationale, " +
-      "touched_files, touched_concepts, transcript_ref, kind_payload " +
-      "FROM ledger_entries WHERE kind IN ('decision','refactor') " +
-      "AND (summary LIKE ? OR rationale LIKE ?) ORDER BY timestamp DESC LIMIT ?";
-    return db
-      .query<Record<string, unknown>, [string, string, number]>(sql)
-      .all(like, like, limit)
-      .map(rowToEntry);
-  } finally {
-    db.close();
-  }
-}
 
 function gitLogGrep(
   cwd: string,
@@ -137,30 +116,22 @@ function gitLogGrep(
   }
 }
 
-function tasksDbPath(cwd: string): string | null {
-  const home = homedir();
-  const hash = createHash("sha256").update(cwd).digest("hex");
-  const projectId = hash.slice(0, 16);
-  return join(home, ".mneme", "projects", projectId, "tasks.db");
-}
-
-function rowToEntry(row: Record<string, unknown>): LedgerEntry {
-  const safeParse = <T>(v: unknown, fallback: T): T => {
-    if (typeof v !== "string" || v.length === 0) return fallback;
+function rowToEntry(row: LedgerRawRow): LedgerEntry {
+  const safeParse = <T>(v: string | null | undefined, fallback: T): T => {
+    if (v == null || v.length === 0) return fallback;
     try {
       return JSON.parse(v) as T;
     } catch {
       return fallback;
     }
   };
-  const tsMillis = Number(row.timestamp ?? 0);
   return {
-    id: String(row.id ?? ""),
-    session_id: String(row.session_id ?? ""),
-    timestamp: new Date(tsMillis).toISOString(),
-    kind: (row.kind as LedgerEntry["kind"]) ?? "impl",
-    summary: String(row.summary ?? ""),
-    rationale: row.rationale == null ? null : String(row.rationale),
+    id: row.id,
+    session_id: row.session_id,
+    timestamp: new Date(row.timestamp).toISOString(),
+    kind: (row.kind as LedgerKind) ?? "impl",
+    summary: row.summary,
+    rationale: row.rationale,
     touched_files: safeParse<string[]>(row.touched_files, []),
     touched_concepts: safeParse<string[]>(row.touched_concepts, []),
     transcript_ref: safeParse<LedgerEntry["transcript_ref"]>(
