@@ -1,11 +1,11 @@
-# Mneme — one-line installer for Windows (v0.3.1+)
+# Mneme - one-line installer for Windows (v0.3.1+)
 #
-# Usage (PowerShell, as current user — elevation is optional, see below):
+# Usage (PowerShell, as current user - elevation is optional, see below):
 #   iwr -useb https://raw.githubusercontent.com/omanishay-cyber/mneme/main/scripts/install.ps1 | iex
 #
 # What it does, in order:
 #   1. Ensures Bun is installed (runs the official Bun installer if not
-#      already present). Bun is the only runtime dependency — mneme's MCP
+#      already present). Bun is the only runtime dependency - mneme's MCP
 #      server is TypeScript that Bun runs. Rust, Node, Python are NOT
 #      needed: mneme ships as pre-built binaries.
 #   2. Downloads mneme-windows-x64.zip from the latest GitHub release.
@@ -16,7 +16,7 @@
 #      ML-heuristic false positive on mneme's memory/log files.
 #   5. Adds the bin directory to the user PATH (persistent, user-scope only).
 #   6. Starts the mneme daemon in the background.
-#   7. Registers the mneme MCP server with Claude Code (MCP entry only —
+#   7. Registers the mneme MCP server with Claude Code (MCP entry only -
 #      does NOT touch ~/.claude/settings.json or register hooks).
 #   8. Prints next steps and verification commands.
 #
@@ -71,29 +71,63 @@ function Test-IsElevated {
     }
 }
 
-Write-Step "mneme — one-line installer"
+Write-Step "mneme - one-line installer"
 Write-Info ("target   : {0}" -f $MnemeHome)
 Write-Info ("bin      : {0}" -f $BinDir)
 Write-Info ("elevated : {0}" -f (Test-IsElevated))
 Write-Host ""
 
 # ============================================================================
-# Step 1 — Check + install runtime prerequisites
+# Step 0 - Stop any running mneme processes (upgrade safety)
+# ============================================================================
+#
+# If an existing daemon is running, the mneme.exe / mneme-daemon.exe /
+# worker binaries are file-locked. Expand-Archive silently skips locked
+# files, leaving a mixed-version install where the *.dll metadata says
+# v0.3.1 but some of the executable bodies are still v0.3.0. That looks
+# identical to "install succeeded" but actually shipped broken binaries.
+#
+# Unconditional stop is safe: if no daemon is running, this is a no-op.
+# The supervisor is restarted later in step 6.
+
+Write-Step "step 0/8 - stop any existing mneme daemon + workers"
+
+$tries = 0
+do {
+    $running = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '^mneme' }
+    if ($running) {
+        Write-Info ("stopping {0} mneme process(es): {1}" -f $running.Count, (($running.ProcessName | Sort-Object -Unique) -join ', '))
+        $running | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+    }
+    $tries++
+} while ($running -and $tries -lt 5)
+
+$leftover = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '^mneme' }
+if ($leftover) {
+    Write-Warn ("could not stop all mneme processes ({0} still running)" -f $leftover.Count)
+    Write-Warn "Expand-Archive may skip locked binaries - close any mneme window and rerun"
+} else {
+    Write-OK "no mneme processes running - safe to extract"
+}
+
+# ============================================================================
+# Step 1 - Check + install runtime prerequisites
 # ============================================================================
 #
 # Three tools matter for a full mneme + Claude-Code experience:
 #
-#   Bun       — mneme's MCP server (`mneme mcp stdio`) launches TypeScript
+#   Bun       - mneme's MCP server (`mneme mcp stdio`) launches TypeScript
 #               via `bun`. Required for `/mn-*` commands in Claude Code.
-#   Node.js   — only needed if the user wants the Claude Code CLI
+#   Node.js   - only needed if the user wants the Claude Code CLI
 #               (`npm install -g @anthropic-ai/claude-code`). Not strictly
 #               required to run mneme itself, but the whole point of mneme
 #               is to serve Claude Code, so we install it by default.
-#   git       — only needed for `mneme build` on git repos (so mneme can
+#   git       - only needed for `mneme build` on git repos (so mneme can
 #               pin the indexed commit SHA per project). Mneme works
 #               without it; just no git metadata in the graph.
 #
-# Rust is deliberately NOT installed — mneme ships pre-built binaries.
+# Rust is deliberately NOT installed - mneme ships pre-built binaries.
 # Python is not needed for v0.3.1 (multimodal sidecar is feature-gated).
 #
 # Every check below follows the same pattern: detect on PATH, detect at
@@ -110,7 +144,7 @@ function Test-Tool {
 }
 
 # --- 1a. Bun (required for MCP server) --------------------------------------
-Write-Step "step 1/8 — Bun runtime (required for mneme MCP)"
+Write-Step "step 1/8 - Bun runtime (required for mneme MCP)"
 
 $BunFallback = Join-Path $env:USERPROFILE '.bun\bin\bun.exe'
 $BunExe = Test-Tool -Name 'bun' -FallbackPath $BunFallback
@@ -123,11 +157,11 @@ if ($BunExe) {
         Write-OK ("bun present at $BunExe (version check failed, continuing)")
     }
 } else {
-    Write-Info "bun not found — installing via direct GitHub release download"
+    Write-Info "bun not found - installing via direct GitHub release download"
     try {
         # The bun.sh/install.ps1 script uses `curl.exe -#` which errors in
         # non-interactive sessions (see v0.3.0 install-report). We pull the
-        # release ZIP ourselves — works in any shell context.
+        # release ZIP ourselves - works in any shell context.
         $bunBin = Join-Path $env:USERPROFILE '.bun\bin'
         New-Item -ItemType Directory -Force -Path $bunBin | Out-Null
         $bunZip = Join-Path $env:TEMP 'bun-windows-x64.zip'
@@ -150,7 +184,7 @@ if ($BunExe) {
 }
 
 # --- 1b. Node.js + npm (for Claude Code CLI) --------------------------------
-Write-Step "step 1b/8 — Node.js + npm (for Claude Code CLI)"
+Write-Step "step 1b/8 - Node.js + npm (for Claude Code CLI)"
 
 $NodeExe = Test-Tool -Name 'node' -FallbackPath 'C:\Program Files\nodejs\node.exe'
 
@@ -158,7 +192,7 @@ if ($NodeExe) {
     $NodeVer = (& $NodeExe --version 2>$null).Trim()
     Write-OK ("node $NodeVer present at $NodeExe")
 } else {
-    Write-Info "node not found — installing Node.js LTS via direct MSI"
+    Write-Info "node not found - installing Node.js LTS via direct MSI"
     try {
         $nodeUrl = 'https://nodejs.org/dist/v22.13.1/node-v22.13.1-x64.msi'
         $nodeMsi = Join-Path $env:TEMP 'node-lts.msi'
@@ -171,7 +205,7 @@ if ($NodeExe) {
             if ($NodeExe) {
                 Write-OK ("node $((& $NodeExe --version 2>$null).Trim()) installed")
             } else {
-                Write-Warn "node installer exited 0 but node not on PATH — re-open shell"
+                Write-Warn "node installer exited 0 but node not on PATH - re-open shell"
             }
         } else {
             Write-Warn ("node MSI exited with code {0}" -f $p.ExitCode)
@@ -184,7 +218,7 @@ if ($NodeExe) {
 }
 
 # --- 1c. git (optional, for `mneme build` on git repos) ---------------------
-Write-Step "step 1c/8 — git (optional, for richer project metadata)"
+Write-Step "step 1c/8 - git (optional, for richer project metadata)"
 
 $GitExe = Test-Tool -Name 'git' -FallbackPath 'C:\Program Files\Git\cmd\git.exe'
 
@@ -192,7 +226,7 @@ if ($GitExe) {
     $GitVer = (& $GitExe --version 2>$null).Trim()
     Write-OK ("git $GitVer present at $GitExe")
 } else {
-    Write-Info "git not found — installing Git for Windows (silent)"
+    Write-Info "git not found - installing Git for Windows (silent)"
     try {
         $gitUrl = 'https://github.com/git-for-windows/git/releases/download/v2.48.1.windows.1/Git-2.48.1-64-bit.exe'
         $gitExe = Join-Path $env:TEMP 'git-setup.exe'
@@ -211,10 +245,10 @@ if ($GitExe) {
 }
 
 # ============================================================================
-# Step 2 — Fetch latest release metadata
+# Step 2 - Fetch latest release metadata
 # ============================================================================
 
-Write-Step "step 2/8 — fetching latest release metadata"
+Write-Step "step 2/8 - fetching latest release metadata"
 
 $ApiUrl  = "https://api.github.com/repos/$Repo/releases/latest"
 $Headers = @{ 'User-Agent' = 'mneme-installer' }
@@ -229,16 +263,16 @@ try {
 $AssetEntry = $Release.assets | Where-Object { $_.name -eq $Asset } | Select-Object -First 1
 if ($null -eq $AssetEntry) {
     Write-Warn ("{0} not yet attached to release {1}" -f $Asset, $Release.tag_name)
-    Write-Warn "       the release workflow may still be building — retry in ~15 min."
+    Write-Warn "       the release workflow may still be building - retry in ~15 min."
     exit 1
 }
-Write-OK ("release {0} — asset {1} ({2:N1} MB)" -f $Release.tag_name, $Asset, ($AssetEntry.size / 1MB))
+Write-OK ("release {0} - asset {1} ({2:N1} MB)" -f $Release.tag_name, $Asset, ($AssetEntry.size / 1MB))
 
 # ============================================================================
-# Step 3 — Download + extract
+# Step 3 - Download + extract
 # ============================================================================
 
-Write-Step "step 3/8 — downloading + extracting"
+Write-Step "step 3/8 - downloading + extracting"
 
 $Tmp     = Join-Path $env:TEMP ("mneme-install-{0}" -f ([System.Guid]::NewGuid().ToString('N').Substring(0, 8)))
 $ZipPath = Join-Path $Tmp $Asset
@@ -269,7 +303,7 @@ Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
 Write-OK ("extracted to {0}" -f $MnemeHome)
 
 # ============================================================================
-# Step 4 — Windows Defender exclusions
+# Step 4 - Windows Defender exclusions
 # ============================================================================
 #
 # Defender's ML-based SAgent.HAG!MTB classifier false-positives on mneme's
@@ -282,7 +316,7 @@ Write-OK ("extracted to {0}" -f $MnemeHome)
 # admin. If not elevated, we print the exact one-liner the user can run
 # from an elevated shell later.
 
-Write-Step "step 4/8 — Windows Defender exclusions"
+Write-Step "step 4/8 - Windows Defender exclusions"
 
 $ExcludeDirs = @($MnemeHome, $ClaudeHome)
 $DefenderFailed = $false
@@ -298,7 +332,7 @@ if (Test-IsElevated) {
         }
     }
 } else {
-    Write-Warn "not running elevated — skipping Defender exclusion"
+    Write-Warn "not running elevated - skipping Defender exclusion"
     $DefenderFailed = $true
 }
 
@@ -317,10 +351,10 @@ if ($DefenderFailed) {
 }
 
 # ============================================================================
-# Step 5 — Add bin dir to user PATH
+# Step 5 - Add bin dir to user PATH
 # ============================================================================
 
-Write-Step "step 5/8 — updating user PATH"
+Write-Step "step 5/8 - updating user PATH"
 
 $UserPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
 if ($null -eq $UserPath) { $UserPath = '' }
@@ -335,14 +369,14 @@ if (-not ($UserPath.Split(';') -contains $BinDir)) {
 }
 
 # ============================================================================
-# Step 6 — Start the mneme daemon
+# Step 6 - Start the mneme daemon
 # ============================================================================
 
-Write-Step "step 6/8 — starting mneme daemon"
+Write-Step "step 6/8 - starting mneme daemon"
 
 $MnemeBin = Join-Path $BinDir 'mneme.exe'
 if (-not (Test-Path $MnemeBin)) {
-    Write-Warn ("mneme.exe not found at {0} — did extraction succeed?" -f $MnemeBin)
+    Write-Warn ("mneme.exe not found at {0} - did extraction succeed?" -f $MnemeBin)
     Write-Warn "skipping daemon start. run manually later: mneme daemon start"
 } else {
     try {
@@ -356,17 +390,17 @@ if (-not (Test-Path $MnemeBin)) {
 }
 
 # ============================================================================
-# Step 7 — Register MCP with Claude Code (NO hook injection, NO manifest)
+# Step 7 - Register MCP with Claude Code (NO hook injection, NO manifest)
 # ============================================================================
 #
 # v0.3.1 hard rule: the installer only writes a single mcpServers.mneme
 # entry into ~/.claude.json. It does NOT touch ~/.claude/settings.json.
 # It does NOT write a CLAUDE.md manifest by default. Those changes were
-# what poisoned Claude Code on v0.3.0 — see F-011/F-012 in the install
+# what poisoned Claude Code on v0.3.0 - see F-011/F-012 in the install
 # report. Power users who want the manifest can run without
 # --skip-manifest later.
 
-Write-Step "step 7/8 — registering MCP with Claude Code"
+Write-Step "step 7/8 - registering MCP with Claude Code"
 
 if (-not (Test-Path $MnemeBin)) {
     Write-Warn "mneme.exe not present, skipping MCP registration"
@@ -376,7 +410,7 @@ if (-not (Test-Path $MnemeBin)) {
         if ($LASTEXITCODE -eq 0) {
             Write-OK "Claude Code MCP registration complete"
         } else {
-            Write-Warn ("mneme register-mcp exited {0} — MCP may not be registered" -f $LASTEXITCODE)
+            Write-Warn ("mneme register-mcp exited {0} - MCP may not be registered" -f $LASTEXITCODE)
             Write-Warn "run manually later: mneme register-mcp --platform claude-code"
         }
     } catch {
@@ -386,13 +420,13 @@ if (-not (Test-Path $MnemeBin)) {
 }
 
 # ============================================================================
-# Step 8 — Done
+# Step 8 - Done
 # ============================================================================
 
-Write-Step "step 8/8 — complete"
+Write-Step "step 8/8 - complete"
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Green
-Write-Host "  mneme installed — v$($Release.tag_name)" -ForegroundColor Green
+Write-Host "  mneme installed - v$($Release.tag_name)" -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor White
