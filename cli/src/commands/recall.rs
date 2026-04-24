@@ -1,22 +1,28 @@
 //! `mneme recall <query>` — semantic search across the project graph.
 //!
-//! v0.3.1 change: queries `graph.db` directly instead of going through the
-//! supervisor IPC. The supervisor's `ControlCommand` enum doesn't route a
-//! `Recall` verb today (F-009 in the v0.3.0 install report), so any
-//! CLI-originated recall hit "unknown variant recall" at the supervisor
-//! and failed. The MCP server has always read graph.db directly via
-//! `bun:sqlite` — we now do the same from the CLI for parity.
+//! v0.3.1: dual-path dispatch. When the supervisor is up the CLI sends a
+//! `Recall` IPC request so the daemon can service the query from its
+//! warm-connection pool + prepared-statement cache. When the supervisor
+//! is down (or the IPC hop fails with a connection-level error), we fall
+//! back to the historical in-process `graph.db` read. The fallback is
+//! verbatim the v0.3.1-initial code path so offline + supervisor-down
+//! behaviour is bit-for-bit compatible.
 //!
-//! Search strategy: prefer FTS5 (`nodes_fts` virtual table, added in v0.3)
-//! for speed, fall back to a LIKE scan when the FTS5 table isn't present
-//! (older shards). Both paths read-only; no write lock is taken so this
-//! is safe to run concurrently with `mneme build`.
+//! Search strategy (direct-DB path): prefer FTS5 (`nodes_fts` virtual
+//! table, added in v0.3) for speed, fall back to a LIKE scan when the
+//! FTS5 table isn't present (older shards). Both paths are read-only;
+//! no write lock is taken so this is safe to run concurrently with
+//! `mneme build`.
 
 use clap::Args;
 use rusqlite::{Connection, OpenFlags};
 use std::path::PathBuf;
+use tracing::info;
 
+use crate::commands::build::make_client;
 use crate::error::{CliError, CliResult};
+use crate::ipc::{IpcRequest, IpcResponse};
+use common::query::RecallHit;
 use common::{ids::ProjectId, paths::PathManager};
 
 /// CLI args for `mneme recall`.
@@ -41,18 +47,65 @@ pub struct RecallArgs {
     pub project: Option<PathBuf>,
 }
 
-#[derive(Debug)]
-struct Hit {
-    kind: String,
-    name: String,
-    qualified_name: String,
-    file_path: Option<String>,
-    line_start: Option<i64>,
-}
+// `Hit` is now the shared `common::query::RecallHit` so the same type
+// flows end-to-end through IPC and the direct-DB fallback. Kept as a
+// module-private alias so the existing SQL helpers don't have to be
+// renamed.
+type Hit = RecallHit;
 
 /// Entry point used by `main.rs`.
-pub async fn run(args: RecallArgs, _socket_override: Option<PathBuf>) -> CliResult<()> {
-    let graph_db = resolve_graph_db(args.project.clone())?;
+///
+/// Dispatch order:
+///   1. Attempt IPC. If the supervisor is up we ask it to service the
+///      query — lets the daemon's connection pool / statement cache
+///      absorb the cost instead of re-opening `graph.db` every time.
+///   2. If the supervisor is down, or the IPC round-trip surfaces an
+///      IO/timeout error, fall back to the historical in-process path.
+///      Any *semantic* error from the supervisor (Error response) is
+///      NOT caught — that would hide real problems behind a silent
+///      fallback.
+pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResult<()> {
+    // Project root used by both paths — resolve up-front so we don't do
+    // it twice if IPC fails.
+    let project_root = resolve_project_root(args.project.clone());
+
+    let client = make_client(socket_override);
+    if client.is_running().await {
+        let req = IpcRequest::Recall {
+            project: project_root.clone(),
+            query: args.query.clone(),
+            limit: args.limit,
+            filter_type: args.kind.clone(),
+        };
+        match client.request(req).await {
+            Ok(IpcResponse::RecallResults { hits }) => {
+                info!(source = "supervisor", count = hits.len(), "recall served");
+                print_hits(&hits, &args.query);
+                return Ok(());
+            }
+            Ok(IpcResponse::Error { message }) => {
+                // The supervisor answered, but the shard lookup failed
+                // on its side (e.g. graph.db missing). Surface it — do
+                // not mask with a direct-DB attempt that would fail the
+                // same way with a different error message.
+                return Err(CliError::Supervisor(message));
+            }
+            Ok(other) => {
+                // An unexpected variant (old supervisor? wire skew?).
+                // Drop to the direct-DB path rather than crash.
+                tracing::warn!(?other, "unexpected IPC response; falling back to direct-db");
+            }
+            Err(CliError::Ipc(msg)) => {
+                // IO-level problem: pipe gone, timeout. Fall through.
+                tracing::warn!(error = %msg, "supervisor IPC failed; falling back to direct-db");
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    // Direct-DB fallback — bit-for-bit the v0.3.1 behaviour.
+    info!(source = "direct-db", "recall served");
+    let graph_db = paths_graph_db(&project_root)?;
     if !graph_db.exists() {
         return Err(CliError::Other(format!(
             "graph.db not found at {}. Run `mneme build .` first.",
@@ -77,13 +130,20 @@ pub async fn run(args: RecallArgs, _socket_override: Option<PathBuf>) -> CliResu
     Ok(())
 }
 
-fn resolve_graph_db(project: Option<PathBuf>) -> CliResult<PathBuf> {
-    let root = project
+/// Canonicalise the user's `--project` flag (or CWD) to an absolute path.
+/// Both IPC and direct-DB paths derive their shard location from this,
+/// so drift between them would cause silent shard mismatches.
+fn resolve_project_root(project: Option<PathBuf>) -> PathBuf {
+    project
         .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
         .unwrap_or_else(|| {
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        });
-    let id = ProjectId::from_path(&root)
+        })
+}
+
+/// Compute the `graph.db` path from an already-resolved project root.
+fn paths_graph_db(root: &std::path::Path) -> CliResult<PathBuf> {
+    let id = ProjectId::from_path(root)
         .map_err(|e| CliError::Other(format!("cannot hash project path {}: {e}", root.display())))?;
     let paths = PathManager::default_root();
     Ok(paths.project_root(&id).join("graph.db"))

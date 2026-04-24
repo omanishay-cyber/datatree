@@ -460,10 +460,33 @@ impl ChildManager {
                 p50_us: percentiles.map(|p| p.0),
                 p95_us: percentiles.map(|p| p.1),
                 p99_us: percentiles.map(|p| p.2),
+                last_job_id: h.last_job_id,
+                last_job_duration_ms: h.last_job_duration_ms,
+                last_job_status: h.last_job_status.map(|s| s.to_string()),
+                last_job_completed_at: h.last_job_completed_at,
+                avg_job_ms: h.avg_job_ms(),
+                total_jobs_completed: h.total_jobs_completed,
+                total_jobs_failed: h.total_jobs_failed,
             });
         }
         out.sort_by(|a, b| a.name.cmp(&b.name));
         out
+    }
+
+    /// Update the per-child job telemetry after a `WorkerCompleteJob` IPC
+    /// notification. `worker_name` is the ChildSpec name the router
+    /// assigned to the job — usually obtained from `JobQueue::complete`.
+    pub async fn record_job_completion(
+        self: &Arc<Self>,
+        worker_name: &str,
+        job_id: u64,
+        status: &'static str,
+        duration_ms: u64,
+    ) {
+        if let Some(handle) = self.handle_for(worker_name).await {
+            let mut h = handle.lock().await;
+            h.record_job_completion(job_id, status, duration_ms);
+        }
     }
 
     /// Return a clone of the live config (used by the IPC `Status` response).
@@ -566,6 +589,12 @@ impl ChildManager {
 }
 
 /// Read-only summary used by the health & IPC layers.
+///
+/// v0.3.0+ added the `last_job_*` / `avg_job_ms` telemetry — sourced
+/// from `WorkerCompleteJob` IPC messages the workers now emit. The
+/// fields are `Option` so builds that don't run any jobs stay quiet.
+/// All new fields are additive — older CLI clients tolerate their
+/// absence via serde's `skip_serializing_if`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChildSnapshot {
     /// Child name.
@@ -594,6 +623,27 @@ pub struct ChildSnapshot {
     pub p95_us: Option<u64>,
     /// p99 latency in microseconds.
     pub p99_us: Option<u64>,
+    /// Job id most recently reported complete by this worker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_job_id: Option<u64>,
+    /// Wall-clock ms the worker spent on its most recent job.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_job_duration_ms: Option<u64>,
+    /// Outcome (`"ok"` or `"error"`) of the most recent completed job.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_job_status: Option<String>,
+    /// UTC timestamp of the most recent `WorkerCompleteJob`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_job_completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Rolling-window average job duration in ms.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avg_job_ms: Option<u64>,
+    /// Cumulative successful job completions reported via IPC.
+    #[serde(default)]
+    pub total_jobs_completed: u64,
+    /// Cumulative failed job completions reported via IPC.
+    #[serde(default)]
+    pub total_jobs_failed: u64,
 }
 
 #[cfg(unix)]

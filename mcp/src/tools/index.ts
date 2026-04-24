@@ -77,6 +77,8 @@ const STATIC_TOOL_FILES = [
   "context",
   // Moat 4 (federated pattern matching)
   "federated_similar",
+  // "mneme tells Claude which skill to use" — reads plugin/skills/*/SKILL.md
+  "suggest_skill",
 ];
 
 // ---------------------------------------------------------------------------

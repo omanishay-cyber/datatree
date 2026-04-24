@@ -4,6 +4,20 @@
 //! validated by [`mneme_livebus::bind_addr`] which refuses anything other
 //! than a loopback interface, so a misconfigured `--host 0.0.0.0` is a hard
 //! startup failure rather than a silent security regression.
+//!
+//! ## Why livebus does NOT emit `WorkerCompleteJob`
+//!
+//! Livebus is a publish-subscribe event bus, not a supervisor-dispatched
+//! job worker. The supervisor's job queue (`common::jobs::Job`) routes
+//! `Parse` / `Scan` / `Embed` / `Ingest` units to dedicated worker pools;
+//! livebus is not in that enum. Incoming IPC envelopes on the livebus
+//! ingest socket are fanned out to subscribers; they do not carry a
+//! supervisor-assigned `JobId` and have no completion semantic.
+//!
+//! Consequently there is no `WorkerCompleteJob` emission wired into this
+//! binary. The per-worker telemetry in `daemon status` will show
+//! `last_job_*` fields as absent / null for `livebus-worker` — that is
+//! the correct steady state, not a missing feature.
 
 use std::path::PathBuf;
 use std::sync::Arc;

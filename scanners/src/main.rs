@@ -17,8 +17,10 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
+use common::jobs::{JobId, JobOutcome};
+use common::worker_ipc;
 use mneme_scanners::{
-    job::ScanJob,
+    job::{ScanJob, ScanResult},
     registry::{RegistryConfig, ScannerRegistry},
     store_ipc::{BatcherConfig, FindingsBatch, StoreIpcBatcher},
     worker::ScanWorker,
@@ -40,8 +42,13 @@ async fn main() -> std::io::Result<()> {
 
     let registry = Arc::new(ScannerRegistry::new(RegistryConfig::default()));
     let (jobs_tx, jobs_rx) = mpsc::channel::<ScanJob>(CHANNEL_CAP);
-    let (results_tx, results_rx) = mpsc::channel(CHANNEL_CAP);
+    let (results_tx, results_rx) = mpsc::channel::<ScanResult>(CHANNEL_CAP);
     let (batches_tx, mut batches_rx) = mpsc::channel::<FindingsBatch>(CHANNEL_CAP);
+
+    // Fan-out tap — every ScanResult flowing to the batcher ALSO goes
+    // here so we can fire `WorkerCompleteJob` IPC notifications without
+    // forking the worker loop logic.
+    let (ipc_tap_tx, mut ipc_tap_rx) = mpsc::channel::<(u64, u64, bool, usize, usize)>(CHANNEL_CAP);
 
     // Fan out workers, all sharing the same jobs receiver.
     let jobs_rx = Arc::new(tokio::sync::Mutex::new(jobs_rx));
@@ -50,6 +57,7 @@ async fn main() -> std::io::Result<()> {
         let registry = registry.clone();
         let results = results_tx.clone();
         let jobs = jobs_rx.clone();
+        let ipc_tap = ipc_tap_tx.clone();
         worker_handles.push(tokio::spawn(async move {
             let worker = ScanWorker::new(registry, id as u32);
             // Each worker pops jobs from a shared mutex-protected receiver
@@ -61,6 +69,17 @@ async fn main() -> std::io::Result<()> {
                 };
                 let Some(job) = job else { break };
                 let res = worker.run_one(job).await;
+                // Tap: best-effort IPC telemetry push. A full channel
+                // just drops the tap — the primary batcher path still
+                // completes.
+                let ok = res.failed_scanners.is_empty();
+                let _ = ipc_tap.try_send((
+                    res.job_id,
+                    res.scan_duration_ms,
+                    ok,
+                    res.findings.len(),
+                    res.failed_scanners.len(),
+                ));
                 if results.send(res).await.is_err() {
                     break;
                 }
@@ -68,6 +87,39 @@ async fn main() -> std::io::Result<()> {
         }));
     }
     drop(results_tx);
+    drop(ipc_tap_tx);
+
+    // IPC tap consumer — emits one `WorkerCompleteJob` per scan
+    // completion. Additive alongside the existing batched stdout path.
+    let ipc_tap_handle = tokio::spawn(async move {
+        while let Some((job_id, duration_ms, ok, findings_n, failed_n)) = ipc_tap_rx.recv().await {
+            if job_id == 0 {
+                continue;
+            }
+            let outcome = if ok {
+                JobOutcome::Ok {
+                    payload: None,
+                    duration_ms,
+                    stats: serde_json::json!({
+                        "findings": findings_n,
+                        "failed_scanners": failed_n,
+                    }),
+                }
+            } else {
+                JobOutcome::Err {
+                    message: format!("{failed_n} scanner(s) failed"),
+                    duration_ms,
+                    stats: serde_json::json!({
+                        "findings": findings_n,
+                        "failed_scanners": failed_n,
+                    }),
+                }
+            };
+            if let Err(e) = worker_ipc::report_complete(JobId(job_id), outcome).await {
+                tracing::debug!(error = %e, job_id, "scanner worker_complete_job ipc send skipped");
+            }
+        }
+    });
 
     // Spawn the batcher.
     let batcher_handle = tokio::spawn(async move {
@@ -143,6 +195,7 @@ async fn main() -> std::io::Result<()> {
     }
     let _ = batcher_handle.await;
     let _ = stdout_handle.await;
+    let _ = ipc_tap_handle.await;
 
     tracing::info!("scan-worker pool exited cleanly");
     Ok(())

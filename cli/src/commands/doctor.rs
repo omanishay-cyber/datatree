@@ -93,6 +93,20 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         "supervisor",
         if is_up { "running ✓" } else { "NOT RUNNING ✗" },
     );
+    // Per-tool path indicator: which source `recall`/`blast`/`godnodes`
+    // will hit right now. Added in v0.3.1 alongside supervisor IPC for
+    // those three commands — an up daemon serves them from its pooled
+    // read connections; otherwise the CLI falls back to a direct
+    // `graph.db` read. Both are correct; this row just tells operators
+    // which one they're getting.
+    line(
+        "query path",
+        if is_up {
+            "supervisor ✓"
+        } else {
+            "direct-db (supervisor down)"
+        },
+    );
     if !is_up {
         println!("└─────────────────────────────────────────────────────────┘");
         println!();
@@ -187,7 +201,9 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         println!("└─────────────────────────────────────────────────────────┘");
 
         // Per-binary health — does every expected mneme-* binary live
-        // on disk next to `mneme.exe`?
+        // on disk next to `mneme(.exe)`? Linux / macOS builds ship
+        // without the `.exe` suffix; `expected_binary_names()` picks
+        // the right platform matrix.
         println!();
         println!("┌─────────────────────────────────────────────────────────┐");
         println!("│ binaries on disk                                        │");
@@ -196,17 +212,7 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
             .ok()
             .and_then(|p| p.parent().map(|p| p.to_path_buf()));
         if let Some(dir) = bin_dir {
-            for b in [
-                "mneme.exe",
-                "mneme-daemon.exe",
-                "mneme-brain.exe",
-                "mneme-parsers.exe",
-                "mneme-scanners.exe",
-                "mneme-livebus.exe",
-                "mneme-md-ingest.exe",
-                "mneme-store.exe",
-                "mneme-multimodal.exe",
-            ] {
+            for b in expected_binary_names() {
                 let p = dir.join(b);
                 let ok = p.exists();
                 let size = if ok {
@@ -254,10 +260,7 @@ fn render_mcp_bridge_box() {
     println!("┌─────────────────────────────────────────────────────────┐");
     println!("│ MCP bridge                                              │");
     println!("├─────────────────────────────────────────────────────────┤");
-    let home = dirs::home_dir();
-    let mcp_entry = home
-        .as_ref()
-        .map(|h| h.join(".mneme").join("mcp").join("src").join("index.ts"));
+    let mcp_entry = mcp_entry_path();
     let mcp_exists = mcp_entry
         .as_ref()
         .map(|p| p.exists())
@@ -330,6 +333,53 @@ fn which_on_path(name: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Return the list of mneme binary filenames the doctor expects to
+/// find on disk next to `mneme(.exe)`. On Windows the names carry a
+/// `.exe` suffix; Linux + macOS binaries have no extension. Order is
+/// stable so the dashboard rows do not reshuffle between runs.
+pub fn expected_binary_names() -> &'static [&'static str] {
+    #[cfg(windows)]
+    {
+        &[
+            "mneme.exe",
+            "mneme-daemon.exe",
+            "mneme-brain.exe",
+            "mneme-parsers.exe",
+            "mneme-scanners.exe",
+            "mneme-livebus.exe",
+            "mneme-md-ingest.exe",
+            "mneme-store.exe",
+            "mneme-multimodal.exe",
+        ]
+    }
+    #[cfg(not(windows))]
+    {
+        &[
+            "mneme",
+            "mneme-daemon",
+            "mneme-brain",
+            "mneme-parsers",
+            "mneme-scanners",
+            "mneme-livebus",
+            "mneme-md-ingest",
+            "mneme-store",
+            "mneme-multimodal",
+        ]
+    }
+}
+
+/// Path to the MCP entry `index.ts` inside the user's `~/.mneme/mcp/`.
+/// Uses `dirs::home_dir()`, which returns:
+///   * Windows: `%USERPROFILE%`
+///   * macOS:   `$HOME` (e.g. `/Users/anish`)
+///   * Linux:   `$HOME` (e.g. `/home/anish`)
+///
+/// All three yield the identical POSIX-style `<home>/.mneme/mcp/src/index.ts`
+/// path once the platform separators are applied.
+pub fn mcp_entry_path() -> Option<std::path::PathBuf> {
+    dirs::home_dir().map(|h| h.join(".mneme").join("mcp").join("src").join("index.ts"))
 }
 
 fn line(label: &str, value: &str) {

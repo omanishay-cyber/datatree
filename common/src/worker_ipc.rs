@@ -1,0 +1,225 @@
+//! Minimal supervisor-client helper used by worker binaries.
+//!
+//! Workers (parsers, scanners, brain, md-ingest, livebus, multimodal-bridge)
+//! that were launched by the supervisor need a fire-and-forget channel to
+//! push `WorkerCompleteJob` notifications back. The CLI already has its
+//! own supervisor client in `cli/src/ipc.rs`; this module is the tiny
+//! worker-side equivalent.
+//!
+//! Design:
+//! * Discovery mirrors the CLI: read `$HOME/.mneme/supervisor.pipe` when
+//!   present, fall back to the legacy `$HOME/.mneme/run/mneme-supervisor.sock`.
+//! * Wire format: 4-byte BE length prefix + JSON body, same as the
+//!   supervisor's `IpcServer`.
+//! * Failure mode is graceful — a supervisor that's gone deaf must NOT
+//!   take the worker down. The helper returns an error and the caller
+//!   logs it; the worker keeps processing jobs.
+//!
+//! The helper is additive: workers still write their legacy stdout
+//! result lines. `WorkerCompleteJob` is a typed complement, not a
+//! replacement — closes task P15 in ARCHITECTURE.md's worker dispatch
+//! roadmap.
+//!
+//! Only two shapes are public:
+//! * [`WorkerCompleteMessage`] — mirror of the supervisor's
+//!   `ControlCommand::WorkerCompleteJob` variant so worker crates don't
+//!   need a dep on `mneme-supervisor`.
+//! * [`report_complete`] — async one-shot sender.
+
+use crate::jobs::{JobId, JobOutcome};
+use interprocess::local_socket::tokio::Stream;
+use interprocess::local_socket::traits::tokio::Stream as IpcStreamExt;
+#[cfg(unix)]
+use interprocess::local_socket::{GenericFilePath, ToFsName};
+#[cfg(windows)]
+use interprocess::local_socket::{GenericNamespaced, ToNsName};
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+/// Default timeout for the one-shot report. Kept small because the
+/// worker has more jobs to process; a deaf supervisor must not stall it.
+pub const DEFAULT_REPORT_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Wire shape identical to supervisor::ipc::ControlCommand::WorkerCompleteJob.
+///
+/// Kept here (rather than re-exported from `mneme-supervisor`) so worker
+/// crates avoid a reverse dependency on the supervisor binary's library.
+/// `serde(tag = "command", rename_all = "snake_case")` matches the
+/// supervisor's expected framing exactly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "command", rename_all = "snake_case")]
+pub enum WorkerCompleteMessage {
+    /// A worker reporting it has finished processing a specific job.
+    WorkerCompleteJob {
+        /// Supervisor-assigned job id (taken from the router-emitted line).
+        job_id: JobId,
+        /// Completion outcome (ok or error) + duration + stats.
+        outcome: JobOutcome,
+    },
+}
+
+/// Push one [`WorkerCompleteMessage::WorkerCompleteJob`] to the supervisor.
+///
+/// Behaviour:
+/// * If the supervisor socket/pipe cannot be found, returns `Err(NotFound)`.
+/// * If the connect or write fails, returns `Err(Io)`.
+/// * Never panics. Callers are expected to log-and-continue.
+/// * The supervisor's reply (a `ControlResponse::Ok` / `::Error`) is
+///   consumed and discarded — this is a one-shot push, not a request.
+///
+/// Called from each worker's per-job completion path in addition to the
+/// existing stdout emission, so the stdout flow stays intact.
+pub async fn report_complete(job_id: JobId, outcome: JobOutcome) -> Result<(), ReportError> {
+    report_complete_to(job_id, outcome, &discover_socket_path().ok_or(ReportError::NotFound)?).await
+}
+
+/// Same as [`report_complete`] but with an explicit socket path. Exposed
+/// primarily for tests that spawn a supervisor on a scratch socket.
+pub async fn report_complete_to(
+    job_id: JobId,
+    outcome: JobOutcome,
+    socket_path: &Path,
+) -> Result<(), ReportError> {
+    let msg = WorkerCompleteMessage::WorkerCompleteJob { job_id, outcome };
+    let body = serde_json::to_vec(&msg).map_err(ReportError::Encode)?;
+    let mut framed = Vec::with_capacity(4 + body.len());
+    framed.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    framed.extend_from_slice(&body);
+
+    let round_trip = async {
+        let mut stream = connect_stream(socket_path).await?;
+        stream
+            .write_all(&framed)
+            .await
+            .map_err(|e| ReportError::Io(format!("write: {e}")))?;
+        stream
+            .flush()
+            .await
+            .map_err(|e| ReportError::Io(format!("flush: {e}")))?;
+
+        // Consume the supervisor's reply so the pipe isn't left with
+        // data trailing behind us. Any parse error is ignored — we
+        // already delivered the notification.
+        let mut len_buf = [0u8; 4];
+        if stream.read_exact(&mut len_buf).await.is_ok() {
+            let len = u32::from_be_bytes(len_buf) as usize;
+            if len <= 1024 * 1024 {
+                let mut buf = vec![0u8; len];
+                let _ = stream.read_exact(&mut buf).await;
+            }
+        }
+        Ok::<(), ReportError>(())
+    };
+
+    tokio::time::timeout(DEFAULT_REPORT_TIMEOUT, round_trip)
+        .await
+        .map_err(|_| ReportError::Timeout)?
+}
+
+/// Resolve the supervisor's socket/pipe path using the same discovery
+/// rules the CLI uses.
+///
+/// Order:
+/// 1. `$MNEME_SUPERVISOR_SOCKET` override (tests / unusual installs).
+/// 2. `$HOME/.mneme/supervisor.pipe` (written by the supervisor at boot —
+///    contains the actual pipe name; Windows PID-scoped).
+/// 3. Legacy fallback: `$HOME/.mneme/run/mneme-supervisor.sock`.
+pub fn discover_socket_path() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("MNEME_SUPERVISOR_SOCKET") {
+        if !p.is_empty() {
+            return Some(PathBuf::from(p));
+        }
+    }
+    let home = dirs::home_dir()?;
+    let disco = home.join(".mneme").join("supervisor.pipe");
+    if let Ok(content) = std::fs::read_to_string(&disco) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return Some(PathBuf::from(trimmed));
+        }
+    }
+    Some(home.join(".mneme").join("run").join("mneme-supervisor.sock"))
+}
+
+async fn connect_stream(socket_path: &Path) -> Result<Stream, ReportError> {
+    #[cfg(unix)]
+    {
+        let name = socket_path
+            .to_fs_name::<GenericFilePath>()
+            .map_err(|e| ReportError::Io(format!("invalid path {}: {e}", socket_path.display())))?;
+        <Stream as IpcStreamExt>::connect(name)
+            .await
+            .map_err(|e| ReportError::Io(format!("connect {}: {e}", socket_path.display())))
+    }
+    #[cfg(windows)]
+    {
+        let pipe_name = socket_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("mneme-supervisor")
+            .to_string();
+        let name = pipe_name
+            .as_str()
+            .to_ns_name::<GenericNamespaced>()
+            .map_err(|e| ReportError::Io(format!("invalid pipe name {pipe_name}: {e}")))?;
+        <Stream as IpcStreamExt>::connect(name)
+            .await
+            .map_err(|e| ReportError::Io(format!("connect pipe '{pipe_name}': {e}")))
+    }
+}
+
+/// Errors surfaced by [`report_complete`].
+#[derive(Debug, thiserror::Error)]
+pub enum ReportError {
+    /// The supervisor socket/pipe couldn't be discovered.
+    #[error("supervisor socket not discoverable (no MNEME_SUPERVISOR_SOCKET, no ~/.mneme/supervisor.pipe)")]
+    NotFound,
+    /// I/O error while connecting or writing.
+    #[error("ipc io: {0}")]
+    Io(String),
+    /// The supervisor did not reply within the timeout.
+    #[error("supervisor did not acknowledge within {:?}", DEFAULT_REPORT_TIMEOUT)]
+    Timeout,
+    /// JSON encode failure. Effectively impossible with our types, but we
+    /// keep it explicit rather than `unwrap()`.
+    #[error("encode: {0}")]
+    Encode(serde_json::Error),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn worker_complete_message_round_trips_as_supervisor_command() {
+        let msg = WorkerCompleteMessage::WorkerCompleteJob {
+            job_id: JobId(99),
+            outcome: JobOutcome::Ok {
+                payload: None,
+                duration_ms: 17,
+                stats: json!({"nodes": 5}),
+            },
+        };
+        let s = serde_json::to_string(&msg).unwrap();
+        // Must match the supervisor ControlCommand JSON shape.
+        assert!(s.contains(r#""command":"worker_complete_job""#), "got: {s}");
+        assert!(s.contains(r#""job_id":99"#), "got: {s}");
+        assert!(s.contains(r#""duration_ms":17"#), "got: {s}");
+    }
+
+    #[test]
+    fn discover_socket_honours_env_override() {
+        let saved = std::env::var("MNEME_SUPERVISOR_SOCKET").ok();
+        // Use set_var only for this test; unset afterwards.
+        std::env::set_var("MNEME_SUPERVISOR_SOCKET", "/tmp/mneme-test.sock");
+        let p = discover_socket_path().expect("env override wins");
+        assert_eq!(p, PathBuf::from("/tmp/mneme-test.sock"));
+        match saved {
+            Some(v) => std::env::set_var("MNEME_SUPERVISOR_SOCKET", v),
+            None => std::env::remove_var("MNEME_SUPERVISOR_SOCKET"),
+        }
+    }
+}

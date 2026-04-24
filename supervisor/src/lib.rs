@@ -208,6 +208,8 @@ async fn run_router(
                         id,
                         common::jobs::JobOutcome::Err {
                             message: format!("router encode: {e}"),
+                            duration_ms: 0,
+                            stats: serde_json::Value::Null,
                         },
                     );
                     continue;

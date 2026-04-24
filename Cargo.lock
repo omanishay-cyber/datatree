@@ -2301,11 +2301,13 @@ dependencies = [
  "chrono",
  "dirs",
  "dunce",
+ "interprocess",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -2329,6 +2331,7 @@ dependencies = [
  "notify",
  "num_cpus",
  "parking_lot",
+ "rusqlite",
  "serde",
  "serde_json",
  "sysinfo",
@@ -2373,6 +2376,9 @@ dependencies = [
 name = "mneme-md-ingest"
 version = "0.3.0"
 dependencies = [
+ "mneme-common",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

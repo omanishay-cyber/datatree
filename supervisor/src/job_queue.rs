@@ -165,23 +165,29 @@ impl JobQueue {
 
     /// Worker reported completion. Fires the waker (if any) and cleans
     /// up tracking state.
-    pub fn complete(&self, id: JobId, outcome: JobOutcome) {
+    ///
+    /// Returns the worker name the job was assigned to (if any) so the
+    /// caller can update per-worker telemetry. Returns `None` when the
+    /// job id is unknown (already requeued or never existed).
+    pub fn complete(&self, id: JobId, outcome: JobOutcome) -> Option<String> {
         let mut g = self.inner.lock();
         g.in_flight.remove(&id);
         let Some(tracked) = g.tracked.remove(&id) else {
             debug!(%id, "complete for unknown job; ignoring (likely already requeued)");
-            return;
+            return None;
         };
         if outcome.is_ok() {
             g.completed_count += 1;
         } else {
             g.failed_count += 1;
         }
+        let worker = tracked.assigned_to.clone();
         drop(g);
         if let Some(waker) = tracked.waker {
             let _ = waker.send(outcome);
         }
         self.wake_watchers.notify_waiters();
+        worker
     }
 
     /// Re-queue every job a (now-dead) worker had in flight. Called
@@ -316,9 +322,44 @@ mod tests {
             id,
             JobOutcome::Ok {
                 payload: Some(serde_json::json!({"nodes": 3})),
+                duration_ms: 7,
+                stats: serde_json::json!({"nodes": 3}),
             },
         );
         let outcome = rx.await.unwrap();
         assert!(outcome.is_ok());
+    }
+
+    #[test]
+    fn complete_returns_assigned_worker() {
+        let q = JobQueue::new(16);
+        let id = q.submit(dummy_parse(), None).unwrap();
+        let (id2, _) = q.next_pending().unwrap();
+        assert_eq!(id, id2);
+        q.mark_assigned(id, "parser-worker-1".into());
+        let worker = q.complete(
+            id,
+            JobOutcome::Ok {
+                payload: None,
+                duration_ms: 13,
+                stats: serde_json::Value::Null,
+            },
+        );
+        assert_eq!(worker.as_deref(), Some("parser-worker-1"));
+    }
+
+    #[test]
+    fn complete_returns_none_for_unknown_job() {
+        let q = JobQueue::new(16);
+        let bogus = JobId::next();
+        let w = q.complete(
+            bogus,
+            JobOutcome::Ok {
+                payload: None,
+                duration_ms: 0,
+                stats: serde_json::Value::Null,
+            },
+        );
+        assert!(w.is_none());
     }
 }

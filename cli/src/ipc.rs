@@ -17,6 +17,7 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::{CliError, CliResult};
+use common::query::{BlastItem, GodNode, RecallHit};
 
 /// Default timeout for a single round-trip. Chosen to be generous enough
 /// that even cold-start operations (`build` on a 10k-file repo) succeed,
@@ -54,27 +55,35 @@ pub enum IpcRequest {
         /// Project to graphify.
         project: PathBuf,
     },
-    /// Recall via embedding + FTS.
+    /// Recall via embedding + FTS. v0.3.1+: supervisor-mediated when the
+    /// daemon is up; CLI falls back to a direct `graph.db` read when the
+    /// daemon is down.
     Recall {
+        /// Project root whose `graph.db` shard to query.
+        project: PathBuf,
         /// Free-form query string.
         query: String,
-        /// Optional filter: decision | conversation | concept | file | todo | constraint.
-        #[serde(rename = "type")]
-        kind: Option<String>,
         /// Max number of hits to return.
         limit: usize,
+        /// Optional filter: decision | conversation | concept | file | todo | constraint.
+        #[serde(rename = "filter_type")]
+        filter_type: Option<String>,
     },
-    /// Blast-radius lookup.
+    /// Blast-radius lookup. Supervisor path opens the same shard the CLI
+    /// would and runs identical SQL — the fallback stays correct.
     Blast {
+        /// Project root whose `graph.db` shard to query.
+        project: PathBuf,
         /// File path or fully-qualified function name.
         target: String,
         /// Max traversal depth.
         depth: usize,
     },
-    /// Top-N most-connected concepts.
+    /// Top-N most-connected concepts. Supervisor path runs the same
+    /// degree query the CLI's direct-DB fallback runs.
     GodNodes {
-        /// Project to inspect.
-        project: Option<PathBuf>,
+        /// Project root whose `graph.db` shard to query.
+        project: PathBuf,
         /// How many nodes to return.
         n: usize,
     },
@@ -238,6 +247,21 @@ pub enum IpcResponse {
     JobQueue {
         /// Snapshot shape mirrors `supervisor::JobQueueSnapshot`.
         snapshot: serde_json::Value,
+    },
+    /// (v0.3.1) Supervisor-mediated recall results.
+    RecallResults {
+        /// Hits in supervisor-ranked order (FTS rank / LIKE length).
+        hits: Vec<RecallHit>,
+    },
+    /// (v0.3.1) Supervisor-mediated blast-radius results.
+    BlastResults {
+        /// Dependents grouped by BFS depth layer.
+        impacted: Vec<BlastItem>,
+    },
+    /// (v0.3.1) Supervisor-mediated god-node results.
+    GodNodesResults {
+        /// Top-N nodes by total degree.
+        nodes: Vec<GodNode>,
     },
     /// Error payload.
     Error {
@@ -494,16 +518,18 @@ mod tests {
     #[test]
     fn request_round_trips_json() {
         let req = IpcRequest::Recall {
+            project: PathBuf::from("/tmp/proj"),
             query: "auth flow".into(),
-            kind: Some("decision".into()),
             limit: 10,
+            filter_type: Some("decision".into()),
         };
         let bytes = serde_json::to_vec(&req).unwrap();
         let back: IpcRequest = serde_json::from_slice(&bytes).unwrap();
         match back {
-            IpcRequest::Recall { query, kind, limit } => {
+            IpcRequest::Recall { project, query, limit, filter_type } => {
+                assert_eq!(project, PathBuf::from("/tmp/proj"));
                 assert_eq!(query, "auth flow");
-                assert_eq!(kind.as_deref(), Some("decision"));
+                assert_eq!(filter_type.as_deref(), Some("decision"));
                 assert_eq!(limit, 10);
             }
             _ => panic!("variant mismatch"),

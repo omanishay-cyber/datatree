@@ -17,3 +17,10 @@ dirs.workspace = true
 dunce.workspace = true
 tracing.workspace = true
 rusqlite.workspace = true
+
+# Supervisor-client helper (`worker_ipc` module) — lets worker binaries
+# report `WorkerCompleteJob` messages back to the supervisor over the
+# same IPC transport the CLI uses. Kept async + tokio-based because
+# every worker already runs a tokio runtime.
+tokio.workspace = true
+interprocess.workspace = true

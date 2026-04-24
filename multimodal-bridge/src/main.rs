@@ -10,11 +10,14 @@
 
 use std::io::Write;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use clap::{Parser, Subcommand};
-use tracing::info;
+use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
 
+use common::jobs::{JobId, JobOutcome};
+use common::worker_ipc;
 use mneme_multimodal::{ExtractedDoc, Registry};
 
 #[derive(Debug, Parser)]
@@ -34,6 +37,12 @@ enum Cmd {
     Extract {
         /// File to extract.
         path: PathBuf,
+        /// Supervisor-assigned job id. When present (non-zero) the
+        /// extractor emits a `WorkerCompleteJob` IPC message alongside
+        /// the stdout JSON. Default 0 means "no supervisor", and the
+        /// IPC push is skipped.
+        #[arg(long, default_value_t = 0)]
+        job_id: u64,
     },
     /// Walk a directory and emit one JSON object per successfully
     /// extracted file (JSON lines).
@@ -59,10 +68,42 @@ fn main() -> anyhow::Result<()> {
     let registry = Registry::default_wired();
 
     match cli.command {
-        Cmd::Extract { path } => {
-            let doc = registry.extract(&path)?;
-            let out = serde_json::to_string_pretty(&doc)?;
-            println!("{out}");
+        Cmd::Extract { path, job_id } => {
+            let started = Instant::now();
+            let extract_result = registry.extract(&path);
+            let duration_ms = started.elapsed().as_millis() as u64;
+            match extract_result {
+                Ok(doc) => {
+                    let elements = doc.elements.len();
+                    let pages = doc.pages.len();
+                    let out = serde_json::to_string_pretty(&doc)?;
+                    println!("{out}");
+                    if job_id != 0 {
+                        let outcome = JobOutcome::Ok {
+                            payload: None,
+                            duration_ms,
+                            stats: serde_json::json!({
+                                "kind": doc.kind,
+                                "elements": elements,
+                                "pages": pages,
+                                "text_bytes": doc.text.len(),
+                            }),
+                        };
+                        report_complete_blocking(JobId(job_id), outcome);
+                    }
+                }
+                Err(e) => {
+                    if job_id != 0 {
+                        let outcome = JobOutcome::Err {
+                            message: format!("{e}"),
+                            duration_ms,
+                            stats: serde_json::Value::Null,
+                        };
+                        report_complete_blocking(JobId(job_id), outcome);
+                    }
+                    return Err(e.into());
+                }
+            }
         }
         Cmd::ExtractDir { path, out } => {
             let mut sink: Box<dyn Write> = match out.as_ref() {
@@ -126,4 +167,30 @@ fn write_jsonl(sink: &mut dyn Write, doc: &ExtractedDoc) -> anyhow::Result<()> {
     sink.write_all(s.as_bytes())?;
     sink.write_all(b"\n")?;
     Ok(())
+}
+
+/// Fire a `WorkerCompleteJob` from a sync context. The `multimodal`
+/// binary is synchronous (clap + CLI-style), so we spin up a tiny
+/// tokio runtime just for the IPC push. Errors are logged at debug and
+/// intentionally do not bubble up — the extractor already did its job.
+fn report_complete_blocking(job_id: JobId, outcome: JobOutcome) {
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(r) => r,
+        Err(e) => {
+            debug!(error = %e, "could not build runtime for worker_complete_job");
+            return;
+        }
+    };
+    rt.block_on(async move {
+        if let Err(e) = worker_ipc::report_complete(job_id, outcome).await {
+            debug!(
+                error = %e,
+                %job_id,
+                "multimodal worker_complete_job ipc send skipped"
+            );
+        }
+    });
 }

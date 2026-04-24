@@ -15,10 +15,13 @@
 
 use std::io::{BufRead, Write};
 use std::process::ExitCode;
+use std::time::Instant;
 
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
+use common::jobs::{JobId as SupervisorJobId, JobOutcome};
+use common::worker_ipc;
 use mneme_brain::worker::{spawn_worker, WorkerConfig};
 use mneme_brain::{BrainJob, BrainResult};
 
@@ -37,8 +40,14 @@ async fn main() -> ExitCode {
     let mut handle = spawn_worker(cfg);
     info!("brain ready (NDJSON over stdio)");
 
+    // Shared per-job timestamp ledger — stdin records when a job
+    // arrives, stdout looks it up to compute `duration_ms`. Locked via
+    // a tokio Mutex so both threads can poke it.
+    let ledger = std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::<u64, Instant>::new()));
+
     // Forward stdin → jobs channel on a blocking thread.
     let jobs_tx = handle.jobs_tx.clone();
+    let ledger_stdin = ledger.clone();
     let stdin_task = tokio::task::spawn_blocking(move || -> std::io::Result<()> {
         let stdin = std::io::stdin();
         let mut handle = stdin.lock();
@@ -57,6 +66,13 @@ async fn main() -> ExitCode {
             }
             match serde_json::from_str::<BrainJob>(trimmed) {
                 Ok(job) => {
+                    let job_id = job.id();
+                    if job_id != 0 {
+                        // blocking_lock is OK here: this task is already
+                        // running on a blocking thread. Map insert is
+                        // microseconds so lock contention is negligible.
+                        ledger_stdin.blocking_lock().insert(job_id, Instant::now());
+                    }
                     if jobs_tx.blocking_send(job).is_err() {
                         return Ok(());
                     }
@@ -69,8 +85,9 @@ async fn main() -> ExitCode {
     });
 
     // Forward results → stdout on the runtime.
+    let ledger_stdout = ledger.clone();
     let stdout_task = tokio::spawn(async move {
-        forward_results(&mut handle.results_rx).await;
+        forward_results(&mut handle.results_rx, ledger_stdout).await;
         // When results channel closes, also wait for worker to wind down.
         let _ = handle.join.await;
     });
@@ -89,9 +106,22 @@ async fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-async fn forward_results(rx: &mut mpsc::Receiver<BrainResult>) {
-    let stdout = std::io::stdout();
+async fn forward_results(
+    rx: &mut mpsc::Receiver<BrainResult>,
+    ledger: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<u64, Instant>>>,
+) {
     while let Some(result) = rx.recv().await {
+        // Look up per-job start time BEFORE serialising (we need the
+        // id; failure path also uses it).
+        let job_id = result.id();
+        let duration_ms = {
+            let mut g = ledger.lock().await;
+            g.remove(&job_id)
+                .map(|t| t.elapsed().as_millis() as u64)
+                .unwrap_or(0)
+        };
+        let (is_ok, message, stats) = result_telemetry(&result);
+
         let line = match serde_json::to_string(&result) {
             Ok(s) => s,
             Err(e) => {
@@ -99,13 +129,77 @@ async fn forward_results(rx: &mut mpsc::Receiver<BrainResult>) {
                 continue;
             }
         };
-        let mut h = stdout.lock();
-        if writeln!(h, "{line}").is_err() {
-            return;
+        // Scope the stdout lock so it drops before any .await below.
+        // `StdoutLock` is !Send, which would otherwise poison the async
+        // future.
+        {
+            let stdout = std::io::stdout();
+            let mut h = stdout.lock();
+            if writeln!(h, "{line}").is_err() {
+                return;
+            }
+            if h.flush().is_err() {
+                return;
+            }
         }
-        if h.flush().is_err() {
-            return;
+
+        // IPC emit alongside stdout — fire-and-forget telemetry push.
+        if job_id != 0 {
+            let outcome = if is_ok {
+                JobOutcome::Ok {
+                    payload: None,
+                    duration_ms,
+                    stats,
+                }
+            } else {
+                JobOutcome::Err {
+                    message: message.unwrap_or_else(|| "brain worker error".to_string()),
+                    duration_ms,
+                    stats,
+                }
+            };
+            if let Err(e) = worker_ipc::report_complete(SupervisorJobId(job_id), outcome).await {
+                debug!(error = %e, job_id, "brain worker_complete_job ipc send skipped");
+            }
         }
+    }
+}
+
+/// Pull the ok/err + stats view out of a BrainResult without consuming it.
+fn result_telemetry(
+    result: &BrainResult,
+) -> (bool, Option<String>, serde_json::Value) {
+    match result {
+        BrainResult::Embedding { vector, .. } => (
+            true,
+            None,
+            serde_json::json!({"kind": "embedding", "dim": vector.len()}),
+        ),
+        BrainResult::EmbeddingBatch { vectors, .. } => (
+            true,
+            None,
+            serde_json::json!({"kind": "embedding_batch", "count": vectors.len()}),
+        ),
+        BrainResult::Clusters { communities, .. } => (
+            true,
+            None,
+            serde_json::json!({"kind": "clusters", "communities": communities.len()}),
+        ),
+        BrainResult::Concepts { concepts, .. } => (
+            true,
+            None,
+            serde_json::json!({"kind": "concepts", "count": concepts.len()}),
+        ),
+        BrainResult::Summary { summary, .. } => (
+            true,
+            None,
+            serde_json::json!({"kind": "summary", "chars": summary.len()}),
+        ),
+        BrainResult::Error { message, .. } => (
+            false,
+            Some(message.clone()),
+            serde_json::json!({"kind": "error"}),
+        ),
     }
 }
 

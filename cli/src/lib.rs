@@ -32,6 +32,7 @@ pub mod ipc;
 pub mod markers;
 pub mod platforms;
 pub mod receipts;
+pub mod skill_matcher;
 
 #[cfg(test)]
 pub mod tests;

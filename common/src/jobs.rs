@@ -109,6 +109,10 @@ impl Job {
 }
 
 /// Completion status reported by a worker via `WorkerCompleteJob`.
+///
+/// v0.3.0 added the `duration_ms` and `stats` fields alongside
+/// `payload` / `message`. Fields default-to-zero / `Value::Null` so
+/// older workers that emit the v0.2 shape still deserialise cleanly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum JobOutcome {
@@ -119,12 +123,26 @@ pub enum JobOutcome {
         /// Result JSON (opaque here; typed at callsite).
         #[serde(default)]
         payload: Option<serde_json::Value>,
+        /// Wall-clock ms the worker spent handling this job.
+        #[serde(default)]
+        duration_ms: u64,
+        /// Free-form per-worker telemetry (e.g. `{"nodes":42, "edges":18}`
+        /// for parse jobs, `{"findings":3}` for scan jobs). Defaults to
+        /// `Null` so older workers emitting the v0.2 shape still parse.
+        #[serde(default)]
+        stats: serde_json::Value,
     },
     /// Worker encountered an error. The job is not re-queued — the CLI
     /// decides whether to skip or abort.
     Err {
         /// Human-readable error message.
         message: String,
+        /// Wall-clock ms the worker spent before failing.
+        #[serde(default)]
+        duration_ms: u64,
+        /// Free-form per-worker telemetry captured up to the failure point.
+        #[serde(default)]
+        stats: serde_json::Value,
     },
 }
 
@@ -132,6 +150,31 @@ impl JobOutcome {
     /// Convenience: `true` iff outcome is `Ok`.
     pub fn is_ok(&self) -> bool {
         matches!(self, JobOutcome::Ok { .. })
+    }
+
+    /// How long the worker spent on this job (ms), regardless of outcome.
+    pub fn duration_ms(&self) -> u64 {
+        match self {
+            JobOutcome::Ok { duration_ms, .. } => *duration_ms,
+            JobOutcome::Err { duration_ms, .. } => *duration_ms,
+        }
+    }
+
+    /// Borrow the free-form stats payload.
+    pub fn stats(&self) -> &serde_json::Value {
+        match self {
+            JobOutcome::Ok { stats, .. } => stats,
+            JobOutcome::Err { stats, .. } => stats,
+        }
+    }
+
+    /// Short status string used in telemetry: `"ok"` or `"error"`.
+    pub fn status_str(&self) -> &'static str {
+        if self.is_ok() {
+            "ok"
+        } else {
+            "error"
+        }
     }
 }
 
@@ -177,11 +220,48 @@ mod tests {
 
     #[test]
     fn outcome_is_ok_helper() {
-        let ok = JobOutcome::Ok { payload: None };
+        let ok = JobOutcome::Ok {
+            payload: None,
+            duration_ms: 0,
+            stats: serde_json::Value::Null,
+        };
         let err = JobOutcome::Err {
             message: "boom".into(),
+            duration_ms: 0,
+            stats: serde_json::Value::Null,
         };
         assert!(ok.is_ok());
         assert!(!err.is_ok());
+        assert_eq!(ok.status_str(), "ok");
+        assert_eq!(err.status_str(), "error");
+    }
+
+    #[test]
+    fn outcome_duration_ms_and_stats_round_trip() {
+        let ok = JobOutcome::Ok {
+            payload: Some(serde_json::json!({"k": 1})),
+            duration_ms: 42,
+            stats: serde_json::json!({"nodes": 3, "edges": 2}),
+        };
+        let s = serde_json::to_string(&ok).unwrap();
+        let back: JobOutcome = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.duration_ms(), 42);
+        assert_eq!(back.stats()["nodes"].as_u64(), Some(3));
+    }
+
+    #[test]
+    fn outcome_accepts_legacy_v02_wire_shape() {
+        // Old workers emit only `outcome` + `payload` / `message`. The
+        // new fields default to 0 / Null, so legacy JSON still parses.
+        let legacy_ok = r#"{"outcome":"ok","payload":null}"#;
+        let parsed: JobOutcome = serde_json::from_str(legacy_ok).unwrap();
+        assert!(parsed.is_ok());
+        assert_eq!(parsed.duration_ms(), 0);
+        assert!(parsed.stats().is_null());
+
+        let legacy_err = r#"{"outcome":"err","message":"boom"}"#;
+        let parsed: JobOutcome = serde_json::from_str(legacy_err).unwrap();
+        assert!(!parsed.is_ok());
+        assert_eq!(parsed.duration_ms(), 0);
     }
 }

@@ -3,6 +3,9 @@ target/
 **/*.rs.bk
 Cargo.lock.bak
 
+# personal sandbox folder: user puts their app source here for VM testing
+updated skills/
+
 # Bun / Node
 node_modules/
 dist/

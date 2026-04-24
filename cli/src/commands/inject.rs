@@ -25,6 +25,15 @@
 //! UserPromptSubmit — a non-zero exit muted the user), and must never
 //! block a prompt because of an internal failure of mneme.
 //!
+//! ## v0.3.1+ — skill prescription
+//!
+//! When the payload carries a `prompt`, the hook also runs a minimal
+//! in-process skill matcher against `~/.mneme/plugin/skills/` (see
+//! [`crate::skill_matcher`]) and, if the top suggestion fires at
+//! `medium` or `high` confidence, appends a
+//! `<mneme-skill-prescription>` block to the emitted
+//! `additional_context`. Pass `--no-skill-hint` to skip this.
+//!
 //! Output format is the JSON shape Claude Code expects from a
 //! UserPromptSubmit hook:
 //!
@@ -42,6 +51,7 @@ use crate::commands::build::make_client;
 use crate::error::CliResult;
 use crate::hook_payload::{choose, read_stdin_payload};
 use crate::ipc::{IpcRequest, IpcResponse};
+use crate::skill_matcher::{reason_for, suggest, Confidence, Suggestion};
 
 /// CLI args for `mneme inject`. All optional — STDIN JSON fills in
 /// anything missing.
@@ -61,6 +71,12 @@ pub struct InjectArgs {
     /// from STDIN `.cwd` or the process CWD.
     #[arg(long)]
     pub cwd: Option<PathBuf>,
+
+    /// Skip the `<mneme-skill-prescription>` block. Useful when the
+    /// user wants the supervisor's context without any skill-router
+    /// nudge.
+    #[arg(long = "no-skill-hint", default_value_t = false)]
+    pub no_skill_hint: bool,
 }
 
 /// Entry point used by `main.rs`.
@@ -90,13 +106,13 @@ pub async fn run(args: InjectArgs, socket_override: Option<PathBuf>) -> CliResul
     let client = make_client(socket_override);
     let response = client
         .request(IpcRequest::Inject {
-            prompt,
+            prompt: prompt.clone(),
             session_id,
             cwd,
         })
         .await;
 
-    let payload = match response {
+    let mut payload = match response {
         Ok(IpcResponse::Ok { message }) => message.unwrap_or_default(),
         Ok(IpcResponse::Error { message }) => {
             warn!(error = %message, "supervisor returned error; emitting empty additional_context");
@@ -106,12 +122,40 @@ pub async fn run(args: InjectArgs, socket_override: Option<PathBuf>) -> CliResul
         | Ok(IpcResponse::Status { .. })
         | Ok(IpcResponse::Logs { .. })
         | Ok(IpcResponse::JobQueued { .. })
-        | Ok(IpcResponse::JobQueue { .. }) => String::new(),
+        | Ok(IpcResponse::JobQueue { .. })
+        | Ok(IpcResponse::RecallResults { .. })
+        | Ok(IpcResponse::BlastResults { .. })
+        | Ok(IpcResponse::GodNodesResults { .. }) => String::new(),
         Err(e) => {
             warn!(error = %e, "supervisor unreachable; emitting empty additional_context");
             String::new()
         }
     };
+
+    // Append the skill-router recommendation when:
+    //   - the user actually typed something (skip empty prompts),
+    //   - the caller did not pass --no-skill-hint,
+    //   - the top suggestion fires at medium or high confidence.
+    if !args.no_skill_hint && !prompt.trim().is_empty() {
+        match std::panic::catch_unwind(|| suggest(&prompt, 1)) {
+            Ok(hits) => {
+                if let Some(hit) = hits.into_iter().next() {
+                    if matches!(hit.confidence, Confidence::Medium | Confidence::High) {
+                        let block = render_skill_block(&prompt, &hit);
+                        if payload.is_empty() {
+                            payload = block;
+                        } else {
+                            payload.push_str("\n\n");
+                            payload.push_str(&block);
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                warn!("skill matcher panicked; dropping skill prescription");
+            }
+        }
+    }
 
     let out = json!({
         "hookEventName": "UserPromptSubmit",
@@ -119,4 +163,83 @@ pub async fn run(args: InjectArgs, socket_override: Option<PathBuf>) -> CliResul
     });
     println!("{}", serde_json::to_string(&out)?);
     Ok(())
+}
+
+/// Render a single `<mneme-skill-prescription>` block. Kept ASCII-only
+/// — the user's Windows cp1252 terminal breaks on em-dashes and other
+/// fancy punctuation.
+fn render_skill_block(prompt: &str, hit: &Suggestion) -> String {
+    let excerpt = excerpt(prompt, 120);
+    // `to_load` is a plain `cat` against the absolute SKILL.md path so
+    // the assistant can load the skill without the MCP server being up.
+    // The path is the one mneme actually parsed, so dev-tree runs work
+    // the same as installed-plugin runs.
+    let source = hit.source_path.to_string_lossy();
+    let reason = reason_for(hit);
+    format!(
+        concat!(
+            "<mneme-skill-prescription>\n",
+            "  task: {task}\n",
+            "  recommended_skill: {skill}\n",
+            "  confidence: {confidence}\n",
+            "  reason: {reason}\n",
+            "  to_load: cat {path}\n",
+            "</mneme-skill-prescription>",
+        ),
+        task = excerpt,
+        skill = hit.skill,
+        confidence = hit.confidence.as_str(),
+        reason = reason,
+        path = source,
+    )
+}
+
+/// Collapse whitespace + truncate so the excerpt never blows out the
+/// hook JSON. Keeps output single-line-friendly.
+fn excerpt(raw: &str, max_chars: usize) -> String {
+    let collapsed: String = raw
+        .chars()
+        .map(|c| if c.is_whitespace() { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if collapsed.chars().count() <= max_chars {
+        return collapsed;
+    }
+    let mut out: String = collapsed.chars().take(max_chars).collect();
+    out.push_str("...");
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn excerpt_collapses_and_truncates() {
+        let long = "  hello\n  world  this  is   a   very   long   prompt   that   must   be   truncated ";
+        let out = excerpt(long, 30);
+        assert!(out.starts_with("hello world"));
+        assert!(out.len() <= 33); // 30 chars + "..."
+        assert!(out.ends_with("..."));
+    }
+
+    #[test]
+    fn render_block_is_ascii() {
+        let hit = Suggestion {
+            skill: "fireworks-debug".to_string(),
+            triggers_matched: vec!["debug".to_string()],
+            tags_matched: Vec::new(),
+            confidence: Confidence::Medium,
+            source_path: PathBuf::from("/tmp/SKILL.md"),
+            score: 2,
+        };
+        let block = render_skill_block("debug a test", &hit);
+        assert!(block.is_ascii());
+        assert!(block.contains("recommended_skill: fireworks-debug"));
+        assert!(block.contains("confidence: medium"));
+        assert!(block.contains("to_load: cat /tmp/SKILL.md"));
+    }
 }

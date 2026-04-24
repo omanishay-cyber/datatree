@@ -19,6 +19,8 @@ pub mod decision;
 pub mod step;
 pub mod event;
 pub mod jobs;
+pub mod query;
+pub mod worker_ipc;
 
 pub use error::{DbError, DtError, DtResult};
 pub use ids::{ProjectId, RowId, SessionId, SnapshotId, StepId, NodeId, EdgeId};
@@ -35,3 +37,4 @@ pub use decision::Decision;
 pub use step::{Step, StepStatus};
 pub use event::{Event, EventTopic};
 pub use jobs::{Job, JobId, JobOutcome};
+pub use query::{BlastItem, GodNode, RecallHit};

@@ -767,6 +767,18 @@ pub(crate) fn handle_response(response: IpcResponse) -> CliResult<()> {
             println!("{}", serde_json::to_string_pretty(&snapshot)?);
             Ok(())
         }
+        IpcResponse::RecallResults { hits } => {
+            println!("{}", serde_json::to_string_pretty(&hits)?);
+            Ok(())
+        }
+        IpcResponse::BlastResults { impacted } => {
+            println!("{}", serde_json::to_string_pretty(&impacted)?);
+            Ok(())
+        }
+        IpcResponse::GodNodesResults { nodes } => {
+            println!("{}", serde_json::to_string_pretty(&nodes)?);
+            Ok(())
+        }
         IpcResponse::Error { message } => Err(CliError::Supervisor(message)),
     }
 }

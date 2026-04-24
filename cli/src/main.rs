@@ -254,7 +254,8 @@ async fn launch_mcp(transport: String) -> CliResult<()> {
 }
 
 fn which_bun() -> String {
-    // Prefer explicit env, then common Windows locations, then "bun" on PATH.
+    // Prefer explicit env, then common per-OS install locations, then
+    // bare "bun" on PATH.
     if let Ok(p) = std::env::var("MNEME_BUN") {
         return p;
     }
@@ -271,6 +272,27 @@ fn which_bun() -> String {
         // 2. Official PowerShell installer drops to `%USERPROFILE%\.bun\bin\bun.exe`.
         if let Some(home) = dirs::home_dir() {
             let candidate = home.join(".bun").join("bin").join("bun.exe");
+            if candidate.exists() {
+                return candidate.to_string_lossy().into();
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        // Official `curl -fsSL https://bun.sh/install | bash` drops to
+        // `$HOME/.bun/bin/bun` on both Linux and macOS. No `.exe` suffix.
+        if let Some(home) = dirs::home_dir() {
+            let candidate = home.join(".bun").join("bin").join("bun");
+            if candidate.exists() {
+                return candidate.to_string_lossy().into();
+            }
+        }
+        // Homebrew (macOS + Linuxbrew) installs to /opt/homebrew/bin or
+        // /usr/local/bin; both are usually on PATH, so the bare "bun"
+        // fallback picks them up. Explicit checks avoid relying on a
+        // shell-inherited PATH that Rust's `std::process` may not see.
+        for prefix in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
+            let candidate = std::path::Path::new(prefix).join("bun");
             if candidate.exists() {
                 return candidate.to_string_lossy().into();
             }

@@ -1,7 +1,8 @@
 //! `mneme godnodes [--n=N]` — top-N most-connected concepts.
 //!
-//! v0.3.1 change: queries `graph.db` directly instead of going through the
-//! supervisor IPC (F-009 again — the supervisor doesn't route GodNodes).
+//! v0.3.1: dual-path dispatch, same shape as `recall` and `blast`. IPC
+//! first (supervisor pools the read connection + prepared statement);
+//! direct-DB fallback preserved verbatim when the daemon is down.
 //!
 //! "Most connected" = highest in-degree + out-degree across the `edges`
 //! table. These are the project's god-objects, central utilities, and
@@ -11,8 +12,12 @@
 use clap::Args;
 use rusqlite::{Connection, OpenFlags};
 use std::path::PathBuf;
+use tracing::info;
 
+use crate::commands::build::make_client;
 use crate::error::{CliError, CliResult};
+use crate::ipc::{IpcRequest, IpcResponse};
+use common::query::GodNode;
 use common::{ids::ProjectId, paths::PathManager};
 
 /// CLI args for `mneme godnodes`.
@@ -27,20 +32,40 @@ pub struct GodNodesArgs {
     pub n: usize,
 }
 
-#[derive(Debug)]
-struct GodNode {
-    qualified_name: String,
-    kind: String,
-    name: String,
-    file_path: Option<String>,
-    degree: i64,
-    fan_in: i64,
-    fan_out: i64,
-}
-
 /// Entry point used by `main.rs`.
-pub async fn run(args: GodNodesArgs, _socket_override: Option<PathBuf>) -> CliResult<()> {
-    let graph_db = resolve_graph_db(args.project.clone())?;
+///
+/// Dispatch order matches `recall`/`blast`. IPC first, direct-DB fallback.
+pub async fn run(args: GodNodesArgs, socket_override: Option<PathBuf>) -> CliResult<()> {
+    let project_root = resolve_project_root(args.project.clone());
+
+    let client = make_client(socket_override);
+    if client.is_running().await {
+        let req = IpcRequest::GodNodes {
+            project: project_root.clone(),
+            n: args.n,
+        };
+        match client.request(req).await {
+            Ok(IpcResponse::GodNodesResults { nodes }) => {
+                info!(source = "supervisor", count = nodes.len(), "godnodes served");
+                print_gods(&nodes);
+                return Ok(());
+            }
+            Ok(IpcResponse::Error { message }) => {
+                return Err(CliError::Supervisor(message));
+            }
+            Ok(other) => {
+                tracing::warn!(?other, "unexpected IPC response; falling back to direct-db");
+            }
+            Err(CliError::Ipc(msg)) => {
+                tracing::warn!(error = %msg, "supervisor IPC failed; falling back to direct-db");
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    // Direct-DB fallback.
+    info!(source = "direct-db", "godnodes served");
+    let graph_db = paths_graph_db(&project_root)?;
     if !graph_db.exists() {
         return Err(CliError::Other(format!(
             "graph.db not found at {}. Run `mneme build .` first.",
@@ -99,13 +124,18 @@ pub async fn run(args: GodNodesArgs, _socket_override: Option<PathBuf>) -> CliRe
     Ok(())
 }
 
-fn resolve_graph_db(project: Option<PathBuf>) -> CliResult<PathBuf> {
-    let root = project
+/// Canonicalise the user's `--project` flag (or CWD) to an absolute path.
+fn resolve_project_root(project: Option<PathBuf>) -> PathBuf {
+    project
         .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
         .unwrap_or_else(|| {
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        });
-    let id = ProjectId::from_path(&root)
+        })
+}
+
+/// Map a resolved project root to its `graph.db` path.
+fn paths_graph_db(root: &std::path::Path) -> CliResult<PathBuf> {
+    let id = ProjectId::from_path(root)
         .map_err(|e| CliError::Other(format!("cannot hash project path {}: {e}", root.display())))?;
     let paths = PathManager::default_root();
     Ok(paths.project_root(&id).join("graph.db"))

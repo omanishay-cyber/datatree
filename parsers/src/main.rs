@@ -12,6 +12,8 @@
 //! length-prefixed bytes; the JSON-over-stdio path here is identical in
 //! contract and is what the integration tests in `mneme/tests/` drive.
 
+use common::jobs::{JobId, JobOutcome};
+use common::worker_ipc;
 use mneme_parsers::{
     incremental::IncrementalParser, parser_pool::ParserPool, query_cache, worker::Worker,
     ParseJob, ParserError,
@@ -19,7 +21,7 @@ use mneme_parsers::{
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -58,10 +60,57 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     drop(tx_results); // workers each hold a clone; loop exits when all do
 
-    // Result-emitter task: writes one JSON line per result to stdout.
+    // Result-emitter task: writes one JSON line per result to stdout AND
+    // fires a typed `WorkerCompleteJob` IPC message to the supervisor.
+    // The stdout line is kept intact so integration tests that drove the
+    // worker via stdio (see `parsers/src/tests.rs`) continue to work;
+    // the IPC push is purely additive.
+    //
+    // Routing note: per-job telemetry updates on the supervisor side
+    // depend on the supervisor-assigned JobId, which arrives on the
+    // stdin wire as `job_id`. Our `ParseResult` carries the same field,
+    // so we reuse it here. When `job_id == 0` (jobs never routed via the
+    // supervisor — e.g. ad-hoc stdio calls) we skip the IPC send.
     let result_task = tokio::spawn(async move {
         let mut stdout = tokio::io::stdout();
         while let Some(res) = rx_results.recv().await {
+            // Capture the telemetry we need before we consume `res`.
+            let (job_id, outcome) = match &res {
+                Ok(r) => (
+                    r.job_id,
+                    JobOutcome::Ok {
+                        payload: Some(serde_json::json!({
+                            "file_path": r.file_path,
+                            "language": r.language,
+                            "nodes_len": r.nodes.len(),
+                            "edges_len": r.edges.len(),
+                            "syntax_errors_len": r.syntax_errors.len(),
+                            "incremental": r.incremental,
+                        })),
+                        duration_ms: r.parse_duration_ms,
+                        stats: serde_json::json!({
+                            "nodes": r.nodes.len(),
+                            "edges": r.edges.len(),
+                            "syntax_errors": r.syntax_errors.len(),
+                            "incremental": r.incremental,
+                        }),
+                    },
+                ),
+                // Parser errors don't carry a job_id; we extract it only
+                // on the Ok path. Still report a best-effort failure so
+                // the queue marks the job failed and doesn't wait
+                // forever.
+                Err(e) => (
+                    0,
+                    JobOutcome::Err {
+                        message: format!("{e}"),
+                        duration_ms: 0,
+                        stats: serde_json::Value::Null,
+                    },
+                ),
+            };
+
+            // Legacy stdout emit (unchanged).
             let line = match res {
                 Ok(r) => serde_json::to_string(&r)
                     .unwrap_or_else(|e| format!("{{\"error\":\"serialize: {e}\"}}")),
@@ -73,6 +122,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let _ = stdout.write_all(b"\n").await;
             let _ = stdout.flush().await;
+
+            // IPC emit (additive). Fire-and-forget — a deaf supervisor
+            // must not wedge the worker's result pipeline.
+            if job_id != 0 {
+                if let Err(e) =
+                    worker_ipc::report_complete(JobId(job_id), outcome).await
+                {
+                    debug!(error = %e, job_id, "worker_complete_job ipc send skipped");
+                }
+            }
         }
     });
 

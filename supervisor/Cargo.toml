@@ -54,6 +54,12 @@ common = { path = "../common", package = "mneme-common" }
 store = { path = "../store", package = "mneme-store" }
 parsers = { path = "../parsers", package = "mneme-parsers" }
 
+# Read-side access to `graph.db` for the supervisor-mediated recall /
+# blast / godnodes IPC handlers. Read-only; per-shard writer invariant
+# is preserved because the supervisor never opens these connections
+# with SQLITE_OPEN_READ_WRITE.
+rusqlite = { workspace = true }
+
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.7"
 

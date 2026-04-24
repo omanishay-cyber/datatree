@@ -93,6 +93,21 @@ pub struct ChildHandle {
     /// Writable stdin handle for worker-bound job dispatch (framed JSON lines).
     /// None between spawn attempts or for workers that don't consume stdin.
     pub stdin: Option<Arc<Mutex<ChildStdin>>>,
+    /// ID of the job most recently reported complete via `WorkerCompleteJob`.
+    /// Keeps across restarts so the user sees "last job before the crash".
+    pub last_job_id: Option<u64>,
+    /// Wall-clock ms the worker spent on its most recent job.
+    pub last_job_duration_ms: Option<u64>,
+    /// Outcome of the most recent job (`"ok"` or `"error"`).
+    pub last_job_status: Option<&'static str>,
+    /// Rolling window of per-job durations in ms; used for `avg_job_ms`.
+    pub job_durations_ms: VecDeque<u64>,
+    /// Wall-clock time (UTC) the most recent `WorkerCompleteJob` arrived.
+    pub last_job_completed_at: Option<DateTime<Utc>>,
+    /// Cumulative jobs reported complete via IPC since boot.
+    pub total_jobs_completed: u64,
+    /// Cumulative failed jobs reported complete via IPC since boot.
+    pub total_jobs_failed: u64,
 }
 
 impl ChildHandle {
@@ -113,7 +128,42 @@ impl ChildHandle {
             current_backoff: initial_backoff,
             latency_samples_us: VecDeque::new(),
             stdin: None,
+            last_job_id: None,
+            last_job_duration_ms: None,
+            last_job_status: None,
+            job_durations_ms: VecDeque::new(),
+            last_job_completed_at: None,
+            total_jobs_completed: 0,
+            total_jobs_failed: 0,
         }
+    }
+
+    /// Record the outcome of a `WorkerCompleteJob` IPC message. Keeps a
+    /// rolling window (last 256) of durations for `avg_job_ms`.
+    pub fn record_job_completion(&mut self, job_id: u64, status: &'static str, duration_ms: u64) {
+        self.last_job_id = Some(job_id);
+        self.last_job_duration_ms = Some(duration_ms);
+        self.last_job_status = Some(status);
+        self.last_job_completed_at = Some(Utc::now());
+        self.job_durations_ms.push_back(duration_ms);
+        while self.job_durations_ms.len() > 256 {
+            self.job_durations_ms.pop_front();
+        }
+        if status == "ok" {
+            self.total_jobs_completed = self.total_jobs_completed.saturating_add(1);
+        } else {
+            self.total_jobs_failed = self.total_jobs_failed.saturating_add(1);
+        }
+    }
+
+    /// Mean wall-clock time across the rolling job-duration window.
+    /// `None` when no jobs have completed yet.
+    pub fn avg_job_ms(&self) -> Option<u64> {
+        if self.job_durations_ms.is_empty() {
+            return None;
+        }
+        let sum: u64 = self.job_durations_ms.iter().sum();
+        Some(sum / self.job_durations_ms.len() as u64)
     }
 
     /// Push a fresh restart timestamp and prune entries older than `window`.
