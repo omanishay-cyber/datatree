@@ -47,6 +47,9 @@ notify = "6.1"
 walkdir = "2.5"
 parking_lot = "0.12"
 dunce = "1.0"
+# Home-directory resolution for the durable job-queue path
+# (`~/.mneme/run/jobs.db`). v0.3.0 audit fix L5.
+dirs = "5.0"
 
 # Local workspace members
 # `common` crate is referenced via path; Cargo will resolve relative to this Cargo.toml.

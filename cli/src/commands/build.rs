@@ -11,9 +11,10 @@
 use clap::Args;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
+use crate::build_lock::BuildLock;
 use crate::error::{CliError, CliResult};
 use crate::ipc::{IpcClient, IpcRequest, IpcResponse};
 
@@ -59,6 +60,15 @@ pub struct BuildArgs {
     /// `mneme build ~` or similar see the prompt and can decline.
     #[arg(long, short = 'y')]
     pub yes: bool,
+
+    /// Maximum seconds to wait for the per-project build lock if a
+    /// concurrent build is already in progress. `0` (default) is
+    /// fail-fast — second invocation exits immediately with exit
+    /// code 4 (`error: another build in progress for project <id>
+    /// (locked at <ts>)`). Higher values poll every 250ms up to the
+    /// deadline. Audit fix L4 (v0.3.0).
+    #[arg(long, default_value_t = 0)]
+    pub lock_timeout_secs: u64,
 }
 
 /// File-count threshold above which `mneme build` prompts the user to
@@ -104,6 +114,19 @@ pub async fn run(args: BuildArgs, socket_override: Option<PathBuf>) -> CliResult
             ));
         }
     }
+
+    // L4: Cross-process build lock. Held for the lifetime of this
+    // function — Drop releases on success, error, AND panic. Acquired
+    // BEFORE any DB writes (inline path) and BEFORE submitting any
+    // dispatch jobs (which the supervisor will eventually run inline
+    // against the same shard). Dropped automatically when `_lock`
+    // goes out of scope at the end of `run`.
+    let project_id = ProjectId::from_path(&project)
+        .map_err(|e| CliError::Other(format!("cannot hash project path: {e}")))?;
+    let paths = PathManager::default_root();
+    let project_root = paths.project_root(&project_id);
+    let lock_timeout = Duration::from_secs(args.lock_timeout_secs);
+    let _lock = BuildLock::acquire(project_id.as_str(), &project_root, lock_timeout)?;
 
     // --dispatch: try the supervisor path; fall back to inline if the
     // daemon isn't running. --inline: force the in-process pipeline
@@ -235,7 +258,11 @@ async fn run_dispatched(
 }
 
 /// The classic in-process pipeline — unchanged from v0.2 behaviour.
-async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<()> {
+///
+/// Exposed at `pub(crate)` so `commands::rebuild` can re-use it for
+/// the direct-DB rebuild fallback (audit fix L17). Callers must hold
+/// the [`BuildLock`] for the project before calling this.
+pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<()> {
     let _ = args.inline; // silence unused
 
     // 1. Store setup: open (or create) the per-project shard.
@@ -443,6 +470,16 @@ async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<()> {
     // `summary` = page text — so `recall_concept` hits PDF content via the
     // existing nodes_fts index without a schema bump).
     let mm_stats = run_multimodal_pass(&store, &project_id, &project).await;
+
+    // Stamp meta.db::projects.last_indexed_at so the staleness nag
+    // (audit-L12) can tell users when their recall results are
+    // potentially out of date. This must run AFTER the multimodal pass
+    // succeeds - a stamp on a half-built shard would mask a real
+    // staleness signal. Failure here is non-fatal: the build itself
+    // succeeded, we just couldn't update the bookkeeping row.
+    if let Err(e) = store::mark_indexed(&paths, &project_id) {
+        warn!(error = %e, "failed to stamp last_indexed_at; staleness nag may be inaccurate");
+    }
 
     println!();
     println!("build complete:");

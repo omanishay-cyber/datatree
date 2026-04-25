@@ -105,7 +105,7 @@ rand_chacha = "0.3"
 sha2 = "0.10"
 hex = "0.4"
 regex = "1"
-dashmap = "5"
+dashmap = "6.1"
 memmap2 = "0.9"
 dirs = "5"
 

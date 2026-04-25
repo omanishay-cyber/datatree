@@ -264,6 +264,26 @@ fn register_project(
     Ok(())
 }
 
+/// Stamp `meta.db::projects.last_indexed_at` with the current timestamp
+/// for a successful build. Called by `mneme build` after the multimodal
+/// pass completes - the staleness nag (audit-L12) reads this column to
+/// decide whether the user's recall results may not reflect recent edits.
+///
+/// Idempotent: the row must already exist (registered by
+/// [`DbBuilder::build_or_migrate`]). Silently no-ops if the row is
+/// absent - that case represents a different bug (project not
+/// registered) and a "no row updated" warning would confuse the user
+/// during a successful build.
+pub fn mark_indexed(paths: &PathManager, id: &ProjectId) -> DtResult<()> {
+    let conn = Connection::open(paths.meta_db()).map_err(DbError::from)?;
+    conn.execute(
+        "UPDATE projects SET last_indexed_at = datetime('now') WHERE id = ?1",
+        rusqlite::params![id.as_str()],
+    )
+    .map_err(DbError::from)?;
+    Ok(())
+}
+
 #[cfg(unix)]
 fn secure_perms(path: &Path) -> DtResult<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -278,4 +298,122 @@ fn secure_perms(_path: &Path) -> DtResult<()> {
     // Windows: rely on default ACL (user-only); CLI install can call icacls
     // explicitly during install for stricter setup.
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn fresh_paths() -> (tempfile::TempDir, PathManager) {
+        let dir = tempdir().expect("tempdir");
+        let paths = PathManager::with_root(dir.path().to_path_buf());
+        std::fs::create_dir_all(paths.root()).unwrap();
+        init_meta(&paths).unwrap();
+        (dir, paths)
+    }
+
+    fn insert_project_row(paths: &PathManager, id: &ProjectId, root: &Path, name: &str) {
+        let conn = Connection::open(paths.meta_db()).unwrap();
+        conn.execute(
+            "INSERT INTO projects(id, root, name, schema_version) VALUES(?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                id.as_str(),
+                root.to_string_lossy(),
+                name,
+                SCHEMA_VERSION
+            ],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn mark_indexed_sets_recent_timestamp() {
+        let (_keep, paths) = fresh_paths();
+        let id = ProjectId::from_path(paths.root()).unwrap();
+        insert_project_row(&paths, &id, paths.root(), "fixture");
+
+        let conn = Connection::open(paths.meta_db()).unwrap();
+        let pre: Option<String> = conn
+            .query_row(
+                "SELECT last_indexed_at FROM projects WHERE id = ?1",
+                rusqlite::params![id.as_str()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(pre.is_none(), "expected NULL last_indexed_at before mark_indexed");
+
+        mark_indexed(&paths, &id).expect("mark_indexed");
+
+        let post: Option<String> = conn
+            .query_row(
+                "SELECT last_indexed_at FROM projects WHERE id = ?1",
+                rusqlite::params![id.as_str()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let ts = post.expect("last_indexed_at must be set after mark_indexed");
+        assert_eq!(ts.len(), 19, "datetime('now') format YYYY-MM-DD HH:MM:SS expected, got {ts}");
+
+        let written_secs: i64 = conn
+            .query_row(
+                "SELECT CAST(strftime('%s', ?1) AS INTEGER)",
+                rusqlite::params![&ts],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let now_secs: i64 = conn
+            .query_row(
+                "SELECT CAST(strftime('%s', datetime('now')) AS INTEGER)",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            (now_secs - written_secs).abs() <= 5,
+            "expected timestamp within 5s of now (now={now_secs}, written={written_secs})"
+        );
+    }
+
+    #[test]
+    fn mark_indexed_is_idempotent_and_advances_timestamp() {
+        let (_keep, paths) = fresh_paths();
+        let id = ProjectId::from_path(paths.root()).unwrap();
+        insert_project_row(&paths, &id, paths.root(), "fixture");
+
+        mark_indexed(&paths, &id).unwrap();
+        let conn = Connection::open(paths.meta_db()).unwrap();
+        let first: String = conn
+            .query_row(
+                "SELECT last_indexed_at FROM projects WHERE id = ?1",
+                rusqlite::params![id.as_str()],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        mark_indexed(&paths, &id).unwrap();
+        let second: String = conn
+            .query_row(
+                "SELECT last_indexed_at FROM projects WHERE id = ?1",
+                rusqlite::params![id.as_str()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            second >= first,
+            "second timestamp must be >= first (lex order matches chrono on this format) - first={first} second={second}"
+        );
+    }
+
+    #[test]
+    fn mark_indexed_on_missing_row_is_noop() {
+        // Ensures a fresh shard that never registered the project row
+        // doesn't crash mneme build mid-flight. mark_indexed silently
+        // updates 0 rows.
+        let (_keep, paths) = fresh_paths();
+        let id = ProjectId::from_path(paths.root()).unwrap();
+        // Intentionally do NOT insert_project_row.
+        mark_indexed(&paths, &id).expect("mark_indexed must not error on missing row");
+    }
 }

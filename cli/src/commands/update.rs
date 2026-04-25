@@ -38,6 +38,9 @@ pub async fn run(args: UpdateArgs, socket_override: Option<PathBuf>) -> CliResul
         dispatch: false,
         inline: true,
         yes: args.yes,
+        // L4: incremental update is single-writer same as full build —
+        // 0 = fail-fast if a competing build is in flight.
+        lock_timeout_secs: 0,
     };
     crate::commands::build::run(build_args, socket_override).await
 }

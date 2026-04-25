@@ -46,6 +46,11 @@ sha2 = "0.10"
 # Filesystem helpers.
 dirs = "5.0"
 walkdir = "2.5"
+# Cross-process advisory file locking — used by `mneme build` /
+# `mneme rebuild` to prevent two concurrent invocations from
+# corrupting the per-project SQLite shard. Portable across Windows
+# (LockFileEx) and Unix (flock). Audit fix L4 (v0.3.0).
+fs2 = "0.4"
 # ripgrep's gitignore parser — powers `.mnemeignore` + `.gitignore`
 # support in `mneme build` (P16). Supports nested ignore files and the
 # full gitignore spec (negation, directory-only, etc.).
@@ -66,7 +71,16 @@ multimodal = { path = "../multimodal-bridge", package = "mneme-multimodal" }
 # in-process from the CLI. Heavy ONNX backends stay feature-gated inside
 # brain itself so this doesn't require a C++ toolchain.
 brain = { path = "../brain", package = "mneme-brain" }
+# Scanners library is linked for the `mneme audit` direct-fallback
+# path: when the supervisor is unreachable we spawn `mneme-scanners`
+# as a subprocess and persist streamed findings via the
+# `FindingsWriter` helper exported from this crate. Audit fix L14
+# (v0.3.0).
+scanners = { path = "../scanners", package = "mneme-scanners" }
 rusqlite = { workspace = true }
+# Used by the L12 staleness nag in `mneme inject` to compute the age
+# of `meta.db::projects.last_indexed_at` against wall-clock UTC.
+chrono = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 # Windows path normalisation so manifest paths produced on Win look POSIX

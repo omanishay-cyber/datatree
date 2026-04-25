@@ -21,7 +21,7 @@ pub mod lifecycle;
 pub mod schema;
 pub mod ipc;
 
-pub use builder::{DbBuilder, DefaultBuilder};
+pub use builder::{mark_indexed, DbBuilder, DefaultBuilder};
 pub use finder::{DbFinder, DefaultFinder};
 pub use query::{DbQuery, Query, Write, WriteSummary, BatchSummary, DefaultQuery};
 pub use inject::{DbInject, InjectOp, InjectOptions, UpsertResult, BatchResult, DefaultInject};

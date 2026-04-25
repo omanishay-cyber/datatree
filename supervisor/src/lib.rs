@@ -13,6 +13,7 @@ pub mod error;
 pub mod health;
 pub mod ipc;
 pub mod job_queue;
+pub mod job_queue_db;
 pub mod log_ring;
 pub mod manager;
 pub mod service;
@@ -28,6 +29,7 @@ pub use error::SupervisorError;
 pub use health::{HealthServer, SlaSnapshot};
 pub use ipc::{ControlCommand, ControlResponse, IpcServer};
 pub use job_queue::{JobQueue, JobQueueSnapshot};
+pub use job_queue_db::{DurableJobQueue, RecoveredJob};
 pub use log_ring::{LogEntry, LogLevel, LogRing};
 pub use manager::ChildManager;
 pub use watchdog::Watchdog;
@@ -39,6 +41,21 @@ use tracing::{error, info};
 
 /// Top-level supervisor result alias.
 pub type Result<T> = std::result::Result<T, SupervisorError>;
+
+/// Resolve the path to the durable job queue database.
+///
+/// Default: `~/.mneme/run/jobs.db`. Override with the
+/// `MNEME_JOBS_DB` env var (used by the supervisor's integration
+/// tests so a test run never collides with the real install).
+fn jobs_db_path() -> std::path::PathBuf {
+    if let Ok(v) = std::env::var("MNEME_JOBS_DB") {
+        return std::path::PathBuf::from(v);
+    }
+    if let Some(home) = dirs::home_dir() {
+        return home.join(".mneme").join("run").join("jobs.db");
+    }
+    std::env::temp_dir().join("mneme-jobs.db")
+}
 
 /// Boot the supervisor. Spawns the [`ChildManager`], [`Watchdog`],
 /// [`HealthServer`], and [`IpcServer`], then awaits a shutdown signal
@@ -69,7 +86,37 @@ pub async fn run(config: SupervisorConfig) -> Result<()> {
     // 0a. Attach the job queue BEFORE any child spawns, so that a
     // worker that dies during startup can still have its in-flight
     // (empty) queue snapshot recorded without panicking.
-    let job_queue = Arc::new(JobQueue::new(16 * 1024));
+    //
+    // L5 (v0.3.0): durable queue at `~/.mneme/run/jobs.db`. Every
+    // state transition is mirrored to disk so a supervisor crash
+    // doesn't lose queued or in-flight work. On boot we
+    // `recover_from_disk` — see `JobQueue::recover_from_disk`.
+    let jobs_db_path = jobs_db_path();
+    let job_queue = match DurableJobQueue::open(&jobs_db_path) {
+        Ok(durable) => match JobQueue::with_durable(16 * 1024, Arc::new(durable)) {
+            Ok(q) => Arc::new(q),
+            Err(e) => {
+                error!(
+                    error = %e,
+                    "failed to bind durable job queue; falling back to in-memory"
+                );
+                Arc::new(JobQueue::new(16 * 1024))
+            }
+        },
+        Err(e) => {
+            error!(
+                path = %jobs_db_path.display(),
+                error = %e,
+                "could not open durable job queue; running in-memory only"
+            );
+            Arc::new(JobQueue::new(16 * 1024))
+        }
+    };
+    match job_queue.recover_from_disk() {
+        Ok(0) => {}
+        Ok(n) => info!(recovered = n, "job queue: re-loaded jobs from disk"),
+        Err(e) => tracing::warn!(error = %e, "job queue: recovery failed; new submits only"),
+    }
     manager.attach_job_queue(job_queue.clone()).await;
 
     // 0. Start the restart-request processor BEFORE any child is spawned

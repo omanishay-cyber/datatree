@@ -16,8 +16,15 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { openShardDb, resolveShardRoot } from "../store.ts";
+import { getLastIndexed, openShardDb, resolveShardRoot } from "../store.ts";
 import type { ToolDescriptor } from "../types.ts";
+
+/**
+ * Default staleness threshold (days) when no per-project override is
+ * present in `<project_root>/.claude/mneme.json::staleness_warn_days`.
+ * Audit-L12 acceptance.
+ */
+const DEFAULT_STALENESS_WARN_DAYS = 7;
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -43,6 +50,23 @@ const ConventionSummary = z.object({
   evidence_count: z.number().int(),
 });
 
+/**
+ * Stale-index nag (audit-L12). `last_indexed_at` is the wall-clock time
+ * of the most recent successful `mneme build`; consumers compare against
+ * `threshold_days` to decide whether recall results may not reflect
+ * recent edits.
+ *
+ * `is_stale` is `false` when `last_indexed_at` is null (the project has
+ * never been built — different problem, surfaced by the build path
+ * itself). It is also `false` while `age_days <= threshold_days`.
+ */
+const Staleness = z.object({
+  last_indexed_at: z.string().nullable(),
+  age_days: z.number().int().nullable(),
+  is_stale: z.boolean(),
+  threshold_days: z.number().int(),
+});
+
 export const IdentityInput = z
   .object({
     project: z.string().optional(),
@@ -57,6 +81,7 @@ export const IdentityOutput = z.object({
   conventions: z.array(ConventionSummary),
   recent_goals: z.array(z.string()),
   open_questions: z.array(z.string()),
+  staleness: Staleness,
 });
 
 type IdentityInputT = z.infer<typeof IdentityInput>;
@@ -532,6 +557,9 @@ export const tool: ToolDescriptor<IdentityInputT, IdentityOutputT> = {
     const recent_goals = readRecentGoals(root);
     const open_questions = readOpenQuestions(root);
 
+    // L12: stale-index nag. Cheap probe — single SELECT against meta.db.
+    const staleness = computeStaleness(root);
+
     return {
       name,
       stack,
@@ -540,9 +568,88 @@ export const tool: ToolDescriptor<IdentityInputT, IdentityOutputT> = {
       conventions,
       recent_goals,
       open_questions,
+      staleness,
     };
   },
 };
+
+// ---------------------------------------------------------------------------
+// L12 staleness nag
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the staleness threshold (days). Reads
+ * `<project_root>/.claude/mneme.json::staleness_warn_days` if present,
+ * else falls back to {@link DEFAULT_STALENESS_WARN_DAYS}. Silent default
+ * on any of: missing file, malformed JSON, missing key, non-positive
+ * value.
+ */
+function readStalenessThresholdDays(projectRoot: string): number {
+  const cfgPath = join(projectRoot, ".claude", "mneme.json");
+  if (!existsSync(cfgPath)) return DEFAULT_STALENESS_WARN_DAYS;
+  try {
+    const text = readFileSync(cfgPath, "utf-8");
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    const raw = parsed["staleness_warn_days"];
+    if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+      return Math.floor(raw);
+    }
+    return DEFAULT_STALENESS_WARN_DAYS;
+  } catch {
+    return DEFAULT_STALENESS_WARN_DAYS;
+  }
+}
+
+/**
+ * Convert SQLite `datetime('now')` format ("YYYY-MM-DD HH:MM:SS", UTC)
+ * to a millisecond epoch. Returns `null` on parse failure.
+ */
+function parseSqliteUtcMs(stamp: string): number | null {
+  // Normalise to RFC3339 by inserting a T between date and time and
+  // appending Z for UTC. Date.parse() handles that on every JS runtime.
+  const normalised = `${stamp.replace(" ", "T")}Z`;
+  const ms = Date.parse(normalised);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * Compute the staleness summary used in the {@link IdentityOutput}.
+ * Always returns a populated object - `is_stale` is `false` and the
+ * other fields are nulls / threshold when no signal is available.
+ */
+function computeStaleness(projectRoot: string): {
+  last_indexed_at: string | null;
+  age_days: number | null;
+  is_stale: boolean;
+  threshold_days: number;
+} {
+  const threshold_days = readStalenessThresholdDays(projectRoot);
+  const last_indexed_at = getLastIndexed(projectRoot);
+  if (last_indexed_at === null) {
+    return {
+      last_indexed_at: null,
+      age_days: null,
+      is_stale: false,
+      threshold_days,
+    };
+  }
+  const ms = parseSqliteUtcMs(last_indexed_at);
+  if (ms === null) {
+    return {
+      last_indexed_at,
+      age_days: null,
+      is_stale: false,
+      threshold_days,
+    };
+  }
+  const age_days = Math.round((Date.now() - ms) / 86_400_000);
+  return {
+    last_indexed_at,
+    age_days,
+    is_stale: age_days > threshold_days,
+    threshold_days,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Step Ledger helpers

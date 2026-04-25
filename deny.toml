@@ -66,12 +66,58 @@ confidence-threshold = 0.8
 exceptions = []
 
 [bans]
-# v0.1 tolerated. v0.2: enforce single-version invariant on hot crates.
-multiple-versions = "warn"
+# v0.3.0 (audit fix L9): single-version invariant is enforced. Every
+# duplicate that remains after `cargo tree --duplicates --workspace` is
+# justified below — see `skip` entries. New duplicates that creep in via
+# transitive bumps fail CI.
+multiple-versions = "deny"
 wildcards = "warn"
 highlight = "all"
 deny = []
-skip = []
+# Each entry below has a one-line rationale documenting why the duplicate
+# cannot be unified today. Re-evaluate on every release: if the upstream
+# crate that locked the older version has bumped, drop the skip.
+skip = [
+    # base64 0.13 is locked into spm_precompiled (a pinned tokenizers
+    # transitive). 0.22 is what every modern http stack speaks. Cannot
+    # unify without forking spm_precompiled.
+    { crate = "base64", reason = "spm_precompiled pins 0.13; ecosystem moved to 0.22+" },
+    # cpufeatures 0.2 vs 0.3: sha1 (rustcrypto) still ships 0.2; chacha20
+    # (the AEAD line) is on 0.3. Both lines maintained; unification
+    # requires upstream sha1 0.11 (not yet released).
+    { crate = "cpufeatures", reason = "sha1 0.10 pins 0.2; chacha20 0.10 ships 0.3 — both upstream-blocked" },
+    # getrandom split: rand 0.8 / tokenizers / ahash bundle pulls 0.2 and
+    # 0.3; rand 0.10 pulls 0.4. Tokenizers 0.20 cannot bump rand without
+    # a major API revision.
+    { crate = "getrandom", reason = "rand 0.8 vs 0.10 ecosystem split (tokenizers/ahash vs uuid)" },
+    # hashbrown 0.14 (rusqlite hashlink), 0.15 (lru/dashmap legacy), 0.17
+    # (indexmap/petgraph). 0.14 is a transitive lock on hashlink 0.9.
+    { crate = "hashbrown", reason = "rusqlite/hashlink pin 0.14; ecosystem moved to 0.15+ then 0.17" },
+    # itertools 0.10/0.11/0.12 — criterion (dev-only), rayon-cond
+    # (tokenizers transitive), and tokenizers itself each pin different
+    # versions. Tokenizers 0.20 is upstream's latest minor.
+    { crate = "itertools", reason = "criterion / rayon-cond / tokenizers each pin a different itertools" },
+    # rand 0.8 (tokenizers, brain inline RNG, tungstenite) vs rand 0.10
+    # (uuid v1.10 v7 generator). Cannot unify without dropping uuid v7
+    # support.
+    { crate = "rand", reason = "uuid 1.10 forces 0.10; tokenizers/tungstenite still on 0.8" },
+    # rand_core mirror split — same reason as `rand` above.
+    { crate = "rand_core", reason = "parallels the rand 0.8/0.10 split" },
+    # windows-result 0.1 (windows-core 0.57 via sysinfo) vs 0.4
+    # (windows-registry 0.6 via hyper-util). sysinfo 0.32 cannot bump
+    # windows-core without a major release.
+    { crate = "windows-result", reason = "sysinfo 0.32 pins windows-core 0.57; hyper-util uses windows-registry 0.6" },
+    # windows-sys: 0.48 (dirs-sys + notify), 0.52 (windows-service), 0.59
+    # (console 0.15), 0.61 (modern clap/anstream/tokio/interprocess).
+    # Four parallel Windows API generations live across the ecosystem;
+    # unification requires every transitive to bump simultaneously.
+    { crate = "windows-sys", reason = "dirs-sys/notify (0.48), windows-service (0.52), console (0.59), modern stack (0.61) — four parallel generations" },
+    # windows-targets mirror split — same reason as `windows-sys` above.
+    { crate = "windows-targets", reason = "parallels windows-sys 0.48 vs 0.52 split" },
+    # windows_x86_64_msvc 0.48 vs 0.52 — direct fallout of the
+    # windows-sys/windows-targets split.
+    { crate = "windows_x86_64_msvc", reason = "parallels windows-targets 0.48 vs 0.52 split" },
+]
 skip-tree = []
 
 [sources]

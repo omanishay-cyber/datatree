@@ -20,11 +20,39 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[serde(transparent)]
 pub struct JobId(pub u64);
 
+/// Shared monotonic counter used by [`JobId::next`] and
+/// [`JobId::seed_to`]. `1` so the very first allocation returns 1
+/// (sufficient for SQLite primary keys, which start at 1 by default).
+static JOB_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+
 impl JobId {
     /// Allocate the next monotonically-increasing id.
     pub fn next() -> Self {
-        static COUNTER: AtomicU64 = AtomicU64::new(1);
-        JobId(COUNTER.fetch_add(1, Ordering::Relaxed))
+        JobId(JOB_ID_COUNTER.fetch_add(1, Ordering::Relaxed))
+    }
+
+    /// Bump the counter so the NEXT [`Self::next`] call returns at
+    /// least `value`. No-op if the counter is already past `value`.
+    ///
+    /// Used by the supervisor's durable job queue at boot time so
+    /// freshly-allocated ids cannot collide with persisted rows.
+    /// v0.3.0 audit fix L5.
+    pub fn seed_to(value: u64) {
+        let mut current = JOB_ID_COUNTER.load(Ordering::Relaxed);
+        loop {
+            if current >= value {
+                return;
+            }
+            match JOB_ID_COUNTER.compare_exchange(
+                current,
+                value,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return,
+                Err(c) => current = c,
+            }
+        }
     }
 }
 

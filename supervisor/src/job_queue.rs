@@ -14,13 +14,17 @@
 //!                                                         ▼
 //!                         [`JobQueue::complete`] → CLI long-poll wakes
 //!
-//! Reliability (v0.3 MVP, documented in ARCHITECTURE.md):
+//! Reliability (v0.3.0 — audit fix L5):
 //!   * Worker crash → the monitor sees Child::wait() exit and the restart
 //!     loop respawns it. In-flight jobs assigned to that worker are
 //!     re-queued via [`JobQueue::requeue_worker`] called from
 //!     `ChildManager::monitor_child` on exit.
-//!   * Supervisor crash → entire queue is lost. CLI times out and reports
-//!     an error to the user. Durable queue is a future v0.4 item.
+//!   * Supervisor crash → durable. Every state transition is persisted
+//!     to a single SQLite shard at `~/.mneme/run/jobs.db` via
+//!     [`crate::job_queue_db::DurableJobQueue`]. Restart calls
+//!     [`JobQueue::recover_from_disk`] to repopulate queued + in-flight
+//!     jobs (the latter flipped back to queued so the new worker
+//!     generation picks them up).
 //!   * Backpressure → the queue is capped at `max_pending`; `submit`
 //!     returns `SupervisorError::Other("queue full")` so the CLI can
 //!     throttle.
@@ -31,6 +35,7 @@
 //! out of scope for v0.3.
 
 use crate::error::SupervisorError;
+use crate::job_queue_db::DurableJobQueue;
 use common::jobs::{Job, JobId, JobOutcome};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
@@ -57,6 +62,12 @@ struct Tracked {
 /// Exposed as an `Arc<JobQueue>` from the [`ChildManager`] so the IPC
 /// layer, the router task, and the monitor-on-exit path can all talk to
 /// the same state.
+///
+/// Optional durable backing via [`DurableJobQueue`] — every state
+/// transition is mirrored to disk so a supervisor crash never loses
+/// queued or in-flight work. Constructed via [`JobQueue::with_durable`].
+/// Tests that don't care about durability use [`JobQueue::new`] which
+/// retains the v0.3 in-memory semantics.
 pub struct JobQueue {
     inner: Mutex<Inner>,
     /// Notified whenever a new job is submitted so the router can wake
@@ -68,6 +79,11 @@ pub struct JobQueue {
     /// Bound on `pending.len() + in_flight.len()` — protects the
     /// supervisor from unbounded memory use if workers stall.
     max_pending: usize,
+    /// Disk-backed durable queue. Wrapped in an `Arc` so we can share
+    /// it with the recovery routine and the IPC layer if it ever needs
+    /// direct access. `None` for tests / legacy callers using
+    /// [`JobQueue::new`].
+    durable: Option<Arc<DurableJobQueue>>,
 }
 
 struct Inner {
@@ -80,7 +96,11 @@ struct Inner {
 }
 
 impl JobQueue {
-    /// Build a new empty queue.
+    /// Build a new empty queue with no durable backing.
+    ///
+    /// Retains the v0.3 in-memory semantics. Suitable for unit tests
+    /// and for callers that explicitly do NOT want crash recovery.
+    /// Production supervisors should use [`Self::with_durable`].
     pub fn new(max_pending: usize) -> Self {
         Self {
             inner: Mutex::new(Inner {
@@ -94,7 +114,88 @@ impl JobQueue {
             wake_router: Arc::new(Notify::new()),
             wake_watchers: Arc::new(Notify::new()),
             max_pending,
+            durable: None,
         }
+    }
+
+    /// Build a new queue with a durable on-disk companion.
+    ///
+    /// On construction we ALSO seed [`JobId::next`] past any pre-existing
+    /// row so freshly-submitted jobs cannot collide with persisted ids.
+    pub fn with_durable(
+        max_pending: usize,
+        durable: Arc<DurableJobQueue>,
+    ) -> Result<Self, SupervisorError> {
+        let max_id = durable.max_id()?;
+        if max_id > 0 {
+            JobId::seed_to(max_id + 1);
+        }
+        Ok(Self {
+            inner: Mutex::new(Inner {
+                pending: VecDeque::new(),
+                tracked: HashMap::new(),
+                in_flight: HashMap::new(),
+                completed_count: 0,
+                failed_count: 0,
+                requeued_count: 0,
+            }),
+            wake_router: Arc::new(Notify::new()),
+            wake_watchers: Arc::new(Notify::new()),
+            max_pending,
+            durable: Some(durable),
+        })
+    }
+
+    /// Borrow the durable backing, if attached.
+    pub fn durable(&self) -> Option<Arc<DurableJobQueue>> {
+        self.durable.clone()
+    }
+
+    /// Recover queued + in-flight jobs persisted by a previous
+    /// supervisor session. Caller is the boot path in `crate::run`.
+    ///
+    /// Order:
+    ///   1. flip every `in_flight` row back to `queued` on disk (a
+    ///      worker that was running them is gone — the next router
+    ///      pass will re-dispatch);
+    ///   2. read every `queued` row in id order and push it onto the
+    ///      in-memory pending queue;
+    ///   3. `JobId::next` was already seeded past max(id) by
+    ///      `with_durable`, so new submissions stay monotonic.
+    ///
+    /// Returns the count of jobs that were recovered.
+    pub fn recover_from_disk(&self) -> Result<usize, SupervisorError> {
+        let Some(d) = self.durable.as_ref() else {
+            return Ok(0);
+        };
+        let flipped = d.requeue_all_in_flight()?;
+        if flipped > 0 {
+            warn!(
+                count = flipped,
+                "recovered in-flight jobs from previous supervisor session; \
+                 flipped back to queued"
+            );
+        }
+        let queued = d.recover_queued()?;
+        let n = queued.len();
+        if n > 0 {
+            let mut g = self.inner.lock();
+            for r in queued {
+                g.pending.push_back(r.id);
+                g.tracked.insert(
+                    r.id,
+                    Tracked {
+                        job: r.job,
+                        assigned_to: None,
+                        enqueued_at: Instant::now(),
+                        waker: None,
+                    },
+                );
+            }
+            drop(g);
+            self.wake_router.notify_one();
+        }
+        Ok(n)
     }
 
     /// Submit a new job; returns its id. Caller may optionally register
@@ -115,6 +216,13 @@ impl JobQueue {
                 "job queue full ({}); refusing submit",
                 self.max_pending
             )));
+        }
+        // Persist BEFORE returning the id so a crash between submit
+        // and the first state read can recover the job.
+        if let Some(d) = self.durable.as_ref() {
+            if let Err(e) = d.push(id, &job) {
+                warn!(%id, error = %e, "durable submit persist failed; in-memory only");
+            }
         }
         g.pending.push_back(id);
         g.tracked.insert(
@@ -147,7 +255,13 @@ impl JobQueue {
         if let Some(t) = g.tracked.get_mut(&id) {
             t.assigned_to = Some(worker.clone());
         }
-        g.in_flight.insert(id, worker);
+        g.in_flight.insert(id, worker.clone());
+        drop(g);
+        if let Some(d) = self.durable.as_ref() {
+            if let Err(e) = d.mark_in_flight(id, &worker) {
+                warn!(%id, worker, error = %e, "durable mark_in_flight failed");
+            }
+        }
     }
 
     /// Put a job that failed to dispatch back on the front of the queue
@@ -160,6 +274,11 @@ impl JobQueue {
             g.pending.push_front(id);
         }
         drop(g);
+        if let Some(d) = self.durable.as_ref() {
+            if let Err(e) = d.requeue(id) {
+                warn!(%id, error = %e, "durable return_pending failed");
+            }
+        }
         self.wake_router.notify_one();
     }
 
@@ -183,6 +302,11 @@ impl JobQueue {
         }
         let worker = tracked.assigned_to.clone();
         drop(g);
+        if let Some(d) = self.durable.as_ref() {
+            if let Err(e) = d.mark_done(id, &outcome) {
+                warn!(%id, error = %e, "durable mark_done failed");
+            }
+        }
         if let Some(waker) = tracked.waker {
             let _ = waker.send(outcome);
         }
@@ -213,6 +337,13 @@ impl JobQueue {
         drop(g);
         if n > 0 {
             warn!(worker, count = n, "re-queued in-flight jobs after worker exit");
+            if let Some(d) = self.durable.as_ref() {
+                for id in &ids {
+                    if let Err(e) = d.requeue(*id) {
+                        warn!(%id, worker, error = %e, "durable requeue failed");
+                    }
+                }
+            }
             self.wake_router.notify_one();
         }
         n

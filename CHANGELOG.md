@@ -179,6 +179,64 @@ in that report or improves the install UX that caused the break.
   because tree-sitter is a parser library mneme uses, not a
   competitor.
 
+### Fixed — audit-L sweep (2026-04-24, strict-no-defer instruction)
+
+User instruction 2026-04-24: every audit-L finding from the 6-agent
+audit lands in v0.3.1. Nothing is held for v0.4. The 8 items below
+were originally captured as v0.4 backlog (B6-B12 + L8 decision-only)
+and are now part of the v0.3.1 release.
+
+- **Cross-process build lock on `mneme build` / `mneme rebuild`**
+  (audit-L4, FIX-9). New `cli/src/build_lock.rs` exposes
+  `BuildLock::acquire` — opens-or-creates `<project_root>/.lock` under
+  an exclusive `flock`-style hold via `fs2`, portable across Windows
+  (`LockFileEx`) and Unix (`flock`). Released on Drop. Two concurrent
+  `mneme build` invocations on the same project now serialise (or fail
+  fast) instead of corrupting the SQLite shard.
+- **Durable SQLite-backed JobQueue** (audit-L5, FIX-9).
+  `supervisor/src/job_queue_db.rs` persists pending + in-flight jobs
+  across supervisor restart. The previous in-memory `JobQueue(16*1024)`
+  dropped queued items on crash; recovery now re-hydrates from
+  `~/.mneme/run/jobs.db`.
+- **Trigger-keyword collisions documented as intentional** (audit-L8,
+  decision-only). `cli/src/skill_matcher.rs::suggest` carries the
+  rationale comment: multi-skill match is BY DESIGN — the matcher
+  ranks by trigger-count + tag-count and returns top N. Future audits
+  will not re-flag this. No code change beyond the comment.
+- **Cargo duplicate-version dedup + `bans.multiple-versions = "deny"`**
+  (audit-L9, FIX-10). 23 duplicate-version warnings collapsed via
+  workspace-level dependency unification + a small documented skip
+  list (`windows-sys`, `bindgen`, `hashbrown` family — pinned by
+  upstream crates and tracked for removal). `deny.toml` now denies
+  multiple-versions; CI fails on regression.
+- **`.mcp.json.template` consolidation** (audit-L10, prior cleanup).
+  10 byte-identical per-platform `.mcp.json.template` files removed.
+  Canonical generator lives in `cli/src/platforms/mod.rs::mneme_mcp_entry()`;
+  rationale + per-platform target-path mapping documented in
+  `plugin/templates/README.md`. Eliminates the 10-way copy-paste hazard.
+- **Stale-index nag in `mneme_identity` + `mneme inject` hook**
+  (audit-L12, this PR). `store::mark_indexed` stamps
+  `meta.db::projects.last_indexed_at` after every successful build.
+  `mcp/src/tools/identity.ts` returns a `staleness` block
+  (`last_indexed_at`, `age_days`, `is_stale`, `threshold_days`).
+  `cli/src/commands/inject.rs::render_staleness_block` emits a
+  `<mneme-primer-staleness>` block in the UserPromptSubmit
+  `additional_context` when `age_days > threshold`. Threshold defaults
+  to 7 days, configurable per-project via
+  `<project_root>/.claude/mneme.json::staleness_warn_days`.
+- **`mneme audit` direct-DB fallback** (audit-L14, FIX-10).
+  `cli/src/commands/audit.rs` now spawns the `mneme-scanners` worker
+  binary inline when the supervisor is unreachable (subprocess pipe
+  with stdin job dispatch + stdout findings), persisting via the
+  scanners crate's `FindingsWriter`. Closes the W1.V17 hole — the
+  previous "unknown variant `audit`" exit-5 path is gone.
+- **`mneme rebuild` direct-DB fallback with BuildLock** (audit-L17,
+  FIX-9). `cli/src/commands/rebuild.rs` now coordinates against the
+  audit-L4 lock to serialise destructive-rebuild against any active
+  `mneme build` on the same project. Falls back to a clear refuse
+  message ("daemon is up — stop the daemon or wait for the running
+  build to complete") when the lock is held externally.
+
 ### Verified — shipping gate (2026-04-24)
 
 - **Strict-clean install + 26-case functional harness on AWS VM: 26/26

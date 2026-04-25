@@ -44,6 +44,12 @@ petgraph = { version = "0.6", features = ["serde-1"] }
 # The background supervisor writes via `store_ipc` instead.
 rusqlite = { workspace = true }
 
+# Filesystem walking + gitignore matching for the orchestrator stdin
+# mode (`mneme audit` fallback path). Reuses the workspace-pinned
+# walkdir version so cargo-deny stays single-version.
+walkdir = { workspace = true }
+ignore = "0.4"
+
 [features]
 default = []
 with-common = []

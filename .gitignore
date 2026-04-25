@@ -85,3 +85,6 @@ docs/design/
 .claude/
 vscode/out/
 vscode/node_modules/
+audit-output.txt
+build-after-l14.txt
+dups-before.txt

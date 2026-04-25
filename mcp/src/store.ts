@@ -87,6 +87,46 @@ export function openShardDb(layer: string, cwdOverride?: string): Database {
 }
 
 /**
+ * Read `meta.db::projects.last_indexed_at` for the project rooted at
+ * `cwd`. Returns the raw SQLite `datetime('now')` string
+ * ("YYYY-MM-DD HH:MM:SS", UTC) or `null` when:
+ *   - meta.db does not exist (no mneme home yet),
+ *   - the project has not been registered (no row),
+ *   - the project has been registered but never built (`last_indexed_at`
+ *     IS NULL - different signal than "stale").
+ *
+ * Used by the L12 staleness nag in `mneme_identity`. Never throws -
+ * any I/O / SQL error returns null.
+ */
+export function getLastIndexed(cwdOverride?: string): string | null {
+  const cwd = cwdOverride ?? process.cwd();
+  const projectRoot = findProjectRoot(cwd);
+  if (!projectRoot) return null;
+  const projectId = projectIdForPath(projectRoot);
+  const metaPath = join(MNEME_HOME, "meta.db");
+  if (!existsSync(metaPath)) return null;
+  let db: Database | null = null;
+  try {
+    db = new Database(metaPath, { readonly: true });
+    const row = db
+      .prepare("SELECT last_indexed_at FROM projects WHERE id = ?")
+      .get(projectId) as { last_indexed_at: string | null } | undefined;
+    if (!row || row.last_indexed_at === null) return null;
+    return row.last_indexed_at;
+  } catch {
+    return null;
+  } finally {
+    if (db !== null) {
+      try {
+        db.close();
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
+/**
  * Quick node count for health reporting. Safe to call even if the DB is
  * empty or freshly created.
  */
