@@ -5,13 +5,25 @@ All notable changes to mneme will be recorded here.
 Format loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — v0.3.1 fix cycle (in progress, version unbumped)
+## [0.3.1] — 2026-04-24 (every audit B/H/M/L finding closed, 0 deferred)
 
 The v0.3.0 install catastrophe (see `mneme-install-report/report-002.md`
 for the forensic record — Claude Code bricked by schema-mismatched
-hooks + CLI-vs-STDIN self-trap) drove a targeted fix sweep. No new
-features; every change below closes a specific failure mode documented
-in that report or improves the install UX that caused the break.
+hooks + CLI-vs-STDIN self-trap) drove a targeted fix sweep, then a
+6-agent comprehensive audit found 35+ further issues across 6 axes
+(code/skills/deps/file-hygiene/pipelines/surface-inventory). Per the
+maintainer's strict-no-defer instruction, every audit-resulted issue
+landed in this release: 6 blockers, 6 high, 8 medium, 17 low.
+
+Master list with file:line citations:
+`docs/dev/AUDIT-ISSUES-FOUND-AND-FIXED.md`.
+Session log + recovery from the FIX-6 stash incident:
+`docs/dev/SESSION-2026-04-24-v0.3.1-fix-cycle.md`.
+Recipe for the next audit cycle:
+`docs/dev/HOW-TO-AUDIT-MNEME.md`.
+
+VM-test cycle (Phase 4) was deferred to the next session to preserve
+EC2 free-tier hours; everything else (commit + push) is shipped.
 
 ### Fixed — nuclear items (v0.3.0 install incident)
 
