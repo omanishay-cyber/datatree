@@ -1,0 +1,2 @@
+run_id,sha,date,mneme_tokens_sum,cold_tokens_sum,mneme_ms_sum,cold_ms_sum,precision_at_5_pct,precision_at_10_pct,cold_ms_first_build,warm_ms_first_build,incremental_p50_ms,incremental_p95_ms,bytes_per_node,bytes_per_edge
+24984572878,93bb7ae4967119ec5356d313c0f568b0cdf00e85,2026-04-27T08:30:40Z,0,0,0,0,0,0,0,0,0,0,0,0
