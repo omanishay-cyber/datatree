@@ -30,8 +30,8 @@
       --bg-elev: #ffffff;     /* elevated card */
       --text: #1c1d1f;        /* near-black, slight warmth */
       --text-strong: #0a0a0c; /* darkest for big titles */
-      --muted: #6b6b70;       /* secondary text */
-      --muted-2: #9a9a9f;     /* tertiary */
+      --muted: #4a4a4e;       /* secondary text — darker for readability on light bg */
+      --muted-2: #7a7a80;     /* tertiary — slightly darker too */
       --line: #e8e7e2;        /* warm hairline border */
       --line-strong: #d4d3cc; /* hover-state borders */
 
@@ -200,7 +200,7 @@
     }
     .subtag {
       font-size: 18px;
-      color: var(--muted);
+      color: #2a2a2e;            /* dark enough to read against #fafaf7 */
       margin-bottom: 36px;
       max-width: 520px;
       line-height: 1.55;
@@ -272,31 +272,21 @@
     /*  TERMINAL DEMO — right side of hero                           */
     /* ============================================================ */
     .terminal {
-      background: rgba(11,15,25,0.7);
-      border: 1px solid rgba(255,255,255,0.1);
+      background: #0c0d10;
+      border: 1px solid #1f2128;
       border-radius: var(--radius-lg);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
       overflow: hidden;
       box-shadow:
-        0 30px 80px -20px rgba(0,0,0,0.6),
-        0 0 0 1px rgba(65,225,181,0.08),
-        inset 0 1px 0 rgba(255,255,255,0.05);
+        0 1px 3px rgba(15,15,15,0.10),
+        0 24px 60px -20px rgba(15,15,15,0.30);
       position: relative;
-    }
-    .terminal::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(135deg, rgba(65,145,225,0.08), transparent 40%, rgba(65,225,181,0.06));
-      pointer-events: none;
     }
     .terminal-bar {
       display: flex;
       align-items: center;
       padding: 12px 16px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid #1f2128;
+      background: #16181d;
     }
     .terminal-bar .dots {
       display: flex;
