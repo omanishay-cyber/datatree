@@ -16,7 +16,9 @@
   <meta property="og:image:height" content="640" />
   <meta name="twitter:card" content="summary_large_image" />
 
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E🌳%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' rx='6' fill='%230a0a0c'/%3E%3Cpath d='M8 22 L8 12 L11 12 L16 18 L21 12 L24 12 L24 22' stroke='%2316a37c' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='9.5' r='1.4' fill='%2316a37c'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://rsms.me/"/>
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css"/>
 
   <style>
     :root {
@@ -60,11 +62,17 @@
     html, body {
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-family: "Inter var", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
       line-height: 1.55;
+      font-synthesis: none;
+    }
+    @supports (font-variation-settings: normal) {
+      html, body { font-family: "Inter var", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     }
     body {
       -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
       position: relative;
       overflow-x: hidden;
     }
@@ -123,12 +131,12 @@
     /*  HERO — split layout, wordmark + terminal demo                */
     /* ============================================================ */
     .hero {
-      max-width: 1180px;
+      max-width: 1280px;
       margin: 0 auto;
-      padding: 90px 24px 40px;
+      padding: 120px 32px 80px;
       display: grid;
-      grid-template-columns: 1.1fr 1fr;
-      gap: 56px;
+      grid-template-columns: 1.05fr 1fr;
+      gap: 80px;
       align-items: center;
     }
     .hero-left { min-width: 0; }
@@ -137,8 +145,8 @@
     .logo-row {
       display: flex;
       align-items: center;
-      gap: 14px;
-      margin-bottom: 20px;
+      gap: 16px;
+      margin-bottom: 32px;
     }
     .logo {
       display: inline-block;
@@ -172,45 +180,45 @@
     }
 
     h1.wordmark {
-      font-size: clamp(64px, 10vw, 120px);
-      font-weight: 700;
-      letter-spacing: -0.045em;
-      line-height: 0.95;
-      margin-bottom: 18px;
+      font-size: clamp(72px, 11vw, 144px);
+      font-weight: 600;
+      letter-spacing: -0.055em;
+      line-height: 0.92;
+      margin-bottom: 28px;
       color: var(--text-strong);
     }
-    /* Single solid color — no rainbow gradient. Per UI/UX Pro Max anti-pattern:
-       'Bright neon colors + AI purple/pink gradients' is generic-AI flavor. */
-    .gradient-text {
-      color: var(--accent-green);
-    }
+    .gradient-text { color: var(--text-strong); }
 
     .tagline {
-      font-size: clamp(22px, 2.6vw, 30px);
-      font-weight: 600;
+      font-size: clamp(28px, 3.2vw, 38px);
+      font-weight: 500;
       color: var(--text-strong);
-      letter-spacing: -0.015em;
-      margin-bottom: 14px;
-      line-height: 1.25;
+      letter-spacing: -0.025em;
+      margin-bottom: 20px;
+      line-height: 1.18;
+      max-width: 580px;
     }
     .subtag {
-      font-size: 17px;
+      font-size: 18px;
       color: var(--muted);
-      margin-bottom: 28px;
-      max-width: 540px;
+      margin-bottom: 36px;
+      max-width: 520px;
       line-height: 1.55;
+      font-weight: 400;
     }
 
-    .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px; }
+    .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 36px; }
     .cta {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 14px 26px;
-      border-radius: var(--radius);
-      font-weight: 600;
-      font-size: 15px;
-      transition: transform 0.15s ease, filter 0.2s ease, box-shadow 0.2s ease;
+      padding: 13px 22px;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 14.5px;
+      letter-spacing: -0.005em;
+      transition: all 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+      cursor: pointer;
     }
     .cta-primary {
       background: var(--text-strong);
@@ -406,27 +414,28 @@
     /*  SECTIONS — reveal on scroll                                   */
     /* ============================================================ */
     section {
-      max-width: 1100px;
+      max-width: 1180px;
       margin: 0 auto;
-      padding: 70px 24px;
+      padding: 100px 32px;
+      border-top: 1px solid var(--line);
     }
+    section:first-of-type { border-top: none; }
     section h2 {
-      font-size: clamp(28px, 3.4vw, 40px);
-      font-weight: 700;
-      margin-bottom: 12px;
-      letter-spacing: -0.025em;
-      line-height: 1.15;
+      font-size: clamp(32px, 4vw, 52px);
+      font-weight: 600;
+      margin-bottom: 16px;
+      letter-spacing: -0.035em;
+      line-height: 1.1;
       color: var(--text-strong);
+      max-width: 880px;
     }
-    section h2 .accent {
-      color: var(--accent-green);
-    }
+    section h2 .accent { color: var(--accent-green); }
     section .lead {
       color: var(--muted);
-      font-size: 16.5px;
-      margin-bottom: 32px;
-      max-width: 740px;
-      line-height: 1.6;
+      font-size: 18px;
+      margin-bottom: 48px;
+      max-width: 720px;
+      line-height: 1.55;
     }
 
     .reveal {
