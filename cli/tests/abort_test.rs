@@ -101,11 +101,7 @@ fn build_fake_project(temp: &TempDir, id: &str, pid: u32) -> PathBuf {
 
     // Write the .lock in BuildLock format.
     let lock = project_dir.join(".lock");
-    fs::write(
-        &lock,
-        format!("pid={pid} ts=1700000000 project={id}\n"),
-    )
-    .unwrap();
+    fs::write(&lock, format!("pid={pid} ts=1700000000 project={id}\n")).unwrap();
 
     // Drop a couple of populated SQLite DB files so checkpoint_shards
     // has something to run TRUNCATE on. Even one row in WAL mode forces
@@ -243,10 +239,7 @@ async fn abort_with_force_skips_grace_period() {
         "--force should not wait full timeout; elapsed {elapsed:?}"
     );
 
-    assert!(
-        !lock_path.exists(),
-        "force abort should still remove .lock"
-    );
+    assert!(!lock_path.exists(), "force abort should still remove .lock");
 
     drop(lock);
 }

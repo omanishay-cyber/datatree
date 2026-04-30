@@ -28,8 +28,8 @@
 pub mod aider;
 pub mod antigravity;
 pub mod claude_code;
-pub mod continue_dev;
 pub mod codex;
+pub mod continue_dev;
 pub mod copilot;
 pub mod cursor;
 pub mod factory_droid;
@@ -535,11 +535,7 @@ fn ensure_windows_exe(p: PathBuf) -> PathBuf {
 
 /// Write `body` into the mneme marker block of the file at `path`,
 /// creating intermediate directories and the file itself if needed.
-pub fn write_marker_manifest(
-    path: &Path,
-    body: &str,
-    ctx: &AdapterContext,
-) -> CliResult<()> {
+pub fn write_marker_manifest(path: &Path, body: &str, ctx: &AdapterContext) -> CliResult<()> {
     if let Some(parent) = path.parent() {
         if !ctx.dry_run {
             std::fs::create_dir_all(parent).map_err(|e| CliError::io(parent, e))?;
@@ -604,11 +600,7 @@ pub fn write_mcp_config_default(
 
 /// Reverse of [`write_mcp_config_default`]. Strips mneme from the config
 /// while leaving every other server intact.
-pub fn remove_mcp_entry(
-    path: &Path,
-    format: McpFormat,
-    ctx: &AdapterContext,
-) -> CliResult<()> {
+pub fn remove_mcp_entry(path: &Path, format: McpFormat, ctx: &AdapterContext) -> CliResult<()> {
     let existing = std::fs::read_to_string(path).map_err(|e| CliError::io(path, e))?;
     let stripped = match format {
         McpFormat::JsonObject => strip_mcp_json_object(&existing)?,
@@ -663,10 +655,7 @@ fn merge_mcp_json_object(existing: &str, exe_path: &Path) -> CliResult<String> {
 /// always-mneme-managed fields (`command`, `args`, `transport`); the
 /// `env` map is merged key-by-key with `prev` keys winning so any custom
 /// `env.MNEME_FOO=bar` the user added survives a re-install.
-fn deep_merge_mcp_entry(
-    mut prev: serde_json::Value,
-    new: serde_json::Value,
-) -> serde_json::Value {
+fn deep_merge_mcp_entry(mut prev: serde_json::Value, new: serde_json::Value) -> serde_json::Value {
     let new_obj = match new.as_object() {
         Some(o) => o,
         None => return new,
@@ -703,10 +692,7 @@ fn deep_merge_mcp_entry(
 fn strip_mcp_json_object(existing: &str) -> CliResult<String> {
     let existing = strip_bom(existing);
     let mut value: serde_json::Value = serde_json::from_str(existing)?;
-    if let Some(servers) = value
-        .get_mut("mcpServers")
-        .and_then(|v| v.as_object_mut())
-    {
+    if let Some(servers) = value.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
         servers.remove("mneme");
     }
     Ok(serde_json::to_string_pretty(&value)? + "\n")
@@ -751,10 +737,7 @@ fn merge_mcp_json_array(existing: &str, exe_path: &Path) -> CliResult<String> {
 fn strip_mcp_json_array(existing: &str) -> CliResult<String> {
     let existing = strip_bom(existing);
     let mut value: serde_json::Value = serde_json::from_str(existing)?;
-    if let Some(arr) = value
-        .get_mut("mcpServers")
-        .and_then(|v| v.as_array_mut())
-    {
+    if let Some(arr) = value.get_mut("mcpServers").and_then(|v| v.as_array_mut()) {
         arr.retain(|s| s.get("name").and_then(|n| n.as_str()) != Some("mneme"));
     }
     Ok(serde_json::to_string_pretty(&value)? + "\n")
@@ -953,7 +936,8 @@ pub fn atomic_write(path: &Path, new_contents: &[u8]) -> CliResult<()> {
     {
         use std::io::Write;
         let mut f = std::fs::File::create(&tmp).map_err(|e| CliError::io(&tmp, e))?;
-        f.write_all(new_contents).map_err(|e| CliError::io(&tmp, e))?;
+        f.write_all(new_contents)
+            .map_err(|e| CliError::io(&tmp, e))?;
         // Best-effort fsync — on platforms / FSes that don't support it
         // we silently continue. The atomic-rename property still holds.
         let _ = f.sync_all();
@@ -1028,14 +1012,22 @@ fn chrono_like_utc_stamp() -> String {
 /// Lifted from Howard Hinnant's "date" paper (public domain).
 fn ymd_from_epoch_days(days: i64) -> (i32, u32, u32) {
     let z = days + 719_468;
-    let era = if z >= 0 { z / 146_097 } else { (z - 146_096) / 146_097 };
+    let era = if z >= 0 {
+        z / 146_097
+    } else {
+        (z - 146_096) / 146_097
+    };
     let doe = (z - era * 146_097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let y = yoe as i64 + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { (mp + 3) as u32 } else { (mp - 9) as u32 };
+    let m = if mp < 10 {
+        (mp + 3) as u32
+    } else {
+        (mp - 9) as u32
+    };
     let y = if m <= 2 { y + 1 } else { y };
     (y as i32, m, d)
 }
@@ -1047,7 +1039,10 @@ mod tests {
 
     #[test]
     fn install_scope_parses() {
-        assert_eq!("project".parse::<InstallScope>().unwrap(), InstallScope::Project);
+        assert_eq!(
+            "project".parse::<InstallScope>().unwrap(),
+            InstallScope::Project
+        );
         assert_eq!("USER".parse::<InstallScope>().unwrap(), InstallScope::User);
         assert!(matches!(
             "wat".parse::<InstallScope>(),
@@ -1098,10 +1093,7 @@ mod tests {
         let merged = merge_mcp_json_array(starting, &exe).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&merged).unwrap();
         let arr = parsed["mcpServers"].as_array().unwrap();
-        let dt: Vec<&serde_json::Value> = arr
-            .iter()
-            .filter(|v| v["name"] == "mneme")
-            .collect();
+        let dt: Vec<&serde_json::Value> = arr.iter().filter(|v| v["name"] == "mneme").collect();
         assert_eq!(dt.len(), 1);
         assert_eq!(dt[0]["command"], "/abs/bin/mneme");
     }
@@ -1135,7 +1127,10 @@ mod tests {
         let merged = merge_mcp_json_object(starting, &exe).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&merged).unwrap();
         // command got replaced with the new absolute path
-        assert_eq!(parsed["mcpServers"]["mneme"]["command"], "/new/abs/path/mneme");
+        assert_eq!(
+            parsed["mcpServers"]["mneme"]["command"],
+            "/new/abs/path/mneme"
+        );
         // user-set MNEME_LOG=debug wins over our default MNEME_LOG=info
         assert_eq!(parsed["mcpServers"]["mneme"]["env"]["MNEME_LOG"], "debug");
         // user-set custom env survives wholesale
@@ -1221,9 +1216,7 @@ mod tests {
             "20260420-100006",
         ];
         for s in &stamps {
-            let p = dir
-                .path()
-                .join(format!("settings.json.mneme-{s}.bak"));
+            let p = dir.path().join(format!("settings.json.mneme-{s}.bak"));
             std::fs::write(&p, format!("snapshot {s}").as_bytes()).unwrap();
         }
 
@@ -1243,7 +1236,11 @@ mod tests {
         // The 2 oldest (100000, 100001) were deleted.
         let surviving_names: Vec<String> = remaining
             .iter()
-            .filter_map(|p| p.file_name().and_then(|s| s.to_str()).map(|s| s.to_string()))
+            .filter_map(|p| {
+                p.file_name()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+            })
             .collect();
         assert!(
             surviving_names
@@ -1270,11 +1267,7 @@ mod tests {
         let target = dir.path().join("hooks.json");
         std::fs::write(&target, b"{}").unwrap();
         for s in &["20260420-100000", "20260420-100001", "20260420-100002"] {
-            std::fs::write(
-                dir.path().join(format!("hooks.json.mneme-{s}.bak")),
-                b"x",
-            )
-            .unwrap();
+            std::fs::write(dir.path().join(format!("hooks.json.mneme-{s}.bak")), b"x").unwrap();
         }
         let removed = prune_baks(&target, 5).expect("prune succeeds");
         assert_eq!(removed, 0);
@@ -1288,11 +1281,7 @@ mod tests {
         let target = dir.path().join("conf.toml");
         std::fs::write(&target, b"x").unwrap();
         for s in &["20260420-100000", "20260420-100001"] {
-            std::fs::write(
-                dir.path().join(format!("conf.toml.mneme-{s}.bak")),
-                b"x",
-            )
-            .unwrap();
+            std::fs::write(dir.path().join(format!("conf.toml.mneme-{s}.bak")), b"x").unwrap();
         }
         let removed = prune_baks(&target, 0).expect("prune succeeds");
         assert_eq!(removed, 2);
@@ -1319,11 +1308,7 @@ mod tests {
             "20260420-100004",
             "20260420-100005",
         ] {
-            std::fs::write(
-                dir.path().join(format!("a.json.mneme-{s}.bak")),
-                b"x",
-            )
-            .unwrap();
+            std::fs::write(dir.path().join(format!("a.json.mneme-{s}.bak")), b"x").unwrap();
         }
         // 4 snapshots for b.json (under any reasonable keep).
         for s in &[
@@ -1332,11 +1317,7 @@ mod tests {
             "20260420-100002",
             "20260420-100003",
         ] {
-            std::fs::write(
-                dir.path().join(format!("b.json.mneme-{s}.bak")),
-                b"x",
-            )
-            .unwrap();
+            std::fs::write(dir.path().join(format!("b.json.mneme-{s}.bak")), b"x").unwrap();
         }
 
         // Prune a.json with keep=3.

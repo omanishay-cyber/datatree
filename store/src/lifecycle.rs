@@ -76,7 +76,9 @@ pub struct DefaultLifecycle {
 }
 
 impl DefaultLifecycle {
-    pub fn new(paths: Arc<PathManager>) -> Self { Self { paths } }
+    pub fn new(paths: Arc<PathManager>) -> Self {
+        Self { paths }
+    }
 }
 
 #[async_trait]
@@ -90,7 +92,9 @@ impl DbLifecycle for DefaultLifecycle {
             fs::create_dir_all(&snap_dir)?;
             for layer in DbLayer::all_per_project() {
                 let src = paths.shard_db(&project, *layer);
-                if !src.exists() { continue; }
+                if !src.exists() {
+                    continue;
+                }
                 let dst = snap_dir.join(layer.file_name());
                 online_backup(&src, &dst)?;
             }
@@ -107,14 +111,20 @@ impl DbLifecycle for DefaultLifecycle {
         tokio::task::spawn_blocking(move || -> DtResult<()> {
             let snap_dir = paths.snapshot_by_id(&project, &snapshot);
             if !snap_dir.exists() {
-                return Err(DtError::Validation(format!("snapshot not found: {}", snapshot)));
+                return Err(DtError::Validation(format!(
+                    "snapshot not found: {}",
+                    snapshot
+                )));
             }
             for layer in DbLayer::all_per_project() {
                 let src = snap_dir.join(layer.file_name());
-                if !src.exists() { continue; }
+                if !src.exists() {
+                    continue;
+                }
                 let dst = paths.shard_db(&project, *layer);
                 if dst.exists() {
-                    let bak = dst.with_extension(format!("pre-restore.{}", Timestamp::now().as_dirname()));
+                    let bak = dst
+                        .with_extension(format!("pre-restore.{}", Timestamp::now().as_dirname()));
                     fs::rename(&dst, &bak)?;
                 }
                 fs::copy(&src, &dst)?;
@@ -131,16 +141,22 @@ impl DbLifecycle for DefaultLifecycle {
         let project = project.clone();
         tokio::task::spawn_blocking(move || -> DtResult<Vec<SnapshotMeta>> {
             let dir = paths.snapshot_dir(&project);
-            if !dir.exists() { return Ok(vec![]); }
+            if !dir.exists() {
+                return Ok(vec![]);
+            }
             let mut out = vec![];
             for entry in fs::read_dir(&dir)? {
                 let entry = entry?;
-                if !entry.file_type()?.is_dir() { continue; }
+                if !entry.file_type()?.is_dir() {
+                    continue;
+                }
                 let id_str = entry.file_name().to_string_lossy().to_string();
                 let mut bytes = 0u64;
                 for sub in fs::read_dir(entry.path())? {
                     let sub = sub?;
-                    if let Ok(m) = sub.metadata() { bytes += m.len(); }
+                    if let Ok(m) = sub.metadata() {
+                        bytes += m.len();
+                    }
                 }
                 out.push(SnapshotMeta {
                     id: SnapshotId::from_str(id_str),
@@ -155,7 +171,11 @@ impl DbLifecycle for DefaultLifecycle {
         .map_err(|e| DtError::Internal(format!("join: {}", e)))?
     }
 
-    async fn migrate(&self, _project: &ProjectId, target_version: u32) -> DtResult<MigrationReport> {
+    async fn migrate(
+        &self,
+        _project: &ProjectId,
+        target_version: u32,
+    ) -> DtResult<MigrationReport> {
         // v1 → v1 noop. Future versions: dispatch per-layer migration scripts.
         Ok(MigrationReport {
             from_version: target_version,
@@ -171,14 +191,18 @@ impl DbLifecycle for DefaultLifecycle {
             let mut reclaimed = 0i64;
             for layer in DbLayer::all_per_project() {
                 let p = paths.shard_db(&project, *layer);
-                if !p.exists() { continue; }
+                if !p.exists() {
+                    continue;
+                }
                 let before = fs::metadata(&p).map(|m| m.len() as i64).unwrap_or(0);
                 let conn = Connection::open(&p).map_err(DbError::from)?;
                 conn.execute("VACUUM", []).map_err(DbError::from)?;
                 let after = fs::metadata(&p).map(|m| m.len() as i64).unwrap_or(0);
                 reclaimed += before - after;
             }
-            Ok(VacuumReport { bytes_reclaimed: reclaimed })
+            Ok(VacuumReport {
+                bytes_reclaimed: reclaimed,
+            })
         })
         .await
         .map_err(|e| DtError::Internal(format!("join: {}", e)))?
@@ -191,15 +215,23 @@ impl DbLifecycle for DefaultLifecycle {
             let mut out = vec![];
             for layer in DbLayer::all_per_project() {
                 let p = paths.shard_db(&project, *layer);
-                if !p.exists() { continue; }
+                if !p.exists() {
+                    continue;
+                }
                 let conn = Connection::open_with_flags(&p, OpenFlags::SQLITE_OPEN_READ_ONLY)
                     .map_err(DbError::from)?;
-                let mut stmt = conn.prepare("PRAGMA integrity_check").map_err(DbError::from)?;
-                let rows = stmt.query_map([], |r| r.get::<_, String>(0)).map_err(DbError::from)?;
+                let mut stmt = conn
+                    .prepare("PRAGMA integrity_check")
+                    .map_err(DbError::from)?;
+                let rows = stmt
+                    .query_map([], |r| r.get::<_, String>(0))
+                    .map_err(DbError::from)?;
                 let mut errors = vec![];
                 for row in rows {
                     let s = row.map_err(DbError::from)?;
-                    if s != "ok" { errors.push(s); }
+                    if s != "ok" {
+                        errors.push(s);
+                    }
                 }
                 out.push(IntegrityReport {
                     layer: *layer,
@@ -223,7 +255,9 @@ impl DbLifecycle for DefaultLifecycle {
 
         tokio::task::spawn_blocking(move || -> DtResult<()> {
             for report in reports {
-                if report.ok { continue; }
+                if report.ok {
+                    continue;
+                }
                 let p = paths.shard_db(&project, report.layer);
                 let conn = Connection::open(&p).map_err(DbError::from)?;
                 let _ = conn.execute("VACUUM", []);
@@ -240,9 +274,14 @@ impl DbLifecycle for DefaultLifecycle {
 
                 if still_broken {
                     if let Some(latest) = snapshots.first() {
-                        let src = paths.snapshot_by_id(&project, &latest.id).join(report.layer.file_name());
+                        let src = paths
+                            .snapshot_by_id(&project, &latest.id)
+                            .join(report.layer.file_name());
                         if src.exists() {
-                            let bak = p.with_extension(format!("corrupt.{}", Timestamp::now().as_dirname()));
+                            let bak = p.with_extension(format!(
+                                "corrupt.{}",
+                                Timestamp::now().as_dirname()
+                            ));
                             fs::rename(&p, &bak).ok();
                             fs::copy(&src, &p)?;
                             warn!(layer = ?report.layer, "restored from snapshot {}", latest.id);
@@ -274,7 +313,11 @@ impl DbLifecycle for DefaultLifecycle {
                 .filter_map(|e| e.metadata().ok())
                 .map(|m| m.len())
                 .sum();
-            Ok(ArchiveMeta { project, bytes, destination: dest })
+            Ok(ArchiveMeta {
+                project,
+                bytes,
+                destination: dest,
+            })
         })
         .await
         .map_err(|e| DtError::Internal(format!("join: {}", e)))?
@@ -310,14 +353,17 @@ fn online_backup(src: &std::path::Path, dst: &std::path::Path) -> DtResult<()> {
         .map_err(DbError::from)?;
     let mut dst_conn = Connection::open(dst).map_err(DbError::from)?;
     let backup = Backup::new(&src_conn, &mut dst_conn).map_err(DbError::from)?;
-    backup.run_to_completion(100, std::time::Duration::from_millis(0), None)
+    backup
+        .run_to_completion(100, std::time::Duration::from_millis(0), None)
         .map_err(DbError::from)?;
     Ok(())
 }
 
 fn fs_copy_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     if src.is_file() {
-        if let Some(parent) = dst.parent() { fs::create_dir_all(parent)?; }
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent)?;
+        }
         fs::copy(src, dst)?;
         return Ok(());
     }

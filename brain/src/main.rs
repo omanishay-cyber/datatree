@@ -43,7 +43,10 @@ async fn main() -> ExitCode {
     // Shared per-job timestamp ledger — stdin records when a job
     // arrives, stdout looks it up to compute `duration_ms`. Locked via
     // a tokio Mutex so both threads can poke it.
-    let ledger = std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::<u64, Instant>::new()));
+    let ledger = std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::<
+        u64,
+        Instant,
+    >::new()));
 
     // Forward stdin → jobs channel on a blocking thread.
     let jobs_tx = handle.jobs_tx.clone();
@@ -166,9 +169,7 @@ async fn forward_results(
 }
 
 /// Pull the ok/err + stats view out of a BrainResult without consuming it.
-fn result_telemetry(
-    result: &BrainResult,
-) -> (bool, Option<String>, serde_json::Value) {
+fn result_telemetry(result: &BrainResult) -> (bool, Option<String>, serde_json::Value) {
     match result {
         BrainResult::Embedding { vector, .. } => (
             true,
@@ -216,8 +217,7 @@ fn init_tracing() {
 
 fn tracing_subscriber_init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use tracing_subscriber::{fmt, EnvFilter};
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let want_json = std::env::var("MNEME_LOG_FORMAT")
         .ok()
         .map(|v| v.eq_ignore_ascii_case("json"))

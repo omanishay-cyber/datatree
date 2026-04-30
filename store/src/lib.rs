@@ -15,11 +15,11 @@
 
 pub mod builder;
 pub mod finder;
-pub mod query;
 pub mod inject;
-pub mod lifecycle;
-pub mod schema;
 pub mod ipc;
+pub mod lifecycle;
+pub mod query;
+pub mod schema;
 
 /// K10 chaos-test-only fault-injection: simulate `SQLITE_FULL` after N
 /// bytes of writes via `MNEME_TEST_FAIL_FS_AT_BYTES`. Compiled out of
@@ -31,12 +31,12 @@ pub mod test_fs_full;
 
 pub use builder::{mark_indexed, DbBuilder, DefaultBuilder};
 pub use finder::{DbFinder, DefaultFinder};
-pub use query::{DbQuery, Query, Write, WriteSummary, BatchSummary, DefaultQuery};
-pub use inject::{DbInject, InjectOp, InjectOptions, UpsertResult, BatchResult, DefaultInject};
+pub use inject::{BatchResult, DbInject, DefaultInject, InjectOp, InjectOptions, UpsertResult};
 pub use lifecycle::{
-    DbLifecycle, SnapshotMeta, MigrationReport, VacuumReport, IntegrityReport, ArchiveMeta,
-    PurgeToken, DefaultLifecycle,
+    ArchiveMeta, DbLifecycle, DefaultLifecycle, IntegrityReport, MigrationReport, PurgeToken,
+    SnapshotMeta, VacuumReport,
 };
+pub use query::{BatchSummary, DbQuery, DefaultQuery, Query, Write, WriteSummary};
 
 use std::sync::Arc;
 

@@ -6,9 +6,7 @@
 
 use std::path::PathBuf;
 
-use crate::platforms::{
-    AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter,
-};
+use crate::platforms::{AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Copilot;
@@ -22,7 +20,11 @@ impl PlatformAdapter for Copilot {
         ctx.home.join(".config").join("github-copilot").exists()
             || ctx.home.join(".vscode").exists()
             || ctx.project_root.join(".vscode").exists()
-            || ctx.project_root.join(".github").join("copilot-instructions.md").exists()
+            || ctx
+                .project_root
+                .join(".github")
+                .join("copilot-instructions.md")
+                .exists()
     }
 
     fn manifest_path(&self, ctx: &AdapterContext) -> PathBuf {

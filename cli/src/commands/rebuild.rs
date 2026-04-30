@@ -110,8 +110,8 @@ pub async fn run(args: RebuildArgs, socket_override: Option<PathBuf>) -> CliResu
     let paths = PathManager::default_root();
     let project_root = paths.project_root(&project_id);
     let timeout = Duration::from_secs(args.lock_timeout_secs);
-    let _lock = BuildLock::acquire(project_id.as_str(), &project_root, timeout)
-        .map_err(|orig| {
+    let _lock =
+        BuildLock::acquire(project_id.as_str(), &project_root, timeout).map_err(|orig| {
             // Translate the L4 contention error into the more
             // operator-friendly message specified by L17 acceptance.
             let msg = format!("{orig}");
@@ -149,11 +149,7 @@ pub async fn run(args: RebuildArgs, socket_override: Option<PathBuf>) -> CliResu
                 .file_name()
                 .map(|s| s.to_owned())
                 .unwrap_or_default();
-            sibling.set_file_name(format!(
-                "{}{}",
-                stem.to_string_lossy(),
-                suffix
-            ));
+            sibling.set_file_name(format!("{}{}", stem.to_string_lossy(), suffix));
             if sibling.exists() {
                 let _ = std::fs::remove_file(&sibling);
             }
@@ -256,7 +252,10 @@ mod tests {
             no_ipc: true,
         };
         let r = run(args, None).await;
-        assert!(r.is_ok(), "expected Ok from --yes=false short-circuit, got {r:?}");
+        assert!(
+            r.is_ok(),
+            "expected Ok from --yes=false short-circuit, got {r:?}"
+        );
     }
 
     #[test]

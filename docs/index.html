@@ -4,11 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>mneme — Claude never starts cold. Claude never loses its place.</title>
-  <meta name="description" content="Persistent per-project AI superbrain. Survives context compaction. Indexes code. Injects context. 100% local. Works with Claude Code, Codex, Cursor, and 15 more." />
+  <meta name="description" content="Claude remembers your codebase across sessions. Survives context wipe. No re-explaining the same architecture every chat. 100% local — your code stays on your machine. Works with Claude Code, Cursor, Codex and 16 more AI tools." />
 
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="mneme — the AI superbrain for Claude Code" />
-  <meta property="og:description" content="Persistent per-project memory + 14 views + drift detector + 47 MCP tools (40 wired). 100% local. 18 AI tools supported." />
+  <meta property="og:title" content="mneme — Claude remembers your code" />
+  <meta property="og:description" content="The persistent memory layer for AI coding. Indexes once, stays indexed. Survives compaction. 100% local — runs on your laptop, not someone's cloud. Works with 19 AI tools out of the box." />
   <meta property="og:url" content="https://omanishay-cyber.github.io/mneme/" />
   <meta property="og:image" content="https://omanishay-cyber.github.io/mneme/og.png" />
   <meta property="og:image:type" content="image/png" />
@@ -20,24 +20,27 @@
 
   <style>
     :root {
-      /* Palette — terminal/tech aesthetic, less blue-dominant.
-         Primary surface stays near-black; accents lean green/cyan/magenta. */
-      --bg: #07080d;
-      --bg-2: #0e1118;
-      --bg-3: #161a23;
-      --text: #e6edf3;
-      --muted: #8b93a7;
-      --line: rgba(255,255,255,0.07);
+      /* LIGHT PREMIUM PALETTE — Linear/Notion vibe.
+         Warm off-white surfaces, strong contrast text, soft borders. */
+      --bg: #fafaf7;          /* warm off-white, not pure white */
+      --bg-2: #f4f3ee;        /* slightly tinted for section bands */
+      --bg-3: #ffffff;        /* card surface */
+      --bg-elev: #ffffff;     /* elevated card */
+      --text: #1c1d1f;        /* near-black, slight warmth */
+      --text-strong: #0a0a0c; /* darkest for big titles */
+      --muted: #6b6b70;       /* secondary text */
+      --muted-2: #9a9a9f;     /* tertiary */
+      --line: #e8e7e2;        /* warm hairline border */
+      --line-strong: #d4d3cc; /* hover-state borders */
 
-      /* Accents — green leads, cyan supports, magenta punctuates,
-         blue kept as tertiary brand-tie accent only. */
-      --accent-green:    #41E1B5;   /* primary success / "yes" */
-      --accent-cyan:     #22D3EE;   /* secondary highlight */
-      --accent-magenta:  #F472B6;   /* punctuation / hot info */
-      --accent-amber:    #fbbf24;   /* warning / partial */
-      --accent-blue:     #4191E1;   /* tertiary, brand-tie */
-      --accent-purple:   #a78bfa;
-      --accent-red:      #ef4444;   /* "no" */
+      /* Accents — brand gradient kept, magenta for punctuation, amber/red for state */
+      --accent-blue:     #2a7ed3;   /* slightly darker for light bg readability */
+      --accent-green:    #16a37c;   /* deeper green for contrast on light */
+      --accent-cyan:     #0698b8;   /* deeper cyan */
+      --accent-magenta:  #d63384;   /* punchy pink */
+      --accent-amber:    #d97706;   /* amber */
+      --accent-purple:   #7c3aed;
+      --accent-red:      #dc2626;
 
       /* Back-compat aliases (existing CSS still uses these names) */
       --accent-a: var(--accent-blue);
@@ -45,7 +48,12 @@
       --accent-c: var(--accent-cyan);
       --accent-d: var(--accent-purple);
 
-      --radius: 12px;
+      /* Soft shadows for premium card depth */
+      --shadow-card: 0 1px 2px rgba(15,15,15,0.04), 0 4px 14px rgba(15,15,15,0.05);
+      --shadow-card-hover: 0 2px 4px rgba(15,15,15,0.06), 0 8px 28px rgba(15,15,15,0.10);
+      --shadow-cta: 0 1px 2px rgba(42,126,211,0.18), 0 8px 24px rgba(42,126,211,0.22);
+
+      --radius: 10px;
       --radius-lg: 16px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -61,19 +69,19 @@
       overflow-x: hidden;
     }
 
-    /* grain overlay — separates us from generic dark landings */
+    /* very subtle grain (warm) — premium feel, not heavy */
     body::before {
       content: "";
       position: fixed;
       inset: 0;
       pointer-events: none;
       z-index: 1;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-      opacity: 0.05;
-      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.4 0 0 0 0 0.35 0 0 0 0 0.3 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: 0.025;
+      mix-blend-mode: multiply;
     }
 
-    /* ambient background gradient blobs — green/cyan/magenta dominant */
+    /* ambient warm-tinted background mesh — soft, premium, not flashy */
     body::after {
       content: "";
       position: fixed;
@@ -81,45 +89,34 @@
       pointer-events: none;
       z-index: 0;
       background:
-        radial-gradient(ellipse 55% 38% at 12% 8%, rgba(65,225,181,0.13), transparent 60%),
-        radial-gradient(ellipse 48% 38% at 88% 28%, rgba(34,211,238,0.10), transparent 65%),
-        radial-gradient(ellipse 55% 45% at 50% 92%, rgba(244,114,182,0.06), transparent 70%);
-    }
-
-    /* faint scan-line vibe — barely visible, just enough texture */
-    body::before {
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-        repeating-linear-gradient(
-          to bottom,
-          rgba(65,225,181,0.012) 0,
-          rgba(65,225,181,0.012) 1px,
-          transparent 1px,
-          transparent 3px
-        );
-      opacity: 0.07;
+        radial-gradient(ellipse 65% 45% at 12% 8%,  rgba(42,126,211,0.07), transparent 70%),
+        radial-gradient(ellipse 55% 40% at 88% 22%, rgba(22,163,124,0.06), transparent 70%),
+        radial-gradient(ellipse 60% 50% at 50% 92%, rgba(214,51,132,0.04), transparent 75%);
     }
 
     .page { position: relative; z-index: 2; }
 
-    a { color: var(--accent-a); text-decoration: none; }
+    a { color: var(--accent-blue); text-decoration: none; }
     a:hover { text-decoration: underline; }
     code, pre { font-family: "JetBrains Mono", "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
     pre {
-      background: rgba(17,24,39,0.6);
+      background: #0c0d10;
+      color: #e6e8ec;
       padding: 18px 22px;
       border-radius: var(--radius);
       overflow-x: auto;
-      font-size: 14px;
-      border: 1px solid rgba(255,255,255,0.08);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      font-size: 13.5px;
+      border: 1px solid rgba(0,0,0,0.06);
+      box-shadow: var(--shadow-card);
     }
     pre code { color: #cbd5e1; }
     code:not(pre code) {
-      background: rgba(255,255,255,0.08);
-      padding: 2px 6px;
+      background: var(--bg-2);
+      color: var(--text-strong);
+      padding: 2px 7px;
       border-radius: 5px;
-      font-size: 0.9em;
+      font-size: 0.88em;
+      border: 1px solid var(--line);
     }
 
     /* ============================================================ */
@@ -159,13 +156,13 @@
       align-items: center;
       gap: 6px;
       padding: 5px 12px;
-      background: rgba(65,225,181,0.12);
-      border: 1px solid rgba(65,225,181,0.45);
+      background: rgba(22,163,124,0.10);
+      border: 1px solid rgba(22,163,124,0.30);
       border-radius: 999px;
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 12px;
       font-weight: 600;
-      color: var(--accent-b);
+      color: var(--accent-green);
     }
     .version-pill::before {
       content: "";
@@ -203,17 +200,18 @@
 
     .tagline {
       font-size: clamp(22px, 2.6vw, 30px);
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: -0.01em;
+      font-weight: 600;
+      color: var(--text-strong);
+      letter-spacing: -0.015em;
       margin-bottom: 14px;
       line-height: 1.25;
     }
     .subtag {
-      font-size: 16px;
+      font-size: 17px;
       color: var(--muted);
       margin-bottom: 28px;
-      max-width: 520px;
+      max-width: 540px;
+      line-height: 1.55;
     }
 
     .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px; }
@@ -228,27 +226,27 @@
       transition: transform 0.15s ease, filter 0.2s ease, box-shadow 0.2s ease;
     }
     .cta-primary {
-      background: linear-gradient(100deg, var(--accent-a), var(--accent-b));
-      color: #0b0f19;
-      box-shadow: 0 10px 30px -10px rgba(65,225,181,0.45);
+      background: linear-gradient(100deg, var(--accent-blue), var(--accent-cyan));
+      color: #ffffff;
+      box-shadow: var(--shadow-cta);
     }
     .cta-primary:hover {
-      filter: brightness(1.08);
+      filter: brightness(1.05);
       transform: translateY(-2px);
       text-decoration: none;
-      box-shadow: 0 14px 34px -10px rgba(65,225,181,0.6);
+      box-shadow: 0 4px 8px rgba(42,126,211,0.22), 0 14px 34px rgba(42,126,211,0.30);
     }
     .cta-secondary {
-      border: 1px solid rgba(255,255,255,0.18);
-      color: var(--text);
-      background: rgba(255,255,255,0.03);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--line-strong);
+      color: var(--text-strong);
+      background: var(--bg-3);
+      box-shadow: var(--shadow-card);
     }
     .cta-secondary:hover {
-      background: rgba(255,255,255,0.08);
+      background: var(--bg-2);
       transform: translateY(-2px);
       text-decoration: none;
+      box-shadow: var(--shadow-card-hover);
     }
 
     .hero-meta {
@@ -256,16 +254,22 @@
       gap: 22px;
       flex-wrap: wrap;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 13.5px;
     }
     .hero-meta span {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      font-family: "JetBrains Mono", ui-monospace, monospace;
+      gap: 8px;
+      padding: 4px 0;
     }
+    .hero-meta span::before {
+      content: "·";
+      color: var(--accent-green);
+      font-weight: 800;
+    }
+    .hero-meta span:first-child::before { content: "·"; }
     .hero-meta strong {
-      color: var(--text);
+      color: var(--text-strong);
       font-weight: 600;
     }
 
@@ -382,37 +386,33 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 0;
-      padding: 22px 28px;
+      padding: 28px 30px;
       border-radius: var(--radius-lg);
-      background: linear-gradient(100deg,
-        rgba(65,145,225,0.10),
-        rgba(65,225,181,0.10),
-        rgba(34,211,238,0.10));
-      border: 1px solid rgba(65,225,181,0.25);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
+      background: var(--bg-3);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-card);
     }
     .ribbon-stat {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      padding: 0 20px;
-      border-left: 1px solid rgba(255,255,255,0.08);
+      gap: 8px;
+      padding: 0 24px;
+      border-left: 1px solid var(--line);
     }
     .ribbon-stat:first-child { border-left: none; padding-left: 0; }
     .ribbon-stat .num {
-      font-family: "JetBrains Mono", ui-monospace, monospace;
-      font-size: 28px;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      font-variant-numeric: tabular-nums;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      color: var(--text-strong);
     }
-    .ribbon-stat .num.g1 { color: var(--accent-b); }
-    .ribbon-stat .num.g2 { color: var(--accent-c); }
-    .ribbon-stat .num.g3 { color: var(--accent-a); }
+    .ribbon-stat .num.g1 { color: var(--accent-green); }
+    .ribbon-stat .num.g2 { color: var(--accent-blue); }
+    .ribbon-stat .num.g3 { color: var(--accent-magenta); }
     .ribbon-stat .label {
-      font-size: 13px;
+      font-size: 14px;
       color: var(--muted);
+      line-height: 1.45;
     }
 
     /* ============================================================ */
@@ -425,22 +425,24 @@
     }
     section h2 {
       font-size: clamp(28px, 3.4vw, 40px);
-      font-weight: 800;
-      margin-bottom: 10px;
-      letter-spacing: -0.02em;
+      font-weight: 700;
+      margin-bottom: 12px;
+      letter-spacing: -0.025em;
       line-height: 1.15;
+      color: var(--text-strong);
     }
     section h2 .accent {
-      background: linear-gradient(100deg, var(--accent-a), var(--accent-b), var(--accent-c));
+      background: linear-gradient(100deg, var(--accent-blue), var(--accent-green));
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
     }
     section .lead {
       color: var(--muted);
-      font-size: 16px;
+      font-size: 16.5px;
       margin-bottom: 32px;
       max-width: 740px;
+      line-height: 1.6;
     }
 
     .reveal {
@@ -463,12 +465,11 @@
     }
     .card {
       position: relative;
-      background: rgba(17,24,39,0.55);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: var(--bg-3);
+      border: 1px solid var(--line);
       border-radius: var(--radius-lg);
-      padding: 26px 26px 26px 30px;
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
+      padding: 28px 28px 28px 32px;
+      box-shadow: var(--shadow-card);
       overflow: hidden;
       transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
     }
@@ -477,34 +478,24 @@
       position: absolute;
       left: 0; top: 0; bottom: 0;
       width: 3px;
-      background: var(--card-accent, var(--accent-a));
-      opacity: 0.8;
-    }
-    .card::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(ellipse 80% 60% at 0% 0%, var(--card-accent-rgba, rgba(65,145,225,0.08)), transparent 60%);
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.3s ease;
+      background: var(--card-accent, var(--accent-blue));
     }
     .card:hover {
-      transform: translateY(-4px);
-      border-color: rgba(255,255,255,0.14);
-      box-shadow: 0 20px 50px -20px rgba(0,0,0,0.5);
+      transform: translateY(-3px);
+      border-color: var(--line-strong);
+      box-shadow: var(--shadow-card-hover);
     }
-    .card:hover::after { opacity: 1; }
-    .card.c-a { --card-accent: var(--accent-a); --card-accent-rgba: rgba(65,145,225,0.12); }
-    .card.c-b { --card-accent: var(--accent-b); --card-accent-rgba: rgba(65,225,181,0.12); }
-    .card.c-c { --card-accent: var(--accent-c); --card-accent-rgba: rgba(34,211,238,0.12); }
+    .card.c-a { --card-accent: var(--accent-blue); }
+    .card.c-b { --card-accent: var(--accent-green); }
+    .card.c-c { --card-accent: var(--accent-magenta); }
     .card h3 {
       font-size: 18px;
       font-weight: 700;
       margin-bottom: 8px;
       letter-spacing: -0.01em;
+      color: var(--text-strong);
     }
-    .card p { color: var(--muted); font-size: 14.5px; }
+    .card p { color: var(--muted); font-size: 14.5px; line-height: 1.55; }
     .card .icon {
       font-size: 28px;
       margin-bottom: 14px;
@@ -517,21 +508,20 @@
     .bench-table {
       width: 100%;
       border-collapse: collapse;
-      background: rgba(17,24,39,0.55);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: var(--bg-3);
+      border: 1px solid var(--line);
       border-radius: var(--radius-lg);
       overflow: hidden;
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
+      box-shadow: var(--shadow-card);
     }
     .bench-table th, .bench-table td {
-      padding: 13px 18px;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
       text-align: left;
       font-size: 14px;
     }
     .bench-table th {
-      background: rgba(255,255,255,0.03);
+      background: var(--bg-2);
       font-weight: 600;
       font-size: 12px;
       letter-spacing: 0.05em;
@@ -539,9 +529,9 @@
       color: var(--muted);
     }
     .bench-table tr:last-child td { border-bottom: none; }
-    .bench-table tr:hover td { background: rgba(255,255,255,0.02); }
-    .bench-table td:last-child { color: var(--accent-b); font-weight: 600; }
-    .bench-table strong { color: var(--accent-c); }
+    .bench-table tr:hover td { background: var(--bg-2); }
+    .bench-table td:last-child { color: var(--accent-green); font-weight: 600; }
+    .bench-table strong { color: var(--accent-blue); }
     .bar-cell {
       position: relative;
       padding-right: 24px;
@@ -566,16 +556,15 @@
       max-width: 780px;
       margin: 40px auto;
       padding: 28px 32px;
-      border-left: 3px solid var(--accent-a);
-      background: rgba(65,145,225,0.06);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-radius: 8px;
-      font-size: 16.5px;
-      color: #cbd5e1;
+      border-left: 3px solid var(--accent-blue);
+      background: var(--bg-3);
+      border-radius: 10px;
+      font-size: 17px;
+      color: var(--text);
       line-height: 1.65;
+      box-shadow: var(--shadow-card);
     }
-    .quote strong { color: var(--accent-b); }
+    .quote strong { color: var(--accent-green); }
 
     /* ============================================================ */
     /*  PLATFORMS / CHIPS                                            */
@@ -588,20 +577,19 @@
     }
     .chip {
       display: inline-block;
-      padding: 8px 14px;
-      background: rgba(17,24,39,0.6);
-      border: 1px solid rgba(255,255,255,0.1);
+      padding: 7px 14px;
+      background: var(--bg-3);
+      border: 1px solid var(--line);
       border-radius: 999px;
       font-size: 13px;
       color: var(--text);
       transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
     }
     .chip:hover {
       transform: translateY(-2px);
-      border-color: rgba(65,225,181,0.4);
-      background: rgba(65,225,181,0.06);
+      border-color: var(--accent-green);
+      background: rgba(22,163,124,0.06);
+      color: var(--accent-green);
     }
 
     /* ============================================================ */
@@ -609,15 +597,15 @@
     /* ============================================================ */
     footer {
       max-width: 1100px;
-      margin: 0 auto;
-      padding: 60px 24px 40px;
-      border-top: 1px solid rgba(255,255,255,0.08);
+      margin: 60px auto 0;
+      padding: 50px 24px 40px;
+      border-top: 1px solid var(--line);
       text-align: center;
       color: var(--muted);
       font-size: 13px;
     }
     footer a { color: var(--muted); transition: color 0.2s ease; }
-    footer a:hover { color: var(--accent-b); text-decoration: none; }
+    footer a:hover { color: var(--accent-green); text-decoration: none; }
     footer .links { margin-bottom: 16px; }
     footer .links a { margin: 0 10px; }
 
@@ -666,41 +654,40 @@
       margin: 8px 0 36px;
     }
     .speed-card {
-      background: rgba(17, 24, 39, 0.55);
-      border: 1px solid rgba(65, 225, 181, 0.18);
+      background: var(--bg-3);
+      border: 1px solid var(--line);
       border-radius: var(--radius-lg);
-      padding: 24px 22px;
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
+      padding: 26px 24px;
+      box-shadow: var(--shadow-card);
       position: relative;
-      overflow: hidden;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
     }
-    .speed-card::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(ellipse 80% 60% at 0% 0%, rgba(65,225,181,0.10), transparent 60%);
-      pointer-events: none;
+    .speed-card:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-card-hover);
     }
     .speed-num {
-      font-family: "JetBrains Mono", ui-monospace, monospace;
-      font-size: 38px;
-      font-weight: 800;
+      font-size: 28px;
+      font-weight: 700;
       letter-spacing: -0.02em;
-      color: var(--accent-green);
-      line-height: 1;
-      margin-bottom: 6px;
+      color: var(--text-strong);
+      line-height: 1.1;
+      margin-bottom: 8px;
     }
+    .speed-card:nth-child(1) .speed-num { color: var(--accent-green); }
+    .speed-card:nth-child(2) .speed-num { color: var(--accent-blue); }
+    .speed-card:nth-child(3) .speed-num { color: var(--accent-magenta); }
     .speed-label {
       font-size: 14px;
       font-weight: 600;
-      color: var(--text);
+      color: var(--text-strong);
       margin-bottom: 8px;
+      line-height: 1.4;
     }
     .speed-detail {
       font-size: 13px;
       color: var(--muted);
-      line-height: 1.5;
+      line-height: 1.55;
     }
 
     .cmp-h3 {
@@ -714,10 +701,9 @@
     .cmp-wrap {
       overflow-x: auto;
       border-radius: var(--radius-lg);
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(17,24,39,0.55);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--line);
+      background: var(--bg-3);
+      box-shadow: var(--shadow-card);
     }
     .cmp-table {
       width: 100%;
@@ -726,13 +712,13 @@
       min-width: 880px;
     }
     .cmp-table th, .cmp-table td {
-      padding: 13px 16px;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
       text-align: left;
       vertical-align: top;
     }
     .cmp-table th {
-      background: rgba(0,0,0,0.35);
+      background: var(--bg-2);
       font-size: 12px;
       letter-spacing: 0.04em;
       text-transform: uppercase;
@@ -745,72 +731,68 @@
       letter-spacing: 0.02em;
       text-transform: none;
       font-weight: 400;
-      color: rgba(255,255,255,0.4);
+      color: var(--muted-2);
       margin-top: 2px;
     }
     .cmp-table td.cmp-q,
     .cmp-table th.cmp-q {
-      color: var(--text);
+      color: var(--text-strong);
       font-weight: 500;
       width: 32%;
     }
     .cmp-table td.cmp-mneme,
     .cmp-table th.cmp-mneme {
-      background: rgba(65,225,181,0.05);
+      background: rgba(22,163,124,0.05);
       box-shadow: inset 4px 0 0 var(--accent-green);
       font-weight: 500;
     }
     .cmp-table tr:last-child td { border-bottom: none; }
-    .cmp-table tr:hover td { background: rgba(255,255,255,0.015); }
-    .cmp-table tr:hover td.cmp-mneme { background: rgba(65,225,181,0.08); }
+    .cmp-table tr:hover td { background: var(--bg-2); }
+    .cmp-table tr:hover td.cmp-mneme { background: rgba(22,163,124,0.10); }
 
     .cmp-yes {
       display: inline-block;
       padding: 2px 8px;
-      background: rgba(65,225,181,0.15);
-      border: 1px solid rgba(65,225,181,0.4);
+      background: rgba(22,163,124,0.10);
+      border: 1px solid rgba(22,163,124,0.35);
       color: var(--accent-green);
       border-radius: 4px;
       font-weight: 700;
       font-size: 12px;
-      font-family: "JetBrains Mono", ui-monospace, monospace;
       margin-right: 4px;
     }
     .cmp-no {
       display: inline-block;
       padding: 2px 8px;
-      background: rgba(239,68,68,0.10);
-      border: 1px solid rgba(239,68,68,0.35);
+      background: rgba(220,38,38,0.06);
+      border: 1px solid rgba(220,38,38,0.30);
       color: var(--accent-red);
       border-radius: 4px;
       font-weight: 700;
       font-size: 12px;
-      font-family: "JetBrains Mono", ui-monospace, monospace;
     }
     .cmp-mid {
       display: inline-block;
       padding: 2px 8px;
-      background: rgba(251,191,36,0.10);
-      border: 1px solid rgba(251,191,36,0.35);
+      background: rgba(217,119,6,0.07);
+      border: 1px solid rgba(217,119,6,0.30);
       color: var(--accent-amber);
       border-radius: 4px;
       font-weight: 700;
       font-size: 12px;
-      font-family: "JetBrains Mono", ui-monospace, monospace;
     }
     .cmp-na {
       display: inline-block;
       padding: 2px 8px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.12);
-      color: var(--muted);
+      background: var(--bg-2);
+      border: 1px solid var(--line);
+      color: var(--muted-2);
       border-radius: 4px;
       font-weight: 600;
       font-size: 12px;
-      font-family: "JetBrains Mono", ui-monospace, monospace;
     }
     .cmp-divider td {
-      background: rgba(0,0,0,0.45) !important;
+      background: var(--bg-2) !important;
       color: var(--muted);
       font-size: 12px;
       letter-spacing: 0.04em;
@@ -821,8 +803,8 @@
     .for-engineers {
       margin-top: 24px;
       padding: 18px 22px;
-      background: rgba(0,0,0,0.4);
-      border: 1px solid rgba(255,255,255,0.06);
+      background: var(--bg-3);
+      border: 1px solid var(--line);
       border-radius: var(--radius);
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 12.5px;
@@ -831,10 +813,10 @@
     .for-engineers summary {
       cursor: pointer;
       font-weight: 600;
-      color: var(--accent-cyan);
+      color: var(--accent-blue);
       letter-spacing: 0.02em;
     }
-    .for-engineers summary::marker { color: var(--accent-cyan); }
+    .for-engineers summary::marker { color: var(--accent-blue); }
     .for-engineers-body { margin-top: 14px; line-height: 1.65; }
     .for-engineers-body p { margin-bottom: 8px; }
 
@@ -847,13 +829,11 @@
       padding: 0 24px;
     }
     .install-pane {
-      background: rgba(0,0,0,0.55);
-      border: 1px solid rgba(65,225,181,0.25);
+      background: var(--bg-3);
+      border: 1px solid var(--line);
       border-radius: var(--radius-lg);
-      padding: 28px 30px;
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      box-shadow: 0 20px 60px -25px rgba(65,225,181,0.25);
+      padding: 30px 32px;
+      box-shadow: var(--shadow-card-hover);
       position: relative;
       overflow: hidden;
     }
@@ -861,7 +841,7 @@
       content: "";
       position: absolute;
       inset: 0;
-      background: linear-gradient(135deg, rgba(65,225,181,0.06), transparent 50%, rgba(244,114,182,0.04));
+      background: linear-gradient(135deg, rgba(42,126,211,0.04), transparent 50%, rgba(22,163,124,0.04));
       pointer-events: none;
     }
     .install-eyebrow {
@@ -871,49 +851,41 @@
       letter-spacing: 0.16em;
       text-transform: uppercase;
       color: var(--accent-green);
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
     .install-title {
       font-size: clamp(20px, 2.3vw, 26px);
       font-weight: 700;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
       letter-spacing: -0.01em;
+      color: var(--text-strong);
     }
     .install-cmd {
-      background: #000000;
-      border: 1px solid rgba(65,225,181,0.3);
+      background: #0c0d10;
+      border: 1px solid #20232a;
       border-radius: var(--radius);
-      padding: 16px 20px 16px 50px;
+      padding: 16px 22px 16px 50px;
       font-family: "JetBrains Mono", ui-monospace, monospace;
-      font-size: 14px;
-      color: var(--accent-green);
+      font-size: 13.5px;
+      color: #41E1B5;
       position: relative;
       overflow-x: auto;
       white-space: pre;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
     }
     .install-cmd::before {
       content: ">";
       position: absolute;
       left: 18px;
       top: 16px;
-      color: var(--accent-magenta);
+      color: #f472b6;
       font-weight: 700;
     }
-    .install-cmd::after {
-      content: "";
-      position: absolute;
-      right: 22px;
-      top: 18px;
-      width: 8px;
-      height: 14px;
-      background: var(--accent-green);
-      animation: blink 1.1s steps(2) infinite;
-    }
     .install-foot {
-      margin-top: 14px;
-      font-size: 13px;
+      margin-top: 16px;
+      font-size: 13.5px;
       color: var(--muted);
-      line-height: 1.6;
+      line-height: 1.65;
     }
 
     /* ============================================================ */
@@ -926,32 +898,32 @@
       margin-top: 28px;
     }
     .codeword-card {
-      background: rgba(17,24,39,0.55);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: var(--bg-3);
+      border: 1px solid var(--line);
       border-radius: var(--radius-lg);
-      padding: 22px 22px;
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      padding: 24px 24px;
+      box-shadow: var(--shadow-card);
       position: relative;
-      transition: transform 0.25s ease, border-color 0.25s ease;
+      transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
     }
     .codeword-card:hover {
       transform: translateY(-3px);
-      border-color: rgba(65,225,181,0.4);
+      border-color: var(--line-strong);
+      box-shadow: var(--shadow-card-hover);
     }
     .codeword-card .word {
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 22px;
-      font-weight: 800;
+      font-weight: 700;
       letter-spacing: -0.01em;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
     .codeword-card.cw-cold .word { color: var(--accent-cyan); }
     .codeword-card.cw-hot  .word { color: var(--accent-amber); }
     .codeword-card.cw-fire .word { color: var(--accent-magenta); }
     .codeword-card.cw-chs  .word { color: var(--accent-green); }
     .codeword-card .desc {
-      font-size: 13.5px;
+      font-size: 14px;
       color: var(--muted);
       line-height: 1.55;
     }
@@ -966,20 +938,24 @@
       margin-top: 24px;
     }
     .tools-cat {
-      background: rgba(17,24,39,0.5);
-      border: 1px solid rgba(255,255,255,0.06);
+      background: var(--bg-3);
+      border: 1px solid var(--line);
       border-radius: var(--radius);
-      padding: 18px 20px;
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
+      padding: 22px 22px;
+      box-shadow: var(--shadow-card);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .tools-cat:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-card-hover);
     }
     .tools-cat h4 {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 700;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: var(--accent-cyan);
-      margin-bottom: 10px;
+      color: var(--accent-blue);
+      margin-bottom: 14px;
       font-family: "JetBrains Mono", ui-monospace, monospace;
     }
     .tools-cat ul {
@@ -988,13 +964,13 @@
       padding: 0;
     }
     .tools-cat li {
-      font-size: 13px;
+      font-size: 13.5px;
       color: var(--muted);
-      padding: 4px 0;
+      padding: 5px 0;
       font-family: "JetBrains Mono", ui-monospace, monospace;
     }
     .tools-cat li strong {
-      color: var(--text);
+      color: var(--text-strong);
       font-weight: 600;
     }
 
@@ -1017,21 +993,21 @@
     <div class="hero-left">
       <div class="logo-row">
         <span class="logo" aria-hidden="true">🌳</span>
-        <span class="version-pill">v0.2.3 · live</span>
+        <span class="version-pill">v0.3.2 · live</span>
       </div>
       <h1 class="wordmark"><span class="gradient-text">mneme</span></h1>
-      <p class="tagline">Claude never starts cold.<br/>Claude never loses its place.</p>
-      <p class="subtag">The persistent memory layer for AI coding. Survives context compaction. Indexes your code. Injects the right 1–3K tokens every turn. 100% local.</p>
+      <p class="tagline">Claude remembers your code.<br/>Even when you don't.</p>
+      <p class="subtag">Stop re-explaining your codebase every chat. Mneme keeps what Claude learned about your project — survives context wipes, doesn't forget mid-task, runs entirely on your machine. No cloud. No telemetry. No subscription.</p>
 
       <div class="cta-row">
-        <a class="cta cta-primary" href="https://github.com/omanishay-cyber/mneme#-quick-start">Install in 60 s →</a>
+        <a class="cta cta-primary" href="https://github.com/omanishay-cyber/mneme/releases/tag/v0.3.2">Download v0.3.2 →</a>
         <a class="cta cta-secondary" href="https://github.com/omanishay-cyber/mneme">View on GitHub</a>
       </div>
 
       <div class="hero-meta">
-        <span><strong>47</strong>&nbsp;MCP tools</span>
-        <span><strong>18</strong>&nbsp;AI platforms</span>
-        <span><strong>0</strong>&nbsp;network calls</span>
+        <span>indexes once · stays indexed</span>
+        <span>survives compaction</span>
+        <span>your code stays on your laptop</span>
       </div>
     </div>
 
@@ -1059,21 +1035,21 @@
   </div>
 
   <!-- ============================================================ -->
-  <!--  MEASURED-WIN RIBBON                                          -->
+  <!--  MEASURED-WIN RIBBON — human-voice user outcomes              -->
   <!-- ============================================================ -->
   <div class="ribbon">
     <div class="ribbon-inner reveal">
       <div class="ribbon-stat">
-        <span class="num g1">1000×</span>
-        <span class="label">faster incremental reindex vs CRG</span>
+        <span class="num g1">resume</span>
+        <span class="label">where you left off — Claude picks up mid-task even after context wipes</span>
       </div>
       <div class="ribbon-stat">
-        <span class="num g2">47</span>
-        <span class="label">MCP tools · 14 views · 27 languages</span>
+        <span class="num g2">recall</span>
+        <span class="label">across your whole codebase — by meaning, not just keywords</span>
       </div>
       <div class="ribbon-stat">
-        <span class="num g3">0</span>
-        <span class="label">network calls · 100% local · measured v0.2.3</span>
+        <span class="num g3">local</span>
+        <span class="label">your code never leaves your machine — no telemetry, no API keys</span>
       </div>
     </div>
   </div>
@@ -1192,7 +1168,7 @@
           </tr>
           <tr>
             <td class="cmp-q">Plugs into Claude Code, Cursor, etc. as MCP server?</td>
-            <td class="cmp-mneme"><span class="cmp-yes">YES</span> — 47 tools, 19 AI platforms supported</td>
+            <td class="cmp-mneme"><span class="cmp-yes">YES</span> — 48 tools, 19 AI platforms supported</td>
             <td><span class="cmp-mid">Partial</span> — 24 tools, 2 platforms</td>
             <td><span class="cmp-no">No</span> (not an MCP server)</td>
             <td><span class="cmp-no">No</span></td>
@@ -1441,7 +1417,7 @@ python run_crg_bench.py</code></pre>
   <!--  47 MCP TOOLS — CATEGORIZED                                    -->
   <!-- ============================================================ -->
   <section class="reveal">
-    <h2>The <span class="accent">47-tool</span> MCP surface, by category</h2>
+    <h2>The <span class="accent">48-tool</span> MCP surface, by category</h2>
     <p class="lead">Every tool is typed (zod-validated input/output), hot-reloadable, and talks to the Rust daemon over IPC. AI doesn't need to know where data lives — it just calls the tool.</p>
     <div class="tools-grid">
       <div class="tools-cat">

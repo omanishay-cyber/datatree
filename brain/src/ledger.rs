@@ -221,7 +221,9 @@ pub struct SqliteLedger {
 
 impl std::fmt::Debug for SqliteLedger {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SqliteLedger").field("path", &self.path).finish()
+        f.debug_struct("SqliteLedger")
+            .field("path", &self.path)
+            .finish()
     }
 }
 
@@ -254,16 +256,29 @@ impl SqliteLedger {
         let kind_payload_json: String = row.get("kind_payload")?;
         let embedding_blob: Option<Vec<u8>> = row.get("embedding")?;
 
-        let touched_files: Vec<PathBuf> = serde_json::from_str(&touched_files_json)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))?;
-        let touched_concepts: Vec<String> = serde_json::from_str(&touched_concepts_json)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))?;
+        let touched_files: Vec<PathBuf> =
+            serde_json::from_str(&touched_files_json).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?;
+        let touched_concepts: Vec<String> =
+            serde_json::from_str(&touched_concepts_json).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?;
         let transcript_span: Option<TranscriptRef> = match transcript_ref_json {
             Some(s) if !s.is_empty() => serde_json::from_str(&s).ok(),
             _ => None,
         };
-        let kind: StepKind = serde_json::from_str(&kind_payload_json)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))?;
+        let kind: StepKind = serde_json::from_str(&kind_payload_json).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
+        })?;
         let embedding = embedding_blob.and_then(|bytes| decode_vec_f32(&bytes));
 
         Ok(StepEntry {
@@ -364,7 +379,8 @@ impl Ledger for SqliteLedger {
             conds.push(
                 "id IN (SELECT ledger_entries.id FROM ledger_entries_fts \
                         JOIN ledger_entries ON ledger_entries._rowid_ = ledger_entries_fts.rowid \
-                        WHERE ledger_entries_fts MATCH ?)".into(),
+                        WHERE ledger_entries_fts MATCH ?)"
+                    .into(),
             );
             bound.push(Box::new(sanitize_fts(&query.text)));
         }
@@ -465,7 +481,10 @@ impl Ledger for SqliteLedger {
         for r in rows {
             if let Ok(e) = r {
                 // Filter down to entries that were not resolved_by someone.
-                if let StepKind::OpenQuestion { resolved_by: None, .. } = &e.kind {
+                if let StepKind::OpenQuestion {
+                    resolved_by: None, ..
+                } = &e.kind
+                {
                     out.push(e);
                 }
             }
@@ -532,7 +551,13 @@ fn cosine(a: &[f32], b: &[f32]) -> f32 {
 fn sanitize_fts(input: &str) -> String {
     let cleaned: String = input
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == ' ' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect();
     let words: Vec<&str> = cleaned.split_whitespace().collect();
     if words.is_empty() {

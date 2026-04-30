@@ -177,8 +177,7 @@ impl Backend {
         // compile time the build fails loudly and we know to bump the
         // version pin in Cargo.toml.
         use llama_cpp_2::context::params::LlamaContextParams;
-        let ctx_params = LlamaContextParams::default()
-            .with_n_ctx(std::num::NonZeroU32::new(2048));
+        let ctx_params = LlamaContextParams::default().with_n_ctx(std::num::NonZeroU32::new(2048));
         let mut ctx = self
             .model
             .new_context(&self.backend, ctx_params)

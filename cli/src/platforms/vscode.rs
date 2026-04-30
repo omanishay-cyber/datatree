@@ -34,8 +34,7 @@ impl PlatformAdapter for VsCode {
     fn detect(&self, ctx: &AdapterContext) -> bool {
         // Heuristic: user-scope VS Code has a `Code\User` config dir on
         // every platform where VS Code is installed.
-        vscode_user_config_dir(ctx).exists()
-            || ctx.project_root.join(".vscode").exists()
+        vscode_user_config_dir(ctx).exists() || ctx.project_root.join(".vscode").exists()
     }
 
     fn manifest_path(&self, ctx: &AdapterContext) -> PathBuf {

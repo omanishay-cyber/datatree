@@ -41,9 +41,9 @@ fn expected_binaries_cover_every_worker() {
         names
     );
     for stem in expected_stems {
-        let found = names.iter().any(|n| {
-            n.strip_suffix(".exe").unwrap_or(n) == stem
-        });
+        let found = names
+            .iter()
+            .any(|n| n.strip_suffix(".exe").unwrap_or(n) == stem);
         assert!(found, "missing binary stem: {stem} (got {:?})", names);
     }
 }
@@ -118,7 +118,9 @@ fn mcp_entry_path_is_absolute_when_home_resolves() {
 /// runners that never ran `mneme install`.
 #[test]
 fn mneme_root_paths_share_single_dotted_segment() {
-    let Some(entry) = mcp_entry_path() else { return };
+    let Some(entry) = mcp_entry_path() else {
+        return;
+    };
     let s = entry.display().to_string();
     // Exactly one `.mneme` dot-prefixed segment — never `.mneme.mneme`
     // or `mneme/.mneme/.mneme` style drift.

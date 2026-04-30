@@ -164,9 +164,9 @@ pub async fn drain_batches_to_db(
         if batch.findings.is_empty() {
             continue;
         }
-        let n = writer.write_findings(&batch.findings).map_err(|e| {
-            ScannerError::StoreIpc(format!("findings writer: {e}"))
-        })?;
+        let n = writer
+            .write_findings(&batch.findings)
+            .map_err(|e| ScannerError::StoreIpc(format!("findings writer: {e}")))?;
         total += n;
     }
     Ok(total)

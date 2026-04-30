@@ -173,8 +173,7 @@ async fn watchdog_respawns_crashed_worker() {
     // Use a command that's portable: `cmd /c exit 0` on Windows,
     // `/bin/sh -c "exit 0"` on unix.
     #[cfg(windows)]
-    let (cmd, args): (&str, Vec<String>) =
-        ("cmd", vec!["/c".into(), "exit".into(), "0".into()]);
+    let (cmd, args): (&str, Vec<String>) = ("cmd", vec!["/c".into(), "exit".into(), "0".into()]);
     #[cfg(unix)]
     let (cmd, args): (&str, Vec<String>) = ("/bin/sh", vec!["-c".into(), "exit 0".into()]);
 
@@ -380,11 +379,17 @@ fn daemon_creates_logs_dir_on_start() {
     let prev = std::env::var_os("MNEME_HOME");
     // Safety: env_lock() guarantees serial access to env state for tests
     // in this crate.
-    unsafe { std::env::set_var("MNEME_HOME", tmp.path()); }
+    unsafe {
+        std::env::set_var("MNEME_HOME", tmp.path());
+    }
 
     // Pre-condition: no logs/ subfolder yet.
     let logs = crate::logs_dir();
-    assert_eq!(logs, tmp.path().join("logs"), "logs_dir resolved from MNEME_HOME");
+    assert_eq!(
+        logs,
+        tmp.path().join("logs"),
+        "logs_dir resolved from MNEME_HOME"
+    );
     assert!(!logs.exists(), "logs dir must NOT exist before the call");
 
     // Act: ensure_logs_dir creates it.
@@ -431,12 +436,17 @@ fn mneme_daemon_logs_tails_supervisor_log() {
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let prev = std::env::var_os("MNEME_HOME");
-    unsafe { std::env::set_var("MNEME_HOME", tmp.path()); }
+    unsafe {
+        std::env::set_var("MNEME_HOME", tmp.path());
+    }
 
     let dir = crate::ensure_logs_dir().expect("logs dir");
 
     // Pre: empty file dir → empty tail.
-    assert!(crate::tail_supervisor_log(100).is_empty(), "empty dir → empty tail");
+    assert!(
+        crate::tail_supervisor_log(100).is_empty(),
+        "empty dir → empty tail"
+    );
 
     // Drop two log files: the older "yesterday" rotated file AND the
     // current canonical-name file. We write the older file first then
@@ -452,14 +462,25 @@ fn mneme_daemon_logs_tails_supervisor_log() {
     )
     .expect("write yesterday");
     std::thread::sleep(std::time::Duration::from_millis(50));
-    std::fs::write(&today, "2026-04-27T00:00:01Z line-C\n2026-04-27T00:00:02Z line-D\n")
-        .expect("write today");
+    std::fs::write(
+        &today,
+        "2026-04-27T00:00:01Z line-C\n2026-04-27T00:00:02Z line-D\n",
+    )
+    .expect("write today");
 
     // tail(2) → last two lines across both files (line-C, line-D)
     let tail2 = crate::tail_supervisor_log(2);
     assert_eq!(tail2.len(), 2, "n=2 returns 2 lines");
-    assert!(tail2[0].contains("line-C"), "tail(2)[0] = line-C, got {:?}", tail2[0]);
-    assert!(tail2[1].contains("line-D"), "tail(2)[1] = line-D, got {:?}", tail2[1]);
+    assert!(
+        tail2[0].contains("line-C"),
+        "tail(2)[0] = line-C, got {:?}",
+        tail2[0]
+    );
+    assert!(
+        tail2[1].contains("line-D"),
+        "tail(2)[1] = line-D, got {:?}",
+        tail2[1]
+    );
 
     // tail(100) → all four lines, oldest-first across rotated files
     let tail_all = crate::tail_supervisor_log(100);
@@ -504,10 +525,7 @@ async fn restart_dropped_count_increments_on_closed_channel() {
         .await;
 
     // Take and drop the receiver to close the channel.
-    let rx = mgr
-        .take_restart_rx()
-        .await
-        .expect("rx taken once");
+    let rx = mgr.take_restart_rx().await.expect("rx taken once");
     drop(rx);
 
     // Drive the monitor-child close path: this is the increment site.
@@ -557,7 +575,10 @@ async fn unbounded_restart_channel_send_succeeds_under_load() {
             accepted += 1;
         }
     }
-    assert_eq!(accepted, N, "all {N} requests must be accepted by an unbounded channel");
+    assert_eq!(
+        accepted, N,
+        "all {N} requests must be accepted by an unbounded channel"
+    );
 
     // Drain the receiver and assert the count matches.
     let mut rx = mgr
@@ -652,11 +673,8 @@ fn boot_refuses_when_worker_version_skews() {
     #[cfg(unix)]
     let stub_path = {
         let path = tmp.path().join("stub.sh");
-        std::fs::write(
-            &path,
-            "#!/bin/sh\nprintf 'mneme-stub 0.0.1\\n'\nexit 0\n",
-        )
-        .expect("write stub");
+        std::fs::write(&path, "#!/bin/sh\nprintf 'mneme-stub 0.0.1\\n'\nexit 0\n")
+            .expect("write stub");
         // Mark executable so std::process::Command::new(...).spawn() works.
         use std::os::unix::fs::PermissionsExt;
         let mut perms = std::fs::metadata(&path).expect("meta").permissions();
@@ -741,8 +759,7 @@ async fn manager_logs_recovery_after_stable_uptime() {
         ],
     );
     #[cfg(unix)]
-    let (cmd, args): (&str, Vec<String>) =
-        ("/bin/sh", vec!["-c".into(), "sleep 30".into()]);
+    let (cmd, args): (&str, Vec<String>) = ("/bin/sh", vec!["-c".into(), "sleep 30".into()]);
 
     let spec = ChildSpec {
         name: "recovery-stub".into(),
@@ -789,8 +806,7 @@ async fn manager_logs_recovery_after_stable_uptime() {
     {
         let mut h = handle.lock().await;
         h.restart_count = 5;
-        h.last_started_instant =
-            Some(Instant::now() - Duration::from_secs(65));
+        h.last_started_instant = Some(Instant::now() - Duration::from_secs(65));
         // Defensive: the spawn just ran and the flag was initialised
         // to `false`, but we re-assert the precondition here so the
         // test's pass/fail signal is unambiguous.
@@ -834,8 +850,7 @@ async fn manager_logs_recovery_after_stable_uptime() {
         // Also rewind `last_started_instant` again — record_restart
         // doesn't touch it, but the next emit needs >=60s of uptime
         // since the most recent spawn from the manager's PoV.
-        h.last_started_instant =
-            Some(Instant::now() - Duration::from_secs(65));
+        h.last_started_instant = Some(Instant::now() - Duration::from_secs(65));
     }
     // `record_restart` bumped `restart_count` from 5 → 6, still well
     // above the threshold of 3. The next call MUST emit again.

@@ -555,8 +555,8 @@ mod tests {
         let dir = tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("a/b/c")).unwrap();
         std::fs::create_dir_all(dir.path().join(".git")).unwrap();
-        let resolved = find_project_root(&dir.path().join("a/b/c"))
-            .expect("should walk up to .git");
+        let resolved =
+            find_project_root(&dir.path().join("a/b/c")).expect("should walk up to .git");
         // dunce-canonicalize to compare on Windows where short-name
         // versus long-name representations differ.
         assert_eq!(

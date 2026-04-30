@@ -209,7 +209,10 @@ fn render_resume(ledger: &SqliteLedger) -> CliResult<()> {
     let bundle = ledger
         .resume_summary(since)
         .map_err(|e| CliError::Other(format!("resume_summary: {e}")))?;
-    println!("step resume — bundle from {} (14 days):", since.to_rfc3339());
+    println!(
+        "step resume — bundle from {} (14 days):",
+        since.to_rfc3339()
+    );
     println!(
         "  decisions={}, implementations={}, open_questions={}, timeline={}",
         bundle.recent_decisions.len(),

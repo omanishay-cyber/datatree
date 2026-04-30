@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use crate::error::DtResult;
 #[cfg(not(any(unix, windows)))]
 use crate::error::DtError;
+use crate::error::DtResult;
 use crate::ids::{ProjectId, SnapshotId};
 use crate::layer::DbLayer;
 use crate::time::Timestamp;
@@ -73,8 +73,7 @@ impl PathManager {
     /// Prefer [`PathManager::try_default_root`] when you want to surface
     /// a structured error in a user-facing CLI flow.
     pub fn default_root() -> Self {
-        let root = Self::resolve_default_root()
-            .unwrap_or_else(|_| PathBuf::from(".mneme"));
+        let root = Self::resolve_default_root().unwrap_or_else(|_| PathBuf::from(".mneme"));
         PathManager { root }
     }
 
@@ -112,7 +111,10 @@ impl PathManager {
         // `<root>/projects/<id>/<layer-file>`; `<layer-file>` is a non-empty
         // constant from `DbLayer::file_name()`, so `file_name()` is always
         // `Some(_)`. Programmer-impossible None.
-        let stem = p.file_name().expect("shard_db result always has a file_name").to_owned();
+        let stem = p
+            .file_name()
+            .expect("shard_db result always has a file_name")
+            .to_owned();
         p.set_file_name(format!("{}-wal", stem.to_string_lossy()));
         p
     }

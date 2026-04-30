@@ -84,11 +84,11 @@ impl Extractor for VideoExtractor {
 impl VideoExtractor {
     #[cfg(feature = "ffmpeg")]
     fn sample(&self, path: &Path, doc: &mut ExtractedDoc) -> ExtractResult<()> {
-        use ffmpeg_next as ffmpeg;
         use ffmpeg::format::{input, Pixel};
         use ffmpeg::media::Type;
         use ffmpeg::software::scaling::{context::Context as SwsCtx, flag::Flags};
         use ffmpeg::util::frame::video::Video;
+        use ffmpeg_next as ffmpeg;
 
         ffmpeg::init().map_err(|e| ExtractError::Other(format!("ffmpeg init: {e}")))?;
 
@@ -146,9 +146,7 @@ impl VideoExtractor {
                 }
                 let mut rgb = Video::empty();
                 let _ = scaler.run(&frame, &mut rgb);
-                let ms = (pts as f64
-                    * v_time_base.numerator() as f64
-                    * 1000.0
+                let ms = (pts as f64 * v_time_base.numerator() as f64 * 1000.0
                     / v_time_base.denominator().max(1) as f64) as u64;
                 doc.elements.push(serde_json::json!({
                     "kind": "video_frame",
@@ -161,8 +159,10 @@ impl VideoExtractor {
         }
         v_dec.send_eof().ok();
 
-        doc.metadata
-            .insert("sample_interval_sec".into(), self.frame_sample_secs.to_string());
+        doc.metadata.insert(
+            "sample_interval_sec".into(),
+            self.frame_sample_secs.to_string(),
+        );
         doc.metadata
             .insert("width".into(), v_dec.width().to_string());
         doc.metadata

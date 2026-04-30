@@ -88,9 +88,7 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
     // empty/whitespace query produces no useful work on either path and
     // would otherwise burn a supervisor round-trip.
     if args.query.trim().is_empty() {
-        return Err(CliError::Other(
-            "query must not be empty".to_string(),
-        ));
+        return Err(CliError::Other("query must not be empty".to_string()));
     }
 
     // K3: warn once per session if no embedding model is installed so
@@ -169,15 +167,14 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
 fn resolve_project_root(project: Option<PathBuf>) -> PathBuf {
     project
         .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
-        .unwrap_or_else(|| {
-            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        })
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
 /// Compute the `graph.db` path from an already-resolved project root.
 fn paths_graph_db(root: &std::path::Path) -> CliResult<PathBuf> {
-    let id = ProjectId::from_path(root)
-        .map_err(|e| CliError::Other(format!("cannot hash project path {}: {e}", root.display())))?;
+    let id = ProjectId::from_path(root).map_err(|e| {
+        CliError::Other(format!("cannot hash project path {}: {e}", root.display()))
+    })?;
     let paths = PathManager::default_root();
     Ok(paths.project_root(&id).join("graph.db"))
 }
@@ -186,9 +183,7 @@ fn has_nodes_fts(conn: &Connection) -> CliResult<bool> {
     let mut stmt = conn
         .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nodes_fts' LIMIT 1")
         .map_err(|e| CliError::Other(format!("prep fts check: {e}")))?;
-    let exists: Option<i64> = stmt
-        .query_row([], |row| row.get(0))
-        .ok();
+    let exists: Option<i64> = stmt.query_row([], |row| row.get(0)).ok();
     Ok(exists.is_some())
 }
 
@@ -214,18 +209,15 @@ fn recall_fts(conn: &Connection, raw: &str, limit: usize) -> CliResult<Vec<Hit>>
         .prepare(sql)
         .map_err(|e| CliError::Other(format!("prep fts recall: {e}")))?;
     let rows = stmt
-        .query_map(
-            rusqlite::params![sanitized, limit as i64],
-            |row| {
-                Ok(Hit {
-                    kind: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
-                    name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                    qualified_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                    file_path: row.get::<_, Option<String>>(3)?,
-                    line_start: row.get::<_, Option<i64>>(4)?,
-                })
-            },
-        )
+        .query_map(rusqlite::params![sanitized, limit as i64], |row| {
+            Ok(Hit {
+                kind: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                qualified_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                file_path: row.get::<_, Option<String>>(3)?,
+                line_start: row.get::<_, Option<i64>>(4)?,
+            })
+        })
         .map_err(|e| CliError::Other(format!("exec fts recall: {e}")))?;
 
     let mut hits = Vec::new();
@@ -258,18 +250,15 @@ fn recall_like(conn: &Connection, query: &str, limit: usize) -> CliResult<Vec<Hi
         .prepare(sql)
         .map_err(|e| CliError::Other(format!("prep like recall: {e}")))?;
     let rows = stmt
-        .query_map(
-            rusqlite::params![pattern, limit as i64],
-            |row| {
-                Ok(Hit {
-                    kind: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
-                    name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                    qualified_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                    file_path: row.get::<_, Option<String>>(3)?,
-                    line_start: row.get::<_, Option<i64>>(4)?,
-                })
-            },
-        )
+        .query_map(rusqlite::params![pattern, limit as i64], |row| {
+            Ok(Hit {
+                kind: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                qualified_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                file_path: row.get::<_, Option<String>>(3)?,
+                line_start: row.get::<_, Option<i64>>(4)?,
+            })
+        })
         .map_err(|e| CliError::Other(format!("exec like recall: {e}")))?;
     let mut hits = Vec::new();
     for h in rows.flatten() {

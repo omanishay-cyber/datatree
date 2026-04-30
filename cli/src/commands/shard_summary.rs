@@ -363,18 +363,12 @@ fn print_shard_row(d: &ShardDescriptor, probe: &ShardProbe) {
             "         ❌ EMPTY (table `{}` missing — expected: {})",
             d.primary_table, d.expected_source
         ),
-        ShardProbe::Rows(0) => format!(
-            "         ❌ EMPTY (expected: {})",
-            d.expected_source
-        ),
+        ShardProbe::Rows(0) => format!("         ❌ EMPTY (expected: {})", d.expected_source),
         ShardProbe::Rows(_) => String::new(),
     };
     // Pad shard file name to a fixed width for legibility. 16 is wide
     // enough for the longest current name (`architecture.db`).
-    println!(
-        "    {:<16}: {} {}{}",
-        d.file, val, d.unit, empty_marker
-    );
+    println!("    {:<16}: {} {}{}", d.file, val, d.unit, empty_marker);
 }
 
 fn format_probe_value(probe: &ShardProbe) -> String {
@@ -436,10 +430,7 @@ mod tests {
         let p = td.path().join("blank.db");
         // Create an empty SQLite file by opening + closing a connection.
         Connection::open(&p).expect("open");
-        assert!(matches!(
-            probe_table(&p, "nodes"),
-            ShardProbe::TableMissing
-        ));
+        assert!(matches!(probe_table(&p, "nodes"), ShardProbe::TableMissing));
     }
 
     #[test]
@@ -459,9 +450,12 @@ mod tests {
         let conn = Connection::open(&p).expect("open");
         conn.execute("CREATE TABLE nodes(id INTEGER)", [])
             .expect("create");
-        conn.execute("INSERT INTO nodes VALUES(1)", []).expect("ins");
-        conn.execute("INSERT INTO nodes VALUES(2)", []).expect("ins");
-        conn.execute("INSERT INTO nodes VALUES(3)", []).expect("ins");
+        conn.execute("INSERT INTO nodes VALUES(1)", [])
+            .expect("ins");
+        conn.execute("INSERT INTO nodes VALUES(2)", [])
+            .expect("ins");
+        conn.execute("INSERT INTO nodes VALUES(3)", [])
+            .expect("ins");
         assert!(matches!(probe_table(&p, "nodes"), ShardProbe::Rows(3)));
     }
 }

@@ -105,8 +105,8 @@ mod tests {
     //! M16 — fan-out dispatch must skip a busy worker so head-of-line
     //! blocking on a single slow parse cannot serialise the queue.
     use super::*;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
     use std::time::{Duration, Instant};
 
     /// Simulates a parse worker pool. Worker 0 takes a single

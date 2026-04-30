@@ -10,9 +10,7 @@
 use std::path::PathBuf;
 
 use crate::error::CliResult;
-use crate::platforms::{
-    AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter,
-};
+use crate::platforms::{AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Aider;

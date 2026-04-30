@@ -130,12 +130,10 @@ impl AudioExtractor {
                 reason: format!("whisper decode: {e}"),
             })?;
 
-        let n_segments = state
-            .full_n_segments()
-            .map_err(|e| ExtractError::Parse {
-                path: path.to_path_buf(),
-                reason: format!("whisper n_segments: {e}"),
-            })?;
+        let n_segments = state.full_n_segments().map_err(|e| ExtractError::Parse {
+            path: path.to_path_buf(),
+            reason: format!("whisper n_segments: {e}"),
+        })?;
         let mut full_text = String::new();
         for i in 0..n_segments {
             let text = state

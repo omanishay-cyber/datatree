@@ -105,7 +105,9 @@ pub fn runtime_dir() -> std::path::PathBuf {
     if let Ok(custom) = std::env::var("MNEME_RUNTIME_DIR") {
         return std::path::PathBuf::from(custom);
     }
-    common::paths::PathManager::default_root().root().join("run")
+    common::paths::PathManager::default_root()
+        .root()
+        .join("run")
 }
 
 /// Returns the platform-appropriate state directory (databases, snapshots,
@@ -119,5 +121,7 @@ pub fn state_dir() -> std::path::PathBuf {
     if let Ok(custom) = std::env::var("MNEME_STATE_DIR") {
         return std::path::PathBuf::from(custom);
     }
-    common::paths::PathManager::default_root().root().to_path_buf()
+    common::paths::PathManager::default_root()
+        .root()
+        .to_path_buf()
 }

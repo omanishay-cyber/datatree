@@ -432,7 +432,9 @@ impl IpcClient {
     /// MCP server `_client` singleton, build pipelines, etc.) would
     /// dial a dead pipe forever.
     pub fn default_path() -> Self {
-        let root = common::paths::PathManager::default_root().root().to_path_buf();
+        let root = common::paths::PathManager::default_root()
+            .root()
+            .to_path_buf();
         let disco = root.join("supervisor.pipe");
         // Try to resolve the path NOW so the first attempt has a
         // realistic socket path, but ALSO retain the disco path
@@ -448,8 +450,7 @@ impl IpcClient {
         // Discovery file present but empty/unreadable — fall back
         // to runtime_dir but still set discovery_path so a later
         // supervisor boot that writes the file is picked up.
-        let mut c =
-            Self::new(crate::runtime_dir().join(crate::DEFAULT_IPC_SOCKET_NAME));
+        let mut c = Self::new(crate::runtime_dir().join(crate::DEFAULT_IPC_SOCKET_NAME));
         c.discovery_path = Some(disco);
         c
     }
@@ -564,9 +565,11 @@ impl IpcClient {
                             fresh = %refreshed.display(),
                             "supervisor.pipe changed mid-call; retrying with fresh path (Bug K)"
                         );
-                        let r2 =
-                            tokio::time::timeout(self.timeout, round_trip(&refreshed, payload.clone()))
-                                .await;
+                        let r2 = tokio::time::timeout(
+                            self.timeout,
+                            round_trip(&refreshed, payload.clone()),
+                        )
+                        .await;
                         if let Ok(Ok(resp)) = r2 {
                             return Ok(resp);
                         }
@@ -587,7 +590,8 @@ impl IpcClient {
                         )));
                     }
                 }
-                self.handle_connect_failure(e, &socket_path, payload, &request).await
+                self.handle_connect_failure(e, &socket_path, payload, &request)
+                    .await
             }
             Err(_) => Err(CliError::Ipc(format!(
                 "timeout after {:?} talking to supervisor at {}",
@@ -717,16 +721,21 @@ async fn round_trip(socket_path: &Path, framed_request: Vec<u8>) -> CliResult<Ip
 /// On Unix the socket is addressed by filesystem path; on Windows the file
 /// name component of `socket_path` is used as the pipe name (the
 /// supervisor mirrors this).
-async fn connect_stream(socket_path: &std::path::Path) -> CliResult<interprocess::local_socket::tokio::Stream> {
+async fn connect_stream(
+    socket_path: &std::path::Path,
+) -> CliResult<interprocess::local_socket::tokio::Stream> {
     use interprocess::local_socket::tokio::Stream;
     use interprocess::local_socket::traits::tokio::Stream as IpcStreamExt;
 
     #[cfg(unix)]
     {
         use interprocess::local_socket::{GenericFilePath, ToFsName};
-        let name = socket_path
-            .to_fs_name::<GenericFilePath>()
-            .map_err(|e| CliError::Ipc(format!("invalid socket path {}: {e}", socket_path.display())))?;
+        let name = socket_path.to_fs_name::<GenericFilePath>().map_err(|e| {
+            CliError::Ipc(format!(
+                "invalid socket path {}: {e}",
+                socket_path.display()
+            ))
+        })?;
         <Stream as IpcStreamExt>::connect(name).await.map_err(|e| {
             CliError::Ipc(format!(
                 "could not connect to supervisor at {}: {e}",
@@ -867,7 +876,12 @@ mod tests {
         let bytes = serde_json::to_vec(&req).unwrap();
         let back: IpcRequest = serde_json::from_slice(&bytes).unwrap();
         match back {
-            IpcRequest::Recall { project, query, limit, filter_type } => {
+            IpcRequest::Recall {
+                project,
+                query,
+                limit,
+                filter_type,
+            } => {
                 assert_eq!(project, PathBuf::from("/tmp/proj"));
                 assert_eq!(query, "auth flow");
                 assert_eq!(filter_type.as_deref(), Some("decision"));
@@ -879,10 +893,8 @@ mod tests {
 
     #[test]
     fn missing_socket_yields_ipc_error() {
-        let client = IpcClient::new(PathBuf::from(
-            "/this/path/definitely/does/not/exist.sock",
-        ))
-        .with_timeout(Duration::from_millis(50));
+        let client = IpcClient::new(PathBuf::from("/this/path/definitely/does/not/exist.sock"))
+            .with_timeout(Duration::from_millis(50));
         let rt = tokio::runtime::Runtime::new().unwrap();
         let result = rt.block_on(client.request(IpcRequest::Ping));
         assert!(matches!(result, Err(CliError::Ipc(_))));

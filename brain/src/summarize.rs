@@ -79,9 +79,8 @@ impl Summarizer {
 
 static DOC_LINE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*(?:///|//!|//|#)\s?(.*)$").unwrap());
-static FN_NAME_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?:fn|def|function)\s+([A-Za-z_][A-Za-z0-9_]*)").unwrap()
-});
+static FN_NAME_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?:fn|def|function)\s+([A-Za-z_][A-Za-z0-9_]*)").unwrap());
 static PARAM_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\(([^)]*)\)").unwrap());
 
 fn clean(s: &str) -> String {
@@ -155,6 +154,10 @@ fn signature_fallback(signature: &str) -> String {
         })
         .unwrap_or(0);
 
-    let plural = if params == 1 { "parameter" } else { "parameters" };
+    let plural = if params == 1 {
+        "parameter"
+    } else {
+        "parameters"
+    };
     format!("Function `{name}` with {params} {plural}.")
 }

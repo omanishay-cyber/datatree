@@ -92,8 +92,7 @@ fn isolate_home(tempdir: &Path) -> EnvSnapshot {
 /// SHA256 of the bytes baked into the binary at compile time. The fix
 /// reads the file back and compares against this — drift between the
 /// constant and the on-disk bytes is a hard error.
-const EXPECTED_UNINSTALLER_BYTES: &[u8] =
-    include_bytes!("../../scripts/uninstall.ps1");
+const EXPECTED_UNINSTALLER_BYTES: &[u8] = include_bytes!("../../scripts/uninstall.ps1");
 
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
@@ -154,7 +153,8 @@ fn drop_standalone_uninstaller_writes_file_with_expected_bytes() {
     let expected_sha = sha256_hex(EXPECTED_UNINSTALLER_BYTES);
     let actual_sha = sha256_hex(&written);
     assert_eq!(
-        actual_sha, expected_sha,
+        actual_sha,
+        expected_sha,
         "on-disk uninstall.ps1 sha256 ({} bytes) does not match the \
          include_str! constant ({} bytes). Drift indicates a partial \
          write or post-write tampering.",
@@ -210,8 +210,7 @@ fn drop_standalone_uninstaller_creates_mneme_dir_if_missing() {
         "test setup invariant violated: .mneme pre-exists"
     );
 
-    drop_standalone_uninstaller()
-        .expect("drop_standalone_uninstaller must create .mneme/ first");
+    drop_standalone_uninstaller().expect("drop_standalone_uninstaller must create .mneme/ first");
 
     assert!(
         mneme_dir.is_dir(),

@@ -193,7 +193,11 @@ fn run_du(json: bool) -> CliResult<()> {
             .map_err(|e| CliError::Other(format!("serde: {e}")))?;
         println!("{s}");
     } else {
-        println!("mneme cache du — {} total under {}", human(total), root.display());
+        println!(
+            "mneme cache du — {} total under {}",
+            human(total),
+            root.display()
+        );
         println!();
         println!("  {:>10}  bin/             (compiled binaries)", human(bin));
         println!(
@@ -548,7 +552,11 @@ fn run_gc(project_path: Option<&Path>, dry_run: bool) -> CliResult<()> {
     }
 
     println!();
-    let action = if dry_run { "would process" } else { "processed" };
+    let action = if dry_run {
+        "would process"
+    } else {
+        "processed"
+    };
     println!(
         "{action} {dbs_processed} db file(s) across {} project(s)",
         project_ids.len()
@@ -572,10 +580,7 @@ fn run_gc(project_path: Option<&Path>, dry_run: bool) -> CliResult<()> {
 
 fn run_drop(project_path: &Path, yes: bool) -> CliResult<()> {
     let id = ProjectId::from_path(project_path).map_err(|e| {
-        CliError::Other(format!(
-            "project hash for {}: {e}",
-            project_path.display()
-        ))
+        CliError::Other(format!("project hash for {}: {e}", project_path.display()))
     })?;
     let paths = PathManager::default_root();
     let proj_dir = paths.root().join("projects").join(id.to_string());
@@ -743,7 +748,9 @@ mod tests {
         let h = Harness::try_parse_from(["x", "prune"]).unwrap();
         match h.args.op {
             CacheOp::Prune {
-                older_than, dry_run, ..
+                older_than,
+                dry_run,
+                ..
             } => {
                 assert_eq!(older_than, "30d");
                 assert!(!dry_run);
@@ -757,7 +764,9 @@ mod tests {
         let h = Harness::try_parse_from(["x", "prune", "--older-than", "7d", "--dry-run"]).unwrap();
         match h.args.op {
             CacheOp::Prune {
-                older_than, dry_run, ..
+                older_than,
+                dry_run,
+                ..
             } => {
                 assert_eq!(older_than, "7d");
                 assert!(dry_run);

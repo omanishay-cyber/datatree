@@ -7,12 +7,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{error, info, warn};
 
-use common::{
-    error::DtResult,
-    ids::ProjectId,
-    layer::DbLayer,
-    paths::PathManager,
-};
+use common::{error::DtResult, ids::ProjectId, layer::DbLayer, paths::PathManager};
 
 use crate::{
     inject::InjectOptions,
@@ -23,18 +18,48 @@ use crate::{
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum Request {
-    BuildOrMigrate { project_root: String, name: String },
-    FindByCwd { cwd: String },
-    FindByHash { hash: String },
-    QueryRows { q: Query },
-    Write { w: Write },
-    WriteBatch { ws: Vec<Write> },
-    Insert { project: ProjectId, layer: DbLayer, sql: String, params: Vec<serde_json::Value>, opts: InjectOptions },
-    Snapshot { project: ProjectId },
-    ListSnapshots { project: ProjectId },
-    Restore { project: ProjectId, snapshot: String },
-    IntegrityCheck { project: ProjectId },
-    Vacuum { project: ProjectId },
+    BuildOrMigrate {
+        project_root: String,
+        name: String,
+    },
+    FindByCwd {
+        cwd: String,
+    },
+    FindByHash {
+        hash: String,
+    },
+    QueryRows {
+        q: Query,
+    },
+    Write {
+        w: Write,
+    },
+    WriteBatch {
+        ws: Vec<Write>,
+    },
+    Insert {
+        project: ProjectId,
+        layer: DbLayer,
+        sql: String,
+        params: Vec<serde_json::Value>,
+        opts: InjectOptions,
+    },
+    Snapshot {
+        project: ProjectId,
+    },
+    ListSnapshots {
+        project: ProjectId,
+    },
+    Restore {
+        project: ProjectId,
+        snapshot: String,
+    },
+    IntegrityCheck {
+        project: ProjectId,
+    },
+    Vacuum {
+        project: ProjectId,
+    },
     Health,
     Shutdown,
 }
@@ -51,8 +76,9 @@ pub async fn run_listener(store: Arc<Store>) -> DtResult<()> {
     info!(socket = %socket_path.display(), "store IPC listening");
 
     use interprocess::local_socket::tokio::prelude::*;
-    use interprocess::local_socket::{ListenerOptions, GenericFilePath, ToFsName};
-    let name = socket_path.to_fs_name::<GenericFilePath>()
+    use interprocess::local_socket::{GenericFilePath, ListenerOptions, ToFsName};
+    let name = socket_path
+        .to_fs_name::<GenericFilePath>()
         .map_err(|e| common::error::DtError::Internal(e.to_string()))?;
     let listener = ListenerOptions::new()
         .name(name)
@@ -132,13 +158,11 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
                 Err(e) => err(e.to_string()),
             }
         }
-        Request::FindByHash { hash } => {
-            match store.finder.find_by_hash(&hash).await {
-                Ok(Some(h)) => ok(serde_json::to_value(h.project).unwrap_or_default()),
-                Ok(None) => ok(serde_json::Value::Null),
-                Err(e) => err(e.to_string()),
-            }
-        }
+        Request::FindByHash { hash } => match store.finder.find_by_hash(&hash).await {
+            Ok(Some(h)) => ok(serde_json::to_value(h.project).unwrap_or_default()),
+            Ok(None) => ok(serde_json::Value::Null),
+            Err(e) => err(e.to_string()),
+        },
         Request::QueryRows { q } => {
             let r = store.query.query_rows(q).await;
             wire_from_response(r)
@@ -151,18 +175,29 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
             let r = store.query.write_batch(ws).await;
             wire_from_response(r)
         }
-        Request::Insert { project, layer, sql, params, opts } => {
-            let r = store.inject.insert(&project, layer, &sql, params, opts).await;
+        Request::Insert {
+            project,
+            layer,
+            sql,
+            params,
+            opts,
+        } => {
+            let r = store
+                .inject
+                .insert(&project, layer, &sql, params, opts)
+                .await;
             wire_from_response(r)
         }
         Request::Snapshot { project } => match store.lifecycle.snapshot(&project).await {
             Ok(id) => ok(serde_json::to_value(id).unwrap_or_default()),
             Err(e) => err(e.to_string()),
         },
-        Request::ListSnapshots { project } => match store.lifecycle.list_snapshots(&project).await {
-            Ok(s) => ok(serde_json::to_value(s).unwrap_or_default()),
-            Err(e) => err(e.to_string()),
-        },
+        Request::ListSnapshots { project } => {
+            match store.lifecycle.list_snapshots(&project).await {
+                Ok(s) => ok(serde_json::to_value(s).unwrap_or_default()),
+                Err(e) => err(e.to_string()),
+            }
+        }
         Request::Restore { project, snapshot } => {
             let id = common::ids::SnapshotId::from_str(snapshot);
             match store.lifecycle.restore(&project, id).await {
@@ -170,10 +205,12 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
                 Err(e) => err(e.to_string()),
             }
         }
-        Request::IntegrityCheck { project } => match store.lifecycle.integrity_check(&project).await {
-            Ok(r) => ok(serde_json::to_value(r).unwrap_or_default()),
-            Err(e) => err(e.to_string()),
-        },
+        Request::IntegrityCheck { project } => {
+            match store.lifecycle.integrity_check(&project).await {
+                Ok(r) => ok(serde_json::to_value(r).unwrap_or_default()),
+                Err(e) => err(e.to_string()),
+            }
+        }
         Request::Vacuum { project } => match store.lifecycle.vacuum(&project).await {
             Ok(r) => ok(serde_json::to_value(r).unwrap_or_default()),
             Err(e) => err(e.to_string()),
@@ -195,11 +232,19 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
 }
 
 fn ok(data: serde_json::Value) -> WireResponse {
-    WireResponse { success: true, data, error: None }
+    WireResponse {
+        success: true,
+        data,
+        error: None,
+    }
 }
 
 fn err(msg: String) -> WireResponse {
-    WireResponse { success: false, data: serde_json::Value::Null, error: Some(msg) }
+    WireResponse {
+        success: false,
+        data: serde_json::Value::Null,
+        error: Some(msg),
+    }
 }
 
 fn wire_from_response<T: Serialize>(r: common::response::Response<T>) -> WireResponse {

@@ -65,11 +65,15 @@ impl SessionId {
 }
 
 impl Default for SessionId {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl fmt::Display for SessionId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}", self.0) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -77,12 +81,18 @@ impl fmt::Display for SessionId {
 pub struct SnapshotId(String);
 
 impl SnapshotId {
-    pub fn from_str(s: impl Into<String>) -> Self { SnapshotId(s.into()) }
-    pub fn as_str(&self) -> &str { &self.0 }
+    pub fn from_str(s: impl Into<String>) -> Self {
+        SnapshotId(s.into())
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl fmt::Display for SnapshotId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}", self.0) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 /// Hierarchical step id like "1", "1.1", "1.1.1".
@@ -91,11 +101,15 @@ impl fmt::Display for SnapshotId {
 pub struct StepId(String);
 
 impl StepId {
-    pub fn root(n: u32) -> Self { StepId(n.to_string()) }
+    pub fn root(n: u32) -> Self {
+        StepId(n.to_string())
+    }
     pub fn child(parent: &StepId, n: u32) -> Self {
         StepId(format!("{}.{}", parent.0, n))
     }
-    pub fn as_str(&self) -> &str { &self.0 }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
     pub fn parent(&self) -> Option<StepId> {
         let pos = self.0.rfind('.')?;
         Some(StepId(self.0[..pos].to_string()))
@@ -103,7 +117,9 @@ impl StepId {
 }
 
 impl fmt::Display for StepId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}", self.0) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

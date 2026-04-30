@@ -46,7 +46,11 @@ pub async fn run(args: GodNodesArgs, socket_override: Option<PathBuf>) -> CliRes
         };
         match client.request(req).await {
             Ok(IpcResponse::GodNodesResults { nodes }) => {
-                info!(source = "supervisor", count = nodes.len(), "godnodes served");
+                info!(
+                    source = "supervisor",
+                    count = nodes.len(),
+                    "godnodes served"
+                );
                 print_gods(&nodes);
                 return Ok(());
             }
@@ -126,15 +130,14 @@ pub async fn run(args: GodNodesArgs, socket_override: Option<PathBuf>) -> CliRes
 fn resolve_project_root(project: Option<PathBuf>) -> PathBuf {
     project
         .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
-        .unwrap_or_else(|| {
-            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        })
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
 /// Map a resolved project root to its `graph.db` path.
 fn paths_graph_db(root: &std::path::Path) -> CliResult<PathBuf> {
-    let id = ProjectId::from_path(root)
-        .map_err(|e| CliError::Other(format!("cannot hash project path {}: {e}", root.display())))?;
+    let id = ProjectId::from_path(root).map_err(|e| {
+        CliError::Other(format!("cannot hash project path {}: {e}", root.display()))
+    })?;
     let paths = PathManager::default_root();
     Ok(paths.project_root(&id).join("graph.db"))
 }

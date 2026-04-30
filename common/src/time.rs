@@ -33,5 +33,7 @@ impl fmt::Display for Timestamp {
 }
 
 impl Default for Timestamp {
-    fn default() -> Self { Self::now() }
+    fn default() -> Self {
+        Self::now()
+    }
 }

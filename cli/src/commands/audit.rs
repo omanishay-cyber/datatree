@@ -209,9 +209,9 @@ pub(crate) async fn run_direct_subprocess_with_registry(
     // `CommandExt` import needed). See `windows_audit_subprocess_flags`.
     #[cfg(windows)]
     cmd.creation_flags(windows_audit_subprocess_flags());
-    let mut child = cmd.spawn().map_err(|e| {
-        CliError::Other(format!("failed to spawn {}: {e}", bin.display()))
-    })?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| CliError::Other(format!("failed to spawn {}: {e}", bin.display())))?;
 
     // B-003: register the child PID with the build registry so a
     // Ctrl-C will taskkill it. Tokio's `Child::id()` returns
@@ -228,9 +228,10 @@ pub(crate) async fn run_direct_subprocess_with_registry(
 
     // Send command, then close stdin so the worker stops reading.
     {
-        let stdin = child.stdin.as_mut().ok_or_else(|| {
-            CliError::Other("child stdin pipe missing".into())
-        })?;
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| CliError::Other("child stdin pipe missing".into()))?;
         stdin
             .write_all(cmd_line.as_bytes())
             .await
@@ -582,7 +583,10 @@ fn print_summary(
     }
 
     println!();
-    println!("{:<14}{:>10}{:>8}{:>7}{:>7}{:>8}", "scanner", "critical", "error", "warn", "info", "total");
+    println!(
+        "{:<14}{:>10}{:>8}{:>7}{:>7}{:>8}",
+        "scanner", "critical", "error", "warn", "info", "total"
+    );
     println!("{:-<54}", "");
     let mut total_total = 0usize;
     let mut total_per_sev = [0usize; 4];
@@ -600,7 +604,12 @@ fn print_summary(
     println!("{:-<54}", "");
     println!(
         "{:<14}{:>10}{:>8}{:>7}{:>7}{:>8}",
-        "TOTAL", total_per_sev[0], total_per_sev[1], total_per_sev[2], total_per_sev[3], total_total
+        "TOTAL",
+        total_per_sev[0],
+        total_per_sev[1],
+        total_per_sev[2],
+        total_per_sev[3],
+        total_total
     );
     println!();
     if let Some(s) = summary {
@@ -619,7 +628,9 @@ fn print_summary(
 /// Final stdout line emitted by the scanner subprocess in orchestrator mode.
 #[derive(Debug, serde::Deserialize)]
 struct DoneSummary {
-    #[allow(dead_code)] #[serde(rename = "_done")] _done: bool,
+    #[allow(dead_code)]
+    #[serde(rename = "_done")]
+    _done: bool,
     scanned: usize,
     #[allow(dead_code)]
     findings: usize,
@@ -933,7 +944,10 @@ mod tests {
         let mut reaped = false;
         for _ in 0..50 {
             match child.try_wait() {
-                Ok(Some(_)) => { reaped = true; break; }
+                Ok(Some(_)) => {
+                    reaped = true;
+                    break;
+                }
                 Ok(None) => tokio::time::sleep(Duration::from_millis(20)).await,
                 Err(_) => break,
             }
@@ -1015,7 +1029,10 @@ mod tests {
             "no stdout was produced; findings must be empty"
         );
         assert!(outcome.summary.is_none(), "no _done line was produced");
-        assert!(outcome.subprocess_error.is_none(), "no _error line was produced");
+        assert!(
+            outcome.subprocess_error.is_none(),
+            "no _error line was produced"
+        );
 
         // Reap so we don't leak.
         let _ = child.wait().await;
@@ -1033,11 +1050,17 @@ mod tests {
         // tests share process state with other env reads but the names
         // are unique.
         std::env::set_var("MNEME_TEST_PROBE_OUTER", "120");
-        assert_eq!(parse_env_secs_or("MNEME_TEST_PROBE_OUTER", fb), Duration::from_secs(120));
+        assert_eq!(
+            parse_env_secs_or("MNEME_TEST_PROBE_OUTER", fb),
+            Duration::from_secs(120)
+        );
 
         std::env::set_var("MNEME_TEST_PROBE_OUTER", "0");
-        assert_eq!(parse_env_secs_or("MNEME_TEST_PROBE_OUTER", fb), fb,
-            "zero must fall back — never disable the timeout");
+        assert_eq!(
+            parse_env_secs_or("MNEME_TEST_PROBE_OUTER", fb),
+            fb,
+            "zero must fall back — never disable the timeout"
+        );
 
         std::env::set_var("MNEME_TEST_PROBE_OUTER", "not-a-number");
         assert_eq!(parse_env_secs_or("MNEME_TEST_PROBE_OUTER", fb), fb);

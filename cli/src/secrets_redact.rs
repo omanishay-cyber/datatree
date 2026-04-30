@@ -52,7 +52,10 @@ use std::sync::OnceLock;
 pub fn redact(input: &str) -> String {
     let mut out = input.to_string();
     for pat in patterns() {
-        out = pat.regex.replace_all(&out, pat.replacement.as_str()).into_owned();
+        out = pat
+            .regex
+            .replace_all(&out, pat.replacement.as_str())
+            .into_owned();
     }
     out
 }
@@ -94,10 +97,8 @@ fn patterns() -> &'static [Pattern] {
             //
             //      aws_secret_access_key=[REDACTED:aws_secret_access_key]
             Pattern {
-                regex: Regex::new(
-                    r#"(?i)(aws_secret_access_key\s*[:=]\s*"?)[A-Za-z0-9/+]{40}"#,
-                )
-                .unwrap(),
+                regex: Regex::new(r#"(?i)(aws_secret_access_key\s*[:=]\s*"?)[A-Za-z0-9/+]{40}"#)
+                    .unwrap(),
                 replacement: "${1}[REDACTED:aws_secret_access_key]".to_string(),
             },
             // 4) OpenAI: literal sk- prefix + 32 or more [A-Za-z0-9_-].

@@ -23,9 +23,9 @@ pub struct SnapArgs {
 
 /// Entry point used by `main.rs`.
 pub async fn run(args: SnapArgs, _socket_override: Option<PathBuf>) -> CliResult<()> {
-    let project = args.project.unwrap_or_else(|| {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    });
+    let project = args
+        .project
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let project = std::fs::canonicalize(&project).unwrap_or(project);
 
     let id = ProjectId::from_path(&project)
@@ -66,9 +66,7 @@ pub async fn run(args: SnapArgs, _socket_override: Option<PathBuf>) -> CliResult
     )
     .map_err(|e| CliError::Other(format!("VACUUM INTO: {e}")))?;
 
-    let size = std::fs::metadata(&snap_path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let size = std::fs::metadata(&snap_path).map(|m| m.len()).unwrap_or(0);
     println!("snapshot created:");
     println!("  source: {}", graph_db.display());
     println!("  target: {}", snap_path.display());
@@ -93,14 +91,22 @@ fn utc_stamp() -> String {
 }
 fn ymd(days: i64) -> (i32, u32, u32) {
     let z = days + 719_468;
-    let era = if z >= 0 { z / 146_097 } else { (z - 146_096) / 146_097 };
+    let era = if z >= 0 {
+        z / 146_097
+    } else {
+        (z - 146_096) / 146_097
+    };
     let doe = (z - era * 146_097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let y = yoe as i64 + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { (mp + 3) as u32 } else { (mp - 9) as u32 };
+    let m = if mp < 10 {
+        (mp + 3) as u32
+    } else {
+        (mp - 9) as u32
+    };
     let y = if m <= 2 { y + 1 } else { y };
     (y as i32, m, d)
 }

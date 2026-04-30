@@ -349,24 +349,22 @@ fn compose_app_router(
             // that captures the Arc. We construct two clones below
             // (one for `/`, one for the fallback) so each route owns
             // its own reference.
-            let serve_index = move |maybe_bytes: Option<Arc<[u8]>>| {
-                async move {
-                    match maybe_bytes {
-                        Some(b) => Response::builder()
-                            .status(StatusCode::OK)
-                            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-                            .header(header::CACHE_CONTROL, "no-cache")
-                            .body(Body::from(b.to_vec()))
-                            .expect("static SPA index response"),
-                        None => Response::builder()
-                            .status(StatusCode::SERVICE_UNAVAILABLE)
-                            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-                            .body(Body::from(
-                                "vision SPA index.html unavailable; \
+            let serve_index = move |maybe_bytes: Option<Arc<[u8]>>| async move {
+                match maybe_bytes {
+                    Some(b) => Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                        .header(header::CACHE_CONTROL, "no-cache")
+                        .body(Body::from(b.to_vec()))
+                        .expect("static SPA index response"),
+                    None => Response::builder()
+                        .status(StatusCode::SERVICE_UNAVAILABLE)
+                        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+                        .body(Body::from(
+                            "vision SPA index.html unavailable; \
                                  reinstall with `mneme install`",
-                            ))
-                            .expect("503 SPA index response"),
-                    }
+                        ))
+                        .expect("503 SPA index response"),
                 }
             };
 
@@ -377,10 +375,7 @@ fn compose_app_router(
             let bytes_for_root = cached_index_bytes.clone();
             let bytes_for_fallback = cached_index_bytes.clone();
             app = app
-                .route(
-                    "/",
-                    get(move || serve_index(bytes_for_root.clone())),
-                )
+                .route("/", get(move || serve_index(bytes_for_root.clone())))
                 .fallback(get(move || serve_index(bytes_for_fallback.clone())));
 
             // Real on-disk assets stay on ServeDir, but only for the
@@ -507,10 +502,7 @@ async fn build_snapshot(state: &AppState) -> Result<SlaSnapshot, SupervisorError
     // C2: scalar disk-used in MB so dashboards can render a single number.
     // Saturating to prevent any sysinfo blip from underflowing when free
     // briefly exceeds total during a refresh.
-    let disk_usage_mb = disk
-        .total_bytes
-        .saturating_sub(disk.free_bytes)
-        / (1024 * 1024);
+    let disk_usage_mb = disk.total_bytes.saturating_sub(disk.free_bytes) / (1024 * 1024);
 
     // C2: queue_depth = pending jobs in the supervisor's shared queue.
     // `0` when no queue is attached (test harnesses).
@@ -694,8 +686,7 @@ mod tests {
         std::fs::create_dir_all(dir).expect("create dist");
         std::fs::write(dir.join("index.html"), b"<html><body>SPA</body></html>")
             .expect("write index.html");
-        std::fs::write(dir.join("app.js"), b"console.log('mneme');")
-            .expect("write app.js");
+        std::fs::write(dir.join("app.js"), b"console.log('mneme');").expect("write app.js");
     }
 
     /// A2 fix: when a `static_dir` is provided, the router must respond
@@ -1175,8 +1166,7 @@ mod tests {
         let tmp = TempDir::new().expect("tempdir");
         let dist = tmp.path();
         std::fs::create_dir_all(dist.join("assets")).expect("create assets dir");
-        std::fs::write(dist.join("index.html"), b"<html>SHELL</html>")
-            .expect("write index.html");
+        std::fs::write(dist.join("index.html"), b"<html>SHELL</html>").expect("write index.html");
         std::fs::write(
             dist.join("assets").join("app.js"),
             b"console.log('mneme-vision-bundle');",
@@ -1232,7 +1222,8 @@ mod tests {
             None => std::env::remove_var("MNEME_HOME"),
         }
 
-        let resolved = resolved.expect("resolve_static_dir should find <MNEME_HOME>/static/vision/");
+        let resolved =
+            resolved.expect("resolve_static_dir should find <MNEME_HOME>/static/vision/");
         assert_eq!(
             resolved, static_vision,
             "expected resolver to return the static/vision dir under MNEME_HOME, got {:?}",
@@ -1270,10 +1261,7 @@ mod tests {
     /// hard read deadline. Returns the parsed status line + body, or
     /// errors on timeout / connection failure. Crafted by hand to
     /// avoid pulling a heavyweight HTTP client into dev-deps.
-    async fn http_get(
-        addr: std::net::SocketAddr,
-        path: &str,
-    ) -> Result<ParsedResponse, String> {
+    async fn http_get(addr: std::net::SocketAddr, path: &str) -> Result<ParsedResponse, String> {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::TcpStream;
         use tokio::time::{timeout, Duration};
@@ -1283,9 +1271,7 @@ mod tests {
             .map_err(|_| "connect timed out".to_string())?
             .map_err(|e| format!("connect failed: {e}"))?;
 
-        let req = format!(
-            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
-        );
+        let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
         timeout(Duration::from_secs(3), stream.write_all(req.as_bytes()))
             .await
             .map_err(|_| "write timed out".to_string())?
@@ -1371,11 +1357,8 @@ mod tests {
 
             // Hard-bound 3s on the request. The EC2 reproduction shows a
             // 5s timeout; if our fix didn't land we'll hang the same way.
-            let resp = tokio::time::timeout(
-                std::time::Duration::from_secs(3),
-                http_get(addr, "/"),
-            )
-            .await;
+            let resp =
+                tokio::time::timeout(std::time::Duration::from_secs(3), http_get(addr, "/")).await;
 
             // Ownership note: we hold `tmp` so the dist tree survives the
             // request.
@@ -1427,21 +1410,20 @@ mod tests {
         // composed. If the handler reads from disk on every request,
         // we'd see a 404 (or hang). If it's serving cached bytes via an
         // explicit axum route, we still get the original content.
-        std::fs::remove_file(dist.join("index.html"))
-            .expect("delete index.html after compose");
+        std::fs::remove_file(dist.join("index.html")).expect("delete index.html after compose");
 
         let addr = serve_in_background(app).await;
 
         // Test BOTH the root path and an unknown SPA path — both must
         // hit the explicit route, not ServeDir.
         for path in &["/", "/some/spa/route"] {
-            let resp = tokio::time::timeout(
-                std::time::Duration::from_secs(3),
-                http_get(addr, path),
-            )
-            .await
-            .unwrap_or_else(|_| panic!("GET {path} hung after on-disk file deleted"))
-            .unwrap_or_else(|e| panic!("GET {path} failed after on-disk file deleted: {e}"));
+            let resp =
+                tokio::time::timeout(std::time::Duration::from_secs(3), http_get(addr, path))
+                    .await
+                    .unwrap_or_else(|_| panic!("GET {path} hung after on-disk file deleted"))
+                    .unwrap_or_else(|e| {
+                        panic!("GET {path} failed after on-disk file deleted: {e}")
+                    });
             assert!(
                 resp.status_line.contains("200"),
                 "expected explicit route to serve cached bytes for {path}, got: {}",
@@ -1491,13 +1473,11 @@ mod tests {
         //   * Cache-Control: no-cache (set only by our handler)
         //   * Body bytes equal the cached index.html length
         for path in &["/", "/audit/findings/abc"] {
-            let resp = tokio::time::timeout(
-                std::time::Duration::from_secs(3),
-                http_get(addr, path),
-            )
-            .await
-            .unwrap_or_else(|_| panic!("GET {path} hung"))
-            .unwrap_or_else(|e| panic!("GET {path} failed: {e}"));
+            let resp =
+                tokio::time::timeout(std::time::Duration::from_secs(3), http_get(addr, path))
+                    .await
+                    .unwrap_or_else(|_| panic!("GET {path} hung"))
+                    .unwrap_or_else(|e| panic!("GET {path} failed: {e}"));
 
             assert!(
                 resp.status_line.contains("200"),
@@ -1505,7 +1485,8 @@ mod tests {
                 resp.status_line
             );
             assert_eq!(
-                resp.body, content,
+                resp.body,
+                content,
                 "expected exact cached index.html bytes for {path}, got len={}",
                 resp.body.len()
             );
@@ -1564,9 +1545,7 @@ mod tests {
             .map_err(|_| "connect timed out".to_string())?
             .map_err(|e| format!("connect failed: {e}"))?;
 
-        let req = format!(
-            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
-        );
+        let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
         timeout(Duration::from_secs(3), stream.write_all(req.as_bytes()))
             .await
             .map_err(|_| "write timed out".to_string())?
@@ -1598,7 +1577,9 @@ mod tests {
 fn compute_disk_usage(_root: &std::path::Path) -> DiskUsage {
     // I-4 / I-5: serve from cache if fresh, else refresh under lock.
     {
-        let cache = disk_usage_cache().lock().expect("disk-usage cache poisoned");
+        let cache = disk_usage_cache()
+            .lock()
+            .expect("disk-usage cache poisoned");
         if let Some((stamp, du)) = cache.as_ref() {
             if stamp.elapsed() < DISK_USAGE_TTL {
                 return du.clone();
@@ -1624,7 +1605,9 @@ fn compute_disk_usage(_root: &std::path::Path) -> DiskUsage {
         used_percent,
     };
     {
-        let mut cache = disk_usage_cache().lock().expect("disk-usage cache poisoned");
+        let mut cache = disk_usage_cache()
+            .lock()
+            .expect("disk-usage cache poisoned");
         *cache = Some((Instant::now(), du.clone()));
     }
     du

@@ -7,9 +7,7 @@
 use std::path::PathBuf;
 
 use crate::error::CliResult;
-use crate::platforms::{
-    AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter,
-};
+use crate::platforms::{AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GeminiCli;
@@ -99,7 +97,11 @@ mod tests {
             result.is_none(),
             "gemini-cli with enable_hooks=false must return Ok(None)"
         );
-        let cmd_path = dir.path().join(".gemini").join("commands").join("mneme.toml");
+        let cmd_path = dir
+            .path()
+            .join(".gemini")
+            .join("commands")
+            .join("mneme.toml");
         assert!(
             !cmd_path.exists(),
             "gemini-cli with enable_hooks=false must NOT write {}",
@@ -115,7 +117,11 @@ mod tests {
         ctx.home = dir.path().to_path_buf();
 
         let result = GeminiCli.write_hooks(&ctx).unwrap();
-        let cmd_path = dir.path().join(".gemini").join("commands").join("mneme.toml");
+        let cmd_path = dir
+            .path()
+            .join(".gemini")
+            .join("commands")
+            .join("mneme.toml");
         assert_eq!(
             result.as_deref(),
             Some(cmd_path.as_path()),
@@ -128,4 +134,3 @@ mod tests {
         );
     }
 }
-

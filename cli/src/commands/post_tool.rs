@@ -236,10 +236,14 @@ mod tests {
     fn post_tool_args_parse_with_all_flags() {
         let h = Harness::try_parse_from([
             "x",
-            "--tool", "Bash",
-            "--result-file", "/tmp/r.json",
-            "--session-id", "s-123",
-        ]).unwrap();
+            "--tool",
+            "Bash",
+            "--result-file",
+            "/tmp/r.json",
+            "--session-id",
+            "s-123",
+        ])
+        .unwrap();
         assert_eq!(h.args.tool.as_deref(), Some("Bash"));
         assert_eq!(h.args.session_id.as_deref(), Some("s-123"));
     }
@@ -252,7 +256,11 @@ mod tests {
         let p = spool_to_temp("test-session", &serde_json::json!({"ok": true}));
         if !p.as_os_str().is_empty() {
             // If we did write, it should exist.
-            assert!(p.exists(), "spool_to_temp returned non-empty path that doesn't exist: {}", p.display());
+            assert!(
+                p.exists(),
+                "spool_to_temp returned non-empty path that doesn't exist: {}",
+                p.display()
+            );
             let _ = std::fs::remove_file(&p);
         }
     }
@@ -334,7 +342,10 @@ mod tests {
     fn spool_payload_writes_bytes_on_success() {
         let mut buf = Vec::<u8>::new();
         let r = spool_payload(&mut buf, b"abc");
-        assert!(r.is_ok(), "spool_payload must succeed on a healthy writer; got {r:?}");
+        assert!(
+            r.is_ok(),
+            "spool_payload must succeed on a healthy writer; got {r:?}"
+        );
         assert_eq!(buf, b"abc");
     }
 

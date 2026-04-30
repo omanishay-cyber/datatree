@@ -15,9 +15,7 @@ use std::path::PathBuf;
 use tempfile::tempdir;
 
 use crate::markers::{MarkerInjector, MARKER_END, MARKER_START_PREFIX};
-use crate::platforms::{
-    AdapterContext, InstallScope, Platform, PlatformDetector,
-};
+use crate::platforms::{AdapterContext, InstallScope, Platform, PlatformDetector};
 
 #[test]
 fn marker_idempotency_round_trip() {
@@ -55,8 +53,7 @@ fn marker_idempotency_round_trip() {
 #[test]
 fn auto_detect_smoke() {
     let dir = tempdir().unwrap();
-    let detected =
-        PlatformDetector::detect_installed(InstallScope::User, dir.path());
+    let detected = PlatformDetector::detect_installed(InstallScope::User, dir.path());
     // Per design §21.4.2 ClaudeCode and Qoder are always tried.
     assert!(detected.contains(&Platform::ClaudeCode));
     assert!(detected.contains(&Platform::Qoder));
@@ -187,10 +184,10 @@ fn windowless_command_applied_at_m13_sites() {
     //
     // (anchor, search_window_chars_back, search_window_chars_fwd)
     let anchors_build: &[(&str, usize, usize)] = &[
-        ("\"rev-parse\"", 200, 200),               // build.rs:3481 — git rev-parse --is-inside-work-tree
-        ("\"--pretty=format:%H|%an|", 200, 200),   // build.rs:3499 — git log
-        ("[\"show\", \"--numstat\"", 200, 200),    // build.rs:3596 — git show --numstat
-        ("[\"/F\", \"/PID\", &pid", 200, 200),     // build.rs:4616 — taskkill /F /PID
+        ("\"rev-parse\"", 200, 200), // build.rs:3481 — git rev-parse --is-inside-work-tree
+        ("\"--pretty=format:%H|%an|", 200, 200), // build.rs:3499 — git log
+        ("[\"show\", \"--numstat\"", 200, 200), // build.rs:3596 — git show --numstat
+        ("[\"/F\", \"/PID\", &pid", 200, 200), // build.rs:4616 — taskkill /F /PID
         ("\"timeout\", \"/t\", \"60\"", 200, 200), // build.rs:6413 — cmd /c timeout
     ];
     for (anchor, back, fwd) in anchors_build {
@@ -228,7 +225,7 @@ fn windowless_command_applied_at_m14_sites() {
     // unrelated mentions in doc comments do not match.
     let anchors: &[&str] = &[
         ".args([\"/FI\", \"IMAGENAME eq Claude.exe\"", // install.rs:650 — tasklist
-        ".args([\"-f\", \"claude\"])",                  // install.rs:664 — pgrep
+        ".args([\"-f\", \"claude\"])",                 // install.rs:664 — pgrep
     ];
     for anchor in anchors {
         let pos = install_src

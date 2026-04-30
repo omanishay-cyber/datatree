@@ -116,7 +116,10 @@ pub fn build_router(state: ApiGraphState) -> Router {
         .route("/api/graph/file-tree", get(api_graph_file_tree))
         .route("/api/graph/kind-flow", get(api_graph_kind_flow))
         .route("/api/graph/domain-flow", get(api_graph_domain_flow))
-        .route("/api/graph/community-matrix", get(api_graph_community_matrix))
+        .route(
+            "/api/graph/community-matrix",
+            get(api_graph_community_matrix),
+        )
         .route("/api/graph/commits", get(api_graph_commits))
         .route("/api/graph/heatmap", get(api_graph_heatmap))
         // -- F1 D4 — final-wave port of the last 5 vision endpoints. The
@@ -316,11 +319,7 @@ fn find_active_layer_db(state: &ApiGraphState, layer: &str) -> Option<PathBuf> {
 /// via plain path with `SQLITE_OPEN_READ_ONLY` — same flags `bun:sqlite`
 /// uses successfully against the same db while the store-worker's
 /// writer is active. Silent fall to `None` on any error.
-fn with_layer_db_sync<F, T>(
-    state: &ApiGraphState,
-    layer: &'static str,
-    work: F,
-) -> Option<T>
+fn with_layer_db_sync<F, T>(state: &ApiGraphState, layer: &'static str, work: F) -> Option<T>
 where
     F: FnOnce(&rusqlite::Connection) -> Option<T>,
 {
@@ -512,20 +511,16 @@ async fn api_graph_status(State(state): State<ApiGraphState>) -> impl IntoRespon
             .query_row("SELECT COUNT(*) FROM edges", [], |r| r.get(0))
             .unwrap_or(0);
         let files: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM nodes WHERE kind = 'file'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT COUNT(*) FROM nodes WHERE kind = 'file'", [], |r| {
+                r.get(0)
+            })
             .unwrap_or(0);
 
         let mut by_kind = serde_json::Map::new();
-        if let Ok(mut stmt) =
-            conn.prepare("SELECT kind, COUNT(*) FROM nodes GROUP BY kind")
-        {
-            if let Ok(rows) = stmt.query_map([], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-            }) {
+        if let Ok(mut stmt) = conn.prepare("SELECT kind, COUNT(*) FROM nodes GROUP BY kind") {
+            if let Ok(rows) =
+                stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+            {
                 for r in rows.flatten() {
                     by_kind.insert(r.0, serde_json::Value::Number(r.1.into()));
                 }
@@ -713,7 +708,12 @@ impl FileTreeNodeOut {
 /// Insert one file-row into the running tree, splitting its path on
 /// `/` or `\` and walking/creating each segment. Mirrors the TS body
 /// of `fetchFileTree`.
-fn insert_into_tree(root: &mut FileTreeNodeOut, path: &str, line_count: i64, language: Option<String>) {
+fn insert_into_tree(
+    root: &mut FileTreeNodeOut,
+    path: &str,
+    line_count: i64,
+    language: Option<String>,
+) {
     let segs: Vec<&str> = path
         .split(|c: char| c == '/' || c == '\\')
         .filter(|s| !s.is_empty())
@@ -922,8 +922,7 @@ async fn api_graph_domain_flow(State(state): State<ApiGraphState>) -> impl IntoR
         // Preserve domain insertion order (TS uses `Set` which is
         // insertion-ordered) so the rendered sankey is stable.
         let mut domains: Vec<String> = Vec::new();
-        let mut seen: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for r in rows.flatten() {
             let s = domain_of(r.0.as_deref());
             let t = domain_of(r.1.as_deref());
@@ -1010,14 +1009,10 @@ async fn api_graph_community_matrix(State(state): State<ApiGraphState>) -> impl 
         }
 
         let mut mem_stmt = conn
-            .prepare(
-                "SELECT community_id, node_qualified FROM community_membership",
-            )
+            .prepare("SELECT community_id, node_qualified FROM community_membership")
             .ok()?;
         let members: Vec<(i64, String)> = mem_stmt
-            .query_map([], |r| {
-                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
-            })
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
             .ok()?
             .filter_map(|r| r.ok())
             .collect();
@@ -1059,9 +1054,7 @@ async fn api_graph_community_matrix(State(state): State<ApiGraphState>) -> impl 
             )
             .ok()?;
         let rows = stmt
-            .query_map([], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-            })
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
             .ok()?;
         for r in rows.flatten() {
             let si = node_to_comm.get(&r.0);
@@ -1215,9 +1208,9 @@ async fn api_graph_heatmap(State(state): State<ApiGraphState>) -> impl IntoRespo
             .ok()?;
         let mut complexity: std::collections::HashMap<String, i64> =
             std::collections::HashMap::new();
-        if let Ok(rows) = cx_stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-        }) {
+        if let Ok(rows) =
+            cx_stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+        {
             for r in rows.flatten() {
                 complexity.insert(r.0, r.1);
             }
@@ -1339,8 +1332,7 @@ fn is_test_path(p: &str) -> bool {
         if lower == needle {
             return true;
         }
-        if lower.starts_with(&format!("{}/", needle))
-            || lower.starts_with(&format!("{}\\", needle))
+        if lower.starts_with(&format!("{}/", needle)) || lower.starts_with(&format!("{}\\", needle))
         {
             return true;
         }
@@ -1368,8 +1360,14 @@ fn is_test_path(p: &str) -> bool {
     }
     // .test.{js,jsx,ts,tsx} / .spec.{...} suffix.
     for ext in [
-        ".test.js", ".test.jsx", ".test.ts", ".test.tsx",
-        ".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx",
+        ".test.js",
+        ".test.jsx",
+        ".test.ts",
+        ".test.tsx",
+        ".spec.js",
+        ".spec.jsx",
+        ".spec.ts",
+        ".spec.tsx",
     ] {
         if lower.ends_with(ext) {
             return true;
@@ -1481,9 +1479,9 @@ async fn api_graph_test_coverage(State(state): State<ApiGraphState>) -> impl Int
             .ok()?;
         let mut test_node_by_file: std::collections::HashMap<String, i64> =
             std::collections::HashMap::new();
-        if let Ok(it) = node_stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-        }) {
+        if let Ok(it) =
+            node_stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+        {
             for r in it.flatten() {
                 test_node_by_file.insert(r.0, r.1);
             }
@@ -1505,9 +1503,7 @@ async fn api_graph_test_coverage(State(state): State<ApiGraphState>) -> impl Int
             .into_iter()
             .map(|(path, language, line_count)| {
                 let candidates = test_filename_candidates(path);
-                let test_file = candidates
-                    .into_iter()
-                    .find(|c| test_paths.contains(c));
+                let test_file = candidates.into_iter().find(|c| test_paths.contains(c));
                 let own = test_node_by_file.get(path).copied().unwrap_or(0);
                 let external = test_file
                     .as_ref()
@@ -1629,11 +1625,7 @@ fn tier_of(path: Option<&str>) -> &'static str {
         return "intelligence";
     }
     // Data: store, supervisor, livebus, sql.
-    if lower == "store"
-        || lower == "supervisor"
-        || lower == "livebus"
-        || lower == "sql"
-    {
+    if lower == "store" || lower == "supervisor" || lower == "livebus" || lower == "sql" {
         return "data";
     }
     // Foundation: common, core, shared, util(s).
@@ -1761,11 +1753,10 @@ async fn api_graph_galaxy_3d(State(state): State<ApiGraphState>) -> impl IntoRes
                  ) GROUP BY q",
             )
             .ok()?;
-        let mut degree: std::collections::HashMap<String, i64> =
-            std::collections::HashMap::new();
-        if let Ok(it) = deg_stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-        }) {
+        let mut degree: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+        if let Ok(it) =
+            deg_stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+        {
             for r in it.flatten() {
                 degree.insert(r.0, r.1);
             }
@@ -1801,15 +1792,12 @@ async fn api_graph_galaxy_3d(State(state): State<ApiGraphState>) -> impl IntoRes
     let comm_by_node: std::collections::HashMap<String, i64> =
         with_layer_db_sync(&state, "semantic", |conn| {
             let mut stmt = conn
-                .prepare(
-                    "SELECT community_id, node_qualified FROM community_membership",
-                )
+                .prepare("SELECT community_id, node_qualified FROM community_membership")
                 .ok()?;
-            let mut map: std::collections::HashMap<String, i64> =
-                std::collections::HashMap::new();
-            if let Ok(it) = stmt.query_map([], |r| {
-                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
-            }) {
+            let mut map: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+            if let Ok(it) =
+                stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+            {
                 for r in it.flatten() {
                     map.insert(r.1, r.0);
                 }
@@ -1896,8 +1884,7 @@ async fn api_graph_theme_palette(State(state): State<ApiGraphState>) -> impl Int
 
         // First pass: extract colour tokens, accumulate global counts.
         let mut swatches: Vec<ThemeSwatchRowOut> = Vec::new();
-        let mut counts: std::collections::HashMap<String, i64> =
-            std::collections::HashMap::new();
+        let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
         for (_id, file, line, message, suggestion, rule_id, severity) in raw {
             let combined = format!("{} {}", message, suggestion.as_deref().unwrap_or(""));
             for token in extract_color_tokens(&combined) {
@@ -1919,8 +1906,7 @@ async fn api_graph_theme_palette(State(state): State<ApiGraphState>) -> impl Int
         }
         // Deduplicate by (file, line, value) — scanners sometimes emit
         // multiple findings on the same line for the same token.
-        let mut seen: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut deduped: Vec<ThemeSwatchRowOut> = Vec::with_capacity(swatches.len());
         for s in swatches {
             let key = format!("{}:{}:{}", s.file, s.line, s.value);
@@ -1954,8 +1940,7 @@ fn extract_color_tokens(s: &str) -> Vec<String> {
             let hex_len = j - i - 1;
             if (3..=8).contains(&hex_len) {
                 // Word-boundary check — next char must not be alnum.
-                let at_boundary =
-                    j == bytes.len() || !(bytes[j] as char).is_ascii_alphanumeric();
+                let at_boundary = j == bytes.len() || !(bytes[j] as char).is_ascii_alphanumeric();
                 if at_boundary {
                     out.push(s[i..j].to_string());
                     i = j;
@@ -2390,8 +2375,7 @@ mod tests {
         let proj_dir = tmp.path().join("projects").join("fixture-id");
         std::fs::create_dir_all(&proj_dir).expect("create projects/<id>");
         let db_path = proj_dir.join("graph.db");
-        let conn =
-            rusqlite::Connection::open(&db_path).expect("open writable fixture");
+        let conn = rusqlite::Connection::open(&db_path).expect("open writable fixture");
         conn.execute_batch(
             "CREATE TABLE files (path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, \
                                  language TEXT, last_parsed_at TEXT, \
@@ -2431,9 +2415,7 @@ mod tests {
         let children = v["children"].as_array().expect("children");
         assert_eq!(children.len(), 1);
         assert_eq!(children[0]["name"], serde_json::Value::String("src".into()));
-        let src_kids = children[0]["children"]
-            .as_array()
-            .expect("src.children");
+        let src_kids = children[0]["children"].as_array().expect("src.children");
         assert_eq!(src_kids.len(), 2);
         // We don't assert the order of foo vs bar (HashMap-free linear
         // scan preserves insertion order which matches DESC line_count:

@@ -109,7 +109,9 @@ pub struct FederatedStore {
 
 impl std::fmt::Debug for FederatedStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FederatedStore").field("path", &self.path).finish()
+        f.debug_struct("FederatedStore")
+            .field("path", &self.path)
+            .finish()
     }
 }
 
@@ -216,8 +218,8 @@ impl FederatedStore {
 
         let mut scored: Vec<(PatternFingerprint, f32)> = Vec::new();
         for row in rows {
-            let candidate = row
-                .map_err(|e| BrainError::Invalid(format!("decode fingerprint row: {e}")))?;
+            let candidate =
+                row.map_err(|e| BrainError::Invalid(format!("decode fingerprint row: {e}")))?;
             let score = fp.similarity(&candidate);
             scored.push((candidate, score));
         }
@@ -249,8 +251,8 @@ impl FederatedStore {
             .map_err(|e| BrainError::Invalid(format!("export fingerprints: {e}")))?;
         let mut out = Vec::new();
         for row in rows {
-            let fp = row
-                .map_err(|e| BrainError::Invalid(format!("decode fingerprint row: {e}")))?;
+            let fp =
+                row.map_err(|e| BrainError::Invalid(format!("decode fingerprint row: {e}")))?;
             out.push(fp);
         }
         Ok(out)
@@ -287,9 +289,7 @@ impl FederatedStore {
                 .map_err(|e| BrainError::Invalid(format!("by_kind query: {e}")))?;
             let mut acc = Vec::new();
             for r in rows {
-                acc.push(
-                    r.map_err(|e| BrainError::Invalid(format!("by_kind row: {e}")))?,
-                );
+                acc.push(r.map_err(|e| BrainError::Invalid(format!("by_kind row: {e}")))?);
             }
             acc
         };
@@ -367,10 +367,8 @@ fn decode_minhash_any(blob: &[u8]) -> Result<Vec<u32>, BrainError> {
     }
     // Legacy v1 blob: bincode 1.x default-config (fixed-int u64 length).
     // bincode 2.x can read this with the "legacy" config.
-    let (decoded, _read): (Vec<u32>, usize) = bincode::serde::decode_from_slice(
-        blob,
-        bincode::config::legacy(),
-    )?;
+    let (decoded, _read): (Vec<u32>, usize) =
+        bincode::serde::decode_from_slice(blob, bincode::config::legacy())?;
     Ok(decoded)
 }
 

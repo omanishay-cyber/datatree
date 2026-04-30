@@ -243,9 +243,7 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
             (extern_crate_declaration) @import
             "#
         }
-        (Language::Rust, QueryKind::Decorators) => {
-            r#"(attribute_item) @decorator"#
-        }
+        (Language::Rust, QueryKind::Decorators) => r#"(attribute_item) @decorator"#,
         (Language::Rust, QueryKind::Comments) => {
             r#"
             (line_comment) @comment
@@ -263,9 +261,7 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
         (Language::Go, QueryKind::Classes) => {
             r#"(type_declaration (type_spec name: (type_identifier) @name)) @class"#
         }
-        (Language::Go, QueryKind::Calls) => {
-            r#"(call_expression function: (_) @callee) @call"#
-        }
+        (Language::Go, QueryKind::Calls) => r#"(call_expression function: (_) @callee) @call"#,
         (Language::Go, QueryKind::Imports) => r#"(import_declaration) @import"#,
         (Language::Go, QueryKind::Comments) => r#"(comment) @comment"#,
 
@@ -329,9 +325,7 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
         (Language::CSharp, QueryKind::Comments) => r#"(comment) @comment"#,
 
         // ---------------- Ruby ----------------------------------------------
-        (Language::Ruby, QueryKind::Functions) => {
-            r#"(method name: (identifier) @name) @function"#
-        }
+        (Language::Ruby, QueryKind::Functions) => r#"(method name: (identifier) @name) @function"#,
         (Language::Ruby, QueryKind::Classes) => {
             r#"
             (class name: (constant) @name) @class
@@ -365,9 +359,7 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
         (Language::Bash, QueryKind::Functions) => {
             r#"(function_definition name: (word) @name) @function"#
         }
-        (Language::Bash, QueryKind::Calls) => {
-            r#"(command name: (command_name) @callee) @call"#
-        }
+        (Language::Bash, QueryKind::Calls) => r#"(command name: (command_name) @callee) @call"#,
         (Language::Bash, QueryKind::Comments) => r#"(comment) @comment"#,
 
         // ---------------- Documentary grammars ------------------------------
@@ -383,9 +375,7 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
             r#"(function_declaration name: (_) @name) @function"#
         }
         #[cfg(feature = "lua")]
-        (Language::Lua, QueryKind::Calls) => {
-            r#"(function_call) @call"#
-        }
+        (Language::Lua, QueryKind::Calls) => r#"(function_call) @call"#,
         #[cfg(feature = "lua")]
         (Language::Lua, QueryKind::Comments) => r#"(comment) @comment"#,
 

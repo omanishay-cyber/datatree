@@ -106,7 +106,8 @@ impl FindingsWriter {
                 n += 1;
             }
         }
-        tx.commit().map_err(|e| ScannerError::Other(e.to_string()))?;
+        tx.commit()
+            .map_err(|e| ScannerError::Other(e.to_string()))?;
         Ok(n)
     }
 

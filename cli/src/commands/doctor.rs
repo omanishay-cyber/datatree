@@ -143,7 +143,11 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
     let is_up = client.is_running().await;
     line(
         "supervisor",
-        if is_up { "running ✓" } else { "NOT RUNNING ✗" },
+        if is_up {
+            "running ✓"
+        } else {
+            "NOT RUNNING ✗"
+        },
     );
     // Per-tool path indicator: which source `recall`/`blast`/`godnodes`
     // will hit right now. Added in v0.3.1 alongside supervisor IPC for
@@ -216,14 +220,8 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         println!("│ per-worker health                                       │");
         println!("├─────────────────────────────────────────────────────────┤");
         for child in children {
-            let name = child
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?");
-            let status = child
-                .get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?");
+            let name = child.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+            let status = child.get("status").and_then(|v| v.as_str()).unwrap_or("?");
             let pid = child
                 .get("pid")
                 .and_then(|v| v.as_u64())
@@ -337,12 +335,13 @@ fn render_mcp_bridge_box() {
     println!("│ MCP bridge                                              │");
     println!("├─────────────────────────────────────────────────────────┤");
     let mcp_entry = mcp_entry_path();
-    let mcp_exists = mcp_entry
-        .as_ref()
-        .map(|p| p.exists())
-        .unwrap_or(false);
+    let mcp_exists = mcp_entry.as_ref().map(|p| p.exists()).unwrap_or(false);
     line(
-        if mcp_exists { "✓ MCP entry" } else { "✗ MCP entry" },
+        if mcp_exists {
+            "✓ MCP entry"
+        } else {
+            "✗ MCP entry"
+        },
         mcp_entry
             .as_ref()
             .map(|p| p.display().to_string())
@@ -350,9 +349,7 @@ fn render_mcp_bridge_box() {
             .as_str(),
     );
     let bun_on_path = which_on_path("bun");
-    let bun_str = bun_on_path
-        .as_ref()
-        .map(|p| p.display().to_string());
+    let bun_str = bun_on_path.as_ref().map(|p| p.display().to_string());
     line(
         if bun_on_path.is_some() {
             "✓ bun runtime"
@@ -385,9 +382,7 @@ fn hooks_remediation_message(count: usize, expected: usize) -> String {
     } else if count == 0 {
         format!("{count}/{expected} — re-run `mneme install` to register")
     } else {
-        format!(
-            "{count}/{expected} — partial registration; re-run `mneme install --force`"
-        )
+        format!("{count}/{expected} — partial registration; re-run `mneme install --force`")
     }
 }
 
@@ -514,11 +509,7 @@ pub(crate) fn is_claude_code_running() -> Option<u32> {
     // needed and `refresh_processes_specifics` with `Everything` is
     // overkill. `ProcessRefreshKind::new()` is the cheapest variant
     // that still populates `name()` and `cmd()`.
-    sys.refresh_processes_specifics(
-        ProcessesToUpdate::All,
-        true,
-        ProcessRefreshKind::new(),
-    );
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::new());
     for (pid, proc_) in sys.processes() {
         let name = proc_.name().to_string_lossy().to_lowercase();
         // Direct executable name match. We accept both `claude.exe`
@@ -826,9 +817,7 @@ fn print_banner() {
     println!("║   ██║ ╚═╝ ██║██║ ╚████║███████╗██║ ╚═╝ ██║███████╗           ║");
     println!("║   ╚═╝     ╚═╝╚═╝  ╚═══╝╚══════╝╚═╝     ╚═╝╚══════╝           ║");
     println!("║                                                              ║");
-    println!(
-        "║   persistent memory · code graph · drift detector · 47 tools ║"
-    );
+    println!("║   persistent memory · code graph · drift detector · 47 tools ║");
     print_banner_line(&format!(
         "   v{} · 100% local · Apache-2.0",
         env!("CARGO_PKG_VERSION")
@@ -861,7 +850,6 @@ fn print_banner_line(content: &str) {
     }
 }
 
-
 fn line(label: &str, value: &str) {
     let padded_label = format!("{label:<17}");
     let content = format!("│ {padded_label}: {value}");
@@ -890,8 +878,7 @@ fn line(label: &str, value: &str) {
 /// Always kills the child before returning so no zombie Bun processes
 /// linger.
 fn probe_mcp_tools(deadline: Duration) -> Result<Vec<String>, String> {
-    let exe = std::env::current_exe()
-        .map_err(|e| format!("current_exe unavailable: {e}"))?;
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe unavailable: {e}"))?;
 
     let mut cmd = StdCommand::new(&exe);
     cmd.arg("mcp")
@@ -912,9 +899,7 @@ fn probe_mcp_tools(deadline: Duration) -> Result<Vec<String>, String> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(windows_doctor_mcp_probe_flags());
     }
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("spawn failed: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;
 
     let start = Instant::now();
 
@@ -956,9 +941,7 @@ fn probe_mcp_tools(deadline: Duration) -> Result<Vec<String>, String> {
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
             Err(format!("timed out after {}s", deadline.as_secs()))
         }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            Err("handshake thread died".into())
-        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err("handshake thread died".into()),
     };
 
     // Always kill the child and reap it before returning.
@@ -1037,14 +1020,12 @@ fn handshake_and_list(
 
 /// Write one JSON-RPC frame (`{json}\n`) to the child's stdin.
 fn write_frame<W: Write>(w: &mut W, value: &serde_json::Value) -> Result<(), String> {
-    let s = serde_json::to_string(value)
-        .map_err(|e| format!("encode failed: {e}"))?;
+    let s = serde_json::to_string(value).map_err(|e| format!("encode failed: {e}"))?;
     w.write_all(s.as_bytes())
         .map_err(|e| format!("stdin write failed: {e}"))?;
     w.write_all(b"\n")
         .map_err(|e| format!("stdin newline failed: {e}"))?;
-    w.flush()
-        .map_err(|e| format!("stdin flush failed: {e}"))?;
+    w.flush().map_err(|e| format!("stdin flush failed: {e}"))?;
     Ok(())
 }
 
@@ -1099,11 +1080,7 @@ pub fn which_on_path(name: &str) -> Option<PathBuf> {
     let exts: Vec<String> = if cfg!(windows) {
         std::env::var("PATHEXT")
             .ok()
-            .map(|s| {
-                s.split(';')
-                    .map(|e| e.to_string())
-                    .collect::<Vec<_>>()
-            })
+            .map(|s| s.split(';').map(|e| e.to_string()).collect::<Vec<_>>())
             .unwrap_or_else(|| vec![".EXE".into(), ".CMD".into(), ".BAT".into(), ".COM".into()])
     } else {
         vec![String::new()]
@@ -1441,7 +1418,11 @@ pub fn render_toolchain_box(probes: &[ToolProbe]) -> bool {
     let mut all_high_present = true;
     for probe in probes {
         let mark = if probe.is_present() { "✓" } else { "✗" };
-        let label = format!("{mark} [{}] {}", probe.entry.severity.label(), probe.entry.display);
+        let label = format!(
+            "{mark} [{}] {}",
+            probe.entry.severity.label(),
+            probe.entry.display
+        );
         let value = match (&probe.found_at, &probe.version) {
             (Some(_), Some(v)) => v.clone(),
             (Some(p), None) => format!("present at {}", p.display()),
@@ -1486,7 +1467,10 @@ pub fn run_strict() -> i32 {
     print_banner();
     println!();
     println!("  {:<16}{}", "timestamp:", utc_now_readable());
-    println!("  {:<16}{}", "mode:", "strict (G11 pre-flight verification)");
+    println!(
+        "  {:<16}{}",
+        "mode:", "strict (G11 pre-flight verification)"
+    );
     println!();
 
     let mut all_ok = true;
@@ -1523,7 +1507,10 @@ pub fn run_strict() -> i32 {
             // is a CLI; the others get an existence check above.
             let is_cli = b.starts_with("mneme.") || *b == "mneme";
             if !is_cli {
-                line(&format!("✓ {b}"), "present (no --version probe — IPC binary)");
+                line(
+                    &format!("✓ {b}"),
+                    "present (no --version probe — IPC binary)",
+                );
                 continue;
             }
             match StdCommand::new(&p).arg("--version").output() {
@@ -1565,7 +1552,11 @@ pub fn run_strict() -> i32 {
     println!("┌─────────────────────────────────────────────────────────┐");
     println!("│ optional: vision app (mneme-vision)                     │");
     println!("├─────────────────────────────────────────────────────────┤");
-    let vision_bin = if cfg!(windows) { "mneme-vision.exe" } else { "mneme-vision" };
+    let vision_bin = if cfg!(windows) {
+        "mneme-vision.exe"
+    } else {
+        "mneme-vision"
+    };
     let vision_path = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
@@ -1620,8 +1611,8 @@ pub fn check_build_toolchain() -> Vec<DoctorRow> {
     // vswhere.exe ships at a fixed location with VS Installer; also
     // sometimes on PATH. Probe both.
     let vswhere_path = which_on_path("vswhere").or_else(|| {
-        let pf = std::env::var_os("ProgramFiles(x86)")
-            .or_else(|| std::env::var_os("ProgramFiles"))?;
+        let pf =
+            std::env::var_os("ProgramFiles(x86)").or_else(|| std::env::var_os("ProgramFiles"))?;
         let candidate = std::path::PathBuf::from(pf)
             .join("Microsoft Visual Studio")
             .join("Installer")
@@ -1684,7 +1675,8 @@ pub fn check_build_toolchain() -> Vec<DoctorRow> {
                 }
                 None => {
                     vswhere_row_value =
-                        "MISSING — VS Installer present but no VC.Tools.x86.x64 component".to_string();
+                        "MISSING — VS Installer present but no VC.Tools.x86.x64 component"
+                            .to_string();
                 }
             }
         }
@@ -1730,7 +1722,8 @@ pub fn check_build_toolchain() -> Vec<DoctorRow> {
         // vswhere either missing or VS Installer found no VC component.
         // Use the row label "vswhere.exe" only when vswhere itself is
         // missing; otherwise label "VC Tools".
-        let label = if vswhere_row_value.starts_with("MISSING — install Visual Studio Installer") {
+        let label = if vswhere_row_value.starts_with("MISSING — install Visual Studio Installer")
+        {
             "vswhere.exe"
         } else {
             "VC Tools"
@@ -1795,7 +1788,11 @@ fn locate_vc_compiler_bin(install_path: &str) -> Option<std::path::PathBuf> {
         .join("bin")
         .join("Hostx64")
         .join("x64");
-    if bin.is_dir() { Some(bin) } else { None }
+    if bin.is_dir() {
+        Some(bin)
+    } else {
+        None
+    }
 }
 
 /// Walk `%ProgramFiles(x86)%\Windows Kits\10\Lib\*\um\x64\kernel32.lib`
@@ -1803,8 +1800,7 @@ fn locate_vc_compiler_bin(install_path: &str) -> Option<std::path::PathBuf> {
 /// the lib. Returns `None` if no Windows SDK is installed. Pure stdlib.
 #[cfg(windows)]
 fn locate_windows_sdk_kernel32_lib() -> Option<String> {
-    let pf = std::env::var_os("ProgramFiles(x86)")
-        .or_else(|| std::env::var_os("ProgramFiles"))?;
+    let pf = std::env::var_os("ProgramFiles(x86)").or_else(|| std::env::var_os("ProgramFiles"))?;
     let lib_root = std::path::PathBuf::from(pf)
         .join("Windows Kits")
         .join("10")
@@ -1865,14 +1861,22 @@ fn utc_now_readable() -> String {
 }
 fn ymd(days: i64) -> (i32, u32, u32) {
     let z = days + 719_468;
-    let era = if z >= 0 { z / 146_097 } else { (z - 146_096) / 146_097 };
+    let era = if z >= 0 {
+        z / 146_097
+    } else {
+        (z - 146_096) / 146_097
+    };
     let doe = (z - era * 146_097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let y = yoe as i64 + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { (mp + 3) as u32 } else { (mp - 9) as u32 };
+    let m = if mp < 10 {
+        (mp + 3) as u32
+    } else {
+        (mp - 9) as u32
+    };
     let y = if m <= 2 { y + 1 } else { y };
     (y as i32, m, d)
 }
@@ -2150,8 +2154,7 @@ mod tests {
             "must name Claude Code: {msg}"
         );
         assert!(
-            msg.to_lowercase().contains("running")
-                || msg.to_lowercase().contains("open"),
+            msg.to_lowercase().contains("running") || msg.to_lowercase().contains("open"),
             "must indicate Claude is alive: {msg}"
         );
         assert!(msg.contains("98765"), "must include the PID: {msg}");
@@ -2234,12 +2237,7 @@ mod tests {
         // — Claude-is-open is the likely cause, parse-error is the
         // concrete symptom.
         let parse_err = "unexpected end of JSON input";
-        let msg = super::compose_hooks_message(
-            0,
-            8,
-            Some(54321),
-            Some(parse_err.to_string()),
-        );
+        let msg = super::compose_hooks_message(0, 8, Some(54321), Some(parse_err.to_string()));
         assert!(msg.contains("54321"), "must include PID: {msg}");
         assert!(
             msg.contains("parse") || msg.contains("unexpected end"),

@@ -204,10 +204,10 @@ async fn extracts_rust_functions() {
 
     // No syntax issues → high confidence everywhere.
     assert!(!g.has_syntax_issues());
-    assert!(g.nodes.iter().all(|n| !matches!(
-        n.confidence,
-        Confidence::Ambiguous
-    ) || n.kind == NodeKind::File));
+    assert!(g
+        .nodes
+        .iter()
+        .all(|n| !matches!(n.confidence, Confidence::Ambiguous) || n.kind == NodeKind::File));
 }
 
 // ---------------------------------------------------------------------------
@@ -251,7 +251,10 @@ async fn incremental_reparses_on_byte_change() {
     let _ = inc.parse_file(&path, Language::Rust, v1).await.unwrap();
     let r2 = inc.parse_file(&path, Language::Rust, v2).await.unwrap();
     assert!(!r2.unchanged);
-    assert!(r2.incremental, "second parse must be on the incremental path");
+    assert!(
+        r2.incremental,
+        "second parse must be on the incremental path"
+    );
 }
 
 #[tokio::test]
@@ -262,10 +265,7 @@ async fn incremental_cache_lru_capacity_evicts() {
         let path = PathBuf::from(format!("f{i}.rs"));
         let src = format!("fn f{i}() {{ {i} }}");
         let bytes = Arc::new(src.into_bytes());
-        let _ = inc
-            .parse_file(&path, Language::Rust, bytes)
-            .await
-            .unwrap();
+        let _ = inc.parse_file(&path, Language::Rust, bytes).await.unwrap();
     }
     assert_eq!(inc.cached_count(), 2, "LRU should cap at capacity");
 }
@@ -575,42 +575,60 @@ async fn count_import_edges(lang: Language, path: &str, src: &str) -> usize {
 async fn k7_ts_named_import_emits_edge_per_binding() {
     // import { A, B, C } from 'x';     → 3 edges (was 1 pre-K7)
     let src = "import { A, B, C } from 'x';\n";
-    assert_eq!(count_import_edges(Language::TypeScript, "k7.ts", src).await, 3);
+    assert_eq!(
+        count_import_edges(Language::TypeScript, "k7.ts", src).await,
+        3
+    );
 }
 
 #[tokio::test]
 async fn k7_ts_default_import_emits_one_edge() {
     // import D from 'x';               → 1 edge (one default binding)
     let src = "import D from 'x';\n";
-    assert_eq!(count_import_edges(Language::TypeScript, "k7.ts", src).await, 1);
+    assert_eq!(
+        count_import_edges(Language::TypeScript, "k7.ts", src).await,
+        1
+    );
 }
 
 #[tokio::test]
 async fn k7_ts_namespace_import_emits_one_edge() {
     // import * as N from 'x';          → 1 edge (the namespace binding N)
     let src = "import * as N from 'x';\n";
-    assert_eq!(count_import_edges(Language::TypeScript, "k7.ts", src).await, 1);
+    assert_eq!(
+        count_import_edges(Language::TypeScript, "k7.ts", src).await,
+        1
+    );
 }
 
 #[tokio::test]
 async fn k7_ts_combined_default_and_named() {
     // import D, { A, B } from 'x';     → 3 edges (default + 2 named)
     let src = "import D, { A, B } from 'x';\n";
-    assert_eq!(count_import_edges(Language::TypeScript, "k7.ts", src).await, 3);
+    assert_eq!(
+        count_import_edges(Language::TypeScript, "k7.ts", src).await,
+        3
+    );
 }
 
 #[tokio::test]
 async fn k7_ts_aliased_named_imports() {
     // import { A as A1, B as B1 } from 'x';  → 2 edges (one per alias)
     let src = "import { A as A1, B as B1 } from 'x';\n";
-    assert_eq!(count_import_edges(Language::TypeScript, "k7.ts", src).await, 2);
+    assert_eq!(
+        count_import_edges(Language::TypeScript, "k7.ts", src).await,
+        2
+    );
 }
 
 #[tokio::test]
 async fn k7_ts_side_effect_import_keeps_one_edge() {
     // import 'polyfill';               → 1 edge (legacy fallback path)
     let src = "import 'polyfill';\n";
-    assert_eq!(count_import_edges(Language::TypeScript, "k7.ts", src).await, 1);
+    assert_eq!(
+        count_import_edges(Language::TypeScript, "k7.ts", src).await,
+        1
+    );
 }
 
 #[tokio::test]
@@ -625,7 +643,10 @@ async fn k7_ts_multiple_import_statements_total_correctly() {
         import { B, C } from 'b';\n\
         import * as D from 'd';\n\
     ";
-    assert_eq!(count_import_edges(Language::TypeScript, "k7.ts", src).await, 4);
+    assert_eq!(
+        count_import_edges(Language::TypeScript, "k7.ts", src).await,
+        4
+    );
 }
 
 #[tokio::test]
@@ -639,7 +660,10 @@ async fn k7_tsx_named_import_emits_edge_per_binding() {
 #[tokio::test]
 async fn k7_js_named_import_emits_edge_per_binding() {
     let src = "import { foo, bar } from './lib';\n";
-    assert_eq!(count_import_edges(Language::JavaScript, "k7.js", src).await, 2);
+    assert_eq!(
+        count_import_edges(Language::JavaScript, "k7.js", src).await,
+        2
+    );
 }
 
 #[tokio::test]
@@ -673,25 +697,43 @@ async fn k7_rust_keeps_legacy_one_edge_per_use() {
 #[test]
 fn k5_recognises_jest_vitest_suffix() {
     use crate::extractor::looks_like_test_path;
-    assert!(looks_like_test_path(std::path::Path::new("src/foo.test.ts")));
-    assert!(looks_like_test_path(std::path::Path::new("src/foo.test.tsx")));
-    assert!(looks_like_test_path(std::path::Path::new("src/foo.spec.ts")));
-    assert!(looks_like_test_path(std::path::Path::new("src/foo.spec.js")));
+    assert!(looks_like_test_path(std::path::Path::new(
+        "src/foo.test.ts"
+    )));
+    assert!(looks_like_test_path(std::path::Path::new(
+        "src/foo.test.tsx"
+    )));
+    assert!(looks_like_test_path(std::path::Path::new(
+        "src/foo.spec.ts"
+    )));
+    assert!(looks_like_test_path(std::path::Path::new(
+        "src/foo.spec.js"
+    )));
 }
 
 #[test]
 fn k5_recognises_rust_go_python_naming() {
     use crate::extractor::looks_like_test_path;
-    assert!(looks_like_test_path(std::path::Path::new("crate/src/lib_test.rs")));
-    assert!(looks_like_test_path(std::path::Path::new("pkg/foo_test.go")));
-    assert!(looks_like_test_path(std::path::Path::new("app/test_login.py")));
-    assert!(looks_like_test_path(std::path::Path::new("app/login_test.py")));
+    assert!(looks_like_test_path(std::path::Path::new(
+        "crate/src/lib_test.rs"
+    )));
+    assert!(looks_like_test_path(std::path::Path::new(
+        "pkg/foo_test.go"
+    )));
+    assert!(looks_like_test_path(std::path::Path::new(
+        "app/test_login.py"
+    )));
+    assert!(looks_like_test_path(std::path::Path::new(
+        "app/login_test.py"
+    )));
 }
 
 #[test]
 fn k5_recognises_test_directories() {
     use crate::extractor::looks_like_test_path;
-    assert!(looks_like_test_path(std::path::Path::new("tests/integration.rs")));
+    assert!(looks_like_test_path(std::path::Path::new(
+        "tests/integration.rs"
+    )));
     assert!(looks_like_test_path(std::path::Path::new(
         "src/__tests__/helpers.ts"
     )));
@@ -704,10 +746,14 @@ fn k5_recognises_test_directories() {
 fn k5_does_not_flag_real_source_files() {
     use crate::extractor::looks_like_test_path;
     assert!(!looks_like_test_path(std::path::Path::new("src/foo.ts")));
-    assert!(!looks_like_test_path(std::path::Path::new("crate/src/lib.rs")));
+    assert!(!looks_like_test_path(std::path::Path::new(
+        "crate/src/lib.rs"
+    )));
     assert!(!looks_like_test_path(std::path::Path::new("app/login.py")));
     assert!(!looks_like_test_path(std::path::Path::new("pkg/foo.go")));
     // `testing.go` is real source, not a test file (Go convention says
     // `*_test.go` only).
-    assert!(!looks_like_test_path(std::path::Path::new("pkg/testing.go")));
+    assert!(!looks_like_test_path(std::path::Path::new(
+        "pkg/testing.go"
+    )));
 }

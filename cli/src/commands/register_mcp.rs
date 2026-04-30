@@ -122,7 +122,7 @@ pub async fn register(args: RegisterMcpArgs) -> CliResult<()> {
         // false. Lets the registrar overwrite a hand-edited marker block
         // the same way `mneme install --force` does.
         force: args.force,
-        skip_mcp: false,     // WE WANT the MCP write — this is the whole point.
+        skip_mcp: false, // WE WANT the MCP write — this is the whole point.
         // LIE-3: --with-hooks flips the historic skip_hooks=true default
         // so the JSON status can report a real `hooks_registered: 8/8`.
         // Without --with-hooks the contract is unchanged (MCP-only).
@@ -255,7 +255,9 @@ fn emit_register_mcp_json(
                 // platforms `hooks_path` returns None so we report
                 // 0/0 — which install.ps1 reads as "not applicable".
                 let (hr, he) = match (matches!(p, Platform::ClaudeCode), &settings_path) {
-                    (true, Some(sp)) => crate::platforms::claude_code::count_registered_mneme_hooks(sp),
+                    (true, Some(sp)) => {
+                        crate::platforms::claude_code::count_registered_mneme_hooks(sp)
+                    }
                     _ => (0usize, 0usize),
                 };
 
@@ -340,9 +342,7 @@ fn mcp_entry_present(path: &std::path::Path, errors: &mut Vec<String>) -> bool {
     // is in the install hot path and a substring check is sufficient
     // for the status surface (false positives are extremely unlikely
     // for the specific token "mneme" in an MCP config).
-    bytes
-        .windows(b"mneme".len())
-        .any(|w| w == b"mneme")
+    bytes.windows(b"mneme".len()).any(|w| w == b"mneme")
 }
 
 /// Entry point for `mneme unregister-mcp`. Inverse of `register`.
@@ -410,10 +410,25 @@ mod tests {
         // added but the value_parser list isn't updated, this test
         // catches the omission.
         for &platform_id in &[
-            "claude-code", "codex", "cursor", "windsurf", "zed",
-            "continue", "opencode", "antigravity", "gemini-cli", "aider",
-            "copilot", "factory-droid", "trae", "kiro", "qoder",
-            "openclaw", "hermes", "qwen", "vscode",
+            "claude-code",
+            "codex",
+            "cursor",
+            "windsurf",
+            "zed",
+            "continue",
+            "opencode",
+            "antigravity",
+            "gemini-cli",
+            "aider",
+            "copilot",
+            "factory-droid",
+            "trae",
+            "kiro",
+            "qoder",
+            "openclaw",
+            "hermes",
+            "qwen",
+            "vscode",
         ] {
             let r = Harness::try_parse_from(["x", "--platform", platform_id]);
             assert!(r.is_ok(), "platform {platform_id} should be accepted");
@@ -487,11 +502,7 @@ mod tests {
         // fallback over-firing.
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("claude.json");
-        std::fs::write(
-            &p,
-            r#"{"mcpServers":{"github":{"command":"gh-mcp"}}}"#,
-        )
-        .unwrap();
+        std::fs::write(&p, r#"{"mcpServers":{"github":{"command":"gh-mcp"}}}"#).unwrap();
         let mut errs = Vec::new();
         assert!(!mcp_entry_present(&p, &mut errs));
     }
@@ -504,9 +515,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("claude.json");
         let mut bytes = vec![0xEF, 0xBB, 0xBF];
-        bytes.extend_from_slice(
-            br#"{"mcpServers":{"mneme":{"command":"mneme"}}}"#,
-        );
+        bytes.extend_from_slice(br#"{"mcpServers":{"mneme":{"command":"mneme"}}}"#);
         std::fs::write(&p, bytes).unwrap();
         let mut errs = Vec::new();
         assert!(mcp_entry_present(&p, &mut errs));

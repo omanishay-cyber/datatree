@@ -38,7 +38,11 @@ pub struct ChildSpec {
     /// stay idle for long stretches (e.g. an md-ingest sidecar that only
     /// runs on demand) should set this to a large value rather than have
     /// the watchdog kill them mid-sleep.
-    #[serde(default, with = "opt_duration_secs", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        with = "opt_duration_secs",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub heartbeat_deadline: Option<Duration>,
 }
 

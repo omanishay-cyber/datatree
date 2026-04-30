@@ -8,9 +8,7 @@ use serde_json::json;
 use std::path::PathBuf;
 
 use crate::error::CliResult;
-use crate::platforms::{
-    AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter,
-};
+use crate::platforms::{AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Kiro;
@@ -31,11 +29,9 @@ impl PlatformAdapter for Kiro {
                 .join(".kiro")
                 .join("steering")
                 .join("mneme.md"),
-            InstallScope::User | InstallScope::Global => ctx
-                .home
-                .join(".kiro")
-                .join("steering")
-                .join("mneme.md"),
+            InstallScope::User | InstallScope::Global => {
+                ctx.home.join(".kiro").join("steering").join("mneme.md")
+            }
         }
     }
 
@@ -46,11 +42,9 @@ impl PlatformAdapter for Kiro {
                 .join(".kiro")
                 .join("settings")
                 .join("mcp.json"),
-            InstallScope::User | InstallScope::Global => ctx
-                .home
-                .join(".kiro")
-                .join("settings")
-                .join("mcp.json"),
+            InstallScope::User | InstallScope::Global => {
+                ctx.home.join(".kiro").join("settings").join("mcp.json")
+            }
         }
     }
 
@@ -153,4 +147,3 @@ mod tests {
         );
     }
 }
-

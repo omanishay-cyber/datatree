@@ -204,7 +204,10 @@ mod tests {
     fn ring_strips_ansi_then_parses_json() {
         // I-19: ANSI-wrapped JSON payload must still parse.
         let r = LogRing::new(16);
-        r.push_raw("c", "\x1b[33m{\"level\":\"warn\",\"message\":\"hi\"}\x1b[0m");
+        r.push_raw(
+            "c",
+            "\x1b[33m{\"level\":\"warn\",\"message\":\"hi\"}\x1b[0m",
+        );
         let tail = r.tail(None, 1);
         assert_eq!(tail[0].level, LogLevel::Warn);
         assert_eq!(tail[0].message, "hi");

@@ -174,46 +174,44 @@ fn init_tracing() -> Option<WorkerGuard> {
     // FS, permission error in a sandbox) we fall back to stdout-only and
     // surface a warning — supervisors without persistent logs still
     // boot.
-    let file_layer_with_guard: Option<(_, WorkerGuard)> =
-        match mneme_daemon::ensure_logs_dir() {
-            Ok(dir) => {
-                match RollingFileAppender::builder()
-                    .rotation(Rotation::DAILY)
-                    .filename_prefix("supervisor.log")
-                    .max_log_files(7)
-                    .build(&dir)
-                {
-                    Ok(appender) => {
-                        let (nb, guard) = tracing_appender::non_blocking(appender);
-                        let file_filter = EnvFilter::try_from_env("MNEME_LOG").unwrap_or_else(
-                            |_| EnvFilter::new("debug,mneme_supervisor=debug"),
-                        );
-                        let layer = tracing_subscriber::fmt::layer()
-                            .json()
-                            .with_current_span(false)
-                            .with_span_list(false)
-                            .with_ansi(false)
-                            .with_writer(nb)
-                            .with_filter(file_filter);
-                        Some((layer, guard))
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "warning: could not build supervisor log appender ({e}); \
+    let file_layer_with_guard: Option<(_, WorkerGuard)> = match mneme_daemon::ensure_logs_dir() {
+        Ok(dir) => {
+            match RollingFileAppender::builder()
+                .rotation(Rotation::DAILY)
+                .filename_prefix("supervisor.log")
+                .max_log_files(7)
+                .build(&dir)
+            {
+                Ok(appender) => {
+                    let (nb, guard) = tracing_appender::non_blocking(appender);
+                    let file_filter = EnvFilter::try_from_env("MNEME_LOG")
+                        .unwrap_or_else(|_| EnvFilter::new("debug,mneme_supervisor=debug"));
+                    let layer = tracing_subscriber::fmt::layer()
+                        .json()
+                        .with_current_span(false)
+                        .with_span_list(false)
+                        .with_ansi(false)
+                        .with_writer(nb)
+                        .with_filter(file_filter);
+                    Some((layer, guard))
+                }
+                Err(e) => {
+                    eprintln!(
+                        "warning: could not build supervisor log appender ({e}); \
                              file logging disabled, stdout only"
-                        );
-                        None
-                    }
+                    );
+                    None
                 }
             }
-            Err(e) => {
-                eprintln!(
-                    "warning: could not create supervisor logs dir ({e}); \
+        }
+        Err(e) => {
+            eprintln!(
+                "warning: could not create supervisor logs dir ({e}); \
                      file logging disabled, stdout only"
-                );
-                None
-            }
-        };
+            );
+            None
+        }
+    };
 
     match file_layer_with_guard {
         Some((file_layer, guard)) => {
@@ -224,19 +222,14 @@ fn init_tracing() -> Option<WorkerGuard> {
             Some(guard)
         }
         None => {
-            let _ = tracing_subscriber::registry()
-                .with(stdout_layer)
-                .try_init();
+            let _ = tracing_subscriber::registry().with(stdout_layer).try_init();
             None
         }
     }
 }
 
 async fn run_cli(cli: Cli) -> Result<(), SupervisorError> {
-    let config_path = cli
-        .config
-        .clone()
-        .unwrap_or_else(default_config_path);
+    let config_path = cli.config.clone().unwrap_or_else(default_config_path);
 
     match cli.command {
         #[cfg(feature = "test-hooks")]
@@ -319,9 +312,8 @@ async fn run_cli(cli: Cli) -> Result<(), SupervisorError> {
             livebus,
             debounce_ms,
         } => {
-            let root = project.unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-            });
+            let root = project
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
             let stats = WatcherStatsHandle::new();
             let debounce = if debounce_ms == 0 {
                 DEFAULT_DEBOUNCE

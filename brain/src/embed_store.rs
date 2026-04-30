@@ -198,11 +198,19 @@ impl EmbedStore {
             };
             if heap.len() < k {
                 heap.push(hit);
-                heap.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+                heap.sort_by(|a, b| {
+                    b.score
+                        .partial_cmp(&a.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
             } else if hit.score > heap.last().map(|h| h.score).unwrap_or(f32::NEG_INFINITY) {
                 heap.pop();
                 heap.push(hit);
-                heap.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+                heap.sort_by(|a, b| {
+                    b.score
+                        .partial_cmp(&a.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
             }
         }
         heap

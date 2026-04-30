@@ -172,7 +172,9 @@ pub async fn run(args: ModelsArgs) -> CliResult<()> {
 /// (HOME-bypass-models fix). The previous duplicate `MNEME_HOME` check
 /// + `dirs::home_dir()` fallback is now centralized in `PathManager`.
 fn model_root() -> PathBuf {
-    common::paths::PathManager::default_root().root().join("models")
+    common::paths::PathManager::default_root()
+        .root()
+        .join("models")
 }
 
 /// Public accessor for the model root used by other modules
@@ -237,7 +239,10 @@ fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) ->
     // manifest.json so `mneme doctor` can list them per kind.
     if let Some(src_dir) = from_path {
         if !src_dir.is_dir() {
-            eprintln!("mneme: --from-path {} is not a directory", src_dir.display());
+            eprintln!(
+                "mneme: --from-path {} is not a directory",
+                src_dir.display()
+            );
             return Ok(());
         }
         let registered = install_from_path_to_root(&src_dir, &root)?;
@@ -254,7 +259,10 @@ fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) ->
             // to land, doctor reports "not installed" while the install
             // banner says success — a textbook LIE-class drift. Propagate
             // io::Error as CliError::Io so the install exit code reflects.
-            write_install_marker(&marker, b"v0.3.2 bge-small-en-v1.5 + bundle via --from-path\n")?;
+            write_install_marker(
+                &marker,
+                b"v0.3.2 bge-small-en-v1.5 + bundle via --from-path\n",
+            )?;
         }
         println!(
             "mneme: registered {registered} model file(s) into {}",
@@ -262,9 +270,7 @@ fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) ->
         );
         println!("        · run `mneme doctor` to see them per kind");
         println!("        · enable `real-embeddings` feature at build time to use BGE");
-        println!(
-            "        · on Windows also set ORT_DYLIB_PATH or place onnxruntime.dll on PATH"
-        );
+        println!("        · on Windows also set ORT_DYLIB_PATH or place onnxruntime.dll on PATH");
         println!(
             "          (or run `mneme models install-onnx-runtime` to drop it under \
              ~/.mneme/bin/)"
@@ -303,7 +309,9 @@ fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) ->
     #[cfg(not(feature = "fastembed-install"))]
     {
         let _ = &marker;
-        println!("        · this mneme build was compiled without the `fastembed-install` feature.");
+        println!(
+            "        · this mneme build was compiled without the `fastembed-install` feature."
+        );
         println!("          Two ways forward:");
         println!("           1. rebuild with `--features fastembed-install` (pulls fastembed).");
         println!("           2. manual: download BGE-small-en-v1.5.onnx + tokenizer.json and run:");
@@ -565,9 +573,7 @@ fn install_onnx_runtime_stub() -> CliResult<()> {
     println!("       (pick the `onnxruntime-win-x64-*.zip` for Windows-x64)");
     println!("    2. Extract `onnxruntime.dll` (Win) / libonnxruntime.* (Unix)");
     println!("       into either:");
-    println!(
-        "         · ~/.mneme/bin/   (mneme adds this to PATH at install time), or"
-    );
+    println!("         · ~/.mneme/bin/   (mneme adds this to PATH at install time), or");
     println!("         · any directory already on PATH");
     println!("       Or set the `ORT_DYLIB_PATH` env var to the absolute file path.");
     println!();
@@ -652,7 +658,10 @@ mod tests {
         // testable seam.
         let count = install_from_path_to_root(src.path(), dst.path())
             .expect("install_from_path_to_root should succeed");
-        assert_eq!(count, 5, "install_from_path_to_root should register 5 files");
+        assert_eq!(
+            count, 5,
+            "install_from_path_to_root should register 5 files"
+        );
 
         // Manifest must exist at <dst>/manifest.json with 5 entries.
         let manifest_path = dst.path().join("manifest.json");
@@ -810,7 +819,9 @@ mod tests {
         let n = install_from_path_to_root(src.path(), dst.path()).unwrap();
         assert_eq!(n, 2, "README.md should be skipped");
 
-        let manifest = read_manifest(dst.path()).unwrap().expect("manifest present");
+        let manifest = read_manifest(dst.path())
+            .unwrap()
+            .expect("manifest present");
         let names: Vec<&str> = manifest.entries.iter().map(|e| e.name.as_str()).collect();
         // Deterministic alphabetical order.
         assert_eq!(names, vec!["model.onnx", "nomic-embed.gguf"]);

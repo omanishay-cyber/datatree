@@ -237,10 +237,7 @@ fn default_ipc_path(_root: &Path) -> PathBuf {
     // causes "Access denied" on rebind. We append the current PID so
     // a fresh supervisor always binds cleanly. CLI clients discover the
     // active pipe via `~/.mneme/supervisor.pipe-name` (written at boot).
-    PathBuf::from(format!(
-        r"\\.\pipe\mneme-supervisor-{}",
-        std::process::id()
-    ))
+    PathBuf::from(format!(r"\\.\pipe\mneme-supervisor-{}", std::process::id()))
 }
 
 /// Locate the Bun binary for child specs. Priority:

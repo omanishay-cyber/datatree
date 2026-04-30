@@ -23,9 +23,8 @@ static HEX_COLOR: Lazy<Regex> = Lazy::new(|| {
 });
 
 /// CSS color functions.
-static CSS_FN_COLOR: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b(?:rgb|rgba|hsl|hsla)\s*\([^)]+\)").expect("css fn color regex")
-});
+static CSS_FN_COLOR: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b(?:rgb|rgba|hsl|hsla)\s*\([^)]+\)").expect("css fn color regex"));
 
 /// Tailwind utility class with a color shade. Captures the class so we
 /// can check for a sibling `dark:` variant on the same `class="..."`.
@@ -44,7 +43,9 @@ const BRAND_ALLOWLIST: &[&str] = &["#4191E1", "#41E1B5", "#22D3EE"];
 const DEFAULT_TOKEN_ALLOWLIST: &[&str] = &["#000", "#FFF", "#fff", "#000000", "#FFFFFF"];
 
 /// File extensions the theme scanner runs against.
-const THEME_FILE_EXTS: &[&str] = &["tsx", "jsx", "ts", "js", "css", "scss", "html", "vue", "svelte"];
+const THEME_FILE_EXTS: &[&str] = &[
+    "tsx", "jsx", "ts", "js", "css", "scss", "html", "vue", "svelte",
+];
 
 /// Flags hardcoded colors and missing dark variants.
 pub struct ThemeScanner {
@@ -95,7 +96,11 @@ impl Scanner for ThemeScanner {
     fn applies_to(&self, file: &Path) -> bool {
         file.extension()
             .and_then(|e| e.to_str())
-            .map(|e| THEME_FILE_EXTS.iter().any(|ext| ext.eq_ignore_ascii_case(e)))
+            .map(|e| {
+                THEME_FILE_EXTS
+                    .iter()
+                    .any(|ext| ext.eq_ignore_ascii_case(e))
+            })
             .unwrap_or(false)
     }
 

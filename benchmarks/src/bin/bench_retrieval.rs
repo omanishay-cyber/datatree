@@ -28,7 +28,10 @@ use benchmarks::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "bench_retrieval", about = "Mneme retrieval + scaling benchmark harness")]
+#[command(
+    name = "bench_retrieval",
+    about = "Mneme retrieval + scaling benchmark harness"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -44,14 +47,9 @@ enum Format {
 #[derive(Debug, Subcommand)]
 enum Cmd {
     /// Index a repo and print a JSON report with files/nodes/edges/ms.
-    Index {
-        repo_path: PathBuf,
-    },
+    Index { repo_path: PathBuf },
     /// Run one query against an existing shard (graph.db).
-    Query {
-        shard_path: PathBuf,
-        query: String,
-    },
+    Query { shard_path: PathBuf, query: String },
     /// Index (if needed) + run the 10 golden queries; emit a comparison table.
     Compare {
         repo_path: Option<PathBuf>,
@@ -156,19 +154,13 @@ async fn main() -> ExitCode {
             skip_index,
             format,
         } => cmd_bench_recall(&repo_path, &fixture, skip_index, format).await,
-        Cmd::BenchAll {
-            repo_path,
-            fixture,
-        } => cmd_bench_all(&repo_path, fixture.as_deref()).await,
+        Cmd::BenchAll { repo_path, fixture } => cmd_bench_all(&repo_path, fixture.as_deref()).await,
     };
 
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!(
-                "{}",
-                serde_json::json!({ "error": e.to_string() })
-            );
+            eprintln!("{}", serde_json::json!({ "error": e.to_string() }));
             ExitCode::from(1)
         }
     }
@@ -278,11 +270,7 @@ async fn cmd_bench_first_build(repo: &Path, format: Format) -> BenchResult<()> {
     emit_simple(&report, format, "first_build")
 }
 
-async fn cmd_bench_incremental(
-    repo: &Path,
-    skip_index: bool,
-    format: Format,
-) -> BenchResult<()> {
+async fn cmd_bench_incremental(repo: &Path, skip_index: bool, format: Format) -> BenchResult<()> {
     if !skip_index {
         let _ = index_repo(repo).await?;
     }
@@ -290,11 +278,7 @@ async fn cmd_bench_incremental(
     emit_simple(&report, format, "incremental")
 }
 
-async fn cmd_bench_viz_scale(
-    repo: &Path,
-    skip_index: bool,
-    format: Format,
-) -> BenchResult<()> {
+async fn cmd_bench_viz_scale(repo: &Path, skip_index: bool, format: Format) -> BenchResult<()> {
     if !skip_index {
         let _ = index_repo(repo).await?;
     }
@@ -523,7 +507,10 @@ fn emit_simple<T: serde::Serialize>(report: &T, format: Format, label: &str) -> 
             println!("{}", serde_json::to_string_pretty(report)?);
         }
         Format::Markdown => {
-            println!("### {label}\n\n```json\n{}\n```", serde_json::to_string_pretty(report)?);
+            println!(
+                "### {label}\n\n```json\n{}\n```",
+                serde_json::to_string_pretty(report)?
+            );
         }
         Format::Csv => {
             // Flatten the serialisable report into key,value rows. Works
@@ -576,8 +563,8 @@ fn load_fixture_flex(path: &Path) -> BenchResult<Vec<GoldenQuery>> {
             return Ok(plain);
         }
     }
-    let bytes = std::fs::read(path)
-        .map_err(|e| BenchError::Fixture(format!("{}: {e}", path.display())))?;
+    let bytes =
+        std::fs::read(path).map_err(|e| BenchError::Fixture(format!("{}: {e}", path.display())))?;
     let value: serde_json::Value = serde_json::from_slice(&bytes)?;
     let arr = value
         .get("queries")
@@ -595,7 +582,11 @@ fn load_fixture_flex(path: &Path) -> BenchResult<Vec<GoldenQuery>> {
             .get("expect_top_k")
             .and_then(|v| v.as_array())
             .or_else(|| entry.get("expected_top").and_then(|v| v.as_array()))
-            .map(|arr| arr.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default();
         out.push(GoldenQuery {
             query: q,
@@ -657,10 +648,7 @@ fn csv_esc(s: &str) -> String {
 }
 
 #[allow(dead_code)]
-fn _cold_baseline_anchor(
-    repo: &Path,
-    q: &str,
-) -> BenchResult<(Vec<String>, u64)> {
+fn _cold_baseline_anchor(repo: &Path, q: &str) -> BenchResult<(Vec<String>, u64)> {
     cold_baseline(repo, q)
 }
 

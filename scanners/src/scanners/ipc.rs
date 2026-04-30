@@ -13,8 +13,7 @@ use crate::scanner::{line_col_of, Ast, Finding, Scanner, Severity};
 
 /// `ipcMain.handle("name", ...)` / `ipcMain.on("name", ...)`.
 static MAIN_CHANNEL: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"\bipcMain\.(?:handle|on)\s*\(\s*['"]([^'"]+)['"]"#)
-        .expect("main channel regex")
+    Regex::new(r#"\bipcMain\.(?:handle|on)\s*\(\s*['"]([^'"]+)['"]"#).expect("main channel regex")
 });
 
 /// `ipcRenderer.invoke("name", ...)` / `.send("name", ...)`.
@@ -109,8 +108,8 @@ impl Scanner for IpcContractsScanner {
 
         for (name, offset) in renderer_calls {
             let in_bridge = bridge_keys.contains(&name);
-            let in_types = self.declared_channels.is_empty()
-                || self.declared_channels.contains(&name);
+            let in_types =
+                self.declared_channels.is_empty() || self.declared_channels.contains(&name);
             if !in_bridge && !in_types {
                 let (line, col) = line_col_of(content, offset);
                 out.push(Finding::new_line(

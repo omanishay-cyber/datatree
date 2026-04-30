@@ -49,9 +49,7 @@ impl PlatformAdapter for Cursor {
     fn mcp_config_path(&self, ctx: &AdapterContext) -> PathBuf {
         match ctx.scope {
             InstallScope::Project => ctx.project_root.join(".cursor").join("mcp.json"),
-            InstallScope::User | InstallScope::Global => {
-                ctx.home.join(".cursor").join("mcp.json")
-            }
+            InstallScope::User | InstallScope::Global => ctx.home.join(".cursor").join("mcp.json"),
         }
     }
 

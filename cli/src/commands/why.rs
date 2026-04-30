@@ -103,7 +103,11 @@ pub struct GitHit {
 
 /// Run `git log --grep=<query> -n <limit>` against `project_root`. Returns
 /// an empty vec if git isn't available or the repo isn't initialised.
-pub fn git_log_grep(project_root: &std::path::Path, query: &str, limit: usize) -> Option<Vec<GitHit>> {
+pub fn git_log_grep(
+    project_root: &std::path::Path,
+    query: &str,
+    limit: usize,
+) -> Option<Vec<GitHit>> {
     // M13: windowless_command(..) applies CREATE_NO_WINDOW on Windows
     // so this git probe does not flash a console when invoked from a
     // hook-context parent.
@@ -198,7 +202,12 @@ fn print_why_chain(
         println!();
         println!("## git commits mentioning the query");
         for g in git_hits {
-            println!("- `{}` ({}) {}", &g.sha[..g.sha.len().min(10)], g.date, g.subject);
+            println!(
+                "- `{}` ({}) {}",
+                &g.sha[..g.sha.len().min(10)],
+                g.date,
+                g.subject
+            );
         }
     }
 

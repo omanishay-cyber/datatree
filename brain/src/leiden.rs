@@ -105,8 +105,13 @@ impl LeidenSolver {
             // edges in the graph; `edge_endpoints` and `edge_weight` are
             // therefore guaranteed to return `Some(_)`. Programmer-impossible
             // None unless `petgraph` violates its invariants.
-            let (a, b) = graph.edge_endpoints(e).expect("edge index from edge_indices() must resolve");
-            let w = *graph.edge_weight(e).expect("edge index from edge_indices() must have weight") as f64;
+            let (a, b) = graph
+                .edge_endpoints(e)
+                .expect("edge index from edge_indices() must resolve");
+            let w = *graph
+                .edge_weight(e)
+                .expect("edge index from edge_indices() must have weight")
+                as f64;
             if w <= 0.0 || !w.is_finite() {
                 continue;
             }
@@ -119,7 +124,11 @@ impl LeidenSolver {
             total_weight += w;
         }
         // 2m for undirected (self-loops counted once).
-        let two_m = if total_weight > 0.0 { 2.0 * total_weight } else { 1.0 };
+        let two_m = if total_weight > 0.0 {
+            2.0 * total_weight
+        } else {
+            1.0
+        };
 
         let mut rng = ChaCha8Rng::seed_from_u64(self.cfg.seed);
         let partition = leiden_inner(&adj, two_m, &self.cfg, &mut rng);
@@ -278,9 +287,7 @@ fn local_move(
             }
             // Cost of leaving cu (for a fair compare include it).
             let stay_gain = kic_self / two_m
-                - cfg.resolution
-                    * (*sigma_tot.get(&cu).unwrap_or(&0.0)) * su
-                    / (two_m * two_m);
+                - cfg.resolution * (*sigma_tot.get(&cu).unwrap_or(&0.0)) * su / (two_m * two_m);
             if best != cu && best_gain > stay_gain + 1e-12 {
                 partition[u] = best;
                 *sigma_tot.entry(best).or_default() += su;
@@ -306,7 +313,7 @@ fn refine(
 ) -> Vec<usize> {
     let n = adj.len();
     let mut refined: Vec<usize> = (0..n).collect(); // start as singletons
-    // Compute σ_tot per refined community.
+                                                    // Compute σ_tot per refined community.
     let mut sigma_tot: HashMap<usize, f64> = (0..n).map(|u| (u, strength[u])).collect();
 
     let mut order: Vec<usize> = (0..n).collect();

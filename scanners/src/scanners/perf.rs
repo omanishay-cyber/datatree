@@ -30,9 +30,8 @@ static SYNC_IO: Lazy<Regex> = Lazy::new(|| {
 });
 
 /// `setState(...)` style hook calls — captures variable.
-static SET_STATE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\bset[A-Z][A-Za-z0-9_]*\s*\(").expect("setState regex")
-});
+static SET_STATE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\bset[A-Z][A-Za-z0-9_]*\s*\(").expect("setState regex"));
 
 /// `Object.keys(X).forEach(...)` chain — usually better expressed as
 /// `Object.entries(...).forEach(...)` or a plain `for...of` loop.

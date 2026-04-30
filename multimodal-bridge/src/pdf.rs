@@ -36,11 +36,10 @@ impl Extractor for PdfExtractor {
             source,
         })?;
 
-        let text =
-            pdf_extract::extract_text_from_mem(&bytes).map_err(|e| ExtractError::Parse {
-                path: path.to_path_buf(),
-                reason: format!("pdf-extract: {e}"),
-            })?;
+        let text = pdf_extract::extract_text_from_mem(&bytes).map_err(|e| ExtractError::Parse {
+            path: path.to_path_buf(),
+            reason: format!("pdf-extract: {e}"),
+        })?;
 
         let mut doc = ExtractedDoc::empty("pdf", path);
         // pdf-extract emits FF (\x0c) between pages. Preserve that split

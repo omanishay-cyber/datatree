@@ -113,10 +113,7 @@ pub async fn run(args: SessionEndArgs, socket_override: Option<PathBuf>) -> CliR
     match tokio::time::timeout(HOOK_CTX_BUDGET, HookCtx::resolve(&cwd)).await {
         Ok(Ok(ctx)) => {
             let summary = "Session end (lifecycle)";
-            if let Err(e) = ctx
-                .write_turn(&session_id, "session_end", summary)
-                .await
-            {
+            if let Err(e) = ctx.write_turn(&session_id, "session_end", summary).await {
                 warn!(error = %e, "history.turns (session-end) insert failed (non-fatal)");
             }
             if let Err(e) = ctx
@@ -293,7 +290,10 @@ mod tests {
         let start = std::time::Instant::now();
         // No session id -> no work -> instant return (the `claude mcp
         // list` path).
-        let args = SessionEndArgs { session_id: None, detached_flush: false };
+        let args = SessionEndArgs {
+            session_id: None,
+            detached_flush: false,
+        };
         let r = run(args, Some(PathBuf::from("/nope-mneme.sock"))).await;
         let elapsed = start.elapsed();
         assert!(r.is_ok(), "session-end must always exit Ok; got: {r:?}");
@@ -315,10 +315,16 @@ mod tests {
     async fn session_end_with_empty_stdin_exits_zero() {
         let _keep = cwd_into_marker_free_tempdir();
         let start = std::time::Instant::now();
-        let args = SessionEndArgs { session_id: None, detached_flush: false };
+        let args = SessionEndArgs {
+            session_id: None,
+            detached_flush: false,
+        };
         let r = run(args, Some(PathBuf::from("/nope-mneme.sock"))).await;
         let elapsed = start.elapsed();
-        assert!(r.is_ok(), "empty-stdin session-end must exit Ok; got: {r:?}");
+        assert!(
+            r.is_ok(),
+            "empty-stdin session-end must exit Ok; got: {r:?}"
+        );
         assert!(
             elapsed < std::time::Duration::from_secs(1),
             "empty-stdin session-end must be effectively instant (no work); \

@@ -225,7 +225,15 @@ fn try_register_and_run_scheduled_task(
 
     let create = Command::new("schtasks.exe")
         .args([
-            "/Create", "/TN", task_name, "/TR", tr.as_str(), "/SC", "ONLOGON", "/F", "/IT",
+            "/Create",
+            "/TN",
+            task_name,
+            "/TR",
+            tr.as_str(),
+            "/SC",
+            "ONLOGON",
+            "/F",
+            "/IT",
         ])
         .output()?;
     if !create.status.success() {
@@ -389,10 +397,7 @@ mod tests {
         // Either `mneme-daemon` or the legacy `mneme-supervisor` name is
         // acceptable — both are documented in the search order above.
         let p = default_supervisor_binary();
-        let stem = p
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or_default();
+        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
         assert!(
             stem == "mneme-daemon" || stem == "mneme-supervisor",
             "unexpected supervisor binary name: {stem}"

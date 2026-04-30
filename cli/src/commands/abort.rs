@@ -129,17 +129,26 @@ impl AbortOutcome {
             AbortOutcome::NothingToAbort => {
                 format!("aborted: project={project_id} pid=- graceful=none wal_checkpointed=0")
             }
-            AbortOutcome::StaleLock { pid, wal_checkpointed } => {
+            AbortOutcome::StaleLock {
+                pid,
+                wal_checkpointed,
+            } => {
                 format!(
                     "aborted: project={project_id} pid={pid} graceful=stale wal_checkpointed={wal_checkpointed}"
                 )
             }
-            AbortOutcome::Graceful { pid, wal_checkpointed } => {
+            AbortOutcome::Graceful {
+                pid,
+                wal_checkpointed,
+            } => {
                 format!(
                     "aborted: project={project_id} pid={pid} graceful=true wal_checkpointed={wal_checkpointed}"
                 )
             }
-            AbortOutcome::Forced { pid, wal_checkpointed } => {
+            AbortOutcome::Forced {
+                pid,
+                wal_checkpointed,
+            } => {
                 format!(
                     "aborted: project={project_id} pid={pid} graceful=false wal_checkpointed={wal_checkpointed}"
                 )
@@ -176,10 +185,7 @@ pub async fn run(args: AbortArgs) -> CliResult<()> {
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         let canonical = std::fs::canonicalize(&project_path).unwrap_or(project_path.clone());
         let id = ProjectId::from_path(&canonical).map_err(|e| {
-            CliError::Other(format!(
-                "project hash for {}: {e}",
-                project_path.display()
-            ))
+            CliError::Other(format!("project hash for {}: {e}", project_path.display()))
         })?;
         vec![id.as_str().to_string()]
     };
@@ -316,8 +322,8 @@ pub(crate) fn read_lock_stamp(lock_path: &Path) -> CliResult<Option<LockStamp>> 
     if !lock_path.exists() {
         return Ok(None);
     }
-    let content = std::fs::read_to_string(lock_path)
-        .map_err(|e| CliError::io(lock_path.to_path_buf(), e))?;
+    let content =
+        std::fs::read_to_string(lock_path).map_err(|e| CliError::io(lock_path.to_path_buf(), e))?;
     parse_lock_stamp(&content)
         .map(Some)
         .map_err(CliError::Other)
@@ -666,11 +672,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         // Drop a `.lock` referencing a definitely-dead PID.
         let lock_path = dir.path().join(".lock");
-        fs::write(
-            &lock_path,
-            format!("pid={} ts=1 project=test\n", u32::MAX),
-        )
-        .unwrap();
+        fs::write(&lock_path, format!("pid={} ts=1 project=test\n", u32::MAX)).unwrap();
         assert!(lock_path.exists());
 
         let outcome = abort_one(dir.path(), "test-id", false, Duration::from_secs(1))

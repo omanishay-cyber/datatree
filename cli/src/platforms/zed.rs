@@ -30,8 +30,7 @@ impl PlatformAdapter for Zed {
     }
 
     fn detect(&self, ctx: &AdapterContext) -> bool {
-        Self::settings_path(&ctx.home).exists()
-            || ctx.home.join(".config").join("zed").exists()
+        Self::settings_path(&ctx.home).exists() || ctx.home.join(".config").join("zed").exists()
     }
 
     fn manifest_path(&self, ctx: &AdapterContext) -> PathBuf {
@@ -64,8 +63,11 @@ impl PlatformAdapter for Zed {
         } else {
             "{}".into()
         };
-        let mut value: serde_json::Value =
-            serde_json::from_str(if existing.trim().is_empty() { "{}" } else { &existing })?;
+        let mut value: serde_json::Value = serde_json::from_str(if existing.trim().is_empty() {
+            "{}"
+        } else {
+            &existing
+        })?;
         let root = value
             .as_object_mut()
             .ok_or_else(|| crate::error::CliError::Other("settings.json not object".into()))?;

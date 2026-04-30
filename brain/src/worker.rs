@@ -172,8 +172,7 @@ async fn handle(
                 cfg.leiden.seed = s;
                 local_cluster = ClusterRunner::new(cfg);
             }
-            let res =
-                run_blocking(move || local_cluster.run(&edges)).await;
+            let res = run_blocking(move || local_cluster.run(&edges)).await;
             match res {
                 Ok(communities) => JobResult::Clusters { id, communities },
                 Err(e) => JobResult::Error {
@@ -196,11 +195,7 @@ async fn handle(
             })
             .await;
             match res {
-                Ok(concepts) => JobResult::Concepts {
-                    id,
-                    node,
-                    concepts,
-                },
+                Ok(concepts) => JobResult::Concepts { id, node, concepts },
                 Err(e) => JobResult::Error {
                     id,
                     message: e.to_string(),
@@ -213,8 +208,7 @@ async fn handle(
             signature,
             body,
         } => {
-            let res =
-                run_blocking(move || summarizer.summarize_function(&signature, &body)).await;
+            let res = run_blocking(move || summarizer.summarize_function(&signature, &body)).await;
             match res {
                 Ok(summary) => JobResult::Summary { id, node, summary },
                 Err(e) => JobResult::Error {

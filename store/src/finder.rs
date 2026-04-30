@@ -29,7 +29,9 @@ pub struct DefaultFinder {
 }
 
 impl DefaultFinder {
-    pub fn new(paths: Arc<PathManager>) -> Self { Self { paths } }
+    pub fn new(paths: Arc<PathManager>) -> Self {
+        Self { paths }
+    }
 }
 
 #[async_trait]
@@ -72,16 +74,18 @@ impl DbFinder for DefaultFinder {
                 },
             );
             match row {
-                Ok((id, root, name, _created_at, _last_indexed, schema_version)) => Ok(Some(ShardHandle {
-                    project: Project {
-                        id: ProjectId::from_hash(id),
-                        root: PathBuf::from(root),
-                        name,
-                        created_at: Timestamp::now(),
-                        last_indexed_at: None,
-                        schema_version,
-                    },
-                })),
+                Ok((id, root, name, _created_at, _last_indexed, schema_version)) => {
+                    Ok(Some(ShardHandle {
+                        project: Project {
+                            id: ProjectId::from_hash(id),
+                            root: PathBuf::from(root),
+                            name,
+                            created_at: Timestamp::now(),
+                            last_indexed_at: None,
+                            schema_version,
+                        },
+                    }))
+                }
                 Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
                 Err(e) => Err(DtError::Db(DbError::from(e))),
             }
@@ -131,7 +135,13 @@ impl DbFinder for DefaultFinder {
 }
 
 fn is_project_root(dir: &Path) -> bool {
-    let markers = [".git", ".claude", "package.json", "Cargo.toml", "pyproject.toml"];
+    let markers = [
+        ".git",
+        ".claude",
+        "package.json",
+        "Cargo.toml",
+        "pyproject.toml",
+    ];
     for m in markers {
         if dir.join(m).exists() {
             debug!(marker = m, dir = %dir.display(), "matched project root");

@@ -127,10 +127,7 @@ impl SubscriberManager {
     /// [`SubscriberHandle`] whose `rx` the transport task should drain to the
     /// wire. Uses the default [`BACKPRESSURE_WINDOW`] for both the mpsc
     /// channel and the eviction cap.
-    pub fn register(
-        &self,
-        patterns: Vec<String>,
-    ) -> Result<SubscriberHandle, LivebusError> {
+    pub fn register(&self, patterns: Vec<String>) -> Result<SubscriberHandle, LivebusError> {
         self.register_with_capacity(patterns, BACKPRESSURE_WINDOW)
     }
 
@@ -150,8 +147,7 @@ impl SubscriberManager {
         let n = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let id = format!("sub-{n}");
         let (tx, rx) = mpsc::channel::<Event>(cap);
-        let sub =
-            Arc::new(Subscriber::new(id.clone(), patterns, tx).with_capacity(cap));
+        let sub = Arc::new(Subscriber::new(id.clone(), patterns, tx).with_capacity(cap));
         self.write_registry().insert(id.clone(), sub);
         info!(subscriber = %id, cap, "subscriber registered");
         Ok(SubscriberHandle { id, rx })
@@ -159,11 +155,7 @@ impl SubscriberManager {
 
     /// Replace the topic patterns of an existing subscriber. Used by the
     /// WebSocket `subscribe` / `unsubscribe` control messages.
-    pub fn update_patterns(
-        &self,
-        id: &str,
-        patterns: Vec<String>,
-    ) -> Result<(), LivebusError> {
+    pub fn update_patterns(&self, id: &str, patterns: Vec<String>) -> Result<(), LivebusError> {
         for p in &patterns {
             validate_topic(p)?;
         }
@@ -193,18 +185,14 @@ impl SubscriberManager {
         }
     }
 
-    fn read_registry(
-        &self,
-    ) -> std::sync::RwLockReadGuard<'_, HashMap<String, Arc<Subscriber>>> {
+    fn read_registry(&self) -> std::sync::RwLockReadGuard<'_, HashMap<String, Arc<Subscriber>>> {
         self.inner
             .subscribers
             .read()
             .expect("livebus subscriber registry poisoned")
     }
 
-    fn write_registry(
-        &self,
-    ) -> std::sync::RwLockWriteGuard<'_, HashMap<String, Arc<Subscriber>>> {
+    fn write_registry(&self) -> std::sync::RwLockWriteGuard<'_, HashMap<String, Arc<Subscriber>>> {
         self.inner
             .subscribers
             .write()
@@ -216,8 +204,7 @@ impl SubscriberManager {
     pub fn dispatch(&self, event: &Event) {
         // Snapshot the subscribers (cheap Arc clones) so we don't hold the
         // lock across `.try_send`.
-        let snapshot: Vec<Arc<Subscriber>> =
-            self.read_registry().values().cloned().collect();
+        let snapshot: Vec<Arc<Subscriber>> = self.read_registry().values().cloned().collect();
 
         let mut to_evict: Vec<(String, String)> = Vec::new();
         for sub in snapshot {
@@ -234,10 +221,7 @@ impl SubscriberManager {
                     if lag as usize >= sub.cap {
                         to_evict.push((
                             sub.id.clone(),
-                            format!(
-                                "lag {lag} >= backpressure window {cap}",
-                                cap = sub.cap
-                            ),
+                            format!("lag {lag} >= backpressure window {cap}", cap = sub.cap),
                         ));
                     }
                 }
@@ -283,8 +267,7 @@ impl SubscriberManager {
     /// guard. When `guard` is true, subscribers that fail to send are NOT
     /// evicted (they'll be cleaned up on the next real dispatch pass).
     fn dispatch_internal(&self, event: &Event, guard: bool) {
-        let snapshot: Vec<Arc<Subscriber>> =
-            self.read_registry().values().cloned().collect();
+        let snapshot: Vec<Arc<Subscriber>> = self.read_registry().values().cloned().collect();
         let mut to_evict: Vec<(String, String)> = Vec::new();
         for sub in snapshot {
             if !sub.matches(&event.topic) {
@@ -300,10 +283,7 @@ impl SubscriberManager {
                     if !guard && lag as usize >= sub.cap {
                         to_evict.push((
                             sub.id.clone(),
-                            format!(
-                                "lag {lag} >= backpressure window {cap}",
-                                cap = sub.cap
-                            ),
+                            format!("lag {lag} >= backpressure window {cap}", cap = sub.cap),
                         ));
                     }
                 }
@@ -341,9 +321,7 @@ mod sub_tests {
     async fn register_and_dispatch_matches() {
         let bus = EventBus::new();
         let mgr = SubscriberManager::new(bus.clone());
-        let mut h = mgr
-            .register(vec!["project.*.file_changed".into()])
-            .unwrap();
+        let mut h = mgr.register(vec!["project.*.file_changed".into()]).unwrap();
         let ev = Event::from_json(
             "project.abc.file_changed",
             None,

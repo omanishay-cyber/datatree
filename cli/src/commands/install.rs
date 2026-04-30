@@ -23,13 +23,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use crate::commands::doctor::{
-    install_hint_for, probe_all_toolchain, ToolProbe, ToolSeverity,
-};
+use crate::commands::doctor::{install_hint_for, probe_all_toolchain, ToolProbe, ToolSeverity};
 use crate::error::CliResult;
-use crate::platforms::{
-    prune_baks, AdapterContext, InstallScope, Platform, PlatformDetector,
-};
+use crate::platforms::{prune_baks, AdapterContext, InstallScope, Platform, PlatformDetector};
 use crate::receipts::{sha256_of_file, Receipt, ReceiptAction};
 
 /// Idempotent-1: how many `<path>.mneme-YYYYMMDD-HHMMSS.bak` snapshots
@@ -124,8 +120,7 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
     let targets: Vec<Platform> = match args.platform.as_deref() {
         Some(id) => vec![Platform::from_id(id)?],
         None => {
-            let detected =
-                PlatformDetector::detect_installed(scope, &project_root);
+            let detected = PlatformDetector::detect_installed(scope, &project_root);
             info!(count = detected.len(), "auto-detected platforms");
             detected
         }
@@ -156,9 +151,7 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
     // safe while CC is running (CC re-reads mcpServers on next launch),
     // but manifest writes can create stale cached state. Not a block;
     // just a heads-up.
-    let claude_is_target = targets
-        .iter()
-        .any(|p| matches!(p, Platform::ClaudeCode));
+    let claude_is_target = targets.iter().any(|p| matches!(p, Platform::ClaudeCode));
     let writing_anything_but_mcp = !args.skip_manifest || !args.skip_hooks;
     if claude_is_target && writing_anything_but_mcp && !args.dry_run {
         if claude_code_likely_running() {
@@ -198,11 +191,7 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
         // calling install_one so a writes-zero result (because
         // --enable-hooks wasn't passed) can still be counted toward
         // the "we have a hook surface" banner branch.
-        if platform
-            .adapter()
-            .hooks_path(&ctx)
-            .is_some()
-        {
+        if platform.adapter().hooks_path(&ctx).is_some() {
             any_platform_supports_hooks = true;
         }
         let r = install_one(
@@ -238,7 +227,9 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
     if !args.dry_run && !receipt.actions.is_empty() {
         match receipt.save() {
             Ok(path) => info!(path = %path.display(), "install receipt written"),
-            Err(e) => warn!(error = %e, "failed to write install receipt (install succeeded but rollback will be manual)"),
+            Err(e) => {
+                warn!(error = %e, "failed to write install receipt (install succeeded but rollback will be manual)")
+            }
         }
     }
 
@@ -256,15 +247,11 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
     // partial / truncated / tampered write fails the install loudly
     // instead of slipping through.
     if !args.dry_run {
-        drop_standalone_uninstaller()
-            .map_err(crate::error::CliError::DropUninstaller)?;
+        drop_standalone_uninstaller().map_err(crate::error::CliError::DropUninstaller)?;
     }
 
     println!();
-    println!(
-        "{:<14}  {:<8}  {}",
-        "platform", "scope", "result"
-    );
+    println!("{:<14}  {:<8}  {}", "platform", "scope", "result");
     for entry in &report {
         println!(
             "{:<14}  {:<8}  {}",
@@ -292,14 +279,14 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
             println!(
                 "  Persistent-memory features active: cache hits, step ledger, drift injection,"
             );
-            println!(
-                "  conversation capture, decision recall across compactions."
-            );
+            println!("  conversation capture, decision recall across compactions.");
             println!("  Disable via:  mneme uninstall --platform=claude-code");
         } else if args.skip_hooks {
             println!("⚠ Hooks NOT registered — --skip-hooks / --no-hooks was passed.");
             println!("  Persistent-memory features inactive: no conversation capture, no decision");
-            println!("  recall, no compaction-resilient step ledger. MCP tools still work on demand.");
+            println!(
+                "  recall, no compaction-resilient step ledger. MCP tools still work on demand."
+            );
             println!("  Re-run without --skip-hooks to activate.");
         } else {
             // Should be impossible after K1 fix — ctx.enable_hooks is
@@ -310,7 +297,9 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
             println!(
                 "⚠ Hooks NOT registered despite default-on policy — likely a platform-adapter error."
             );
-            println!("  Run `mneme doctor --strict` to diagnose. File issue at omanishay-cyber/mneme.");
+            println!(
+                "  Run `mneme doctor --strict` to diagnose. File issue at omanishay-cyber/mneme."
+            );
         }
     }
 
@@ -384,11 +373,7 @@ fn render_capability_row(probe: &ToolProbe) {
             .as_deref()
             .map(|s| format!(" ({s})"))
             .unwrap_or_default();
-        println!(
-            "  ✓ {} detected{}",
-            probe.entry.display,
-            v
-        );
+        println!("  ✓ {} detected{}", probe.entry.display, v);
     } else {
         // Severity in the line so the user sees at a glance whether
         // this is a blocker (HIGH) or just nice-to-have.
@@ -398,10 +383,7 @@ fn render_capability_row(probe: &ToolProbe) {
             probe.entry.severity.label().trim(),
             probe.entry.purpose,
         );
-        println!(
-            "      Install: {}",
-            install_hint_for(&probe.entry)
-        );
+        println!("      Install: {}", install_hint_for(&probe.entry));
     }
 }
 
@@ -436,7 +418,11 @@ fn install_one(
     if !skip_manifest {
         let target = adapter.manifest_path(ctx);
         let existed_before = target.exists();
-        let sha_before = if existed_before { sha256_of_file(&target) } else { String::new() };
+        let sha_before = if existed_before {
+            sha256_of_file(&target)
+        } else {
+            String::new()
+        };
 
         let manifest = adapter.write_manifest(ctx)?;
         info!(platform = platform.id(), path = %manifest.display(), "manifest written");
@@ -466,13 +452,20 @@ fn install_one(
             }
         }
     } else {
-        info!(platform = platform.id(), "manifest skipped (--skip-manifest)");
+        info!(
+            platform = platform.id(),
+            "manifest skipped (--skip-manifest)"
+        );
     }
 
     if !skip_mcp {
         let target = adapter.mcp_config_path(ctx);
         let existed_before = target.exists();
-        let sha_before = if existed_before { sha256_of_file(&target) } else { String::new() };
+        let sha_before = if existed_before {
+            sha256_of_file(&target)
+        } else {
+            String::new()
+        };
 
         let mcp = adapter.write_mcp_config(ctx)?;
         info!(platform = platform.id(), path = %mcp.display(), "mcp config written");
@@ -525,8 +518,7 @@ fn install_one(
             // install banner can print a concrete number. Today only
             // the ClaudeCode adapter writes hooks; the count is the
             // length of HOOK_SPECS.
-            outcome.hook_entries_written =
-                crate::platforms::claude_code::HOOK_SPECS.len();
+            outcome.hook_entries_written = crate::platforms::claude_code::HOOK_SPECS.len();
 
             if !ctx.dry_run {
                 let sha_after = sha256_of_file(&hooks);
@@ -579,10 +571,7 @@ fn find_latest_mneme_bak(target: &std::path::Path) -> Option<PathBuf> {
                     name.starts_with(&format!("{stem}.mneme-"))
                         || name.starts_with(&format!(
                             "{}.mneme-",
-                            target
-                                .file_stem()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or("")
+                            target.file_stem().and_then(|s| s.to_str()).unwrap_or("")
                         ))
                 })
                 .unwrap_or(false)
@@ -629,7 +618,9 @@ pub fn drop_standalone_uninstaller() -> std::io::Result<()> {
         // This makes the function exercisable from integration tests under
         // a tempdir AND keeps the function's behavior consistent with every
         // other path-touching site in the CLI.
-        let mneme_dir = common::paths::PathManager::default_root().root().to_path_buf();
+        let mneme_dir = common::paths::PathManager::default_root()
+            .root()
+            .to_path_buf();
         // Idempotent: succeeds whether or not the directory already exists.
         // Without this, a fresh-machine install where ~/.mneme/ has not
         // yet been created would fail at the fs::write below with
@@ -678,9 +669,7 @@ fn make_bar(n: u64) -> ProgressBar {
     let bar = ProgressBar::new(n);
     bar.set_style(
         ProgressStyle::default_bar()
-            .template(
-                "{spinner:.cyan} [{bar:24.cyan/blue}] {pos}/{len} {msg}",
-            )
+            .template("{spinner:.cyan} [{bar:24.cyan/blue}] {pos}/{len} {msg}")
             .unwrap_or_else(|_| ProgressStyle::default_bar())
             .progress_chars("=>-"),
     );
@@ -796,12 +785,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let target = dir.path().join("settings.json");
         std::fs::write(&target, b"{}").expect("write target");
-        let older = dir
-            .path()
-            .join("settings.json.mneme-20260101-000000.bak");
-        let newer = dir
-            .path()
-            .join("settings.json.mneme-20260426-120000.bak");
+        let older = dir.path().join("settings.json.mneme-20260101-000000.bak");
+        let newer = dir.path().join("settings.json.mneme-20260426-120000.bak");
         std::fs::write(&older, b"old").expect("write older");
         std::fs::write(&newer, b"new").expect("write newer");
 

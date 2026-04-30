@@ -105,9 +105,7 @@ pub fn apply_migrations(conn: &Connection) -> DtResult<u32> {
         // Apply this block atomically. Any single statement failing
         // rolls the whole block back, leaving `user_version` at the
         // previous value so the next open retries cleanly.
-        let tx = conn
-            .unchecked_transaction()
-            .map_err(DbError::from)?;
+        let tx = conn.unchecked_transaction().map_err(DbError::from)?;
         for stmt in stmts.iter() {
             tx.execute_batch(stmt).map_err(DbError::from)?;
         }

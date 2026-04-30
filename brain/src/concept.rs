@@ -119,7 +119,11 @@ impl ConceptExtractor {
         }
 
         let mut out: Vec<Concept> = bag.into_values().collect();
-        out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        out.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         out.truncate(12);
         Ok(out)
     }
@@ -129,14 +133,15 @@ impl ConceptExtractor {
 // Deterministic stage
 // ---------------------------------------------------------------------------
 
-static IDENT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\b(?:fn|def|class|struct|enum|interface|trait|impl)\s+([A-Za-z_][A-Za-z0-9_]*)").unwrap());
+static IDENT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\b(?:fn|def|class|struct|enum|interface|trait|impl)\s+([A-Za-z_][A-Za-z0-9_]*)")
+        .unwrap()
+});
 static HEADING_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$").unwrap());
 static DOC_LINE_COMMENT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*(?:///|//!|//|#|\*)\s?(.*)$").unwrap());
-static BLOCK_COMMENT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"/\*+([\s\S]*?)\*/").unwrap());
+static BLOCK_COMMENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"/\*+([\s\S]*?)\*/").unwrap());
 // Reasonable noun-phrase candidate: 1-3 capitalised or lowercase words.
 static NOUN_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b").unwrap());
@@ -145,8 +150,14 @@ fn deterministic(kind: &str, text: &str) -> Vec<Concept> {
     let mut out = Vec::new();
 
     let kind_lc = kind.to_ascii_lowercase();
-    let treat_as_code = matches!(kind_lc.as_str(), "code" | "rust" | "py" | "ts" | "js" | "go");
-    let treat_as_doc = matches!(kind_lc.as_str(), "readme" | "markdown" | "md" | "doc" | "comment");
+    let treat_as_code = matches!(
+        kind_lc.as_str(),
+        "code" | "rust" | "py" | "ts" | "js" | "go"
+    );
+    let treat_as_doc = matches!(
+        kind_lc.as_str(),
+        "readme" | "markdown" | "md" | "doc" | "comment"
+    );
 
     // 1) Identifiers from declarations (always run — cheap).
     for caps in IDENT_RE.captures_iter(text) {

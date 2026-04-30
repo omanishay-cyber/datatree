@@ -200,7 +200,10 @@ async fn pre_tool_no_autospawn_when_pipe_missing() {
     let r = pre_tool::run(args, Some(bogus_socket())).await;
     let elapsed = started.elapsed();
 
-    assert!(r.is_ok(), "pre-tool must exit Ok with daemon down; got: {r:?}");
+    assert!(
+        r.is_ok(),
+        "pre-tool must exit Ok with daemon down; got: {r:?}"
+    );
     assert!(
         elapsed < NO_AUTOSPAWN_CEILING,
         "pre-tool must NOT auto-spawn the daemon — return must be under {NO_AUTOSPAWN_CEILING:?}; \
@@ -222,7 +225,10 @@ async fn post_tool_no_autospawn_when_pipe_missing() {
     let r = post_tool::run(args, Some(bogus_socket())).await;
     let elapsed = started.elapsed();
 
-    assert!(r.is_ok(), "post-tool must exit Ok with daemon down; got: {r:?}");
+    assert!(
+        r.is_ok(),
+        "post-tool must exit Ok with daemon down; got: {r:?}"
+    );
     assert!(
         elapsed < NO_AUTOSPAWN_CEILING,
         "post-tool must NOT auto-spawn the daemon — return must be under {NO_AUTOSPAWN_CEILING:?}; \
@@ -245,7 +251,10 @@ async fn inject_no_autospawn_when_pipe_missing() {
     let r = inject::run(args, Some(bogus_socket())).await;
     let elapsed = started.elapsed();
 
-    assert!(r.is_ok(), "inject must exit Ok with daemon down; got: {r:?}");
+    assert!(
+        r.is_ok(),
+        "inject must exit Ok with daemon down; got: {r:?}"
+    );
     assert!(
         elapsed < NO_AUTOSPAWN_CEILING,
         "inject must NOT auto-spawn the daemon — return must be under {NO_AUTOSPAWN_CEILING:?}; \
@@ -267,7 +276,10 @@ async fn turn_end_no_autospawn_when_pipe_missing() {
     let r = turn_end::run(args, Some(bogus_socket())).await;
     let elapsed = started.elapsed();
 
-    assert!(r.is_ok(), "turn-end must exit Ok with daemon down; got: {r:?}");
+    assert!(
+        r.is_ok(),
+        "turn-end must exit Ok with daemon down; got: {r:?}"
+    );
     assert!(
         elapsed < NO_AUTOSPAWN_CEILING,
         "turn-end must NOT auto-spawn the daemon — return must be under {NO_AUTOSPAWN_CEILING:?}; \
@@ -288,7 +300,10 @@ async fn session_prime_no_autospawn_when_pipe_missing() {
     let r = session_prime::run(args, Some(bogus_socket())).await;
     let elapsed = started.elapsed();
 
-    assert!(r.is_ok(), "session-prime must exit Ok with daemon down; got: {r:?}");
+    assert!(
+        r.is_ok(),
+        "session-prime must exit Ok with daemon down; got: {r:?}"
+    );
     assert!(
         elapsed < NO_AUTOSPAWN_CEILING,
         "session-prime must NOT auto-spawn the daemon — return must be under {NO_AUTOSPAWN_CEILING:?}; \
@@ -313,7 +328,10 @@ async fn session_end_no_autospawn_when_pipe_missing() {
     let r = session_end::run(args, Some(bogus_socket())).await;
     let elapsed = started.elapsed();
 
-    assert!(r.is_ok(), "session-end must exit Ok with daemon down; got: {r:?}");
+    assert!(
+        r.is_ok(),
+        "session-end must exit Ok with daemon down; got: {r:?}"
+    );
     assert!(
         elapsed < NO_AUTOSPAWN_CEILING,
         "session-end must NOT auto-spawn the daemon — return must be under {NO_AUTOSPAWN_CEILING:?}; \

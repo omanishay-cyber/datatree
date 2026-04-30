@@ -89,9 +89,7 @@ pub async fn run(args: TurnEndArgs, socket_override: Option<PathBuf>) -> CliResu
     let session_id = match resolved_session_id(args.session_id, stdin_session) {
         Some(s) => s,
         None => {
-            tracing::debug!(
-                "turn-end fired without a session id; exiting 0 with no work"
-            );
+            tracing::debug!("turn-end fired without a session id; exiting 0 with no work");
             return Ok(());
         }
     };
@@ -221,22 +219,14 @@ mod tests {
 
     #[test]
     fn turn_end_args_parse_with_pre_compact_flag() {
-        let h = Harness::try_parse_from([
-            "x",
-            "--session-id", "s-7",
-            "--pre-compact",
-        ]).unwrap();
+        let h = Harness::try_parse_from(["x", "--session-id", "s-7", "--pre-compact"]).unwrap();
         assert_eq!(h.args.session_id.as_deref(), Some("s-7"));
         assert!(h.args.pre_compact);
     }
 
     #[test]
     fn turn_end_args_parse_with_subagent_flag() {
-        let h = Harness::try_parse_from([
-            "x",
-            "--session-id", "s-9",
-            "--subagent",
-        ]).unwrap();
+        let h = Harness::try_parse_from(["x", "--session-id", "s-9", "--subagent"]).unwrap();
         assert!(h.args.subagent);
     }
 
@@ -261,7 +251,10 @@ mod tests {
         };
         let r = run(args, Some(PathBuf::from("/nope-mneme.sock"))).await;
         let elapsed = start.elapsed();
-        assert!(r.is_ok(), "turn-end with no session id must exit Ok; got: {r:?}");
+        assert!(
+            r.is_ok(),
+            "turn-end with no session id must exit Ok; got: {r:?}"
+        );
         assert!(
             elapsed < std::time::Duration::from_secs(1),
             "turn-end with no session id must be effectively instant; took {elapsed:?}"

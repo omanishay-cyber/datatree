@@ -24,7 +24,10 @@ pub enum ServiceAction {
 }
 
 /// Cross-platform entry point.
-pub async fn execute(action: ServiceAction, config: SupervisorConfig) -> Result<(), SupervisorError> {
+pub async fn execute(
+    action: ServiceAction,
+    config: SupervisorConfig,
+) -> Result<(), SupervisorError> {
     match action {
         ServiceAction::RunForeground => crate::run(config).await,
         ServiceAction::RunAsService => run_as_service(config).await,

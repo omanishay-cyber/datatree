@@ -81,9 +81,7 @@ pub async fn sse_handler(
 
 /// Convenience handler for `GET /events` (no path param) — subscribes to
 /// everything via the bare `#` pattern. Mostly useful for debugging.
-pub async fn sse_firehose_handler(
-    State(mgr): State<SubscriberManager>,
-) -> impl IntoResponse {
+pub async fn sse_firehose_handler(State(mgr): State<SubscriberManager>) -> impl IntoResponse {
     sse_handler(
         State(mgr),
         Path("#".to_string()),

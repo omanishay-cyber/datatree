@@ -232,7 +232,9 @@ async fn launch_mcp(transport: String) -> CliResult<()> {
             "only stdio transport supported, got {transport:?}"
         )));
     }
-    let mneme_root = common::paths::PathManager::default_root().root().to_path_buf();
+    let mneme_root = common::paths::PathManager::default_root()
+        .root()
+        .to_path_buf();
     let candidates: Vec<PathBuf> = [
         std::env::var("MNEME_MCP_PATH").ok().map(PathBuf::from),
         Some(mneme_root.join("mcp").join("src").join("index.ts")),
@@ -290,8 +292,7 @@ fn which_bun() -> String {
     {
         // 1. WinGet shim — official `winget install Oven-sh.Bun`.
         if let Ok(la) = std::env::var("LOCALAPPDATA") {
-            let candidate =
-                std::path::Path::new(&la).join(r"Microsoft\WinGet\Links\bun.exe");
+            let candidate = std::path::Path::new(&la).join(r"Microsoft\WinGet\Links\bun.exe");
             if candidate.exists() {
                 return candidate.to_string_lossy().into();
             }
@@ -353,8 +354,7 @@ fn init_tracing(verbose: u8, json: bool) {
         2 => "debug",
         _ => "trace",
     };
-    let env_filter =
-        EnvFilter::try_from_env("MNEME_LOG").unwrap_or_else(|_| EnvFilter::new(level));
+    let env_filter = EnvFilter::try_from_env("MNEME_LOG").unwrap_or_else(|_| EnvFilter::new(level));
 
     if json {
         let _ = fmt()

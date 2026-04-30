@@ -212,10 +212,7 @@ fn derive_purpose(entry_points: &[WikiSymbol], fallback_title: &str) -> String {
     }
     let head = &entry_points[0];
     let trimmed = one_line(&head.summary);
-    format!(
-        "Centered on `{}`: {}",
-        head.qualified_name, trimmed
-    )
+    format!("Centered on `{}`: {}", head.qualified_name, trimmed)
 }
 
 fn render_risk(score: f32, cohesion: f32) -> String {

@@ -15,9 +15,8 @@ use std::path::Path;
 use crate::scanner::{line_col_of, Ast, Finding, Scanner, Severity};
 
 /// OpenAI-style secret keys.
-static SK_KEY: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"\bsk-[A-Za-z0-9_\-]{16,}\b"#).expect("sk key regex")
-});
+static SK_KEY: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\bsk-[A-Za-z0-9_\-]{16,}\b"#).expect("sk key regex"));
 
 /// AWS access key id.
 static AKIA_KEY: Lazy<Regex> =
@@ -29,8 +28,7 @@ static GH_PAT: Lazy<Regex> =
 
 /// Inline password assignment with a non-empty value.
 static PASSWORD_ASSIGN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)\bpassword\s*[:=]\s*["'][^"'\s]{4,}["']"#)
-        .expect("password assign regex")
+    Regex::new(r#"(?i)\bpassword\s*[:=]\s*["'][^"'\s]{4,}["']"#).expect("password assign regex")
 });
 
 /// Dynamic-evaluation invocation. Pattern assembled at runtime so this
@@ -52,8 +50,7 @@ static RISKY_INNER_HTML: Lazy<Regex> = Lazy::new(|| {
 
 /// ipcMain.handle / ipcMain.on invocations.
 static IPC_HANDLER: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"\bipcMain\.(?:handle|on)\s*\(\s*['"][^'"]+['"]"#)
-        .expect("ipc handler regex")
+    Regex::new(r#"\bipcMain\.(?:handle|on)\s*\(\s*['"][^'"]+['"]"#).expect("ipc handler regex")
 });
 
 /// SQL-like statements built via string concatenation. Heuristic — looks

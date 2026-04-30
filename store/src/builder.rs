@@ -21,8 +21,12 @@ use crate::schema::{apply_migrations, schema_sql, SCHEMA_VERSION};
 
 #[async_trait]
 pub trait DbBuilder {
-    async fn build_or_migrate(&self, project: &ProjectId, root: &Path, name: &str)
-        -> DtResult<ShardHandle>;
+    async fn build_or_migrate(
+        &self,
+        project: &ProjectId,
+        root: &Path,
+        name: &str,
+    ) -> DtResult<ShardHandle>;
     async fn rebuild(&self, project: &ProjectId, archive: bool) -> DtResult<ShardHandle>;
     async fn exists_and_current(&self, project: &ProjectId) -> DtResult<bool>;
 }
@@ -32,7 +36,9 @@ pub struct DefaultBuilder {
 }
 
 impl DefaultBuilder {
-    pub fn new(paths: Arc<PathManager>) -> Self { Self { paths } }
+    pub fn new(paths: Arc<PathManager>) -> Self {
+        Self { paths }
+    }
 }
 
 #[async_trait]
@@ -85,12 +91,14 @@ impl DbBuilder for DefaultBuilder {
         tokio::task::spawn_blocking(move || -> DtResult<ShardHandle> {
             let project_dir = paths.project_root(&project);
             if archive && project_dir.exists() {
-                let archived = project_dir.with_extension(format!(
-                    "archived.{}",
-                    Timestamp::now().as_dirname()
-                ));
+                let archived = project_dir
+                    .with_extension(format!("archived.{}", Timestamp::now().as_dirname()));
                 fs::rename(&project_dir, &archived)?;
-                warn!("archived {} -> {}", project_dir.display(), archived.display());
+                warn!(
+                    "archived {} -> {}",
+                    project_dir.display(),
+                    archived.display()
+                );
             } else if project_dir.exists() {
                 fs::remove_dir_all(&project_dir)?;
             }
@@ -122,11 +130,7 @@ impl DbBuilder for DefaultBuilder {
                 }
                 let conn = Connection::open(&p).map_err(DbError::from)?;
                 let v: u32 = conn
-                    .query_row(
-                        "SELECT MAX(version) FROM schema_version",
-                        [],
-                        |r| r.get(0),
-                    )
+                    .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
                     .map_err(DbError::from)
                     .unwrap_or(0);
                 if v != SCHEMA_VERSION {
@@ -145,7 +149,8 @@ fn init_shard(paths: &PathManager, project: &ProjectId, layer: DbLayer) -> DtRes
     let pre_existed = path.exists();
     let conn = Connection::open(&path).map_err(DbError::from)?;
     apply_pragmas(&conn)?;
-    conn.execute_batch(schema_sql(layer)).map_err(DbError::from)?;
+    conn.execute_batch(schema_sql(layer))
+        .map_err(DbError::from)?;
     record_version(&conn)?;
     // Run pending column-additive migrations from `schema::MIGRATIONS`.
     // No-op when the table is empty (v0.3.2 ship state). Once v0.4 adds
@@ -226,7 +231,8 @@ fn init_meta(paths: &PathManager) -> DtResult<()> {
     }
     let conn = Connection::open(&path).map_err(DbError::from)?;
     apply_pragmas(&conn)?;
-    conn.execute_batch(schema_sql(DbLayer::Meta)).map_err(DbError::from)?;
+    conn.execute_batch(schema_sql(DbLayer::Meta))
+        .map_err(DbError::from)?;
     record_version(&conn)?;
     // See comment in `init_shard` — migrations also run on the
     // root-level meta.db so cross-project tables stay in sync.
@@ -235,11 +241,16 @@ fn init_meta(paths: &PathManager) -> DtResult<()> {
 }
 
 fn apply_pragmas(conn: &Connection) -> DtResult<()> {
-    conn.pragma_update(None, "journal_mode", "WAL").map_err(DbError::from)?;
-    conn.pragma_update(None, "synchronous", "NORMAL").map_err(DbError::from)?;
-    conn.pragma_update(None, "foreign_keys", "ON").map_err(DbError::from)?;
-    conn.pragma_update(None, "temp_store", "MEMORY").map_err(DbError::from)?;
-    conn.pragma_update(None, "mmap_size", 268435456_i64).map_err(DbError::from)?; // 256MB
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(DbError::from)?;
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(DbError::from)?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(DbError::from)?;
+    conn.pragma_update(None, "temp_store", "MEMORY")
+        .map_err(DbError::from)?;
+    conn.pragma_update(None, "mmap_size", 268435456_i64)
+        .map_err(DbError::from)?; // 256MB
     Ok(())
 }
 
@@ -252,12 +263,7 @@ fn record_version(conn: &Connection) -> DtResult<()> {
     Ok(())
 }
 
-fn register_project(
-    paths: &PathManager,
-    id: &ProjectId,
-    root: &Path,
-    name: &str,
-) -> DtResult<()> {
+fn register_project(paths: &PathManager, id: &ProjectId, root: &Path, name: &str) -> DtResult<()> {
     let conn = Connection::open(paths.meta_db()).map_err(DbError::from)?;
     conn.execute(
         "INSERT INTO projects(id, root, name, schema_version)
@@ -266,12 +272,7 @@ fn register_project(
            root = excluded.root,
            name = excluded.name,
            schema_version = excluded.schema_version",
-        rusqlite::params![
-            id.as_str(),
-            root.to_string_lossy(),
-            name,
-            SCHEMA_VERSION
-        ],
+        rusqlite::params![id.as_str(), root.to_string_lossy(), name, SCHEMA_VERSION],
     )
     .map_err(DbError::from)?;
     Ok(())
@@ -330,12 +331,7 @@ mod tests {
         let conn = Connection::open(paths.meta_db()).unwrap();
         conn.execute(
             "INSERT INTO projects(id, root, name, schema_version) VALUES(?1, ?2, ?3, ?4)",
-            rusqlite::params![
-                id.as_str(),
-                root.to_string_lossy(),
-                name,
-                SCHEMA_VERSION
-            ],
+            rusqlite::params![id.as_str(), root.to_string_lossy(), name, SCHEMA_VERSION],
         )
         .unwrap();
     }
@@ -354,7 +350,10 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert!(pre.is_none(), "expected NULL last_indexed_at before mark_indexed");
+        assert!(
+            pre.is_none(),
+            "expected NULL last_indexed_at before mark_indexed"
+        );
 
         mark_indexed(&paths, &id).expect("mark_indexed");
 
@@ -366,7 +365,11 @@ mod tests {
             )
             .unwrap();
         let ts = post.expect("last_indexed_at must be set after mark_indexed");
-        assert_eq!(ts.len(), 19, "datetime('now') format YYYY-MM-DD HH:MM:SS expected, got {ts}");
+        assert_eq!(
+            ts.len(),
+            19,
+            "datetime('now') format YYYY-MM-DD HH:MM:SS expected, got {ts}"
+        );
 
         let written_secs: i64 = conn
             .query_row(

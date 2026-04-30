@@ -170,9 +170,7 @@ impl ChildManager {
     /// Silently ignoring a second `None` would leave the channel
     /// unconsumed and the restart pipeline dead. (NEW-012.)
     #[must_use = "the receiver must be passed to run_restart_loop or restarts will silently stop"]
-    pub(crate) async fn take_restart_rx(
-        &self,
-    ) -> Option<mpsc::UnboundedReceiver<RestartRequest>> {
+    pub(crate) async fn take_restart_rx(&self) -> Option<mpsc::UnboundedReceiver<RestartRequest>> {
         let mut guard = self.restart_rx.lock().await;
         let taken = guard.take();
         if taken.is_none() {
@@ -181,9 +179,7 @@ impl ChildManager {
             // pipeline dead. Emit a debug-level diagnostic so the bug is
             // surfaced in `tail -F` of the supervisor log even in
             // release builds (where the assertion would compile out).
-            debug!(
-                "take_restart_rx called twice — programmer error or supervisor restart"
-            );
+            debug!("take_restart_rx called twice — programmer error or supervisor restart");
         }
         taken
     }
@@ -223,9 +219,9 @@ impl ChildManager {
         // Insert (or refresh) the handle.
         {
             let mut guard = self.handles.write().await;
-            guard
-                .entry(name.clone())
-                .or_insert_with(|| Arc::new(Mutex::new(ChildHandle::new(spec.clone(), initial_backoff))));
+            guard.entry(name.clone()).or_insert_with(|| {
+                Arc::new(Mutex::new(ChildHandle::new(spec.clone(), initial_backoff)))
+            });
         }
 
         let handle_arc = {
@@ -563,10 +559,7 @@ impl ChildManager {
         info!("restart loop offline");
     }
 
-    async fn respawn_one(
-        self: &Arc<Self>,
-        req: &RestartRequest,
-    ) -> Result<(), SupervisorError> {
+    async fn respawn_one(self: &Arc<Self>, req: &RestartRequest) -> Result<(), SupervisorError> {
         let policy = self.config.default_restart_policy.clone();
         let handle = match self.handle_for(&req.name).await {
             Some(h) => h,
@@ -595,8 +588,7 @@ impl ChildManager {
                     window_secs: policy.budget_window.as_secs(),
                 });
             }
-            let next =
-                (h.current_backoff.as_millis() as f32 * policy.backoff_multiplier) as u64;
+            let next = (h.current_backoff.as_millis() as f32 * policy.backoff_multiplier) as u64;
             let capped = next.min(policy.max_backoff.as_millis() as u64);
             let delay = h.current_backoff;
             h.current_backoff = Duration::from_millis(capped.max(1));
@@ -722,10 +714,7 @@ impl ChildManager {
                 total_jobs_dispatched: h.total_jobs_dispatched,
                 // Phase-A C1: convert bytes → MB. Saturating arithmetic so
                 // a sysinfo blip that returns u64::MAX can't overflow.
-                rss_mb: h
-                    .rss_bytes
-                    .map(|b| b / (1024 * 1024))
-                    .unwrap_or(0),
+                rss_mb: h.rss_bytes.map(|b| b / (1024 * 1024)).unwrap_or(0),
             });
         }
         // Phase-A C3: natural-order sort so `parser-worker-2` comes
@@ -811,7 +800,9 @@ impl ChildManager {
         // snapshot and refresh get `None` so /health doesn't lie.
         let guard = self.handles.read().await;
         for (name, pid) in pairs {
-            let Some(handle) = guard.get(&name) else { continue };
+            let Some(handle) = guard.get(&name) else {
+                continue;
+            };
             let mut h = handle.lock().await;
             // Skip if the child has already been respawned with a new
             // PID since we sampled — the next refresh tick will catch
@@ -859,11 +850,7 @@ impl ChildManager {
     ///
     /// Returns `Err(SupervisorError::Other)` if the child is not running,
     /// its stdin handle has been reaped, or the write fails.
-    pub async fn dispatch_job(
-        &self,
-        name: &str,
-        payload: &str,
-    ) -> Result<(), SupervisorError> {
+    pub async fn dispatch_job(&self, name: &str, payload: &str) -> Result<(), SupervisorError> {
         let handle = self
             .handle_for(name)
             .await

@@ -24,11 +24,11 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use common::{ids::ProjectId, layer::DbLayer, paths::PathManager};
-use store::{inject::InjectOptions, Store};
 use parsers::{
     extractor::Extractor, incremental::IncrementalParser, parser_pool::ParserPool, query_cache,
     Language,
 };
+use store::{inject::InjectOptions, Store};
 
 /// Small fixed query set used when callers want a canned 10-query workload
 /// against any repo (token-reduction and incremental benches). Queries are
@@ -355,7 +355,10 @@ pub async fn index_repo(project: &Path) -> BenchResult<IndexReport> {
 
 /// Run an entire query set against the given shard and return per-query
 /// timings + token counts.
-pub fn run_query_set(shard_graph_db: &Path, queries: &[GoldenQuery]) -> BenchResult<QuerySetReport> {
+pub fn run_query_set(
+    shard_graph_db: &Path,
+    queries: &[GoldenQuery],
+) -> BenchResult<QuerySetReport> {
     let conn = rusqlite::Connection::open_with_flags(
         shard_graph_db,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
@@ -488,11 +491,15 @@ pub fn cold_baseline(repo: &Path, query: &str) -> BenchResult<(Vec<String>, u64)
         if Language::from_filename(path).is_none() {
             continue;
         }
-        let Ok(bytes) = std::fs::read(path) else { continue };
+        let Ok(bytes) = std::fs::read(path) else {
+            continue;
+        };
         if looks_binary(&bytes) {
             continue;
         }
-        let Ok(text) = std::str::from_utf8(&bytes) else { continue };
+        let Ok(text) = std::str::from_utf8(&bytes) else {
+            continue;
+        };
         let count = text.to_lowercase().matches(&needle).count() as u64;
         if count > 0 {
             hits.push((path.display().to_string(), count));
@@ -593,8 +600,8 @@ pub fn compare_vs_cold(
 
 /// Load a golden JSON fixture from disk.
 pub fn load_fixture(path: &Path) -> BenchResult<Vec<GoldenQuery>> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| BenchError::Fixture(format!("{}: {e}", path.display())))?;
+    let bytes =
+        std::fs::read(path).map_err(|e| BenchError::Fixture(format!("{}: {e}", path.display())))?;
     let queries: Vec<GoldenQuery> = serde_json::from_slice(&bytes)?;
     Ok(queries)
 }
@@ -824,8 +831,8 @@ pub async fn bench_incremental(repo: &Path) -> BenchResult<IncrementalReport> {
 
     let paths = PathManager::default_root();
     let store = Store::new(paths.clone());
-    let project_id = ProjectId::from_path(&repo)
-        .map_err(|e| BenchError::InvalidPath(format!("hash: {e}")))?;
+    let project_id =
+        ProjectId::from_path(&repo).map_err(|e| BenchError::InvalidPath(format!("hash: {e}")))?;
     let project_name = repo
         .file_name()
         .and_then(|s| s.to_str())
@@ -1004,10 +1011,9 @@ pub fn run_one_query_top_n(
         QueryKind::Recall => &q_like,
         _ => &like,
     };
-    let rows = stmt.query_map(
-        rusqlite::params![bound_like, limit],
-        |r| r.get::<_, String>(0),
-    )?;
+    let rows = stmt.query_map(rusqlite::params![bound_like, limit], |r| {
+        r.get::<_, String>(0)
+    })?;
     let mut out = Vec::new();
     for row in rows {
         out.push(row?);

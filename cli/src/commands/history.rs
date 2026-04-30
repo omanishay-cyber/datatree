@@ -46,9 +46,9 @@ struct HistoryRow {
 /// `_socket_override` parameter has been removed; if/when the supervisor
 /// gains a `History` request, re-add it (and threadthrough from main.rs).
 pub async fn run(args: HistoryArgs) -> CliResult<()> {
-    let project = args.project.unwrap_or_else(|| {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    });
+    let project = args
+        .project
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let project = std::fs::canonicalize(&project).unwrap_or(project);
 
     let id = ProjectId::from_path(&project)
@@ -98,7 +98,12 @@ pub async fn run(args: HistoryArgs) -> CliResult<()> {
                 })
             })
             .map_err(|e| CliError::Other(format!("exec: {e}")))?;
-        Box::new(mapped.filter_map(|r| r.ok()).collect::<Vec<_>>().into_iter())
+        Box::new(
+            mapped
+                .filter_map(|r| r.ok())
+                .collect::<Vec<_>>()
+                .into_iter(),
+        )
     } else {
         let sql = format!("{base} ORDER BY timestamp DESC LIMIT ?2");
         let mut stmt = conn
@@ -114,7 +119,12 @@ pub async fn run(args: HistoryArgs) -> CliResult<()> {
                 })
             })
             .map_err(|e| CliError::Other(format!("exec: {e}")))?;
-        Box::new(mapped.filter_map(|r| r.ok()).collect::<Vec<_>>().into_iter())
+        Box::new(
+            mapped
+                .filter_map(|r| r.ok())
+                .collect::<Vec<_>>()
+                .into_iter(),
+        )
     };
 
     let mut shown = 0usize;
@@ -154,14 +164,22 @@ fn format_ms_utc(ms: i64) -> String {
 }
 fn ymd(days: i64) -> (i32, u32, u32) {
     let z = days + 719_468;
-    let era = if z >= 0 { z / 146_097 } else { (z - 146_096) / 146_097 };
+    let era = if z >= 0 {
+        z / 146_097
+    } else {
+        (z - 146_096) / 146_097
+    };
     let doe = (z - era * 146_097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let y = yoe as i64 + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { (mp + 3) as u32 } else { (mp - 9) as u32 };
+    let m = if mp < 10 {
+        (mp + 3) as u32
+    } else {
+        (mp - 9) as u32
+    };
     let y = if m <= 2 { y + 1 } else { y };
     (y as i32, m, d)
 }
@@ -178,10 +196,7 @@ mod tests {
     #[test]
     fn format_ms_utc_known_timestamp() {
         // 2021-01-01 00:00:00 UTC = 1_609_459_200_000 ms
-        assert_eq!(
-            format_ms_utc(1_609_459_200_000),
-            "2021-01-01 00:00:00 UTC"
-        );
+        assert_eq!(format_ms_utc(1_609_459_200_000), "2021-01-01 00:00:00 UTC");
     }
 
     #[tokio::test]

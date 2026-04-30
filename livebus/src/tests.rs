@@ -40,10 +40,7 @@ fn wildcard_matches_design_examples() {
         "project.*.file_changed",
         "session.x.file_changed"
     ));
-    assert!(topic_matches(
-        "project.abc.#",
-        "project.abc.subagent_event"
-    ));
+    assert!(topic_matches("project.abc.#", "project.abc.subagent_event"));
 }
 
 #[test]

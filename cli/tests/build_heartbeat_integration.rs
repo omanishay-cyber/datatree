@@ -64,7 +64,10 @@ async fn heartbeat_emits_status_line_during_parse_phase() {
     for line in &lines {
         let s = line.format();
         assert!(s.contains("phase="), "line missing phase= token: {s}");
-        assert!(s.contains("processed="), "line missing processed= token: {s}");
+        assert!(
+            s.contains("processed="),
+            "line missing processed= token: {s}"
+        );
         assert!(s.contains("rate="), "line missing rate= token: {s}");
         assert!(s.contains("elapsed]"), "line missing elapsed mm:ss: {s}");
     }

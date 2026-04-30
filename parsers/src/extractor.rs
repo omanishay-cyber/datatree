@@ -6,9 +6,7 @@
 //! files with syntax issues.
 
 use crate::error::ParserError;
-use crate::job::{
-    Confidence, Edge, EdgeKind, Node, NodeKind, SyntaxIssue, SyntaxIssueKind,
-};
+use crate::job::{Confidence, Edge, EdgeKind, Node, NodeKind, SyntaxIssue, SyntaxIssueKind};
 use crate::language::Language;
 use crate::query_cache::{get_query, QueryKind};
 use std::path::{Path, PathBuf};
@@ -150,11 +148,7 @@ impl Extractor {
 
     // ---- helpers --------------------------------------------------------
 
-    fn collect_errors(
-        &self,
-        tree: &Tree,
-        bytes: &[u8],
-    ) -> Result<Vec<SyntaxIssue>, ParserError> {
+    fn collect_errors(&self, tree: &Tree, bytes: &[u8]) -> Result<Vec<SyntaxIssue>, ParserError> {
         let _ = bytes;
         let mut out = Vec::new();
         // Prefer the query path; if the grammar rejects the (ERROR) query
@@ -268,12 +262,7 @@ impl Extractor {
         let mut matches = cursor.matches(&q, tree.root_node(), bytes);
         while let Some(m) = matches.next() {
             let outer = import_idx
-                .and_then(|idx| {
-                    m.captures
-                        .iter()
-                        .find(|c| c.index == idx)
-                        .map(|c| c.node)
-                })
+                .and_then(|idx| m.captures.iter().find(|c| c.index == idx).map(|c| c.node))
                 .or_else(|| m.captures.last().map(|c| c.node));
             let Some(outer) = outer else { continue };
             let target = source_idx
@@ -326,10 +315,9 @@ impl Extractor {
             // Java single-binding semantics, etc.) which are scoped as
             // follow-up TODOs in the issues registry.
             let bindings = match self.language {
-                Language::TypeScript
-                | Language::Tsx
-                | Language::JavaScript
-                | Language::Jsx => collect_js_import_bindings(outer, bytes),
+                Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx => {
+                    collect_js_import_bindings(outer, bytes)
+                }
                 _ => Vec::new(),
             };
 
@@ -352,12 +340,7 @@ impl Extractor {
                 // distinguish "import {Button} from 'react'" from
                 // "import {Card} from 'react'".
                 for binding in bindings {
-                    let to_id = format!(
-                        "import::{}::{}::{}",
-                        file_path.display(),
-                        target,
-                        binding
-                    );
+                    let to_id = format!("import::{}::{}::{}", file_path.display(), target, binding);
                     out.edges.push(Edge {
                         from: file_id.to_string(),
                         to: to_id,
@@ -436,8 +419,10 @@ impl Extractor {
                         .and_then(|s| s.utf8_text(bytes).ok())
                         .map(|s| s.trim_matches(|c| c == '(' || c == ')').to_string())
                 }
-                (Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx,
-                    "class_declaration") => node
+                (
+                    Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx,
+                    "class_declaration",
+                ) => node
                     .child_by_field_name("heritage")
                     .or_else(|| node.child_by_field_name("superclass"))
                     .and_then(|s| s.utf8_text(bytes).ok())
@@ -468,10 +453,7 @@ impl Extractor {
 // Tree-walking helpers
 // ---------------------------------------------------------------------------
 
-fn iter_all<'a>(
-    root: TsNode<'a>,
-    cursor: &mut tree_sitter::TreeCursor<'a>,
-) -> Vec<TsNode<'a>> {
+fn iter_all<'a>(root: TsNode<'a>, cursor: &mut tree_sitter::TreeCursor<'a>) -> Vec<TsNode<'a>> {
     let mut out = Vec::new();
     cursor.reset(root);
     let mut stack = vec![root];
@@ -532,15 +514,9 @@ fn is_callable_kind(kind: &str, lang: Language) -> bool {
         Language::Ruby => matches!(kind, "method"),
         Language::Php => matches!(kind, "function_definition" | "method_declaration"),
         Language::Bash => matches!(kind, "function_definition"),
-        Language::TypeScript
-        | Language::Tsx
-        | Language::JavaScript
-        | Language::Jsx => matches!(
+        Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx => matches!(
             kind,
-            "function_declaration"
-                | "method_definition"
-                | "function_expression"
-                | "arrow_function"
+            "function_declaration" | "method_definition" | "function_expression" | "arrow_function"
         ),
         // --- Tier 2 community grammars ---------------------------------
         Language::Swift => matches!(kind, "function_declaration"),
@@ -633,11 +609,7 @@ fn collect_js_import_bindings(import_node: TsNode<'_>, bytes: &[u8]) -> Vec<Stri
     out
 }
 
-fn collect_js_clause_bindings(
-    clause: TsNode<'_>,
-    bytes: &[u8],
-    out: &mut Vec<String>,
-) {
+fn collect_js_clause_bindings(clause: TsNode<'_>, bytes: &[u8], out: &mut Vec<String>) {
     let mut cursor = clause.walk();
     for child in clause.children(&mut cursor) {
         match child.kind() {
@@ -661,11 +633,7 @@ fn collect_js_clause_bindings(
     }
 }
 
-fn collect_js_named_specifiers(
-    named: TsNode<'_>,
-    bytes: &[u8],
-    out: &mut Vec<String>,
-) {
+fn collect_js_named_specifiers(named: TsNode<'_>, bytes: &[u8], out: &mut Vec<String>) {
     let mut cursor = named.walk();
     for child in named.children(&mut cursor) {
         if child.kind() != "import_specifier" {
@@ -697,10 +665,7 @@ fn collect_js_named_specifiers(
     }
 }
 
-fn collect_js_namespace_name(
-    ns: TsNode<'_>,
-    bytes: &[u8],
-) -> Option<String> {
+fn collect_js_namespace_name(ns: TsNode<'_>, bytes: &[u8]) -> Option<String> {
     // Shape: `* as identifier`. The grammar parses this as a flat
     // sequence `*`, `as`, `identifier` — so we walk and take the
     // (only) identifier child.

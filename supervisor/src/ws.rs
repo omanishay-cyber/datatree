@@ -378,8 +378,7 @@ mod ws_tests {
         assert_eq!(got.topic, "project.abc.file_changed");
         // Round-trip through the on-the-wire JSON shape too — that's what
         // `WsServerMsg::Event` encodes per frame.
-        let frame =
-            serde_json::to_string(&WsServerMsg::Event { event: &got }).expect("encode");
+        let frame = serde_json::to_string(&WsServerMsg::Event { event: &got }).expect("encode");
         let v: serde_json::Value = serde_json::from_str(&frame).expect("decode");
         assert_eq!(v["op"], "event");
         assert_eq!(v["event"]["topic"], "project.abc.file_changed");

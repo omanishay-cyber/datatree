@@ -66,14 +66,14 @@ impl From<rusqlite::Error> for DbError {
         if let rusqlite::Error::SqliteFailure(err, _) = &e {
             match err.code {
                 rusqlite::ErrorCode::DatabaseCorrupt => {
-                    return DbError::Corrupted { detail: e.to_string() }
+                    return DbError::Corrupted {
+                        detail: e.to_string(),
+                    }
                 }
                 rusqlite::ErrorCode::ReadOnly | rusqlite::ErrorCode::PermissionDenied => {
                     return DbError::PermissionDenied
                 }
-                rusqlite::ErrorCode::DiskFull => {
-                    return DbError::DiskFull { available_bytes: 0 }
-                }
+                rusqlite::ErrorCode::DiskFull => return DbError::DiskFull { available_bytes: 0 },
                 _ => {}
             }
         }

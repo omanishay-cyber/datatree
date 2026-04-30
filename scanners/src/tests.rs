@@ -44,9 +44,7 @@ fn theme_positive_missing_dark_variant() {
     let s = ThemeScanner::new(None);
     let content = r#"<div className="bg-white text-gray-900">x</div>"#;
     let f = s.scan(&p("Foo.tsx"), content, None);
-    assert!(f
-        .iter()
-        .any(|x| x.rule_id == "theme.missing-dark-variant"));
+    assert!(f.iter().any(|x| x.rule_id == "theme.missing-dark-variant"));
 }
 
 #[test]
@@ -63,9 +61,7 @@ fn theme_negative_with_dark_variant() {
     let content =
         r#"<div className="bg-white dark:bg-black text-gray-900 dark:text-white">x</div>"#;
     let f = s.scan(&p("Foo.tsx"), content, None);
-    assert!(f
-        .iter()
-        .all(|x| x.rule_id != "theme.missing-dark-variant"));
+    assert!(f.iter().all(|x| x.rule_id != "theme.missing-dark-variant"));
 }
 
 // ---------- TsTypesScanner ----------
@@ -122,9 +118,7 @@ fn security_positive_aws_key() {
     let s = SecurityScanner::new();
     let content = "const k = 'AKIAIOSFODNN7EXAMPLE';";
     let f = s.scan(&p("a.ts"), content, None);
-    assert!(f
-        .iter()
-        .any(|x| x.rule_id == "security.hardcoded-aws-key"));
+    assert!(f.iter().any(|x| x.rule_id == "security.hardcoded-aws-key"));
 }
 
 #[test]
@@ -172,8 +166,7 @@ fn a11y_positive_img_no_alt() {
 #[test]
 fn a11y_negative_proper_button() {
     let s = A11yScanner::new();
-    let content =
-        r#"<button aria-label="close" className="focus-visible:ring-2"><X/></button>"#;
+    let content = r#"<button aria-label="close" className="focus-visible:ring-2"><X/></button>"#;
     let f = s.scan(&p("a.tsx"), content, None);
     assert!(f.iter().all(|x| x.rule_id != "a11y.icon-button-no-label"));
     assert!(f
@@ -212,9 +205,7 @@ fn perf_positive_object_keys_foreach() {
     let s = PerfScanner::new();
     let content = "Object.keys(obj).forEach(k => { console.log(k); });";
     let f = s.scan(&p("a.ts"), content, None);
-    assert!(f
-        .iter()
-        .any(|x| x.rule_id == "perf.objectkeys-foreach"));
+    assert!(f.iter().any(|x| x.rule_id == "perf.objectkeys-foreach"));
 }
 
 #[test]
@@ -238,9 +229,7 @@ fn perf_positive_rust_unwrap_in_async() {
     let s = PerfScanner::new();
     let content = "async fn load() -> usize {\n    let n = fetch().await.unwrap();\n    n\n}";
     let f = s.scan(&p("a.rs"), content, None);
-    assert!(f
-        .iter()
-        .any(|x| x.rule_id == "perf.rust-unwrap-in-async"));
+    assert!(f.iter().any(|x| x.rule_id == "perf.rust-unwrap-in-async"));
 }
 
 #[test]
@@ -248,9 +237,7 @@ fn perf_negative_rust_unwrap_in_sync() {
     let s = PerfScanner::new();
     let content = "fn load() -> usize { let n = fetch().unwrap(); n }";
     let f = s.scan(&p("a.rs"), content, None);
-    assert!(f
-        .iter()
-        .all(|x| x.rule_id != "perf.rust-unwrap-in-async"));
+    assert!(f.iter().all(|x| x.rule_id != "perf.rust-unwrap-in-async"));
 }
 
 // ---------- DriftScanner ----------
@@ -336,9 +323,7 @@ fn md_positive_dead_path() {
     let s = MarkdownDriftScanner::new(Some(dir.path().to_string_lossy().into_owned()));
     let content = "the auth flow lives in `src/auth/login.ts`";
     let f = s.scan(&p("README.md"), content, None);
-    assert!(f
-        .iter()
-        .any(|x| x.rule_id == "markdown.dead-backtick-path"));
+    assert!(f.iter().any(|x| x.rule_id == "markdown.dead-backtick-path"));
 }
 
 #[test]
@@ -350,9 +335,7 @@ fn md_negative_existing_path() {
     let s = MarkdownDriftScanner::new(Some(dir.path().to_string_lossy().into_owned()));
     let content = "the auth flow lives in `src/auth/login.ts`";
     let f = s.scan(&p("README.md"), content, None);
-    assert!(f
-        .iter()
-        .all(|x| x.rule_id != "markdown.dead-backtick-path"));
+    assert!(f.iter().all(|x| x.rule_id != "markdown.dead-backtick-path"));
 }
 
 // ---------- SecretsScanner ----------
@@ -368,8 +351,7 @@ fn secrets_positive_aws() {
 #[test]
 fn secrets_positive_jwt() {
     let s = SecretsScanner::new();
-    let content =
-        "const t = 'eyJabcdefgh.eyJabcdefgh.signature123signature123signature123';";
+    let content = "const t = 'eyJabcdefgh.eyJabcdefgh.signature123signature123signature123';";
     let f = s.scan(&p("a.ts"), content, None);
     assert!(f.iter().any(|x| x.rule_id == "secrets.jwt"));
 }
@@ -419,10 +401,7 @@ async fn worker_runs_one_job() {
     );
     let res = worker.run_one(job).await;
     assert_eq!(res.job_id, 42);
-    assert!(res
-        .findings
-        .iter()
-        .any(|f| f.severity == Severity::Warning));
+    assert!(res.findings.iter().any(|f| f.severity == Severity::Warning));
     assert!(res.failed_scanners.is_empty());
 }
 

@@ -356,7 +356,9 @@ fn detect_js_framework(
     ];
     for (dep_key, name, cat) in probes {
         if let Some(v) = deps.get(*dep_key) {
-            let version = v.as_str().map(|s| s.trim_start_matches(['^', '~']).to_string());
+            let version = v
+                .as_str()
+                .map(|s| s.trim_start_matches(['^', '~']).to_string());
             push_unique(
                 out,
                 Technology {
@@ -660,7 +662,8 @@ tokio = "1"
             "README.md",
             "# Project Overview\n\nA Small Tool For Indexing Files automatically.\n",
         );
-        let id = ProjectIdentity::build(dir.path(), vec!["goal1".into()], vec!["q?".into()], vec![]);
+        let id =
+            ProjectIdentity::build(dir.path(), vec!["goal1".into()], vec!["q?".into()], vec![]);
         let md = id.to_markdown();
         assert!(md.contains("Project: cool-app"));
         assert!(md.contains("react"));

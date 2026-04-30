@@ -101,7 +101,10 @@ fn cmd_status(project: Option<PathBuf>) -> CliResult<()> {
     println!("mneme federated — local fingerprint index");
     println!("  total:          {}", counts.total);
     println!("  pending upload: {}", counts.pending_upload);
-    println!("  opt-in:         {}", if optin_marker().exists() { "yes" } else { "no" });
+    println!(
+        "  opt-in:         {}",
+        if optin_marker().exists() { "yes" } else { "no" }
+    );
     if counts.by_kind.is_empty() {
         println!("  by kind:        (none yet — run `mneme federated scan`)");
     } else {
@@ -124,7 +127,10 @@ fn cmd_opt_in() -> CliResult<()> {
           # v0.2: sync is a stub, no network traffic yet.\n",
     )
     .map_err(|e| CliError::io(marker.clone(), e))?;
-    println!("mneme: federated upload opt-in recorded at {}", marker.display());
+    println!(
+        "mneme: federated upload opt-in recorded at {}",
+        marker.display()
+    );
     println!("       · v0.2: no network upload yet — `mneme federated sync` is a stub.");
     Ok(())
 }
@@ -133,7 +139,10 @@ fn cmd_opt_out() -> CliResult<()> {
     let marker = optin_marker();
     if marker.exists() {
         fs::remove_file(&marker).map_err(|e| CliError::io(marker.clone(), e))?;
-        println!("mneme: federated upload opt-in removed ({})", marker.display());
+        println!(
+            "mneme: federated upload opt-in removed ({})",
+            marker.display()
+        );
     } else {
         println!("mneme: not opted-in, nothing to remove");
     }
@@ -178,7 +187,9 @@ fn cmd_scan(path: Option<PathBuf>, project: Option<PathBuf>) -> CliResult<()> {
         let source = path.to_string_lossy().into_owned();
         store
             .index_local_with_source(fp, Some(&source))
-            .map_err(|e| CliError::Other(format!("index fingerprint for {}: {e}", path.display())))?;
+            .map_err(|e| {
+                CliError::Other(format!("index fingerprint for {}: {e}", path.display()))
+            })?;
         indexed += 1;
     }
 
@@ -209,7 +220,10 @@ fn cmd_sync(project: Option<PathBuf>) -> CliResult<()> {
     let opted_in = optin_marker().exists();
 
     eprintln!("mneme federated sync — pre-flight (no network in v0.3.x):");
-    eprintln!("  opt-in:               {}", if opted_in { "yes" } else { "no" });
+    eprintln!(
+        "  opt-in:               {}",
+        if opted_in { "yes" } else { "no" }
+    );
     eprintln!("  fingerprints pending: {}", export.len());
     eprintln!("  bytes (serialized):   {}", est_bytes(&export));
     if !export.is_empty() {
@@ -236,8 +250,7 @@ fn open_store(project: Option<PathBuf>) -> CliResult<FederatedStore> {
         .map_err(|e| CliError::Other(format!("cannot hash project path: {e}")))?;
     let paths = PathManager::default_root();
     let db_path = paths.shard_db(&project_id, DbLayer::Federated);
-    FederatedStore::new(&db_path)
-        .map_err(|e| CliError::Other(format!("open federated store: {e}")))
+    FederatedStore::new(&db_path).map_err(|e| CliError::Other(format!("open federated store: {e}")))
 }
 
 /// Location of the user-level opt-in marker. Presence = opted-in.

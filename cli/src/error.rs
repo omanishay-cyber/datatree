@@ -98,10 +98,7 @@ pub enum CliError {
 impl CliError {
     /// Build a [`CliError::Io`] without the path being known.
     pub fn io_pathless(source: std::io::Error) -> Self {
-        CliError::Io {
-            path: None,
-            source,
-        }
+        CliError::Io { path: None, source }
     }
 
     /// Build a [`CliError::Io`] tagged with a path for nicer messages.

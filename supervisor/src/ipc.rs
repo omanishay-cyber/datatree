@@ -14,8 +14,6 @@ use crate::job_queue::JobQueueSnapshot;
 use crate::manager::{ChildManager, ChildSnapshot};
 use common::jobs::{Job, JobId, JobOutcome};
 use common::query::{BlastItem, GodNode, RecallHit};
-use std::path::Path;
-use std::sync::OnceLock;
 use interprocess::local_socket::tokio::{Listener, Stream};
 use interprocess::local_socket::traits::tokio::Listener as _;
 use interprocess::local_socket::traits::tokio::Stream as IpcStreamExt;
@@ -25,8 +23,10 @@ use interprocess::local_socket::{GenericFilePath, ToFsName};
 #[cfg(windows)]
 use interprocess::local_socket::{GenericNamespaced, ToNsName};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Notify, Semaphore};
@@ -211,7 +211,6 @@ pub enum ControlCommand {
     // — they share the wire via `tag = "command", rename_all =
     // "snake_case"`. Do NOT add behaviour here; the supervisor-side
     // implementation lands later in the roadmap.
-
     /// (B2.2) Run all configured scanners. CLI mirror — supervisor
     /// stub today; the CLI's `mneme audit` direct-subprocess path is
     /// authoritative.
@@ -800,12 +799,10 @@ async fn dispatch(
             Ok(impacted) => ControlResponse::BlastResults { impacted },
             Err(e) => ControlResponse::Error { message: e },
         },
-        ControlCommand::GodNodes { project, n } => {
-            match query_runner::run_godnodes(&project, n) {
-                Ok(nodes) => ControlResponse::GodNodesResults { nodes },
-                Err(e) => ControlResponse::Error { message: e },
-            }
-        }
+        ControlCommand::GodNodes { project, n } => match query_runner::run_godnodes(&project, n) {
+            Ok(nodes) => ControlResponse::GodNodesResults { nodes },
+            Err(e) => ControlResponse::Error { message: e },
+        },
         // NEW-019: enumerate corpus markdown/text files under `project_id`
         // and queue an `Job::Ingest` per file. Returns the count without
         // waiting for completion — Bucket D (MCP) polls `JobQueueStatus`
@@ -830,7 +827,10 @@ async fn dispatch(
         // NEW-019: combined supervisor + queue snapshot. The `scope`
         // parameter is echoed back today; the actual filter is uniform
         // (`"all"` shape) so a misuse never silently drops data.
-        ControlCommand::Snapshot { project_id: _, scope } => {
+        ControlCommand::Snapshot {
+            project_id: _,
+            scope,
+        } => {
             let children = manager.snapshot().await;
             let jobs = match manager.job_queue().await {
                 Some(q) => q.snapshot(),
@@ -857,7 +857,10 @@ async fn dispatch(
         // bounce-all. `force` today is a hint (we always kill); the
         // parameter is preserved on the wire so v0.4 can implement a
         // "drain then bounce" path without breaking older callers.
-        ControlCommand::Rebuild { project_id: _, force } => {
+        ControlCommand::Rebuild {
+            project_id: _,
+            force,
+        } => {
             let names = manager.child_names().await;
             let mut bounced = Vec::with_capacity(names.len());
             for n in &names {
@@ -888,10 +891,14 @@ async fn dispatch(
         // Bindings prefixed with `_` to silence unused warnings while
         // preserving wire-shape documentation.
         ControlCommand::Audit { scope: _scope } => ControlResponse::Error {
-            message: "audit not yet implemented in supervisor; CLI fallback is authoritative".into(),
+            message: "audit not yet implemented in supervisor; CLI fallback is authoritative"
+                .into(),
         },
-        ControlCommand::Drift { severity: _severity } => ControlResponse::Error {
-            message: "drift not yet implemented in supervisor; CLI fallback is authoritative".into(),
+        ControlCommand::Drift {
+            severity: _severity,
+        } => ControlResponse::Error {
+            message: "drift not yet implemented in supervisor; CLI fallback is authoritative"
+                .into(),
         },
         ControlCommand::Step { op: _op, arg: _arg } => ControlResponse::Error {
             message: "step not yet implemented in supervisor; CLI fallback is authoritative".into(),
@@ -1024,9 +1031,7 @@ fn hook_store() -> &'static store::Store {
 /// exists (idempotent `build_or_migrate`). Mirrors what the CLI's
 /// `HookCtx::resolve` does — kept in sync deliberately so the
 /// supervisor path and the direct-DB fallback write to the same shard.
-async fn hook_resolve_project(
-    project: &Path,
-) -> Result<common::ids::ProjectId, String> {
+async fn hook_resolve_project(project: &Path) -> Result<common::ids::ProjectId, String> {
     let project_id = common::ids::ProjectId::from_path(project)
         .map_err(|e| format!("hash project path {}: {e}", project.display()))?;
     let project_name = project
@@ -1250,10 +1255,7 @@ async fn enqueue_corpus(
         let id = match ProjectId::from_path(&root) {
             Ok(id) => id,
             Err(e) => {
-                return Err(format!(
-                    "cannot hash project path {}: {e}",
-                    root.display()
-                ));
+                return Err(format!("cannot hash project path {}: {e}", root.display()));
             }
         };
         PathManager::default_root().project_root(&id)
@@ -1445,8 +1447,7 @@ mod query_runner {
 
     /// Resolve a project root to its `graph.db` path via `PathManager`.
     fn resolve_graph_db(project: &Path) -> Result<PathBuf, String> {
-        let root = dunce::canonicalize(project)
-            .unwrap_or_else(|_| project.to_path_buf());
+        let root = dunce::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
         let id = ProjectId::from_path(&root)
             .map_err(|e| format!("cannot hash project path {}: {e}", root.display()))?;
         let paths = PathManager::default_root();
@@ -1487,15 +1488,8 @@ mod query_runner {
         out.trim().to_string()
     }
 
-    fn recall_like(
-        conn: &Connection,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<RecallHit>, String> {
-        let pattern = format!(
-            "%{}%",
-            query.replace('%', r"\%").replace('_', r"\_")
-        );
+    fn recall_like(conn: &Connection, query: &str, limit: usize) -> Result<Vec<RecallHit>, String> {
+        let pattern = format!("%{}%", query.replace('%', r"\%").replace('_', r"\_"));
         let sql = "
             SELECT kind, name, qualified_name, file_path, line_start
             FROM nodes
@@ -1527,11 +1521,7 @@ mod query_runner {
         Ok(hits)
     }
 
-    fn recall_fts(
-        conn: &Connection,
-        raw: &str,
-        limit: usize,
-    ) -> Result<Vec<RecallHit>, String> {
+    fn recall_fts(conn: &Connection, raw: &str, limit: usize) -> Result<Vec<RecallHit>, String> {
         let sanitized = fts5_sanitize(raw);
         if sanitized.is_empty() {
             return recall_like(conn, raw, limit);
@@ -1604,7 +1594,6 @@ mod query_runner {
         target: &str,
         depth: usize,
     ) -> Result<Vec<BlastItem>, String> {
-
         // Resolve target to one or more starting node qualified_names.
         //
         // Match `file_path` BOTH with and without the Windows `\\?\`
@@ -1688,10 +1677,7 @@ mod query_runner {
         Ok(impacted)
     }
 
-    pub(super) fn run_godnodes(
-        project: &Path,
-        n: usize,
-    ) -> Result<Vec<GodNode>, String> {
+    pub(super) fn run_godnodes(project: &Path, n: usize) -> Result<Vec<GodNode>, String> {
         let db = resolve_graph_db(project)?;
         // SD-4: cached read-only connection per `graph.db` path.
         with_cached_conn(&db, |conn| run_godnodes_inner(conn, n))
@@ -1857,8 +1843,7 @@ mod conn_cache_tests {
             query_runner::_has_cached_conn(&db),
             "cache should hold an entry after first call"
         );
-        let ptr1 = query_runner::_cached_conn_arc_ptr(&db)
-            .expect("entry should be present");
+        let ptr1 = query_runner::_cached_conn_arc_ptr(&db).expect("entry should be present");
 
         // Call 2: cache HIT — the same Arc should still be there.
         let r2: String = query_runner::_with_cached_conn_for_tests(&db, |conn| {
@@ -1871,8 +1856,7 @@ mod conn_cache_tests {
         })
         .expect("second call should succeed");
         assert_eq!(r2, "crate::main");
-        let ptr2 = query_runner::_cached_conn_arc_ptr(&db)
-            .expect("entry should still be present");
+        let ptr2 = query_runner::_cached_conn_arc_ptr(&db).expect("entry should still be present");
 
         assert_eq!(
             ptr1, ptr2,

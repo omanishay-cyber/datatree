@@ -180,7 +180,10 @@ impl BM25Index {
 
     /// Resolve an id to its display text (used by the packer).
     pub fn text_for(&self, id: &str) -> Option<&str> {
-        self.ids.iter().position(|x| x == id).map(|i| self.texts[i].as_str())
+        self.ids
+            .iter()
+            .position(|x| x == id)
+            .map(|i| self.texts[i].as_str())
     }
 }
 
@@ -367,9 +370,7 @@ impl RetrievalEngine {
                 .iter()
                 .take(RERANK_CANDIDATES)
                 .map(|(id, s, _)| {
-                    let txt = self
-                        .text_for(id)
-                        .unwrap_or_else(|| id.clone());
+                    let txt = self.text_for(id).unwrap_or_else(|| id.clone());
                     (txt, *s)
                 })
                 .collect();
@@ -500,7 +501,8 @@ mod tests {
 
     #[test]
     fn engine_packs_within_budget() {
-        let store = Arc::new(EmbedStore::open(&std::env::temp_dir().join("mneme-ret-test")).unwrap());
+        let store =
+            Arc::new(EmbedStore::open(&std::env::temp_dir().join("mneme-ret-test")).unwrap());
         let mut eng = RetrievalEngine::new(store);
         eng.bm25 = BM25Index::build_from_documents(vec![
             ("d1".to_string(), "alpha beta gamma".to_string()),

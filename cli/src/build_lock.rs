@@ -68,20 +68,15 @@ impl BuildLock {
     ///
     /// `timeout = Duration::ZERO` is fail-fast. Otherwise the call
     /// polls every 250 ms until the deadline.
-    pub fn acquire(
-        project_id: &str,
-        project_root: &Path,
-        timeout: Duration,
-    ) -> CliResult<Self> {
+    pub fn acquire(project_id: &str, project_root: &Path, timeout: Duration) -> CliResult<Self> {
         // Ensure the parent directory exists so OpenOptions::create
         // doesn't fail on a fresh shard. PathManager guarantees the
         // path layout but doesn't materialise the directory itself
         // until the store builder runs — and the lock has to be held
         // BEFORE the store builder runs.
         if !project_root.exists() {
-            std::fs::create_dir_all(project_root).map_err(|e| {
-                CliError::io(project_root.to_path_buf(), e)
-            })?;
+            std::fs::create_dir_all(project_root)
+                .map_err(|e| CliError::io(project_root.to_path_buf(), e))?;
         }
 
         let lock_path = project_root.join(".lock");
@@ -136,11 +131,7 @@ impl BuildLock {
                         std::thread::sleep(Duration::from_millis(250));
                         continue;
                     } else {
-                        return Err(Self::contention_error(
-                            project_id,
-                            &lock_path,
-                            None,
-                        ));
+                        return Err(Self::contention_error(project_id, &lock_path, None));
                     }
                 }
             }
@@ -290,8 +281,8 @@ mod tests {
     use super::*;
 
     use std::path::PathBuf;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
     use std::thread;
     use std::time::{Duration, Instant};
     use tempfile::TempDir;
@@ -306,8 +297,7 @@ mod tests {
     #[test]
     fn first_acquire_succeeds() {
         let (_guard, root) = fixture_root();
-        let lock = BuildLock::acquire("test-pid", &root, Duration::ZERO)
-            .expect("first acquire");
+        let lock = BuildLock::acquire("test-pid", &root, Duration::ZERO).expect("first acquire");
         // The lock file must exist on disk while the lock is held.
         assert!(lock.path().exists(), "lock file should exist while held");
     }
@@ -315,8 +305,7 @@ mod tests {
     #[test]
     fn second_fail_fast_returns_in_progress_error() {
         let (_guard, root) = fixture_root();
-        let _first = BuildLock::acquire("alpha", &root, Duration::ZERO)
-            .expect("first acquire");
+        let _first = BuildLock::acquire("alpha", &root, Duration::ZERO).expect("first acquire");
 
         // Spawn the second attempt on a thread because fs2's
         // exclusive-lock semantics on Windows can be process-affine
@@ -344,8 +333,7 @@ mod tests {
     #[test]
     fn second_with_timeout_waits_and_then_succeeds_when_first_releases() {
         let (_guard, root) = fixture_root();
-        let first = BuildLock::acquire("beta", &root, Duration::ZERO)
-            .expect("first acquire");
+        let first = BuildLock::acquire("beta", &root, Duration::ZERO).expect("first acquire");
 
         // Spawn a thread that releases `first` after 300 ms.
         let released_signal = Arc::new(AtomicBool::new(false));
@@ -360,12 +348,11 @@ mod tests {
         // the release fires at +300ms.
         let started = Instant::now();
         let root_clone = root.clone();
-        let second = thread::spawn(move || {
-            BuildLock::acquire("beta", &root_clone, Duration::from_secs(2))
-        })
-        .join()
-        .expect("thread join")
-        .expect("second acquire after release");
+        let second =
+            thread::spawn(move || BuildLock::acquire("beta", &root_clone, Duration::from_secs(2)))
+                .join()
+                .expect("thread join")
+                .expect("second acquire after release");
 
         // Sanity: must have waited at least ~250 ms.
         let waited = started.elapsed();
@@ -385,8 +372,7 @@ mod tests {
     #[test]
     fn second_with_timeout_returns_timeout_error_when_first_holds_too_long() {
         let (_guard, root) = fixture_root();
-        let _first = BuildLock::acquire("gamma", &root, Duration::ZERO)
-            .expect("first acquire");
+        let _first = BuildLock::acquire("gamma", &root, Duration::ZERO).expect("first acquire");
 
         let root_clone = root.clone();
         let started = Instant::now();
@@ -418,8 +404,7 @@ mod tests {
     fn lock_file_is_removed_on_drop() {
         let (_guard, root) = fixture_root();
         let lock_path = {
-            let lock = BuildLock::acquire("delta", &root, Duration::ZERO)
-                .expect("first acquire");
+            let lock = BuildLock::acquire("delta", &root, Duration::ZERO).expect("first acquire");
             lock.path().to_path_buf()
         };
         assert!(
@@ -436,7 +421,10 @@ mod tests {
         assert!(!nonexistent.exists());
         let lock = BuildLock::acquire("epsilon", &nonexistent, Duration::ZERO)
             .expect("acquire on nonexistent root");
-        assert!(nonexistent.exists(), "project root should have been created");
+        assert!(
+            nonexistent.exists(),
+            "project root should have been created"
+        );
         assert!(lock.path().exists(), "lock file should exist");
     }
 

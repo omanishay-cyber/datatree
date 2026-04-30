@@ -114,7 +114,11 @@ impl ConventionPattern {
             }
             Self::ErrorHandling { pattern } => format!("errors: {pattern}"),
             Self::TestLayout { colocated, naming } => {
-                let loc = if *colocated { "colocated" } else { "separate dir" };
+                let loc = if *colocated {
+                    "colocated"
+                } else {
+                    "separate dir"
+                };
                 format!("tests are {loc} ({naming})")
             }
             Self::Dependency { prefers, avoids } => {
@@ -183,12 +187,7 @@ pub struct Violation {
 pub trait ConventionLearner {
     /// Feed one file. `ast` may be `None` when a tree-sitter parse failed;
     /// implementations should fall back to regex-only observation.
-    fn observe_file(
-        &mut self,
-        path: &Path,
-        source: &str,
-        ast: Option<&tree_sitter_tree::Tree>,
-    );
+    fn observe_file(&mut self, path: &Path, source: &str, ast: Option<&tree_sitter_tree::Tree>);
 
     /// Materialise the current counters into concrete `Convention`s. Only
     /// patterns with confidence ≥ 0.80 and ≥ 3 evidence points are emitted.
@@ -252,12 +251,7 @@ impl DefaultLearner {
 }
 
 impl ConventionLearner for DefaultLearner {
-    fn observe_file(
-        &mut self,
-        path: &Path,
-        source: &str,
-        _ast: Option<&tree_sitter_tree::Tree>,
-    ) {
+    fn observe_file(&mut self, path: &Path, source: &str, _ast: Option<&tree_sitter_tree::Tree>) {
         self.files_seen += 1;
 
         let ext = path
@@ -311,8 +305,7 @@ impl ConventionLearner for DefaultLearner {
                 self.component_class += 1;
             }
             // Functional signal: arrow or function component returning JSX.
-            if (source.contains("=> {") || source.contains("function ")) && source.contains("</")
-            {
+            if (source.contains("=> {") || source.contains("function ")) && source.contains("</") {
                 self.component_functional += 1;
             }
 
@@ -555,7 +548,8 @@ fn observe_naming(
     // Functions
     for name in extract_function_names(ext, source) {
         let style = classify_name(&name);
-        *into.entry(NamingScope::Function)
+        *into
+            .entry(NamingScope::Function)
             .or_default()
             .entry(style)
             .or_insert(0) += 1;
@@ -563,7 +557,8 @@ fn observe_naming(
     // Types (structs/classes/interfaces).
     for name in extract_type_names(ext, source) {
         let style = classify_name(&name);
-        *into.entry(NamingScope::Type)
+        *into
+            .entry(NamingScope::Type)
             .or_default()
             .entry(style)
             .or_insert(0) += 1;
@@ -571,7 +566,8 @@ fn observe_naming(
     // Constants (SCREAMING_SNAKE or const in TS/Rust).
     for name in extract_constant_names(ext, source) {
         let style = classify_name(&name);
-        *into.entry(NamingScope::Constant)
+        *into
+            .entry(NamingScope::Constant)
             .or_default()
             .entry(style)
             .or_insert(0) += 1;
@@ -637,10 +633,7 @@ fn extract_constant_names(ext: &str, src: &str) -> Vec<String> {
                     if let Some(eq_idx) = rest.find('=') {
                         let name = rest[..eq_idx].trim().split(':').next().unwrap_or("").trim();
                         if is_valid_ident(name)
-                            && name
-                                .chars()
-                                .next()
-                                .is_some_and(|c| c.is_ascii_uppercase())
+                            && name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
                         {
                             out.push(name.to_string());
                         }
@@ -662,7 +655,9 @@ fn collect_after(src: &str, marker: &str, out: &mut Vec<String>) {
             || rest[..idx]
                 .chars()
                 .last()
-                .map(|c| c.is_whitespace() || c == '\n' || c == ';' || c == '{' || c == '}' || c == '(')
+                .map(|c| {
+                    c.is_whitespace() || c == '\n' || c == ';' || c == '{' || c == '}' || c == '('
+                })
                 .unwrap_or(true);
         if !ok_prefix {
             rest = &rest[idx + marker.len()..];
@@ -697,10 +692,7 @@ fn classify_name(name: &str) -> NamingStyle {
     let has_lower = name.chars().any(|c| c.is_ascii_lowercase());
     let has_underscore = name.contains('_');
     let has_hyphen = name.contains('-');
-    let first_upper = name
-        .chars()
-        .next()
-        .is_some_and(|c| c.is_ascii_uppercase());
+    let first_upper = name.chars().next().is_some_and(|c| c.is_ascii_uppercase());
 
     if has_hyphen && !has_underscore {
         return NamingStyle::KebabCase;
@@ -731,9 +723,7 @@ fn classify_test_filename(name: &str) -> String {
         "*.test.*".into()
     } else if name.contains(".spec.") {
         "*.spec.*".into()
-    } else if name.ends_with("_test.rs")
-        || name.ends_with("_test.go")
-        || name.ends_with("_test.py")
+    } else if name.ends_with("_test.rs") || name.ends_with("_test.go") || name.ends_with("_test.py")
     {
         "*_test.*".into()
     } else if name.starts_with("test_") {
@@ -824,9 +814,13 @@ fn do_thing() {}
 "#;
         l.observe_file(&PathBuf::from("lib.rs"), src, None);
         let out = l.infer_conventions();
-        assert!(out
-            .iter()
-            .any(|c| matches!(&c.pattern, ConventionPattern::Naming { scope: NamingScope::Function, style: NamingStyle::SnakeCase })));
+        assert!(out.iter().any(|c| matches!(
+            &c.pattern,
+            ConventionPattern::Naming {
+                scope: NamingScope::Function,
+                style: NamingStyle::SnakeCase
+            }
+        )));
         // Confidence is 1.0 (4/4) → >= 0.80.
         let naming = out
             .iter()
@@ -910,6 +904,8 @@ interface Settings {}
             &PathBuf::from("bad.rs"),
             "fn doSomethingBad() {}\nfn parse_ok() {}\n",
         );
-        assert!(violations.iter().any(|v| v.message.contains("doSomethingBad")));
+        assert!(violations
+            .iter()
+            .any(|v| v.message.contains("doSomethingBad")));
     }
 }

@@ -121,30 +121,33 @@ fn direct_db_fallback(args: &DriftArgs) -> CliResult<()> {
         .map_err(|e| CliError::Other(format!("prep drift: {e}")))?;
 
     let rows = stmt
-        .query_map(rusqlite::params_from_iter(params.iter().map(|b| b.as_ref())), |row| {
-            let rule_id: String = row.get(0)?;
-            let scanner: String = row.get(1)?;
-            let severity: String = row.get(2)?;
-            let file: String = row.get(3)?;
-            let line_start: i64 = row.get(4)?;
-            let line_end: i64 = row.get(5)?;
-            let column_start: i64 = row.get(6)?;
-            let column_end: i64 = row.get(7)?;
-            let message: String = row.get(8)?;
-            let suggestion: Option<String> = row.get(9)?;
-            Ok(serde_json::json!({
-                "rule_id": rule_id,
-                "scanner": scanner,
-                "severity": severity,
-                "file": file,
-                "line_start": line_start,
-                "line_end": line_end,
-                "column_start": column_start,
-                "column_end": column_end,
-                "message": message,
-                "suggestion": suggestion,
-            }))
-        })
+        .query_map(
+            rusqlite::params_from_iter(params.iter().map(|b| b.as_ref())),
+            |row| {
+                let rule_id: String = row.get(0)?;
+                let scanner: String = row.get(1)?;
+                let severity: String = row.get(2)?;
+                let file: String = row.get(3)?;
+                let line_start: i64 = row.get(4)?;
+                let line_end: i64 = row.get(5)?;
+                let column_start: i64 = row.get(6)?;
+                let column_end: i64 = row.get(7)?;
+                let message: String = row.get(8)?;
+                let suggestion: Option<String> = row.get(9)?;
+                Ok(serde_json::json!({
+                    "rule_id": rule_id,
+                    "scanner": scanner,
+                    "severity": severity,
+                    "file": file,
+                    "line_start": line_start,
+                    "line_end": line_end,
+                    "column_start": column_start,
+                    "column_end": column_end,
+                    "message": message,
+                    "suggestion": suggestion,
+                }))
+            },
+        )
         .map_err(|e| CliError::Other(format!("exec drift: {e}")))?;
 
     let mut count = 0usize;
@@ -180,10 +183,22 @@ mod tests {
 
     #[test]
     fn normalise_severity_accepts_canonical() {
-        assert_eq!(normalise_severity("critical").unwrap().as_deref(), Some("critical"));
-        assert_eq!(normalise_severity("error").unwrap().as_deref(), Some("error"));
-        assert_eq!(normalise_severity("warn").unwrap().as_deref(), Some("warning"));
-        assert_eq!(normalise_severity("warning").unwrap().as_deref(), Some("warning"));
+        assert_eq!(
+            normalise_severity("critical").unwrap().as_deref(),
+            Some("critical")
+        );
+        assert_eq!(
+            normalise_severity("error").unwrap().as_deref(),
+            Some("error")
+        );
+        assert_eq!(
+            normalise_severity("warn").unwrap().as_deref(),
+            Some("warning")
+        );
+        assert_eq!(
+            normalise_severity("warning").unwrap().as_deref(),
+            Some("warning")
+        );
         assert_eq!(normalise_severity("info").unwrap().as_deref(), Some("info"));
     }
 
@@ -195,7 +210,10 @@ mod tests {
 
     #[test]
     fn normalise_severity_synonyms() {
-        assert_eq!(normalise_severity("CRIT").unwrap().as_deref(), Some("critical"));
+        assert_eq!(
+            normalise_severity("CRIT").unwrap().as_deref(),
+            Some("critical")
+        );
         assert_eq!(normalise_severity("Err").unwrap().as_deref(), Some("error"));
     }
 }

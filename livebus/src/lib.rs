@@ -51,8 +51,8 @@ mod tests;
 pub use bus::{topic_matches, topic_matches_any, validate_topic, BusConfig, EventBus};
 pub use error::LivebusError;
 pub use event::{
-    CompactionDetected, DegradedMode, DriftFinding, Event, EventPayload, FileChanged,
-    HealthUpdate, StepAdvanced, SubagentEvent, TestStatus,
+    CompactionDetected, DegradedMode, DriftFinding, Event, EventPayload, FileChanged, HealthUpdate,
+    StepAdvanced, SubagentEvent, TestStatus,
 };
 pub use health::{HealthCtx, HealthSnapshot, HealthState, RateSampler};
 pub use ipc_input::{default_ipc_path, run_ipc_listener};

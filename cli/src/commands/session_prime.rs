@@ -71,9 +71,7 @@ pub async fn run(args: SessionPrimeArgs, socket_override: Option<PathBuf>) -> Cl
     let session_id = match resolved_session_id(args.session_id, stdin_session) {
         Some(s) => s,
         None => {
-            tracing::debug!(
-                "session-prime fired without a session id; emitting empty context"
-            );
+            tracing::debug!("session-prime fired without a session id; emitting empty context");
             let out = json!({
                 "hookEventName": "SessionStart",
                 "additional_context": "",
@@ -98,10 +96,7 @@ pub async fn run(args: SessionPrimeArgs, socket_override: Option<PathBuf>) -> Cl
     match tokio::time::timeout(HOOK_CTX_BUDGET, HookCtx::resolve(&cwd)).await {
         Ok(Ok(ctx)) => {
             let summary = format!("Session start ({stdin_source})");
-            if let Err(e) = ctx
-                .write_turn(&session_id, "session_start", &summary)
-                .await
-            {
+            if let Err(e) = ctx.write_turn(&session_id, "session_start", &summary).await {
                 warn!(error = %e, "history.turns (session-start) insert failed (non-fatal)");
             }
         }
@@ -188,11 +183,8 @@ mod tests {
 
     #[test]
     fn session_prime_args_parse_with_all_flags() {
-        let h = Harness::try_parse_from([
-            "x",
-            "--project", "/tmp/p",
-            "--session-id", "s-1",
-        ]).unwrap();
+        let h =
+            Harness::try_parse_from(["x", "--project", "/tmp/p", "--session-id", "s-1"]).unwrap();
         assert!(h.args.project.is_some());
         assert_eq!(h.args.session_id.as_deref(), Some("s-1"));
     }
@@ -240,7 +232,10 @@ mod tests {
         };
         let r = run(args, Some(PathBuf::from("/nope-mneme.sock"))).await;
         let elapsed = start.elapsed();
-        assert!(r.is_ok(), "session-prime with no session must exit Ok; got: {r:?}");
+        assert!(
+            r.is_ok(),
+            "session-prime with no session must exit Ok; got: {r:?}"
+        );
         assert!(
             elapsed < std::time::Duration::from_secs(1),
             "session-prime no-op path must be effectively instant; took {elapsed:?}"

@@ -168,8 +168,16 @@ impl Receipt {
     pub fn save(&self) -> CliResult<PathBuf> {
         let dir = receipts_dir()?;
         std::fs::create_dir_all(&dir).map_err(|e| CliError::io(&dir, e))?;
-        let stamp = self.installed_at.replace(':', "").replace('-', "").replace('T', "-");
-        let stamp = stamp.split('.').next().unwrap_or(&stamp).trim_end_matches('Z');
+        let stamp = self
+            .installed_at
+            .replace(':', "")
+            .replace('-', "")
+            .replace('T', "-");
+        let stamp = stamp
+            .split('.')
+            .next()
+            .unwrap_or(&stamp)
+            .trim_end_matches('Z');
         let filename = format!("{}-{}.json", stamp, self.id);
         let path = dir.join(filename);
         let body = serde_json::to_string_pretty(self)?;
@@ -197,7 +205,9 @@ impl Receipt {
                     sha256_before: _,
                     sha256_after,
                 } => match rollback_file_modified(path, backup_path, sha256_after) {
-                    Ok(()) => summary.reversed.push(format!("restored {}", path.display())),
+                    Ok(()) => summary
+                        .reversed
+                        .push(format!("restored {}", path.display())),
                     Err(e) => summary.skipped.push(format!("{}: {e}", path.display())),
                 },
                 ReceiptAction::FileCreated { path, sha256_after } => {
@@ -224,9 +234,10 @@ impl Receipt {
                     platform,
                     host_file,
                 } => match rollback_mcp_entry(platform, host_file) {
-                    Ok(()) => summary
-                        .reversed
-                        .push(format!("removed mneme MCP entry from {}", host_file.display())),
+                    Ok(()) => summary.reversed.push(format!(
+                        "removed mneme MCP entry from {}",
+                        host_file.display()
+                    )),
                     Err(e) => summary.skipped.push(format!("MCP {platform}: {e}")),
                 },
                 ReceiptAction::BinaryArchiveExtracted { target, files } => {
@@ -308,12 +319,7 @@ pub fn list_receipts() -> CliResult<Vec<PathBuf>> {
     let mut entries: Vec<PathBuf> = std::fs::read_dir(&dir)
         .map_err(|e| CliError::io(&dir, e))?
         .filter_map(|r| r.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .and_then(|x| x.to_str())
-                == Some("json")
-        })
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
         .map(|e| e.path())
         .collect();
     // Filename starts with a timestamp — sort descending = newest first.
@@ -365,14 +371,22 @@ fn iso8601_utc_now() -> String {
 /// Same Hinnant algorithm used in platforms/mod.rs for the .bak stamp.
 fn ymd_from_epoch_days(days: i64) -> (i32, u32, u32) {
     let z = days + 719_468;
-    let era = if z >= 0 { z / 146_097 } else { (z - 146_096) / 146_097 };
+    let era = if z >= 0 {
+        z / 146_097
+    } else {
+        (z - 146_096) / 146_097
+    };
     let doe = (z - era * 146_097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let y = yoe as i64 + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { (mp + 3) as u32 } else { (mp - 9) as u32 };
+    let m = if mp < 10 {
+        (mp + 3) as u32
+    } else {
+        (mp - 9) as u32
+    };
     let y = if m <= 2 { y + 1 } else { y };
     (y as i32, m, d)
 }
@@ -408,8 +422,7 @@ fn rollback_file_created(target: &Path, sha_after: &str) -> Result<(), String> {
             target.display()
         ));
     }
-    std::fs::remove_file(target)
-        .map_err(|e| format!("remove {}: {e}", target.display()))?;
+    std::fs::remove_file(target).map_err(|e| format!("remove {}: {e}", target.display()))?;
     Ok(())
 }
 

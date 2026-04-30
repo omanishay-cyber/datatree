@@ -141,13 +141,9 @@ pub async fn run(args: GraphifyArgs, socket_override: Option<PathBuf>) -> CliRes
     Ok(())
 }
 
-async fn persist(
-    store: &Store,
-    project: &ProjectId,
-    doc: &ExtractedDoc,
-) -> Result<(), String> {
-    let bytes = std::fs::read(&doc.source)
-        .map_err(|e| format!("read {}: {e}", doc.source.display()))?;
+async fn persist(store: &Store, project: &ProjectId, doc: &ExtractedDoc) -> Result<(), String> {
+    let bytes =
+        std::fs::read(&doc.source).map_err(|e| format!("read {}: {e}", doc.source.display()))?;
     let sha = hex_sha256(&bytes);
     let elements_json = serde_json::to_string(&doc.elements).unwrap_or_else(|_| "[]".into());
     let transcript_json = if doc.transcript.is_empty() {

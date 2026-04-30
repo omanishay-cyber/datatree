@@ -373,7 +373,11 @@ impl JobQueue {
         let n = ids.len();
         drop(g);
         if n > 0 {
-            warn!(worker, count = n, "re-queued in-flight jobs after worker exit");
+            warn!(
+                worker,
+                count = n,
+                "re-queued in-flight jobs after worker exit"
+            );
             if let Some(d) = self.durable.as_ref() {
                 for id in &ids {
                     if let Err(e) = d.requeue(*id) {

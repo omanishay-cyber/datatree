@@ -43,15 +43,17 @@ fn marker_reports_complete_when_target_dir_is_gone() {
 
     write_uninstall_status_marker(&target, &marker_path);
 
-    let status = read_uninstall_status_marker(&marker_path)
-        .expect("marker should be parseable");
+    let status = read_uninstall_status_marker(&marker_path).expect("marker should be parseable");
     assert_eq!(status.status, "complete");
     assert!(
         status.remaining_paths.is_empty(),
         "complete state should have no remaining paths, got {:?}",
         status.remaining_paths
     );
-    assert!(!status.timestamp.is_empty(), "timestamp should be populated");
+    assert!(
+        !status.timestamp.is_empty(),
+        "timestamp should be populated"
+    );
 }
 
 /// LIE-4 scenario: rmdir partially failed — a child file is still on
@@ -72,8 +74,7 @@ fn marker_reports_partial_when_target_still_has_files() {
     let marker_path = dir.path().join(".mneme-uninstall-status.json");
     write_uninstall_status_marker(&target, &marker_path);
 
-    let status = read_uninstall_status_marker(&marker_path)
-        .expect("marker should be parseable");
+    let status = read_uninstall_status_marker(&marker_path).expect("marker should be parseable");
     assert_eq!(status.status, "partial");
     assert!(
         status
@@ -93,11 +94,7 @@ fn read_marker_returns_none_when_missing() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("never-written.json");
     let r = read_uninstall_status_marker(&path);
-    assert!(
-        r.is_none(),
-        "missing marker should yield None, got {:?}",
-        r
-    );
+    assert!(r.is_none(), "missing marker should yield None, got {:?}", r);
 }
 
 /// LIE-4: deserialised marker matches the writer's schema exactly. This
@@ -115,12 +112,20 @@ fn marker_schema_is_stable() {
 
     // Pin every field name. If any field gets renamed the test fails
     // and the renamer is forced to update VM test harnesses too.
-    assert!(v.get("status").and_then(|s| s.as_str()).is_some(),
-        "status field missing/wrong type. got: {raw}");
-    assert!(v.get("remaining_paths").and_then(|s| s.as_array()).is_some(),
-        "remaining_paths field missing/wrong type. got: {raw}");
-    assert!(v.get("timestamp").and_then(|s| s.as_str()).is_some(),
-        "timestamp field missing/wrong type. got: {raw}");
+    assert!(
+        v.get("status").and_then(|s| s.as_str()).is_some(),
+        "status field missing/wrong type. got: {raw}"
+    );
+    assert!(
+        v.get("remaining_paths")
+            .and_then(|s| s.as_array())
+            .is_some(),
+        "remaining_paths field missing/wrong type. got: {raw}"
+    );
+    assert!(
+        v.get("timestamp").and_then(|s| s.as_str()).is_some(),
+        "timestamp field missing/wrong type. got: {raw}"
+    );
 }
 
 /// LIE-4 helper roundtrip: serialise then deserialise via the public API.

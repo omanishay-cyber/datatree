@@ -118,7 +118,10 @@ impl DefaultQuery {
     }
 
     async fn writer(&self, project: &ProjectId, layer: DbLayer) -> mpsc::Sender<WriteCmd> {
-        let key = ShardKey { project: project.clone(), layer };
+        let key = ShardKey {
+            project: project.clone(),
+            layer,
+        };
         {
             let map = self.writers.read().await;
             if let Some(tx) = map.get(&key) {
@@ -136,8 +139,15 @@ impl DefaultQuery {
         tx
     }
 
-    async fn read_pool(&self, project: &ProjectId, layer: DbLayer) -> DtResult<Pool<SqliteConnectionManager>> {
-        let key = ShardKey { project: project.clone(), layer };
+    async fn read_pool(
+        &self,
+        project: &ProjectId,
+        layer: DbLayer,
+    ) -> DtResult<Pool<SqliteConnectionManager>> {
+        let key = ShardKey {
+            project: project.clone(),
+            layer,
+        };
         {
             let map = self.readers.read().await;
             if let Some(p) = map.get(&key) {
@@ -180,27 +190,28 @@ impl DbQuery for DefaultQuery {
             Err(e) => return Response::err(DbError::Sqlite(e.to_string()), meta(q.layer)),
         };
         let layer = q.layer;
-        let res = tokio::task::spawn_blocking(move || -> Result<Vec<serde_json::Value>, DbError> {
-            let conn = pool.get().map_err(|e| DbError::Sqlite(e.to_string()))?;
-            let mut stmt = conn.prepare_cached(&q.sql)?;
-            let column_names: Vec<String> =
-                stmt.column_names().iter().map(|s| s.to_string()).collect();
-            let params = json_params(&q.params);
-            let rows = stmt.query_map(params_from_iter(params.iter()), |r| {
-                let mut obj = serde_json::Map::new();
-                for (i, name) in column_names.iter().enumerate() {
-                    let v: rusqlite::types::Value = r.get(i)?;
-                    obj.insert(name.clone(), value_to_json(v));
+        let res =
+            tokio::task::spawn_blocking(move || -> Result<Vec<serde_json::Value>, DbError> {
+                let conn = pool.get().map_err(|e| DbError::Sqlite(e.to_string()))?;
+                let mut stmt = conn.prepare_cached(&q.sql)?;
+                let column_names: Vec<String> =
+                    stmt.column_names().iter().map(|s| s.to_string()).collect();
+                let params = json_params(&q.params);
+                let rows = stmt.query_map(params_from_iter(params.iter()), |r| {
+                    let mut obj = serde_json::Map::new();
+                    for (i, name) in column_names.iter().enumerate() {
+                        let v: rusqlite::types::Value = r.get(i)?;
+                        obj.insert(name.clone(), value_to_json(v));
+                    }
+                    Ok(serde_json::Value::Object(obj))
+                })?;
+                let mut out = vec![];
+                for row in rows {
+                    out.push(row?);
                 }
-                Ok(serde_json::Value::Object(obj))
-            })?;
-            let mut out = vec![];
-            for row in rows {
-                out.push(row?);
-            }
-            Ok(out)
-        })
-        .await;
+                Ok(out)
+            })
+            .await;
         match res {
             Ok(Ok(rows)) => Response::ok(rows, meta(layer)),
             Ok(Err(e)) => Response::err(e, meta(layer)),
@@ -242,19 +253,13 @@ impl DbQuery for DefaultQuery {
                 );
             }
             Err(SendTimeoutError::Closed(_)) => {
-                return Response::err(
-                    DbError::Sqlite("writer channel closed".into()),
-                    meta(layer),
-                );
+                return Response::err(DbError::Sqlite("writer channel closed".into()), meta(layer));
             }
         }
         match rrx.await {
             Ok(Ok(s)) => Response::ok(s, meta(layer)),
             Ok(Err(e)) => Response::err(e, meta(layer)),
-            Err(_) => Response::err(
-                DbError::Sqlite("writer dropped reply".into()),
-                meta(layer),
-            ),
+            Err(_) => Response::err(DbError::Sqlite("writer dropped reply".into()), meta(layer)),
         }
     }
 
@@ -265,7 +270,9 @@ impl DbQuery for DefaultQuery {
             Some(w) => w.project.clone(),
             None => {
                 return Response::ok(
-                    BatchSummary { total_rows_affected: 0 },
+                    BatchSummary {
+                        total_rows_affected: 0,
+                    },
                     ResponseMeta {
                         latency_ms: 0,
                         cache_hit: false,
@@ -319,10 +326,20 @@ impl DbQuery for DefaultQuery {
             match rrx.await {
                 Ok(Ok(b)) => total += b.total_rows_affected,
                 Ok(Err(e)) => return Response::err(e, meta(layer)),
-                Err(_) => return Response::err(DbError::Sqlite("writer dropped reply".into()), meta(layer)),
+                Err(_) => {
+                    return Response::err(
+                        DbError::Sqlite("writer dropped reply".into()),
+                        meta(layer),
+                    )
+                }
             }
         }
-        Response::ok(BatchSummary { total_rows_affected: total }, meta(layer))
+        Response::ok(
+            BatchSummary {
+                total_rows_affected: total,
+            },
+            meta(layer),
+        )
     }
 }
 
@@ -374,7 +391,9 @@ fn spawn_writer_task(path: PathBuf, mut rx: mpsc::Receiver<WriteCmd>) {
                             total += stmt.execute(params_from_iter(p.iter()))?;
                         }
                         tx.commit()?;
-                        Ok(BatchSummary { total_rows_affected: total })
+                        Ok(BatchSummary {
+                            total_rows_affected: total,
+                        })
                     })();
                     let _ = reply.send(res);
                 }
@@ -428,12 +447,16 @@ fn hex(b: &[u8]) -> String {
 }
 
 fn num_cpus_or(default: usize) -> usize {
-    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(default)
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(default)
 }
 
 // Used by Timestamp imports indirectly; keep a no-op anchor so unused import warnings stay quiet.
 #[allow(dead_code)]
-fn _t() -> Timestamp { Timestamp::now() }
+fn _t() -> Timestamp {
+    Timestamp::now()
+}
 
 #[cfg(test)]
 mod tests {
@@ -459,7 +482,10 @@ mod tests {
         // drains — emulating a wedged disk / migration / OS lock.
         let project = ProjectId::from_path(dir.path()).unwrap();
         let layer = DbLayer::Audit;
-        let key = ShardKey { project: project.clone(), layer };
+        let key = ShardKey {
+            project: project.clone(),
+            layer,
+        };
         let (tx, rx) = mpsc::channel::<WriteCmd>(super::WRITER_CHANNEL_CAP);
         // Hold the rx forever. Move it into a spawned task that just
         // sits there — nothing ever calls `rx.recv()`.

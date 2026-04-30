@@ -81,12 +81,7 @@ impl BlastReport {
 /// - `tests_affected == 0`  → bump one level (untested code is riskier)
 ///
 /// The bumps compose, but the ceiling is Critical.
-pub fn compute_risk(
-    direct: usize,
-    transitive: usize,
-    tests: usize,
-    decisions: usize,
-) -> RiskLevel {
+pub fn compute_risk(direct: usize, transitive: usize, tests: usize, decisions: usize) -> RiskLevel {
     if decisions > 0 {
         return RiskLevel::Critical;
     }

@@ -22,5 +22,7 @@ pub struct ShardHandle {
 }
 
 impl ShardHandle {
-    pub fn id(&self) -> &ProjectId { &self.project.id }
+    pub fn id(&self) -> &ProjectId {
+        &self.project.id
+    }
 }

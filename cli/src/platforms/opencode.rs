@@ -7,9 +7,7 @@
 use std::path::PathBuf;
 
 use crate::error::CliResult;
-use crate::platforms::{
-    AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter,
-};
+use crate::platforms::{AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OpenCode;
@@ -60,9 +58,7 @@ impl PlatformAdapter for OpenCode {
         }
         let plugins_dir = match ctx.scope {
             InstallScope::Project => ctx.project_root.join(".opencode").join("plugins"),
-            InstallScope::User | InstallScope::Global => {
-                ctx.home.join(".opencode").join("plugins")
-            }
+            InstallScope::User | InstallScope::Global => ctx.home.join(".opencode").join("plugins"),
         };
         if !ctx.dry_run {
             std::fs::create_dir_all(&plugins_dir)
@@ -165,4 +161,3 @@ mod tests {
         );
     }
 }
-

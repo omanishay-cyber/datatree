@@ -74,10 +74,7 @@ impl DurableJobQueue {
         let db_path = db_path.as_ref().to_path_buf();
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                SupervisorError::Other(format!(
-                    "create jobs.db parent {}: {e}",
-                    parent.display()
-                ))
+                SupervisorError::Other(format!("create jobs.db parent {}: {e}", parent.display()))
             })?;
         }
         let conn = Connection::open_with_flags(
@@ -87,19 +84,14 @@ impl DurableJobQueue {
                 | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )
         .map_err(|e| {
-            SupervisorError::Other(format!(
-                "open jobs.db at {}: {e}",
-                db_path.display()
-            ))
+            SupervisorError::Other(format!("open jobs.db at {}: {e}", db_path.display()))
         })?;
 
         // WAL + NORMAL — see module-level perf budget.
-        conn.pragma_update(None, "journal_mode", "WAL").map_err(|e| {
-            SupervisorError::Other(format!("set WAL: {e}"))
-        })?;
-        conn.pragma_update(None, "synchronous", "NORMAL").map_err(|e| {
-            SupervisorError::Other(format!("set synchronous: {e}"))
-        })?;
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(|e| SupervisorError::Other(format!("set WAL: {e}")))?;
+        conn.pragma_update(None, "synchronous", "NORMAL")
+            .map_err(|e| SupervisorError::Other(format!("set synchronous: {e}")))?;
         // Tiny page cache is enough for the job table.
         conn.pragma_update(None, "temp_store", "MEMORY").ok();
 
@@ -119,9 +111,7 @@ impl DurableJobQueue {
              CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs(state);
              COMMIT;",
         )
-        .map_err(|e| {
-            SupervisorError::Other(format!("create jobs schema: {e}"))
-        })?;
+        .map_err(|e| SupervisorError::Other(format!("create jobs schema: {e}")))?;
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -170,24 +160,19 @@ impl DurableJobQueue {
         else {
             return Ok(None);
         };
-        let id: i64 = row.get(0).map_err(|e| {
-            SupervisorError::Other(format!("get id col: {e}"))
-        })?;
-        let payload: Vec<u8> = row.get(1).map_err(|e| {
-            SupervisorError::Other(format!("get payload col: {e}"))
-        })?;
-        let job: Job = serde_json::from_slice(&payload).map_err(|e| {
-            SupervisorError::Other(format!("decode job payload: {e}"))
-        })?;
+        let id: i64 = row
+            .get(0)
+            .map_err(|e| SupervisorError::Other(format!("get id col: {e}")))?;
+        let payload: Vec<u8> = row
+            .get(1)
+            .map_err(|e| SupervisorError::Other(format!("get payload col: {e}")))?;
+        let job: Job = serde_json::from_slice(&payload)
+            .map_err(|e| SupervisorError::Other(format!("decode job payload: {e}")))?;
         Ok(Some((JobId(id as u64), job)))
     }
 
     /// Mark a job as `in_flight` and record the assigned worker.
-    pub fn mark_in_flight(
-        &self,
-        id: JobId,
-        worker: &str,
-    ) -> Result<(), SupervisorError> {
+    pub fn mark_in_flight(&self, id: JobId, worker: &str) -> Result<(), SupervisorError> {
         let now = unix_ms();
         let conn = self.conn.lock();
         conn.execute(
@@ -346,9 +331,7 @@ impl DurableJobQueue {
                  WHERE state='in_flight'",
                 [],
             )
-            .map_err(|e| {
-                SupervisorError::Other(format!("requeue_all_in_flight: {e}"))
-            })?;
+            .map_err(|e| SupervisorError::Other(format!("requeue_all_in_flight: {e}")))?;
         Ok(n)
     }
 
@@ -528,7 +511,7 @@ mod tests {
             let id = JobId((i + 1) as u64);
             q.push(id, &dummy_parse(i as u64)).unwrap();
             let next = q.next_queued().unwrap().expect("at least one queued");
-            assert!(next.0.0 >= 1);
+            assert!(next.0 .0 >= 1);
             // Mark in_flight so the next query advances past this row.
             q.mark_in_flight(next.0, "bench-worker").unwrap();
         }

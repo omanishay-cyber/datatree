@@ -49,9 +49,7 @@ pub async fn run(args: BlastArgs, socket_override: Option<PathBuf>) -> CliResult
     // REG-006: empty/whitespace target is meaningless — no node will ever
     // match. Reject up-front so we don't waste an IPC round trip.
     if args.target.trim().is_empty() {
-        return Err(CliError::Other(
-            "target must not be empty".to_string(),
-        ));
+        return Err(CliError::Other("target must not be empty".to_string()));
     }
 
     let project_root = resolve_project_root(args.project.clone());
@@ -66,7 +64,11 @@ pub async fn run(args: BlastArgs, socket_override: Option<PathBuf>) -> CliResult
         };
         match client.request(req).await {
             Ok(IpcResponse::BlastResults { impacted }) => {
-                info!(source = "supervisor", count = impacted.len(), "blast served");
+                info!(
+                    source = "supervisor",
+                    count = impacted.len(),
+                    "blast served"
+                );
                 print_layers_from_items(&args.target, &impacted, depth);
                 return Ok(());
             }
@@ -108,8 +110,7 @@ pub async fn run(args: BlastArgs, socket_override: Option<PathBuf>) -> CliResult
 
     // BFS in the reverse direction: who points AT me.
     let mut visited: HashSet<String> = starts.iter().cloned().collect();
-    let mut frontier: VecDeque<(String, usize)> =
-        starts.iter().map(|s| (s.clone(), 0)).collect();
+    let mut frontier: VecDeque<(String, usize)> = starts.iter().map(|s| (s.clone(), 0)).collect();
     let mut layers: Vec<Vec<String>> = vec![starts.clone()];
     for _ in 0..depth {
         layers.push(Vec::new());
@@ -155,17 +156,16 @@ pub async fn run(args: BlastArgs, socket_override: Option<PathBuf>) -> CliResult
 fn resolve_project_root(project: Option<PathBuf>) -> PathBuf {
     project
         .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
-        .unwrap_or_else(|| {
-            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        })
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
 /// Map a resolved project root to its `graph.db` path. Uses the same
 /// `PathManager`/`ProjectId` chain the CLI always has — supervisor path
 /// derives the same location so shard selection cannot drift.
 fn paths_graph_db(root: &std::path::Path) -> CliResult<PathBuf> {
-    let id = ProjectId::from_path(root)
-        .map_err(|e| CliError::Other(format!("cannot hash project path {}: {e}", root.display())))?;
+    let id = ProjectId::from_path(root).map_err(|e| {
+        CliError::Other(format!("cannot hash project path {}: {e}", root.display()))
+    })?;
     let paths = PathManager::default_root();
     Ok(paths.project_root(&id).join("graph.db"))
 }

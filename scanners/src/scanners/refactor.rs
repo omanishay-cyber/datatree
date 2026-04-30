@@ -207,10 +207,7 @@ impl Scanner for RefactorScanner {
                             line,
                             col,
                             col + (full.end() - full.start()) as u32,
-                            format!(
-                                "Unused named import `{}` — safe to remove.",
-                                local_ident
-                            ),
+                            format!("Unused named import `{}` — safe to remove.", local_ident),
                         )
                         .with_fix(""),
                     );

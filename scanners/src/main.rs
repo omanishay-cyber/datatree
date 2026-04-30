@@ -571,9 +571,15 @@ fn is_scannable_extension(path: &std::path::Path) -> bool {
 /// supervised path uses a real `git diff HEAD` set, but the fallback
 /// ships the simpler version.
 fn was_modified_recently(path: &std::path::Path) -> bool {
-    let Ok(meta) = std::fs::metadata(path) else { return true };
-    let Ok(modified) = meta.modified() else { return true };
-    let Ok(elapsed) = modified.elapsed() else { return true };
+    let Ok(meta) = std::fs::metadata(path) else {
+        return true;
+    };
+    let Ok(modified) = meta.modified() else {
+        return true;
+    };
+    let Ok(elapsed) = modified.elapsed() else {
+        return true;
+    };
     // 24h cutoff.
     elapsed.as_secs() < 86_400
 }

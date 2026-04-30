@@ -85,7 +85,9 @@ fn jobs_db_path() -> std::path::PathBuf {
 /// `MNEME_HOME=<tempdir>` so a real install on the host machine is
 /// untouched. B-005 fix.
 pub fn logs_dir() -> std::path::PathBuf {
-    common::paths::PathManager::default_root().root().join("logs")
+    common::paths::PathManager::default_root()
+        .root()
+        .join("logs")
 }
 
 /// Canonical absolute path of the active supervisor log file.
@@ -516,11 +518,7 @@ async fn run_recovery_logger(manager: Arc<ChildManager>, shutdown: Arc<Notify>) 
 ///   the supervisor can (re)spawn the missing pool.
 /// * Honours the shared `shutdown` notify so that Ctrl-C leaves the
 ///   queue quiescent.
-async fn run_router(
-    manager: Arc<ChildManager>,
-    queue: Arc<JobQueue>,
-    shutdown: Arc<Notify>,
-) {
+async fn run_router(manager: Arc<ChildManager>, queue: Arc<JobQueue>, shutdown: Arc<Notify>) {
     info!("router task online");
     let waker = queue.router_waker();
     loop {
@@ -629,9 +627,7 @@ fn encode_for_worker(
             .to_string())
         }
         Job::Scan {
-            file_path,
-            ast_id,
-            ..
+            file_path, ast_id, ..
         } => {
             let content = std::fs::read_to_string(file_path)
                 .map_err(|e| format!("read {}: {e}", file_path.display()))?;
@@ -669,7 +665,12 @@ fn encode_for_worker(
 /// map to `None` and the job fails at encode time; the CLI's walker
 /// already filters most of them out before submit.
 fn infer_language_tag(path: &std::path::Path) -> Option<&'static str> {
-    match path.extension().and_then(|s| s.to_str())?.to_ascii_lowercase().as_str() {
+    match path
+        .extension()
+        .and_then(|s| s.to_str())?
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "rs" => Some("rust"),
         "py" => Some("python"),
         "ts" | "tsx" => Some("typescript"),

@@ -85,7 +85,10 @@ pub async fn run(args: PreToolArgs, socket_override: Option<PathBuf>) -> CliResu
     //
     // HOOK-CANCELLED-001 layer 2: bound `HookCtx::resolve` so first-time
     // shard creation can't push past Claude Code's hook budget.
-    if matches!(tool.as_str(), "Edit" | "Write" | "MultiEdit" | "NotebookEdit") {
+    if matches!(
+        tool.as_str(),
+        "Edit" | "Write" | "MultiEdit" | "NotebookEdit"
+    ) {
         let file_path = extract_file_path(&params);
         if let Some(fp) = file_path {
             let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -212,10 +215,14 @@ mod tests {
     fn pre_tool_args_parse_with_all_flags() {
         let h = Harness::try_parse_from([
             "x",
-            "--tool", "Read",
-            "--params", r#"{"file_path":"/x"}"#,
-            "--session-id", "s-42",
-        ]).unwrap();
+            "--tool",
+            "Read",
+            "--params",
+            r#"{"file_path":"/x"}"#,
+            "--session-id",
+            "s-42",
+        ])
+        .unwrap();
         assert_eq!(h.args.tool.as_deref(), Some("Read"));
         assert_eq!(h.args.session_id.as_deref(), Some("s-42"));
         assert!(h.args.params.is_some());

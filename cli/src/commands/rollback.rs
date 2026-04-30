@@ -69,9 +69,7 @@ pub async fn run(args: RollbackArgs) -> CliResult<()> {
                         .is_some_and(|s| s.contains(id))
                 })
                 .cloned()
-                .ok_or_else(|| {
-                    CliError::Other(format!("no receipt matching id '{id}'"))
-                })?
+                .ok_or_else(|| CliError::Other(format!("no receipt matching id '{id}'")))?
         }
     };
 
@@ -124,11 +122,9 @@ pub async fn run(args: RollbackArgs) -> CliResult<()> {
 fn describe_action(a: &crate::receipts::ReceiptAction) -> String {
     use crate::receipts::ReceiptAction;
     match a {
-        ReceiptAction::FileModified { path, backup_path, .. } => format!(
-            "restore {} from {}",
-            path.display(),
-            backup_path.display()
-        ),
+        ReceiptAction::FileModified {
+            path, backup_path, ..
+        } => format!("restore {} from {}", path.display(), backup_path.display()),
         ReceiptAction::FileCreated { path, .. } => {
             format!("delete created file {}", path.display())
         }
@@ -137,7 +133,10 @@ fn describe_action(a: &crate::receipts::ReceiptAction) -> String {
             "print manual Defender-exclusion-removal command for {}",
             path.display()
         ),
-        ReceiptAction::McpRegistered { platform, host_file } => format!(
+        ReceiptAction::McpRegistered {
+            platform,
+            host_file,
+        } => format!(
             "remove mneme MCP entry for {} from {}",
             platform,
             host_file.display()
@@ -147,14 +146,12 @@ fn describe_action(a: &crate::receipts::ReceiptAction) -> String {
             target.display(),
             files.len()
         ),
-        ReceiptAction::DaemonStarted { binary } => format!(
-            "(manual) stop daemon at {}",
-            binary.display()
-        ),
-        ReceiptAction::BinaryPlaced { binary } => format!(
-            "(manual) note binary placed at {}",
-            binary.display()
-        ),
+        ReceiptAction::DaemonStarted { binary } => {
+            format!("(manual) stop daemon at {}", binary.display())
+        }
+        ReceiptAction::BinaryPlaced { binary } => {
+            format!("(manual) note binary placed at {}", binary.display())
+        }
         ReceiptAction::ResolvedExePath { exe_path } => format!(
             "(info) MCP entries used absolute exe path {}",
             exe_path.display()

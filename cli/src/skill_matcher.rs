@@ -71,10 +71,10 @@ struct ParsedSkill {
 // ---------------------------------------------------------------------------
 
 const STOPWORDS: &[&str] = &[
-    "a", "an", "the", "and", "or", "of", "to", "for", "with", "in", "on", "at", "is", "it",
-    "this", "that", "my", "i", "me", "we", "our", "please", "help", "need", "want", "can",
-    "could", "you", "your", "do", "does", "did", "have", "has", "had", "be", "been", "am",
-    "are", "was", "were", "if", "then", "so", "but", "not", "no", "yes",
+    "a", "an", "the", "and", "or", "of", "to", "for", "with", "in", "on", "at", "is", "it", "this",
+    "that", "my", "i", "me", "we", "our", "please", "help", "need", "want", "can", "could", "you",
+    "your", "do", "does", "did", "have", "has", "had", "be", "been", "am", "are", "was", "were",
+    "if", "then", "so", "but", "not", "no", "yes",
 ];
 
 const CODEWORDS: &[&str] = &["coldstart", "hotstart", "firestart", "chs"];
@@ -474,8 +474,8 @@ fn codeword_hit(task: &str) -> Option<&'static str> {
         let mut search_start = 0;
         while let Some(idx) = lowered[search_start..].find(cw) {
             let abs = search_start + idx;
-            let before_ok = abs == 0
-                || !matches!(lowered.as_bytes()[abs - 1], b'a'..=b'z' | b'0'..=b'9');
+            let before_ok =
+                abs == 0 || !matches!(lowered.as_bytes()[abs - 1], b'a'..=b'z' | b'0'..=b'9');
             let end = abs + cw.len();
             let after_ok = end >= lowered.len()
                 || !matches!(lowered.as_bytes()[end], b'a'..=b'z' | b'0'..=b'9');
@@ -509,8 +509,7 @@ pub fn suggest(task: &str, limit: usize) -> Vec<Suggestion> {
         // whose authors mirrored their triggers into tags (e.g. fireworks-
         // test: `tags: [test, tdd, ...]` + `triggers: [test, tdd, ...]`)
         // get an unfair double-score for a single keyword hit.
-        let trigger_set: HashSet<&str> =
-            skill.triggers.iter().map(String::as_str).collect();
+        let trigger_set: HashSet<&str> = skill.triggers.iter().map(String::as_str).collect();
         for tag in &skill.tags {
             if trigger_set.contains(tag.as_str()) {
                 continue;
@@ -621,7 +620,10 @@ mod tests {
 
     #[test]
     fn codeword_hit_respects_boundaries() {
-        assert_eq!(codeword_hit("let's do a coldstart please"), Some("coldstart"));
+        assert_eq!(
+            codeword_hit("let's do a coldstart please"),
+            Some("coldstart")
+        );
         assert_eq!(codeword_hit("coldstartup procedure"), None);
     }
 

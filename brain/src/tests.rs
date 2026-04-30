@@ -192,10 +192,7 @@ fn load_model_from_disk(path: &Path) -> Result<()> {
 "#;
     let extractor = ConceptExtractor::new();
     let concepts = extractor
-        .extract(ExtractInput {
-            kind: "code",
-            text,
-        })
+        .extract(ExtractInput { kind: "code", text })
         .unwrap();
 
     assert!(!concepts.is_empty(), "expected at least one concept");
@@ -204,7 +201,10 @@ fn load_model_from_disk(path: &Path) -> Result<()> {
     let has_heading = concepts
         .iter()
         .any(|c| c.source == ConceptSource::Heading && c.term.contains("loader"));
-    assert!(has_heading, "expected the heading to be extracted: {concepts:?}");
+    assert!(
+        has_heading,
+        "expected the heading to be extracted: {concepts:?}"
+    );
 
     // Identifier-derived concept should include "load" or "model".
     let has_ident = concepts.iter().any(|c| {

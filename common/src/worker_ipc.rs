@@ -75,7 +75,12 @@ pub enum WorkerCompleteMessage {
 /// Called from each worker's per-job completion path in addition to the
 /// existing stdout emission, so the stdout flow stays intact.
 pub async fn report_complete(job_id: JobId, outcome: JobOutcome) -> Result<(), ReportError> {
-    report_complete_to(job_id, outcome, &discover_socket_path().ok_or(ReportError::NotFound)?).await
+    report_complete_to(
+        job_id,
+        outcome,
+        &discover_socket_path().ok_or(ReportError::NotFound)?,
+    )
+    .await
 }
 
 /// Same as [`report_complete`] but with an explicit socket path. Exposed
@@ -172,7 +177,9 @@ pub fn discover_socket_path() -> Option<PathBuf> {
             return Some(PathBuf::from(p));
         }
     }
-    let root = crate::paths::PathManager::default_root().root().to_path_buf();
+    let root = crate::paths::PathManager::default_root()
+        .root()
+        .to_path_buf();
     let disco = root.join("supervisor.pipe");
     if let Ok(content) = std::fs::read_to_string(&disco) {
         let trimmed = content.trim();

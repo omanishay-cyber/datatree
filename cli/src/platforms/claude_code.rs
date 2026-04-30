@@ -167,9 +167,7 @@ impl PlatformAdapter for ClaudeCode {
     fn manifest_path(&self, ctx: &AdapterContext) -> PathBuf {
         match ctx.scope {
             InstallScope::Project => ctx.project_root.join("CLAUDE.md"),
-            InstallScope::User | InstallScope::Global => {
-                ctx.home.join(".claude").join("CLAUDE.md")
-            }
+            InstallScope::User | InstallScope::Global => ctx.home.join(".claude").join("CLAUDE.md"),
         }
     }
 
@@ -188,9 +186,7 @@ impl PlatformAdapter for ClaudeCode {
     /// or `<project>/.claude/settings.json` (project scope).
     fn hooks_path(&self, ctx: &AdapterContext) -> Option<PathBuf> {
         Some(match ctx.scope {
-            InstallScope::Project => {
-                ctx.project_root.join(".claude").join("settings.json")
-            }
+            InstallScope::Project => ctx.project_root.join(".claude").join("settings.json"),
             InstallScope::User | InstallScope::Global => {
                 ctx.home.join(".claude").join("settings.json")
             }
@@ -475,8 +471,8 @@ fn entry_command_matches_spec(entry: &serde_json::Value, spec: &HookSpec) -> boo
         // template). Use case-insensitive contains because Windows
         // paths can vary `C:\Users\...` vs `c:\users\...`.
         let cmd_lc = cmd.to_lowercase();
-        let path_match = cmd_lc.contains("\\.mneme\\bin\\mneme")
-            || cmd_lc.contains("/.mneme/bin/mneme");
+        let path_match =
+            cmd_lc.contains("\\.mneme\\bin\\mneme") || cmd_lc.contains("/.mneme/bin/mneme");
         if !path_match {
             continue;
         }
@@ -629,9 +625,9 @@ pub fn count_registered_mneme_hooks_detailed(path: &Path) -> HookCountResult {
             //     `mneme doctor` would report 0/8 even when all 8 hooks
             //     are functional, which is a cosmetic false-negative
             //     that scared users into bogus reinstalls.
-            let registered = arr.iter().any(|e| {
-                is_mneme_marked_entry(e) || entry_command_matches_spec(e, spec)
-            });
+            let registered = arr
+                .iter()
+                .any(|e| is_mneme_marked_entry(e) || entry_command_matches_spec(e, spec));
             if registered {
                 count += 1;
             }
@@ -698,7 +694,11 @@ mod tests {
         let hooks = parsed["hooks"].as_object().unwrap();
         // All 8 events registered.
         for spec in HOOK_SPECS {
-            assert!(hooks.contains_key(spec.event), "missing event {}", spec.event);
+            assert!(
+                hooks.contains_key(spec.event),
+                "missing event {}",
+                spec.event
+            );
             let arr = hooks[spec.event].as_array().unwrap();
             assert_eq!(arr.len(), 1, "exactly one entry per event");
             assert!(is_mneme_marked_entry(&arr[0]));
@@ -708,7 +708,12 @@ mod tests {
             // form rather than the raw OsStr.
             let cmd = arr[0]["hooks"][0]["command"].as_str().unwrap();
             let exe_norm = exe.to_string_lossy().replace('\\', "/");
-            assert!(cmd.contains(&exe_norm), "cmd `{}` missing exe `{}`", cmd, exe_norm);
+            assert!(
+                cmd.contains(&exe_norm),
+                "cmd `{}` missing exe `{}`",
+                cmd,
+                exe_norm
+            );
             for a in spec.args {
                 assert!(cmd.contains(a), "{}'s command lost arg {}", spec.event, a);
             }
@@ -736,8 +741,7 @@ mod tests {
         // User's hook must survive; mneme's hook must be appended.
         assert_eq!(pre.len(), 2);
         assert!(pre.iter().any(|v| {
-            v.get("matcher").and_then(|m| m.as_str()) == Some("Bash")
-                && !is_mneme_marked_entry(v)
+            v.get("matcher").and_then(|m| m.as_str()) == Some("Bash") && !is_mneme_marked_entry(v)
         }));
         assert!(pre.iter().any(is_mneme_marked_entry));
     }
@@ -936,7 +940,10 @@ mod tests {
         // Only one event registered (SessionStart). The other 7 will
         // not match — but the one that does must be picked up via the
         // command-shape fallback, not silently dropped.
-        assert_eq!(r.count, 1, "B-012 command-shape fallback must still trigger");
+        assert_eq!(
+            r.count, 1,
+            "B-012 command-shape fallback must still trigger"
+        );
         assert!(r.parse_error.is_none());
     }
 

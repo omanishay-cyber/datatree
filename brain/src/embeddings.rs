@@ -195,7 +195,10 @@ impl Embedder {
             }
         }
 
-        Ok(out.into_iter().map(|v| v.unwrap_or_else(zero_vec)).collect())
+        Ok(out
+            .into_iter()
+            .map(|v| v.unwrap_or_else(zero_vec))
+            .collect())
     }
 
     /// Drop the cache. Useful for memory-pressure callbacks.
@@ -285,13 +288,16 @@ impl RealBackend {
         // We do NOT call `ort::init()` ourselves — the crate's global init
         // is lazy and will pick up ORT_DYLIB_PATH on first session build.
 
-        let tokenizer = Tokenizer::from_file(tokenizer_path)
-            .map_err(|e| BrainError::Tokenizer(format!("load {}: {e}", tokenizer_path.display())))?;
+        let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(|e| {
+            BrainError::Tokenizer(format!("load {}: {e}", tokenizer_path.display()))
+        })?;
 
         let session = Session::builder()
             .map_err(|e| BrainError::Onnx(format!("Session::builder: {e}")))?
             .commit_from_file(model_path)
-            .map_err(|e| BrainError::Onnx(format!("commit_from_file {}: {e}", model_path.display())))?;
+            .map_err(|e| {
+                BrainError::Onnx(format!("commit_from_file {}: {e}", model_path.display()))
+            })?;
 
         Ok(Self { session, tokenizer })
     }
@@ -662,7 +668,10 @@ mod tests {
         assert_eq!(v.len(), EMBEDDING_DIM);
         // L2 norm == 1 (within float slop).
         let n: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        assert!((n - 1.0).abs() < 1e-4, "fallback vector not L2-normalised: {n}");
+        assert!(
+            (n - 1.0).abs() < 1e-4,
+            "fallback vector not L2-normalised: {n}"
+        );
     }
 
     #[test]
@@ -768,7 +777,9 @@ mod tests {
 
         // Generate unique strings so the cache is bypassed on every iter.
         let n = 500usize;
-        let texts: Vec<String> = (0..n).map(|i| format!("code snippet number {i} end")).collect();
+        let texts: Vec<String> = (0..n)
+            .map(|i| format!("code snippet number {i} end"))
+            .collect();
         let refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
 
         let t0 = Instant::now();
@@ -782,6 +793,9 @@ mod tests {
             n,
             elapsed
         );
-        assert!(rate > 100.0, "hashing-trick should do > 100/s, got {rate:.0}");
+        assert!(
+            rate > 100.0,
+            "hashing-trick should do > 100/s, got {rate:.0}"
+        );
     }
 }

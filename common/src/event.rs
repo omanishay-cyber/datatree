@@ -26,13 +26,17 @@ impl EventTopic {
             Self::TestStatus { project } => format!("project.{}.test_status", project),
             Self::DriftFinding { project } => format!("project.{}.drift_finding", project),
             Self::SubagentEvent { project } => format!("project.{}.subagent_event", project),
-            Self::CompactionDetected { session } => format!("session.{}.compaction_detected", session),
+            Self::CompactionDetected { session } => {
+                format!("session.{}.compaction_detected", session)
+            }
             Self::StepAdvanced { session } => format!("session.{}.step_advanced", session),
             Self::SystemHealth => "system.health".into(),
             Self::SystemDegradedMode => "system.degraded_mode".into(),
             Self::DecisionRecorded { project } => format!("project.{}.decision_recorded", project),
             Self::ConstraintAdded { project } => format!("project.{}.constraint_added", project),
-            Self::ResumptionEmitted { session } => format!("session.{}.resumption_emitted", session),
+            Self::ResumptionEmitted { session } => {
+                format!("session.{}.resumption_emitted", session)
+            }
         }
     }
 }

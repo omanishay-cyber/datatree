@@ -174,9 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // IPC emit (additive). Fire-and-forget — a deaf supervisor
             // must not wedge the worker's result pipeline.
             if job_id != 0 {
-                if let Err(e) =
-                    worker_ipc::report_complete(JobId(job_id), outcome).await
-                {
+                if let Err(e) = worker_ipc::report_complete(JobId(job_id), outcome).await {
                     debug!(error = %e, job_id, "worker_complete_job ipc send skipped");
                 }
             }

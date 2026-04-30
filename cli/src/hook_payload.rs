@@ -175,8 +175,8 @@ pub fn read_stdin_payload() -> Result<Option<HookPayload>, String> {
     if trimmed.is_empty() {
         return Ok(None);
     }
-    let payload: HookPayload = serde_json::from_str(trimmed)
-        .map_err(|e| format!("hook JSON parse: {e}"))?;
+    let payload: HookPayload =
+        serde_json::from_str(trimmed).map_err(|e| format!("hook JSON parse: {e}"))?;
     Ok(Some(payload))
 }
 
@@ -200,10 +200,7 @@ pub fn choose<T>(cli: Option<T>, stdin_val: Option<T>, default: T) -> T {
 /// out on `None`. Hooks like `inject` that DO want to fall back to
 /// `"unknown"` for non-empty prompts should keep using [`choose`]
 /// instead.
-pub fn resolved_session_id(
-    cli: Option<String>,
-    stdin_val: Option<String>,
-) -> Option<String> {
+pub fn resolved_session_id(cli: Option<String>, stdin_val: Option<String>) -> Option<String> {
     let raw = cli.or(stdin_val)?;
     let trimmed = raw.trim();
     if trimmed.is_empty() {

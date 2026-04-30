@@ -54,8 +54,7 @@ fn rebuild_lock_contention_exits_with_code_4() {
     // Acquire the lock for the workspace's ProjectId. The PathManager
     // path is `~/.mneme/projects/<sha256>/.lock` so we have to do
     // the same resolution the binary does.
-    let project_id =
-        common::ids::ProjectId::from_path(&workspace_root).expect("hash project");
+    let project_id = common::ids::ProjectId::from_path(&workspace_root).expect("hash project");
     let paths = common::paths::PathManager::default_root();
     let project_root = paths.project_root(&project_id);
     // Acquire on this thread; hold for 5s.

@@ -66,18 +66,14 @@ impl Extractor for ImageExtractor {
             source,
         })?;
         let format = reader.format();
-        let dims = reader
-            .into_dimensions()
-            .map_err(|e| ExtractError::Parse {
-                path: path.to_path_buf(),
-                reason: format!("image dimensions: {e}"),
-            })?;
+        let dims = reader.into_dimensions().map_err(|e| ExtractError::Parse {
+            path: path.to_path_buf(),
+            reason: format!("image dimensions: {e}"),
+        })?;
 
         let mut doc = ExtractedDoc::empty("image", path);
-        doc.metadata
-            .insert("width".into(), dims.0.to_string());
-        doc.metadata
-            .insert("height".into(), dims.1.to_string());
+        doc.metadata.insert("width".into(), dims.0.to_string());
+        doc.metadata.insert("height".into(), dims.1.to_string());
         if let Some(f) = format {
             doc.metadata
                 .insert("format".into(), format!("{:?}", f).to_lowercase());
@@ -118,21 +114,17 @@ impl ImageExtractor {
             }
         };
 
-        let path_str = path.to_str().ok_or_else(|| ExtractError::Other(
-            format!("non-utf8 image path {}", path.display()),
-        ))?;
-        let with_image = tess
-            .set_image(path_str)
-            .map_err(|e| ExtractError::Parse {
-                path: path.to_path_buf(),
-                reason: format!("tesseract set_image: {e}"),
-            })?;
-        let text = with_image
-            .get_text()
-            .map_err(|e| ExtractError::Parse {
-                path: path.to_path_buf(),
-                reason: format!("tesseract get_text: {e}"),
-            })?;
+        let path_str = path.to_str().ok_or_else(|| {
+            ExtractError::Other(format!("non-utf8 image path {}", path.display()))
+        })?;
+        let with_image = tess.set_image(path_str).map_err(|e| ExtractError::Parse {
+            path: path.to_path_buf(),
+            reason: format!("tesseract set_image: {e}"),
+        })?;
+        let text = with_image.get_text().map_err(|e| ExtractError::Parse {
+            path: path.to_path_buf(),
+            reason: format!("tesseract get_text: {e}"),
+        })?;
         doc.text = text.trim().to_string();
         if !doc.text.is_empty() {
             doc.pages.push(crate::types::PageText {

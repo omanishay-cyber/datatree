@@ -8,12 +8,10 @@ use clap::Args;
 use std::path::PathBuf;
 use tracing::{info, warn};
 
-use crate::error::CliResult;
 #[cfg(test)]
 use crate::error::CliError;
-use crate::platforms::{
-    AdapterContext, InstallScope, Platform, PlatformDetector,
-};
+use crate::error::CliResult;
+use crate::platforms::{AdapterContext, InstallScope, Platform, PlatformDetector};
 
 /// LIE-4: filename of the post-rmdir status marker, written next to
 /// `~/.mneme/` (NOT inside it — the dir might be the thing we just
@@ -91,10 +89,7 @@ fn compute_uninstall_status(target_dir: &std::path::Path) -> (&'static str, Vec<
             Ok(entries) => {
                 for e in entries.flatten() {
                     let path = e.path();
-                    let is_dir = e
-                        .file_type()
-                        .map(|ft| ft.is_dir())
-                        .unwrap_or(false);
+                    let is_dir = e.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
                     if is_dir {
                         stack.push(path);
                     } else {
@@ -239,8 +234,16 @@ pub async fn run(args: UninstallArgs) -> CliResult<()> {
     if effective_all && !args.dry_run {
         println!(
             "mneme uninstall — full nuclear cleanup{}{}",
-            if effective_purge { " (purging ~/.mneme)" } else { " (preserving ~/.mneme)" },
-            if args.keep_platforms_only { " — DOWNGRADED to platforms-only by --keep-platforms-only" } else { "" }
+            if effective_purge {
+                " (purging ~/.mneme)"
+            } else {
+                " (preserving ~/.mneme)"
+            },
+            if args.keep_platforms_only {
+                " — DOWNGRADED to platforms-only by --keep-platforms-only"
+            } else {
+                ""
+            }
         );
     }
 
@@ -459,7 +462,11 @@ fn remove_defender_exclusions() {
     #[cfg(windows)]
     {
         let mut targets: Vec<std::path::PathBuf> = Vec::new();
-        targets.push(common::paths::PathManager::default_root().root().to_path_buf());
+        targets.push(
+            common::paths::PathManager::default_root()
+                .root()
+                .to_path_buf(),
+        );
         if let Some(h) = dirs::home_dir() {
             targets.push(h.join(".claude"));
         }
@@ -517,10 +524,7 @@ struct AuxPurgeOutcome {
 /// stale Bun bytecode cache that triggered the `$ZodTuple not found`
 /// MCP startup failure on EC2 (CHANGELOG v0.3.2 "Bun cache cleared at
 /// install time"). Same scrub now happens at uninstall, not just install.
-fn purge_aux_state_at(
-    temp_root: &std::path::Path,
-    home: &std::path::Path,
-) -> AuxPurgeOutcome {
+fn purge_aux_state_at(temp_root: &std::path::Path, home: &std::path::Path) -> AuxPurgeOutcome {
     let mut outcome = AuxPurgeOutcome::default();
 
     // 1) Sweep $TEMP for `mneme-*` / `.mneme-*` entries (dirs OR files).
@@ -580,9 +584,7 @@ fn purge_aux_state_at(
                 );
             }
             Err(e) => {
-                outcome
-                    .errors
-                    .push(format!("{}: {e}", bun_cache.display()));
+                outcome.errors.push(format!("{}: {e}", bun_cache.display()));
                 warn!(
                     error = %e,
                     path = %bun_cache.display(),
@@ -639,7 +641,9 @@ fn purge_mneme_state() {
     // it). Both files must outlive the rmdir below so `mneme uninstall
     // --status` can inspect the post-uninstall state after the parent
     // process has already exited 0.
-    let mneme_dir = common::paths::PathManager::default_root().root().to_path_buf();
+    let mneme_dir = common::paths::PathManager::default_root()
+        .root()
+        .to_path_buf();
     let home = match mneme_dir.parent() {
         Some(parent) => parent.to_path_buf(),
         None => return,
@@ -941,13 +945,8 @@ mod tests {
 
         // Exact form Anish typed on EC2 + the `OFFICE-TODO.md` step 4
         // / `NEXT-PATH.md` Phase B6 step 4 docs.
-        let parsed = Harness::try_parse_from([
-            "mneme",
-            "uninstall",
-            "--all",
-            "--purge-state",
-            "--yes",
-        ]);
+        let parsed =
+            Harness::try_parse_from(["mneme", "uninstall", "--all", "--purge-state", "--yes"]);
         let h = parsed.expect("--yes must parse cleanly post-B-004 fix");
         let HarnessCmd::Uninstall(args) = h.cmd;
         assert!(args.all, "--all must round-trip onto args.all");
@@ -1030,8 +1029,7 @@ mod tests {
         // Two dirs + one file = 3 entries removed. (Order is OS-dependent
         // so we only assert the count, not the order.)
         assert_eq!(
-            outcome.temp_entries_removed,
-            3,
+            outcome.temp_entries_removed, 3,
             "must remove both mneme-* dirs + the .mneme-* file marker; outcome={outcome:?}"
         );
         assert!(

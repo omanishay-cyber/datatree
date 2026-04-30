@@ -85,12 +85,18 @@ fn direct_db_fallback() -> CliResult<()> {
         .map_err(|e| CliError::Other(format!("exec status: {e}")))?;
 
     let mut shown = 0usize;
-    println!("status: supervisor unreachable — direct-db summary from {}:", meta_db.display());
+    println!(
+        "status: supervisor unreachable — direct-db summary from {}:",
+        meta_db.display()
+    );
     println!();
     for (id, name, root, last_indexed_at) in rows.flatten() {
         shown += 1;
         let id_short: String = id.chars().take(12).collect();
-        println!("  [{id_short}] {}", name.unwrap_or_else(|| "<unnamed>".into()));
+        println!(
+            "  [{id_short}] {}",
+            name.unwrap_or_else(|| "<unnamed>".into())
+        );
         if let Some(p) = root {
             println!("      root: {p}");
         }

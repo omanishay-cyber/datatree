@@ -152,7 +152,8 @@ impl Extractor for MarkdownExtractor {
         doc.recompute_text_from_pages();
         doc.metadata
             .insert("section_count".into(), doc.pages.len().to_string());
-        doc.metadata.insert("byte_size".into(), body.len().to_string());
+        doc.metadata
+            .insert("byte_size".into(), body.len().to_string());
 
         debug!(
             path = %path.display(),
@@ -205,7 +206,11 @@ Body of B.
 
         let doc = MarkdownExtractor.extract(&path).expect("extract");
         assert_eq!(doc.kind, "markdown");
-        assert!(doc.pages.len() >= 2, "expected >=2 sections, got {}", doc.pages.len());
+        assert!(
+            doc.pages.len() >= 2,
+            "expected >=2 sections, got {}",
+            doc.pages.len()
+        );
         assert!(doc.text.contains("Body of A"));
         assert!(doc.text.contains("Body of B"));
 
@@ -214,9 +219,15 @@ Body of B.
             .iter()
             .filter_map(|e| e.get("kind").and_then(|v| v.as_str()))
             .collect();
-        assert!(kinds.contains(&"code_block"), "expected code_block; got {kinds:?}");
+        assert!(
+            kinds.contains(&"code_block"),
+            "expected code_block; got {kinds:?}"
+        );
         assert!(kinds.contains(&"link"), "expected link; got {kinds:?}");
-        assert!(kinds.contains(&"heading"), "expected heading; got {kinds:?}");
+        assert!(
+            kinds.contains(&"heading"),
+            "expected heading; got {kinds:?}"
+        );
     }
 
     #[test]

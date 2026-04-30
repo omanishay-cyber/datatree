@@ -110,10 +110,7 @@ impl DriftScanner {
         let Some(ext) = file.extension().and_then(|e| e.to_str()) else {
             return false;
         };
-        c.spec
-            .file_exts
-            .iter()
-            .any(|e| e.eq_ignore_ascii_case(ext))
+        c.spec.file_exts.iter().any(|e| e.eq_ignore_ascii_case(ext))
     }
 }
 

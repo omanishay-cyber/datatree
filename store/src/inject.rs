@@ -108,11 +108,7 @@ pub trait DbInject {
         opts: InjectOptions,
     ) -> Response<()>;
 
-    async fn batch_inject(
-        &self,
-        ops: Vec<InjectOp>,
-        opts: InjectOptions,
-    ) -> Response<BatchResult>;
+    async fn batch_inject(&self, ops: Vec<InjectOp>, opts: InjectOptions) -> Response<BatchResult>;
 }
 
 pub struct DefaultInject {
@@ -150,16 +146,23 @@ impl DefaultInject {
 
         // Idempotency check
         if let Some(key) = &opts.idempotency_key {
-            let q = self.query.query_rows(crate::query::Query {
-                project: project.clone(),
-                layer: DbLayer::Audit,
-                sql: "SELECT new_value_hash FROM audit_log
-                      WHERE actor = 'idempotency' AND target = ?1 LIMIT 1".into(),
-                params: vec![serde_json::Value::String(key.clone())],
-            }).await;
+            let q = self
+                .query
+                .query_rows(crate::query::Query {
+                    project: project.clone(),
+                    layer: DbLayer::Audit,
+                    sql: "SELECT new_value_hash FROM audit_log
+                      WHERE actor = 'idempotency' AND target = ?1 LIMIT 1"
+                        .into(),
+                    params: vec![serde_json::Value::String(key.clone())],
+                })
+                .await;
             if q.success && q.data.as_ref().map_or(false, |v| !v.is_empty()) {
                 // already applied; return synthetic OK
-                return Response::ok(RowId(0), self.meta(layer, start.elapsed().as_millis() as u64, true));
+                return Response::ok(
+                    RowId(0),
+                    self.meta(layer, start.elapsed().as_millis() as u64, true),
+                );
             }
         }
 
@@ -175,7 +178,9 @@ impl DefaultInject {
                 Ok(r) => r,
                 Err(_) => {
                     return Response::err(
-                        DbError::Timeout { elapsed_ms: t.as_millis() as u64 },
+                        DbError::Timeout {
+                            elapsed_ms: t.as_millis() as u64,
+                        },
                         self.meta(layer, t.as_millis() as u64, false),
                     );
                 }
@@ -191,12 +196,20 @@ impl DefaultInject {
                 meta: resp.meta,
             };
         }
-        let row_id = resp.data.and_then(|w| w.last_insert_rowid).unwrap_or(RowId(0));
+        let row_id = resp
+            .data
+            .and_then(|w| w.last_insert_rowid)
+            .unwrap_or(RowId(0));
 
         // Audit
         if opts.audit {
-            let new_hash = blake3::hash(serde_json::to_string(&params).unwrap_or_default().as_bytes())
-                .to_hex().to_string();
+            let new_hash = blake3::hash(
+                serde_json::to_string(&params)
+                    .unwrap_or_default()
+                    .as_bytes(),
+            )
+            .to_hex()
+            .to_string();
             let _ = self.query.write(Write {
                 project: project.clone(),
                 layer: DbLayer::Audit,
@@ -213,23 +226,30 @@ impl DefaultInject {
 
         // Idempotency record
         if let Some(key) = &opts.idempotency_key {
-            let _ = self.query.write(Write {
-                project: project.clone(),
-                layer: DbLayer::Audit,
-                sql: "INSERT INTO audit_log(actor, action, layer, target, new_value_hash)
-                      VALUES('idempotency', ?1, ?2, ?3, ?4)".into(),
-                params: vec![
-                    serde_json::Value::String(action.into()),
-                    serde_json::Value::String(format!("{:?}", layer)),
-                    serde_json::Value::String(key.clone()),
-                    serde_json::Value::String("done".into()),
-                ],
-            }).await;
+            let _ = self
+                .query
+                .write(Write {
+                    project: project.clone(),
+                    layer: DbLayer::Audit,
+                    sql: "INSERT INTO audit_log(actor, action, layer, target, new_value_hash)
+                      VALUES('idempotency', ?1, ?2, ?3, ?4)"
+                        .into(),
+                    params: vec![
+                        serde_json::Value::String(action.into()),
+                        serde_json::Value::String(format!("{:?}", layer)),
+                        serde_json::Value::String(key.clone()),
+                        serde_json::Value::String("done".into()),
+                    ],
+                })
+                .await;
         }
 
         // (live bus emit handled by caller via supervisor IPC; opts.emit_event is advisory)
 
-        Response::ok(row_id, self.meta(layer, start.elapsed().as_millis() as u64, false))
+        Response::ok(
+            row_id,
+            self.meta(layer, start.elapsed().as_millis() as u64, false),
+        )
     }
 }
 
@@ -243,7 +263,8 @@ impl DbInject for DefaultInject {
         params: Vec<serde_json::Value>,
         opts: InjectOptions,
     ) -> Response<RowId> {
-        self.write_with_audit(project, layer, sql.to_string(), params, "insert", &opts).await
+        self.write_with_audit(project, layer, sql.to_string(), params, "insert", &opts)
+            .await
     }
 
     async fn upsert(
@@ -254,10 +275,15 @@ impl DbInject for DefaultInject {
         params: Vec<serde_json::Value>,
         opts: InjectOptions,
     ) -> Response<UpsertResult> {
-        let r = self.write_with_audit(project, layer, sql.to_string(), params, "upsert", &opts).await;
+        let r = self
+            .write_with_audit(project, layer, sql.to_string(), params, "upsert", &opts)
+            .await;
         if r.success {
             Response::ok(
-                UpsertResult { inserted: true, row_id: r.data },
+                UpsertResult {
+                    inserted: true,
+                    row_id: r.data,
+                },
                 r.meta,
             )
         } else {
@@ -278,7 +304,9 @@ impl DbInject for DefaultInject {
         params: Vec<serde_json::Value>,
         opts: InjectOptions,
     ) -> Response<()> {
-        let r = self.write_with_audit(project, layer, sql.to_string(), params, "update", &opts).await;
+        let r = self
+            .write_with_audit(project, layer, sql.to_string(), params, "update", &opts)
+            .await;
         Response {
             success: r.success,
             data: if r.success { Some(()) } else { None },
@@ -295,7 +323,9 @@ impl DbInject for DefaultInject {
         params: Vec<serde_json::Value>,
         opts: InjectOptions,
     ) -> Response<()> {
-        let r = self.write_with_audit(project, layer, sql.to_string(), params, "delete", &opts).await;
+        let r = self
+            .write_with_audit(project, layer, sql.to_string(), params, "delete", &opts)
+            .await;
         Response {
             success: r.success,
             data: if r.success { Some(()) } else { None },
@@ -304,20 +334,49 @@ impl DbInject for DefaultInject {
         }
     }
 
-    async fn batch_inject(&self, ops: Vec<InjectOp>, _opts: InjectOptions) -> Response<BatchResult> {
+    async fn batch_inject(
+        &self,
+        ops: Vec<InjectOp>,
+        _opts: InjectOptions,
+    ) -> Response<BatchResult> {
         let mut writes = vec![];
         for op in ops {
             let (project, layer, sql, params) = match op {
-                InjectOp::Insert { project, layer, sql, params } |
-                InjectOp::Update { project, layer, sql, params } |
-                InjectOp::Delete { project, layer, sql, params } => (project, layer, sql, params),
+                InjectOp::Insert {
+                    project,
+                    layer,
+                    sql,
+                    params,
+                }
+                | InjectOp::Update {
+                    project,
+                    layer,
+                    sql,
+                    params,
+                }
+                | InjectOp::Delete {
+                    project,
+                    layer,
+                    sql,
+                    params,
+                } => (project, layer, sql, params),
             };
-            writes.push(Write { project, layer, sql, params });
+            writes.push(Write {
+                project,
+                layer,
+                sql,
+                params,
+            });
         }
         let resp = self.query.write_batch(writes).await;
         if resp.success {
             let total = resp.data.map(|b| b.total_rows_affected).unwrap_or(0);
-            Response::ok(BatchResult { total_rows_affected: total }, resp.meta)
+            Response::ok(
+                BatchResult {
+                    total_rows_affected: total,
+                },
+                resp.meta,
+            )
         } else {
             Response {
                 success: false,

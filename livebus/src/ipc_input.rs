@@ -63,10 +63,7 @@ pub fn default_ipc_path() -> PathBuf {
 ///
 /// Returns when the listener fails to bind. Per-connection failures are
 /// logged but never propagated — the listener loop is resilient.
-pub async fn run_ipc_listener(
-    path: PathBuf,
-    mgr: SubscriberManager,
-) -> Result<(), LivebusError> {
+pub async fn run_ipc_listener(path: PathBuf, mgr: SubscriberManager) -> Result<(), LivebusError> {
     // Best-effort cleanup of stale Unix socket files. Named pipes don't need
     // this on Windows.
     #[cfg(unix)]
@@ -127,10 +124,7 @@ fn build_socket_name(path: &std::path::Path) -> Result<Name<'static>, LivebusErr
     }
 }
 
-async fn handle_connection(
-    conn: IpcStream,
-    mgr: SubscriberManager,
-) -> Result<(), LivebusError> {
+async fn handle_connection(conn: IpcStream, mgr: SubscriberManager) -> Result<(), LivebusError> {
     let (rd, mut wr) = tokio::io::split(conn);
     let mut reader = BufReader::with_capacity(64 * 1024, rd);
     let mut line = String::new();

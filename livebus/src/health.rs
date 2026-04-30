@@ -95,9 +95,7 @@ impl std::fmt::Debug for HealthCtx {
 }
 
 /// Axum handler for `GET /health`.
-pub async fn health_handler(
-    State(state): State<HealthCtx>,
-) -> impl IntoResponse {
+pub async fn health_handler(State(state): State<HealthCtx>) -> impl IntoResponse {
     let bus = state.mgr.bus();
     let stats = state.mgr.stats();
     let published = bus.published_count();

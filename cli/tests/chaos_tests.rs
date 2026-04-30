@@ -130,8 +130,7 @@ fn write_fixture_project(root: &Path) -> std::io::Result<PathBuf> {
 /// `mneme_home`. Mirrors `PathManager::project_root` exactly so tests
 /// can reach into the shard without re-implementing path math.
 fn shard_root_for(mneme_home: &Path, project: &Path) -> PathBuf {
-    let pid =
-        common::ids::ProjectId::from_path(project).expect("hash project path for shard root");
+    let pid = common::ids::ProjectId::from_path(project).expect("hash project path for shard root");
     mneme_home.join("projects").join(pid.as_str())
 }
 
@@ -473,7 +472,10 @@ async fn concurrent_build_x2_second_exits_with_lock_contention() {
     use std::fs;
 
     let bin = mneme_binary();
-    if !require_binary(&bin, "concurrent_build_x2_second_exits_with_lock_contention") {
+    if !require_binary(
+        &bin,
+        "concurrent_build_x2_second_exits_with_lock_contention",
+    ) {
         return;
     }
 
@@ -935,11 +937,8 @@ async fn upgrade_v02_to_v03_schema_is_additive_only() {
     );
 
     // Re-open the migrated DB and verify the legacy row survives.
-    let conn = Connection::open_with_flags(
-        &graph_db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .expect("open migrated graph.db");
+    let conn = Connection::open_with_flags(&graph_db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .expect("open migrated graph.db");
 
     let legacy_count: i64 = conn
         .query_row(

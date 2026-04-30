@@ -215,9 +215,7 @@ fn build_coupling_matrix(nodes: &[ArchNode], edges: &[ArchEdge]) -> Vec<Coupling
             density: (cnt as f32) / denom,
         });
     }
-    out.sort_by(|x, y| {
-        (x.from_community, x.to_community).cmp(&(y.from_community, y.to_community))
-    });
+    out.sort_by(|x, y| (x.from_community, x.to_community).cmp(&(y.from_community, y.to_community)));
     out
 }
 
@@ -283,11 +281,7 @@ fn degree_top_k(nodes: &[ArchNode], edges: &[ArchEdge], k: usize) -> Vec<HubNode
 
 /// Approximate betweenness centrality (Brandes 2001). O(V * (V + E)).
 /// Capped at 2,000 source nodes to keep compute bounded.
-fn betweenness_top_k(
-    g: &UnGraph<usize, f32>,
-    nodes: &[ArchNode],
-    k: usize,
-) -> Vec<BridgeNode> {
+fn betweenness_top_k(g: &UnGraph<usize, f32>, nodes: &[ArchNode], k: usize) -> Vec<BridgeNode> {
     let n = g.node_count();
     if n == 0 {
         return Vec::new();

@@ -146,10 +146,7 @@ pub async fn run(args: InjectArgs, socket_override: Option<PathBuf>) -> CliResul
         // shard creation can't push past Claude Code's hook budget.
         match tokio::time::timeout(HOOK_CTX_BUDGET, HookCtx::resolve(&cwd_for_staleness)).await {
             Ok(Ok(ctx)) => {
-                if let Err(e) = ctx
-                    .write_turn(&session_id, "user", &redacted_prompt)
-                    .await
-                {
+                if let Err(e) = ctx.write_turn(&session_id, "user", &redacted_prompt).await {
                     warn!(error = %e, "history.turns insert failed (non-fatal)");
                 }
             }
@@ -408,7 +405,13 @@ fn format_staleness_block(age_days: i64, threshold_days: i64) -> String {
 /// any of the standard project markers. Returns the first match, or
 /// `None` if we hit the filesystem root without finding any.
 fn find_project_root_for_cwd(cwd: &Path) -> Option<PathBuf> {
-    let markers = [".git", ".claude", "package.json", "Cargo.toml", "pyproject.toml"];
+    let markers = [
+        ".git",
+        ".claude",
+        "package.json",
+        "Cargo.toml",
+        "pyproject.toml",
+    ];
     let mut cur: PathBuf = cwd.to_path_buf();
     for _ in 0..40 {
         for m in markers.iter() {
@@ -470,10 +473,7 @@ fn staleness_threshold_days(project_root: &Path) -> i64 {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
         return DEFAULT_STALENESS_WARN_DAYS;
     };
-    let Some(n) = value
-        .get("staleness_warn_days")
-        .and_then(|v| v.as_i64())
-    else {
+    let Some(n) = value.get("staleness_warn_days").and_then(|v| v.as_i64()) else {
         return DEFAULT_STALENESS_WARN_DAYS;
     };
     if n <= 0 {
@@ -505,11 +505,7 @@ fn staleness_threshold_days(project_root: &Path) -> i64 {
 ///
 /// Total output is hard-capped at [`RECALL_BLOCK_BYTE_CAP`] bytes so the
 /// recall payload never crowds the user's actual prompt out of context.
-fn build_recall_context_block(
-    paths: &PathManager,
-    project_id: &ProjectId,
-    prompt: &str,
-) -> String {
+fn build_recall_context_block(paths: &PathManager, project_id: &ProjectId, prompt: &str) -> String {
     let mut sections: Vec<String> = Vec::new();
 
     if let Some(turns_block) = render_recent_turns(paths, project_id) {
@@ -538,11 +534,9 @@ fn render_recent_turns(paths: &PathManager, project_id: &ProjectId) -> Option<St
     if !db.exists() {
         return None;
     }
-    let conn = rusqlite::Connection::open_with_flags(
-        &db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .ok()?;
+    let conn =
+        rusqlite::Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .ok()?;
     let mut stmt = conn
         .prepare(
             "SELECT role, session_id, content FROM turns \
@@ -580,11 +574,9 @@ fn render_recent_ledger(paths: &PathManager, project_id: &ProjectId) -> Option<S
     if !db.exists() {
         return None;
     }
-    let conn = rusqlite::Connection::open_with_flags(
-        &db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .ok()?;
+    let conn =
+        rusqlite::Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .ok()?;
     let mut stmt = conn
         .prepare(
             "SELECT kind, summary, rationale FROM ledger_entries \
@@ -626,11 +618,7 @@ fn render_recent_ledger(paths: &PathManager, project_id: &ProjectId) -> Option<S
 /// Render the "File intent" subsection. Extracts file-like path tokens
 /// from `prompt`, queries `memory.db::file_intent` for each, and returns
 /// any matched rows.
-fn render_file_intent(
-    paths: &PathManager,
-    project_id: &ProjectId,
-    prompt: &str,
-) -> Option<String> {
+fn render_file_intent(paths: &PathManager, project_id: &ProjectId, prompt: &str) -> Option<String> {
     let db = paths.shard_db(project_id, DbLayer::Memory);
     if !db.exists() {
         return None;
@@ -639,11 +627,9 @@ fn render_file_intent(
     if mentioned.is_empty() {
         return None;
     }
-    let conn = rusqlite::Connection::open_with_flags(
-        &db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .ok()?;
+    let conn =
+        rusqlite::Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .ok()?;
 
     let mut lines: Vec<String> = Vec::new();
     for token in mentioned.iter().take(RECALL_FILE_INTENT_LIMIT) {
@@ -719,9 +705,7 @@ fn extract_file_tokens(prompt: &str) -> Vec<String> {
         let has_ext = match trimmed.rfind('.') {
             Some(i) if i + 1 < trimmed.len() => {
                 let ext = &trimmed[i + 1..];
-                !ext.is_empty()
-                    && ext.len() <= 5
-                    && ext.chars().all(|c| c.is_ascii_alphanumeric())
+                !ext.is_empty() && ext.len() <= 5 && ext.chars().all(|c| c.is_ascii_alphanumeric())
             }
             _ => false,
         };
@@ -762,7 +746,8 @@ mod tests {
 
     #[test]
     fn excerpt_collapses_and_truncates() {
-        let long = "  hello\n  world  this  is   a   very   long   prompt   that   must   be   truncated ";
+        let long =
+            "  hello\n  world  this  is   a   very   long   prompt   that   must   be   truncated ";
         let out = excerpt(long, 30);
         assert!(out.starts_with("hello world"));
         assert!(out.len() <= 33); // 30 chars + "..."
@@ -935,7 +920,10 @@ mod tests {
         )
         .unwrap();
         let block = render_staleness_block(&paths, &project_root);
-        assert!(block.is_none(), "10-day index with 20-day threshold must not warn");
+        assert!(
+            block.is_none(),
+            "10-day index with 20-day threshold must not warn"
+        );
 
         // Same index with threshold=5 (override below default) MUST trigger.
         std::fs::write(
@@ -969,8 +957,8 @@ mod tests {
         std::fs::create_dir_all(paths.project_root(&project_id)).unwrap();
 
         // history.db with two seeded turns.
-        let history = rusqlite::Connection::open(paths.shard_db(&project_id, DbLayer::History))
-            .unwrap();
+        let history =
+            rusqlite::Connection::open(paths.shard_db(&project_id, DbLayer::History)).unwrap();
         history
             .execute_batch(
                 "CREATE TABLE turns (
@@ -987,7 +975,12 @@ mod tests {
         history
             .execute(
                 "INSERT INTO turns(session_id, role, content, timestamp) VALUES(?1, ?2, ?3, ?4)",
-                rusqlite::params!["sd1-test-1", "user", "hello from sd1 test", "2026-04-26 00:00:00"],
+                rusqlite::params![
+                    "sd1-test-1",
+                    "user",
+                    "hello from sd1 test",
+                    "2026-04-26 00:00:00"
+                ],
             )
             .unwrap();
         history
@@ -998,8 +991,8 @@ mod tests {
             .unwrap();
 
         // tasks.db with a decision + impl + an ignored bug entry.
-        let tasks = rusqlite::Connection::open(paths.shard_db(&project_id, DbLayer::Tasks))
-            .unwrap();
+        let tasks =
+            rusqlite::Connection::open(paths.shard_db(&project_id, DbLayer::Tasks)).unwrap();
         tasks
             .execute_batch(
                 "CREATE TABLE ledger_entries (
@@ -1064,8 +1057,8 @@ mod tests {
             .unwrap();
 
         // memory.db with two file_intent rows.
-        let memory = rusqlite::Connection::open(paths.shard_db(&project_id, DbLayer::Memory))
-            .unwrap();
+        let memory =
+            rusqlite::Connection::open(paths.shard_db(&project_id, DbLayer::Memory)).unwrap();
         memory
             .execute_batch(
                 "CREATE TABLE file_intent (
@@ -1117,7 +1110,10 @@ mod tests {
     fn build_recall_context_block_emits_all_three_subsections() {
         let (_keep, paths, project_id) = fixture_with_recall_data();
         let block = build_recall_context_block(&paths, &project_id, "look at src/auth.ts please");
-        assert!(!block.is_empty(), "expected a non-empty block from a seeded fixture");
+        assert!(
+            !block.is_empty(),
+            "expected a non-empty block from a seeded fixture"
+        );
         assert!(block.starts_with("<mneme-context>"));
         assert!(block.ends_with("</mneme-context>"));
         // Recent turns subsection

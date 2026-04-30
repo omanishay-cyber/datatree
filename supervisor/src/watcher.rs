@@ -29,11 +29,11 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use common::{ids::ProjectId, layer::DbLayer, paths::PathManager};
-use store::{inject::InjectOptions, Store};
 use parsers::{
     extractor::Extractor, incremental::IncrementalParser, looks_like_test_path,
     parser_pool::ParserPool, Language, NodeKind,
 };
+use store::{inject::InjectOptions, Store};
 
 /// Debounce window for collapsing burst saves.
 pub const DEFAULT_DEBOUNCE: Duration = Duration::from_millis(250);
@@ -234,8 +234,7 @@ pub async fn run_watcher(
         // that absorbs typical AI-burst windows without rehashing. The map
         // grows as needed beyond this. See `feedback_mneme_ai_dna_pace.md`.
         let initial_buckets = (pending_cap / 16).max(64);
-        let mut pending: HashMap<PathBuf, PendingBatch> =
-            HashMap::with_capacity(initial_buckets);
+        let mut pending: HashMap<PathBuf, PendingBatch> = HashMap::with_capacity(initial_buckets);
         let mut ticker = tokio::time::interval(debounce / 2);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -309,8 +308,16 @@ pub async fn run_watcher(
         // Each job runs concurrently so the worker doesn't serialize on
         // slow parses.
         tokio::spawn(async move {
-            if let Err(e) = reindex_one(&store, &inc, &project_id, &path, kind, &stats, lb.as_deref())
-                .await
+            if let Err(e) = reindex_one(
+                &store,
+                &inc,
+                &project_id,
+                &path,
+                kind,
+                &stats,
+                lb.as_deref(),
+            )
+            .await
             {
                 warn!(path = %path.display(), error = %e, "reindex failed");
             }
@@ -347,7 +354,11 @@ async fn reindex_one(
             .data
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|row| row.get("qualified_name").and_then(|v| v.as_str()).map(String::from))
+            .filter_map(|row| {
+                row.get("qualified_name")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+            })
             .collect();
 
         // Edges by source or target.
@@ -385,7 +396,13 @@ async fn reindex_one(
 
         let latency_ms = started.elapsed().as_millis() as u64;
         stats.record(latency_ms, ChangeKind::Delete);
-        emit_file_reindexed(livebus_socket, &path_str, latency_ms, -(qnames.len() as i64), 0);
+        emit_file_reindexed(
+            livebus_socket,
+            &path_str,
+            latency_ms,
+            -(qnames.len() as i64),
+            0,
+        );
         return Ok(());
     }
 
@@ -486,7 +503,11 @@ async fn reindex_one(
         .data
         .unwrap_or_default()
         .into_iter()
-        .filter_map(|row| row.get("qualified_name").and_then(|v| v.as_str()).map(String::from))
+        .filter_map(|row| {
+            row.get("qualified_name")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        })
         .collect();
     for qn in &old_qnames {
         let _ = store
@@ -590,11 +611,7 @@ async fn reindex_one(
 }
 
 /// Route a raw `notify::Event` to the set of paths we care about.
-fn classify_event(
-    ev: &notify::Event,
-    root: &Path,
-    stats: &WatcherStatsHandle,
-) -> Vec<PathBuf> {
+fn classify_event(ev: &notify::Event, root: &Path, stats: &WatcherStatsHandle) -> Vec<PathBuf> {
     let mut out = Vec::new();
     for path in &ev.paths {
         if is_ignored(path, root) {
@@ -713,7 +730,9 @@ fn emit_file_reindexed(
         "topic": topic,
         "payload": payload,
     });
-    let Ok(line) = serde_json::to_string(&envelope) else { return };
+    let Ok(line) = serde_json::to_string(&envelope) else {
+        return;
+    };
     let line = format!("{line}\n");
     let socket = socket.to_path_buf();
     // Fire-and-forget on a blocking task so a slow livebus never blocks us.
@@ -808,7 +827,10 @@ mod tests {
     fn ignores_common_build_dirs() {
         let root = PathBuf::from("/proj");
         assert!(is_ignored(Path::new("/proj/target/debug/foo.rs"), &root));
-        assert!(is_ignored(Path::new("/proj/node_modules/pkg/index.js"), &root));
+        assert!(is_ignored(
+            Path::new("/proj/node_modules/pkg/index.js"),
+            &root
+        ));
         assert!(is_ignored(Path::new("/proj/.git/HEAD"), &root));
         assert!(is_ignored(Path::new("/proj/.mneme/graph.db"), &root));
         assert!(!is_ignored(Path::new("/proj/src/main.rs"), &root));
@@ -841,7 +863,10 @@ mod tests {
         assert_eq!(ev.topic, "project.abc123.file_changed");
         assert_eq!(ev.project_hash.as_deref(), Some("abc123"));
         // Round-trip the JSON payload to confirm the typed shape.
-        assert_eq!(ev.payload["kind"], serde_json::Value::String("file_changed".into()));
+        assert_eq!(
+            ev.payload["kind"],
+            serde_json::Value::String("file_changed".into())
+        );
         assert_eq!(
             ev.payload["path"],
             serde_json::Value::String("src/lib.rs".into())

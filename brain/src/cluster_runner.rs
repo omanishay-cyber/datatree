@@ -63,10 +63,7 @@ impl ClusterRunner {
         let solver = LeidenSolver::new(self.cfg.leiden);
         let initial = solver.run(&graph)?;
         let final_communities = self.split_oversized(edges, total_nodes, initial, 0)?;
-        info!(
-            communities = final_communities.len(),
-            "leiden done"
-        );
+        info!(communities = final_communities.len(), "leiden done");
         Ok(final_communities)
     }
 
@@ -93,8 +90,7 @@ impl ClusterRunner {
             }
 
             // Build subgraph induced by `comm.members`.
-            let member_set: HashMap<NodeId, ()> =
-                comm.members.iter().map(|n| (*n, ())).collect();
+            let member_set: HashMap<NodeId, ()> = comm.members.iter().map(|n| (*n, ())).collect();
             let sub_edges: Vec<(NodeId, NodeId, f32)> = edges
                 .iter()
                 .filter(|(a, b, _)| member_set.contains_key(a) && member_set.contains_key(b))

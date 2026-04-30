@@ -26,15 +26,15 @@ use brain::leiden::Community as BrainCommunity;
 use brain::wiki::{CommunityInput as WikiCommunityInput, WikiBuilder, WikiSymbol};
 use brain::Embedder;
 use brain::NodeId as BrainNodeId;
-use common::{layer::DbLayer, paths::PathManager, ids::ProjectId};
+use common::{ids::ProjectId, layer::DbLayer, paths::PathManager};
 use multimodal::{ExtractedDoc, Registry as MmRegistry};
-use scanners::scanners::architecture::{ArchEdge, ArchNode, ArchitectureScanner};
-use sha2::{Digest, Sha256};
-use store::{inject::InjectOptions, Store};
 use parsers::{
     extractor::Extractor, incremental::IncrementalParser, looks_like_test_path,
     parser_pool::ParserPool, query_cache, Language, NodeKind,
 };
+use scanners::scanners::architecture::{ArchEdge, ArchNode, ArchitectureScanner};
+use sha2::{Digest, Sha256};
+use store::{inject::InjectOptions, Store};
 
 /// CLI args for `mneme build`.
 #[derive(Debug, Args)]
@@ -210,11 +210,7 @@ pub async fn run(args: BuildArgs, socket_override: Option<PathBuf>) -> CliResult
 /// v0.3 MVP: wires only `Job::Parse`. `Scan`/`Embed`/`Ingest` are still
 /// running inline from the subcommand that needs them; they'll be
 /// migrated in follow-ups per ARCHITECTURE.md §Worker dispatch roadmap.
-async fn run_dispatched(
-    args: &BuildArgs,
-    project: &Path,
-    client: &IpcClient,
-) -> CliResult<()> {
+async fn run_dispatched(args: &BuildArgs, project: &Path, client: &IpcClient) -> CliResult<()> {
     use common::jobs::Job;
 
     // K3 + H4: dispatched builds were silent on the model-probe surface.
@@ -238,7 +234,9 @@ async fn run_dispatched(
         .into_iter()
         .filter_entry(|e| {
             let p = e.path();
-            if is_ignored(p) { return false; }
+            if is_ignored(p) {
+                return false;
+            }
             !project_ignore_matches(gi_ref, p, e.file_type().is_dir())
         });
 
@@ -306,7 +304,11 @@ async fn run_dispatched(
             IpcResponse::Error { message } => {
                 return Err(CliError::Supervisor(format!("JobQueueStatus: {message}")))
             }
-            _ => return Err(CliError::Supervisor("unexpected JobQueueStatus resp".into())),
+            _ => {
+                return Err(CliError::Supervisor(
+                    "unexpected JobQueueStatus resp".into(),
+                ))
+            }
         };
         let pending = snap.get("pending").and_then(|v| v.as_u64()).unwrap_or(0);
         let in_flight = snap.get("in_flight").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -314,9 +316,7 @@ async fn run_dispatched(
             let completed = snap.get("completed").and_then(|v| v.as_u64()).unwrap_or(0);
             let failed = snap.get("failed").and_then(|v| v.as_u64()).unwrap_or(0);
             let elapsed = started.elapsed();
-            println!(
-                "dispatched build done in {elapsed:?}: completed={completed} failed={failed}"
-            );
+            println!("dispatched build done in {elapsed:?}: completed={completed} failed={failed}");
 
             // K3 + H4: surface the embedding model status in the
             // dispatched summary too, so a degraded build is never
@@ -413,8 +413,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // lean. Tree-sitter parses are CPU-bound; tokio's multi-threaded
     // runtime will use all cores concurrently via `spawn_blocking`.
     let pool = Arc::new(
-        ParserPool::new(4)
-            .map_err(|e| CliError::Other(format!("parser pool init: {e}")))?,
+        ParserPool::new(4).map_err(|e| CliError::Other(format!("parser pool init: {e}")))?,
     );
     if let Err(e) = query_cache::warm_up() {
         warn!(error = %e, "query warm-up reported issues (non-fatal)");
@@ -447,7 +446,9 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
         .into_iter()
         .filter_entry(|e| {
             let p = e.path();
-            if is_ignored(p) { return false; }
+            if is_ignored(p) {
+                return false;
+            }
             // Only prune DIRECTORIES via gitignore here; files are
             // checked (and counted) inside the loop. K15.
             if e.file_type().is_dir() {
@@ -572,10 +573,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
             Err(e) => {
                 warn!(file = %path.display(), error = %e, "read failed; skipping");
                 // I1 batch 3 — capture read failures into errors.db.
-                build_errors.push((
-                    format!("read failed: {e}"),
-                    path.display().to_string(),
-                ));
+                build_errors.push((format!("read failed: {e}"), path.display().to_string()));
                 skipped_unsupported += 1;
                 continue;
             }
@@ -594,10 +592,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
                 // I1 batch 3 — capture parse failures into errors.db.
                 // The bucket above (`skipped_unsupported`) preserves
                 // the K15 contract; this collector is additive.
-                build_errors.push((
-                    format!("parse failed: {e}"),
-                    path.display().to_string(),
-                ));
+                build_errors.push((format!("parse failed: {e}"), path.display().to_string()));
                 // Tree-sitter rejected the file outright. Bucket as
                 // "unsupported language" since the grammar refused —
                 // the user-visible result is identical (file went in,
@@ -614,10 +609,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
             Err(e) => {
                 warn!(file = %path.display(), error = %e, "extract failed; skipping");
                 // I1 batch 3 — capture extract failures into errors.db.
-                build_errors.push((
-                    format!("extract failed: {e}"),
-                    path.display().to_string(),
-                ));
+                build_errors.push((format!("extract failed: {e}"), path.display().to_string()));
                 skipped_unsupported += 1;
                 continue;
             }
@@ -955,14 +947,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // the project-relative file path. Source='convention',
     // confidence=0.9. Skips files that already have an annotation /
     // git row.
-    run_convention_intent_pass(
-        &store,
-        &project_id,
-        &project,
-        &paths,
-        &mut intent_stats,
-    )
-    .await;
+    run_convention_intent_pass(&store, &project_id, &project, &paths, &mut intent_stats).await;
 
     // 12d. J6 — per-directory `INTENT.md` annotations. Each line of
     // the form `- <filename>: <intent> — <reason>` applies to the
@@ -978,16 +963,14 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // pick the newest row. Without this pass architecture.db stayed
     // empty even though the analysis library was already in tree.
     heartbeat.set_phase("graph-architecture");
-    let architecture_stats =
-        run_architecture_pass(&store, &project_id, &paths).await;
+    let architecture_stats = run_architecture_pass(&store, &project_id, &paths).await;
 
     // 14. Conventions pass (I1 batch 3). Materialises the inferred
     // patterns the `convention_learner` accumulated during the file
     // loop into conventions.db::conventions. One row per inferred
     // pattern with a deterministic id (sha256 over kind+payload) so
     // re-runs upsert in place.
-    let conventions_stats =
-        run_conventions_pass(&store, &project_id, &convention_learner).await;
+    let conventions_stats = run_conventions_pass(&store, &project_id, &convention_learner).await;
 
     // 15. Wiki pass (I1 batch 3). For each Leiden community we just
     // materialised in semantic.db::communities, build a markdown wiki
@@ -1066,10 +1049,8 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     let mut heartbeat = heartbeat;
     heartbeat.stop();
 
-    let skipped_total = skipped_binary
-        + skipped_unsupported
-        + skipped_gitignore
-        + skipped_too_large;
+    let skipped_total =
+        skipped_binary + skipped_unsupported + skipped_gitignore + skipped_too_large;
 
     println!();
     println!("build complete:");
@@ -1115,9 +1096,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     );
     println!(
         "  communities:  {} (members={}, edges_used={})",
-        cluster_stats.communities,
-        cluster_stats.members,
-        cluster_stats.edges_used,
+        cluster_stats.communities, cluster_stats.members, cluster_stats.edges_used,
     );
     // PM-5: include the explicit `model:` qualifier alongside the legacy
     // `backend=` tag. Both render the same string today (Embedder::
@@ -1146,9 +1125,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     );
     println!(
         "  git:          {} commits, {} file-changes (status={})",
-        git_stats.commits_written,
-        git_stats.commit_files_written,
-        git_stats.status,
+        git_stats.commits_written, git_stats.commit_files_written, git_stats.status,
     );
     println!(
         "  deps:         {} dependencies parsed (npm={}, cargo={}, python={})",
@@ -1185,37 +1162,29 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     );
     println!(
         "  conventions:  {} patterns inferred ({} written)",
-        conventions_stats.patterns_inferred,
-        conventions_stats.rows_written,
+        conventions_stats.patterns_inferred, conventions_stats.rows_written,
     );
     println!(
         "  wiki:         {} pages generated ({} written)",
-        wiki_stats.pages_built,
-        wiki_stats.pages_written,
+        wiki_stats.pages_built, wiki_stats.pages_written,
     );
     println!(
         "  federated:    {} fingerprints indexed ({} skipped)",
-        federated_stats.indexed,
-        federated_stats.skipped,
+        federated_stats.indexed, federated_stats.skipped,
     );
     println!(
         "  perf:         {} baselines written (build_ms={})",
-        perf_stats.baselines_written,
-        perf_stats.build_ms,
+        perf_stats.baselines_written, perf_stats.build_ms,
     );
     println!(
         "  errors:       {} captured ({} unique)",
-        errors_stats.captured,
-        errors_stats.unique,
+        errors_stats.captured, errors_stats.unique,
     );
     // Silent-1 (Class H-silent): surface graph-insert failures in the
     // build summary. The audit prescription is "fail-loud if any return
     // Err" — we print the line unconditionally so operators always see
     // a `0` on a healthy build and a non-zero count on a degraded one.
-    println!(
-        "  graph-insert: {} failures",
-        graph_insert_failures,
-    );
+    println!("  graph-insert: {} failures", graph_insert_failures,);
     println!(
         "  livestate:    {} build event(s) recorded",
         livestate_stats.events_written,
@@ -1224,16 +1193,17 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
         "  agents:       {} synthetic run(s) recorded (per-turn rows owned by SubagentStop hook)",
         agents_stats.runs_written,
     );
-    println!("  shard:        {}", paths.project_root(&project_id).display());
+    println!(
+        "  shard:        {}",
+        paths.project_root(&project_id).display()
+    );
 
     // I6: print the per-shard row counts so an operator running
     // `mneme build .` immediately sees which of the 26 shards are
     // populated and which are empty placeholders. Driven by
     // `DbLayer::all_per_project()`; non-fatal on any I/O or query
     // error — the build itself is already done.
-    crate::commands::shard_summary::print_shard_summary(
-        &paths.project_root(&project_id),
-    );
+    crate::commands::shard_summary::print_shard_summary(&paths.project_root(&project_id));
 
     // K3/K4: re-emit the model warnings at the END of the build summary so
     // the message survives long log scrolls. The probe is cheap (it just
@@ -1330,7 +1300,9 @@ async fn run_multimodal_pass(
         .into_iter()
         .filter_entry(|e| {
             let p = e.path();
-            if is_ignored(p) { return false; }
+            if is_ignored(p) {
+                return false;
+            }
             !project_ignore_matches(gi_ref, p, e.file_type().is_dir())
         });
 
@@ -1396,8 +1368,8 @@ async fn persist_multimodal(
     project: &ProjectId,
     doc: &ExtractedDoc,
 ) -> Result<usize, String> {
-    let bytes = std::fs::read(&doc.source)
-        .map_err(|e| format!("read {}: {e}", doc.source.display()))?;
+    let bytes =
+        std::fs::read(&doc.source).map_err(|e| format!("read {}: {e}", doc.source.display()))?;
     let sha = hex_sha256(&bytes);
     let elements_json = serde_json::to_string(&doc.elements).unwrap_or_else(|_| "[]".into());
     let transcript_json = if doc.transcript.is_empty() {
@@ -1475,7 +1447,9 @@ async fn persist_multimodal(
 
         let node_kind = format!("{}_page", doc.kind);
         let qualified = format!("{scheme}://{source_display}#page{page_num}");
-        let name = heading.clone().unwrap_or_else(|| format!("Page {page_num}"));
+        let name = heading
+            .clone()
+            .unwrap_or_else(|| format!("Page {page_num}"));
         let extra = serde_json::json!({
             "kind": doc.kind,
             "page_num": page_num,
@@ -1601,8 +1575,7 @@ async fn run_leiden_pass(
     let mut id_to_name: std::collections::HashMap<u128, String> =
         std::collections::HashMap::with_capacity(edges.len() * 2);
 
-    let mut brain_edges: Vec<(BrainNodeId, BrainNodeId, f32)> =
-        Vec::with_capacity(edges.len());
+    let mut brain_edges: Vec<(BrainNodeId, BrainNodeId, f32)> = Vec::with_capacity(edges.len());
     for (src, tgt, weight) in edges {
         let src_id = *name_to_id
             .entry(src.clone())
@@ -1682,7 +1655,8 @@ async fn run_leiden_pass(
                 Some(s) => s.clone(),
                 None => continue,
             };
-            let mem_sql = "INSERT OR IGNORE INTO community_membership(community_id, node_qualified) \
+            let mem_sql =
+                "INSERT OR IGNORE INTO community_membership(community_id, node_qualified) \
                            VALUES(?1, ?2)";
             let mem_params = vec![
                 serde_json::Value::Number(community_row_id.into()),
@@ -1715,14 +1689,10 @@ async fn run_leiden_pass(
 /// `graph.db::edges`, plus the edge's `confidence_score` as the f32
 /// weight. Self-loops and zero-weight rows are filtered here so the
 /// solver doesn't have to guard against them.
-fn read_edges(
-    graph_db: &Path,
-) -> Result<Vec<(String, String, f32)>, String> {
-    let conn = rusqlite::Connection::open_with_flags(
-        graph_db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|e| format!("open {}: {e}", graph_db.display()))?;
+fn read_edges(graph_db: &Path) -> Result<Vec<(String, String, f32)>, String> {
+    let conn =
+        rusqlite::Connection::open_with_flags(graph_db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| format!("open {}: {e}", graph_db.display()))?;
 
     let mut stmt = conn
         .prepare(
@@ -2006,11 +1976,9 @@ fn derive_text_for_embedding(row: &EmbeddableRow) -> String {
 /// nodes defensively (the I4 fix already drops them on insert; older
 /// shards may still carry them).
 fn read_embeddable_nodes(graph_db: &Path) -> Result<Vec<EmbeddableRow>, String> {
-    let conn = rusqlite::Connection::open_with_flags(
-        graph_db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|e| format!("open {}: {e}", graph_db.display()))?;
+    let conn =
+        rusqlite::Connection::open_with_flags(graph_db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| format!("open {}: {e}", graph_db.display()))?;
 
     let mut stmt = conn
         .prepare(
@@ -2125,11 +2093,7 @@ pub(crate) fn audit_route(inline: bool) -> AuditRoute {
 /// Failure is non-fatal: the build itself already succeeded; an audit
 /// failure just means findings.db stays empty and the user can re-run
 /// `mneme audit` later.
-async fn run_audit_pass(
-    project: &Path,
-    inline: bool,
-    children: &BuildChildRegistry,
-) -> AuditStats {
+async fn run_audit_pass(project: &Path, inline: bool, children: &BuildChildRegistry) -> AuditStats {
     let route = audit_route(inline);
     let result: CliResult<()> = match route {
         AuditRoute::Inline => {
@@ -2168,10 +2132,13 @@ async fn run_audit_pass(
     match result {
         Ok(()) => AuditStats {
             ran: true,
-            status: format!("ok ({})", match route {
-                AuditRoute::Inline => "inline",
-                AuditRoute::IpcWithFallback => "ipc-or-fallback",
-            }),
+            status: format!(
+                "ok ({})",
+                match route {
+                    AuditRoute::Inline => "inline",
+                    AuditRoute::IpcWithFallback => "ipc-or-fallback",
+                }
+            ),
         },
         Err(e) => {
             warn!(error = %e, ?route, "audit pass failed; findings.db will not be populated this build");
@@ -2339,12 +2306,11 @@ async fn run_resolve_imports_pass(
             Ok(s) => s,
             Err(_) => return stats,
         };
-        let rows = match stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        }) {
-            Ok(it) => it,
-            Err(_) => return stats,
-        };
+        let rows =
+            match stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+                Ok(it) => it,
+                Err(_) => return stats,
+            };
         for row in rows.filter_map(|r| r.ok()) {
             let (qn, fp) = row;
             let normalized = strip_long_path_prefix(&fp);
@@ -2552,9 +2518,7 @@ fn extract_module(raw: &str) -> Option<String> {
     }
     // Python `from <X> import ...` — pull the token after `from `.
     if let Some(rest) = trimmed.strip_prefix("from ") {
-        let mod_len = rest
-            .find(|c: char| c.is_whitespace())
-            .unwrap_or(rest.len());
+        let mod_len = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
         if mod_len > 0 {
             return Some(rest[..mod_len].to_string());
         }
@@ -2638,9 +2602,9 @@ async fn run_intent_pass(
         Ok(c) => c,
         Err(_) => return stats,
     };
-    let mut stmt = match conn.prepare(
-        "SELECT file_path FROM nodes WHERE kind='file' AND file_path IS NOT NULL",
-    ) {
+    let mut stmt = match conn
+        .prepare("SELECT file_path FROM nodes WHERE kind='file' AND file_path IS NOT NULL")
+    {
         Ok(s) => s,
         Err(_) => return stats,
     };
@@ -2723,9 +2687,11 @@ fn parse_mneme_intent(head: &str) -> Option<(String, Option<String>)> {
                 if c.is_alphanumeric() || c == '_' {
                     kind_part.push(c);
                 } else {
-                    reason_part = after[i..].trim_start_matches(|c: char| {
-                        c == ':' || c == '-' || c == '—' || c == ' ' || c == '\t'
-                    }).to_string();
+                    reason_part = after[i..]
+                        .trim_start_matches(|c: char| {
+                            c == ':' || c == '-' || c == '—' || c == ' ' || c == '\t'
+                        })
+                        .to_string();
                     break;
                 }
             }
@@ -2850,70 +2816,70 @@ async fn run_git_intent_pass(
 
         // Heuristic 1 — commit message marker.
         let msg_lower = message.to_lowercase();
-        let kind_reason: Option<(&'static str, f64, String)> = if msg_lower.contains("verbatim")
-            || msg_lower.contains("do not touch")
-        {
-            Some((
-                "frozen",
-                0.8,
-                format!("commit marker: {}", truncate_reason(&message, 80)),
-            ))
-        } else if let Some(ts) = last_touched {
-            if ts < one_year_ago && files_in_commit <= 2 {
-                // Heuristic 2 — long frozen + low churn.
+        let kind_reason: Option<(&'static str, f64, String)> =
+            if msg_lower.contains("verbatim") || msg_lower.contains("do not touch") {
                 Some((
                     "frozen",
-                    0.6,
-                    format!(
-                        "git: not touched since {} (low-churn commit)",
-                        ts.format("%Y-%m-%d")
-                    ),
+                    0.8,
+                    format!("commit marker: {}", truncate_reason(&message, 80)),
                 ))
-            } else if ts >= ninety_days_ago {
-                // Heuristic 3 — recent churn + TODO/FIXME density.
-                let abs = if Path::new(&fp).is_absolute() {
-                    PathBuf::from(&fp)
-                } else {
-                    project.join(&fp)
-                };
-                let recent_lines: i64 = candidates
-                    .iter()
-                    .map(|key| {
-                        conn.query_row(
-                            "SELECT COALESCE(SUM(cf.additions + cf.deletions), 0) \
-                             FROM commit_files cf JOIN commits c ON cf.sha=c.sha \
-                             WHERE cf.file_path = ?1 AND c.committed_at >= ?2",
-                            rusqlite::params![key.as_str(), ninety_days_ago.to_rfc3339()],
-                            |r| r.get::<_, i64>(0),
-                        )
-                        .unwrap_or(0)
-                    })
-                    .max()
-                    .unwrap_or(0);
-                if recent_lines >= 200 && count_todo_density(&abs) >= 3 {
+            } else if let Some(ts) = last_touched {
+                if ts < one_year_ago && files_in_commit <= 2 {
+                    // Heuristic 2 — long frozen + low churn.
                     Some((
-                        "deferred",
-                        0.5,
+                        "frozen",
+                        0.6,
                         format!(
-                            "git: {} lines churned in last 90d + ≥3 TODO/FIXME",
-                            recent_lines
+                            "git: not touched since {} (low-churn commit)",
+                            ts.format("%Y-%m-%d")
                         ),
                     ))
+                } else if ts >= ninety_days_ago {
+                    // Heuristic 3 — recent churn + TODO/FIXME density.
+                    let abs = if Path::new(&fp).is_absolute() {
+                        PathBuf::from(&fp)
+                    } else {
+                        project.join(&fp)
+                    };
+                    let recent_lines: i64 = candidates
+                        .iter()
+                        .map(|key| {
+                            conn.query_row(
+                                "SELECT COALESCE(SUM(cf.additions + cf.deletions), 0) \
+                             FROM commit_files cf JOIN commits c ON cf.sha=c.sha \
+                             WHERE cf.file_path = ?1 AND c.committed_at >= ?2",
+                                rusqlite::params![key.as_str(), ninety_days_ago.to_rfc3339()],
+                                |r| r.get::<_, i64>(0),
+                            )
+                            .unwrap_or(0)
+                        })
+                        .max()
+                        .unwrap_or(0);
+                    if recent_lines >= 200 && count_todo_density(&abs) >= 3 {
+                        Some((
+                            "deferred",
+                            0.5,
+                            format!(
+                                "git: {} lines churned in last 90d + ≥3 TODO/FIXME",
+                                recent_lines
+                            ),
+                        ))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
             } else {
                 None
-            }
-        } else {
-            None
-        };
+            };
 
         let Some((kind, confidence, reason)) = kind_reason else {
             continue;
         };
 
-        let sql = "INSERT OR IGNORE INTO file_intent(file_path, intent, reason, source, confidence) \
+        let sql =
+            "INSERT OR IGNORE INTO file_intent(file_path, intent, reason, source, confidence) \
                    VALUES(?1, ?2, ?3, 'git', ?4)";
         let params = vec![
             serde_json::Value::String(fp.clone()),
@@ -3092,7 +3058,8 @@ async fn run_intent_md_pass(
             continue;
         }
 
-        let sql = "INSERT OR IGNORE INTO file_intent(file_path, intent, reason, source, confidence) \
+        let sql =
+            "INSERT OR IGNORE INTO file_intent(file_path, intent, reason, source, confidence) \
                    VALUES(?1, ?2, ?3, 'convention', 0.9)";
         let params = vec![
             serde_json::Value::String(fp.clone()),
@@ -3156,11 +3123,9 @@ fn load_existing_intent_paths(memory_db: &Path) -> std::collections::HashSet<Str
 
 /// Return the file_path values of every `kind='file'` node in graph.db.
 fn read_indexed_files(graph_db: &Path) -> Option<Vec<String>> {
-    let conn = rusqlite::Connection::open_with_flags(
-        graph_db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .ok()?;
+    let conn =
+        rusqlite::Connection::open_with_flags(graph_db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .ok()?;
     let mut stmt = conn
         .prepare("SELECT file_path FROM nodes WHERE kind='file' AND file_path IS NOT NULL")
         .ok()?;
@@ -3224,8 +3189,14 @@ fn parse_intent_config(raw: &str) -> Option<Vec<ConventionRule>> {
     let mut out = Vec::with_capacity(arr.len());
     for item in arr {
         let glob = item.get("glob").and_then(|x| x.as_str()).map(String::from);
-        let intent = item.get("intent").and_then(|x| x.as_str()).map(String::from);
-        let reason = item.get("reason").and_then(|x| x.as_str()).map(String::from);
+        let intent = item
+            .get("intent")
+            .and_then(|x| x.as_str())
+            .map(String::from);
+        let reason = item
+            .get("reason")
+            .and_then(|x| x.as_str())
+            .map(String::from);
         if let (Some(g), Some(i)) = (glob, intent) {
             out.push(ConventionRule {
                 glob: g,
@@ -3252,7 +3223,9 @@ fn parse_intent_md(raw: &str) -> std::collections::HashMap<String, (String, Opti
             Some(b) => b,
             None => continue,
         };
-        let Some(colon) = body.find(':') else { continue };
+        let Some(colon) = body.find(':') else {
+            continue;
+        };
         let name = body[..colon].trim();
         let rest = body[colon + 1..].trim();
         if name.is_empty() || rest.is_empty() {
@@ -3451,12 +3424,14 @@ async fn run_betweenness_pass(
             return stats;
         }
     };
-    let raw_edges: Vec<(String, String)> = match edge_stmt
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-    {
-        Ok(rows) => rows.filter_map(|r| r.ok()).filter(|(s, t)| s != t).collect(),
-        Err(_) => Vec::new(),
-    };
+    let raw_edges: Vec<(String, String)> =
+        match edge_stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+            Ok(rows) => rows
+                .filter_map(|r| r.ok())
+                .filter(|(s, t)| s != t)
+                .collect(),
+            Err(_) => Vec::new(),
+        };
     if raw_edges.is_empty() {
         stats.duration_ms = started.elapsed().as_millis() as u64;
         return stats;
@@ -3494,11 +3469,14 @@ async fn run_betweenness_pass(
 
     // Pick top-K source nodes by degree (sampled Brandes — captures
     // the high-BC bridges without paying full O(V^2 + V*E)).
-    let mut degree_idx: Vec<(usize, usize)> =
-        (0..v_count).map(|i| (i, adj[i].len())).collect();
+    let mut degree_idx: Vec<(usize, usize)> = (0..v_count).map(|i| (i, adj[i].len())).collect();
     degree_idx.sort_by(|a, b| b.1.cmp(&a.1));
     let sample_size = degree_idx.len().min(50);
-    let sources: Vec<usize> = degree_idx.iter().take(sample_size).map(|&(i, _)| i).collect();
+    let sources: Vec<usize> = degree_idx
+        .iter()
+        .take(sample_size)
+        .map(|&(i, _)| i)
+        .collect();
 
     // Brandes accumulator
     let mut bc: Vec<f64> = vec![0.0; v_count];
@@ -3563,7 +3541,8 @@ async fn run_betweenness_pass(
         if *score > stats.top_score {
             stats.top_score = *score;
         }
-        let sql = "INSERT OR REPLACE INTO node_centrality(qualified_name, betweenness, sample_size) \
+        let sql =
+            "INSERT OR REPLACE INTO node_centrality(qualified_name, betweenness, sample_size) \
                    VALUES(?1, ?2, ?3)";
         let params = vec![
             serde_json::Value::String(idx_to_name[i].clone()),
@@ -3622,11 +3601,7 @@ struct GitStats {
 ///   - git binary missing on PATH → status="no-git"
 ///   - non-git directory → status="not-a-repo"
 ///   - empty repo → status="empty"
-async fn run_git_pass(
-    store: &Store,
-    project_id: &ProjectId,
-    project: &Path,
-) -> GitStats {
+async fn run_git_pass(store: &Store, project_id: &ProjectId, project: &Path) -> GitStats {
     // M13: subprocess spawns below use `crate::windowless_command(..)`
     // which applies CREATE_NO_WINDOW on Windows.
     let mut stats = GitStats::default();
@@ -3654,12 +3629,7 @@ async fn run_git_pass(
     // git log with bounded commit cap (large repos: avoid hours-long mining)
     // M13: windowless_command(..) applies CREATE_NO_WINDOW on Windows.
     let log_out = match crate::windowless_command("git")
-        .args([
-            "log",
-            "--pretty=format:%H|%an|%ae|%at|%P|%s",
-            "-n",
-            "5000",
-        ])
+        .args(["log", "--pretty=format:%H|%an|%ae|%at|%P|%s", "-n", "5000"])
         .current_dir(project)
         .output()
     {
@@ -3829,11 +3799,7 @@ struct DepsStats {
 ///
 /// Best-effort and bounded — ignores transitive deps, ignores
 /// version-range parsing complexity (stores raw version string).
-async fn run_deps_pass(
-    store: &Store,
-    project_id: &ProjectId,
-    project: &Path,
-) -> DepsStats {
+async fn run_deps_pass(store: &Store, project_id: &ProjectId, project: &Path) -> DepsStats {
     let mut stats = DepsStats::default();
 
     // Discover every manifest under `project` up to `DEPS_MAX_DEPTH`,
@@ -4174,8 +4140,13 @@ fn parse_requirements_txt(path: &Path) -> Option<Vec<(String, String)>> {
                 }
             }
         }
-        if !line.contains("==") && !line.contains(">=") && !line.contains("<=")
-            && !line.contains("!=") && !line.contains("~=") && !line.contains('>') && !line.contains('<')
+        if !line.contains("==")
+            && !line.contains(">=")
+            && !line.contains("<=")
+            && !line.contains("!=")
+            && !line.contains("~=")
+            && !line.contains('>')
+            && !line.contains('<')
         {
             // bare package name, no version
             if !line.is_empty() {
@@ -4210,11 +4181,7 @@ struct TestsStats {
 ///   test_*.py / *_test.py  → "pytest"
 ///   *_test.go              → "go-test"
 ///   under __tests__/ / tests/ → "unknown"
-async fn run_tests_pass(
-    store: &Store,
-    project_id: &ProjectId,
-    paths: &PathManager,
-) -> TestsStats {
+async fn run_tests_pass(store: &Store, project_id: &ProjectId, paths: &PathManager) -> TestsStats {
     let mut stats = TestsStats::default();
 
     let graph_db = paths.shard_db(project_id, DbLayer::Graph);
@@ -4397,9 +4364,7 @@ impl ModelProbes {
             eprintln!(
                 "      Run `mneme models install qwen-embed-0.5b` (or drop bge-small-en-v1.5.onnx + tokenizer.json"
             );
-            eprintln!(
-                "      under ~/.mneme/models/) to enable transformer-quality recall."
-            );
+            eprintln!("      under ~/.mneme/models/) to enable transformer-quality recall.");
         }
         if !self.llm_model_present {
             eprintln!();
@@ -4409,9 +4374,7 @@ impl ModelProbes {
             eprintln!(
                 "      Run `mneme models install qwen-coder-0.5b` (or any local GGUF model under ~/.mneme/models/)"
             );
-            eprintln!(
-                "      to enable LLM-generated 1-sentence summaries cached per file_hash."
-            );
+            eprintln!("      to enable LLM-generated 1-sentence summaries cached per file_hash.");
         }
         if !self.embedding_model_present || !self.llm_model_present {
             eprintln!();
@@ -4636,7 +4599,11 @@ pub(crate) fn handle_response(response: IpcResponse) -> CliResult<()> {
             );
             Ok(())
         }
-        IpcResponse::SnapshotCombined { children, jobs, scope } => {
+        IpcResponse::SnapshotCombined {
+            children,
+            jobs,
+            scope,
+        } => {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
@@ -4666,7 +4633,9 @@ pub(crate) fn handle_response(response: IpcResponse) -> CliResult<()> {
         // JSON so the user still sees the response and the CLI keeps
         // working against a newer daemon.
         other => {
-            warn!("received unhandled IpcResponse variant; this CLI build pre-dates the supervisor");
+            warn!(
+                "received unhandled IpcResponse variant; this CLI build pre-dates the supervisor"
+            );
             println!("{}", serde_json::to_string_pretty(&other)?);
             Ok(())
         }
@@ -4743,7 +4712,10 @@ impl BuildChildRegistry {
     /// callers go through [`Self::kill_all`].
     #[cfg(test)]
     pub(crate) fn pids(&self) -> Vec<u32> {
-        self.inner.lock().map(|g| g.pids.clone()).unwrap_or_default()
+        self.inner
+            .lock()
+            .map(|g| g.pids.clone())
+            .unwrap_or_default()
     }
 
     /// Remove a PID from the kill list. Pass after a child has exited
@@ -4868,15 +4840,12 @@ fn spawn_ctrl_c_killer_with_state(
             // saved and stamp `updated_at` so consumers can tell this
             // file is fresh.
             let loaded =
-                crate::commands::build_state::load(&project_root)
-                    .unwrap_or(state_snapshot);
+                crate::commands::build_state::load(&project_root).unwrap_or(state_snapshot);
             let mut interrupted = loaded;
             interrupted.updated_at = chrono::Utc::now().to_rfc3339();
             // Persist with the existing phase — the parse loop already
             // moved it forward as work progressed.
-            if let Err(e) =
-                crate::commands::build_state::save(&project_root, &interrupted)
-            {
+            if let Err(e) = crate::commands::build_state::save(&project_root, &interrupted) {
                 tracing::warn!(error = %e, "failed to persist final build-state on Ctrl-C");
             }
             // Step 2: tear down workers (existing behaviour).
@@ -4885,7 +4854,9 @@ fn spawn_ctrl_c_killer_with_state(
             std::process::exit(130);
         }
     });
-    CtrlCGuard { handle: Some(handle) }
+    CtrlCGuard {
+        handle: Some(handle),
+    }
 }
 
 /// RAII handle for the Ctrl-C listener task. Dropping this aborts the
@@ -4994,7 +4965,11 @@ fn load_project_ignore(root: &Path) -> Option<ignore::gitignore::Gitignore> {
 
 /// Returns true if `path` should be skipped per the project ignore file.
 /// Returns false when no ignore is passed or the path isn't matched.
-fn project_ignore_matches(gi: Option<&ignore::gitignore::Gitignore>, path: &Path, is_dir: bool) -> bool {
+fn project_ignore_matches(
+    gi: Option<&ignore::gitignore::Gitignore>,
+    path: &Path,
+    is_dir: bool,
+) -> bool {
     let Some(gi) = gi else { return false };
     matches!(gi.matched(path, is_dir), ignore::Match::Ignore(_))
 }
@@ -5118,19 +5093,18 @@ async fn run_architecture_pass(
     };
 
     // Build qualified_name -> community_id map.
-    let mut comm_of: std::collections::HashMap<String, u32> =
-        std::collections::HashMap::new();
+    let mut comm_of: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     if semantic_db.exists() {
         if let Ok(s_conn) = rusqlite::Connection::open_with_flags(
             &semantic_db,
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
         ) {
-            if let Ok(mut stmt) = s_conn
-                .prepare("SELECT community_id, node_qualified FROM community_membership")
+            if let Ok(mut stmt) =
+                s_conn.prepare("SELECT community_id, node_qualified FROM community_membership")
             {
-                if let Ok(rows) = stmt.query_map([], |r| {
-                    Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
-                }) {
+                if let Ok(rows) =
+                    stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+                {
                     for row in rows.flatten() {
                         comm_of.insert(row.1, row.0 as u32);
                     }
@@ -5177,8 +5151,7 @@ async fn run_architecture_pass(
 
     // Compute caller_count (in-degree on `calls`-like edges) by reading
     // edges in one pass. Architecture's risk index reads this counter.
-    let mut callers: std::collections::HashMap<String, u32> =
-        std::collections::HashMap::new();
+    let mut callers: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     let mut edges: Vec<ArchEdge> = Vec::new();
     if let Ok(mut estmt) = g_conn.prepare(
         "SELECT source_qualified, target_qualified, kind, confidence_score \
@@ -5214,10 +5187,9 @@ async fn run_architecture_pass(
 
     let overview = ArchitectureScanner::new().analyze(&nodes, &edges);
 
-    let coupling_json = serde_json::to_string(&overview.coupling_matrix)
-        .unwrap_or_else(|_| "[]".into());
-    let risk_json =
-        serde_json::to_string(&overview.risk_index).unwrap_or_else(|_| "[]".into());
+    let coupling_json =
+        serde_json::to_string(&overview.coupling_matrix).unwrap_or_else(|_| "[]".into());
+    let risk_json = serde_json::to_string(&overview.risk_index).unwrap_or_else(|_| "[]".into());
     let bridges_json =
         serde_json::to_string(&overview.bridge_nodes).unwrap_or_else(|_| "[]".into());
     let hubs_json = serde_json::to_string(&overview.hub_nodes).unwrap_or_else(|_| "[]".into());
@@ -5353,11 +5325,7 @@ struct WikiStats {
 /// section. Entry points (god-nodes) require richer ranking we don't
 /// have in-process; the daemon-side path can supersede this with a
 /// betweenness/criticality-anchored selection later.
-async fn run_wiki_pass(
-    store: &Store,
-    project_id: &ProjectId,
-    paths: &PathManager,
-) -> WikiStats {
+async fn run_wiki_pass(store: &Store, project_id: &ProjectId, paths: &PathManager) -> WikiStats {
     let mut stats = WikiStats::default();
 
     let semantic_db = paths.shard_db(project_id, DbLayer::Semantic);
@@ -5402,12 +5370,11 @@ async fn run_wiki_pass(
     // Member qualified-names per community.
     let mut members_of: std::collections::HashMap<i64, Vec<String>> =
         std::collections::HashMap::new();
-    if let Ok(mut stmt) = s_conn
-        .prepare("SELECT community_id, node_qualified FROM community_membership")
+    if let Ok(mut stmt) =
+        s_conn.prepare("SELECT community_id, node_qualified FROM community_membership")
     {
-        if let Ok(rows) = stmt.query_map([], |r| {
-            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
-        }) {
+        if let Ok(rows) = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+        {
             for (cid, qn) in rows.flatten() {
                 members_of.entry(cid).or_default().push(qn);
             }
@@ -5415,8 +5382,7 @@ async fn run_wiki_pass(
     }
 
     // Per-qualified file_path lookup from graph.db.
-    let mut file_of: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
+    let mut file_of: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     if graph_db.exists() {
         if let Ok(g_conn) = rusqlite::Connection::open_with_flags(
             &graph_db,
@@ -5425,9 +5391,9 @@ async fn run_wiki_pass(
             if let Ok(mut stmt) = g_conn
                 .prepare("SELECT qualified_name, file_path FROM nodes WHERE file_path IS NOT NULL")
             {
-                if let Ok(rows) = stmt.query_map([], |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-                }) {
+                if let Ok(rows) =
+                    stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+                {
                     for (qn, fp) in rows.flatten() {
                         file_of.entry(qn).or_insert(fp);
                     }
@@ -5492,10 +5458,9 @@ async fn run_wiki_pass(
         // schema.
         let next_version = next_wiki_version(&store, project_id, &page.slug).await;
 
-        let entry_points_json = serde_json::to_string(&page.entry_points)
-            .unwrap_or_else(|_| "[]".into());
-        let files_json =
-            serde_json::to_string(&page.file_paths).unwrap_or_else(|_| "[]".into());
+        let entry_points_json =
+            serde_json::to_string(&page.entry_points).unwrap_or_else(|_| "[]".into());
+        let files_json = serde_json::to_string(&page.file_paths).unwrap_or_else(|_| "[]".into());
 
         let sql = "INSERT INTO wiki_pages(slug, version, community_id, title, markdown, \
                    summary, entry_points, file_paths, risk_score) \
@@ -5585,11 +5550,7 @@ async fn run_wiki_pass(
 /// schema (see `store/src/schema.rs`): every regeneration of the same
 /// slug bumps `version`. Returns 1 when the slug has never been
 /// written.
-async fn next_wiki_version(
-    store: &Store,
-    project_id: &ProjectId,
-    slug: &str,
-) -> i64 {
+async fn next_wiki_version(store: &Store, project_id: &ProjectId, slug: &str) -> i64 {
     let q = store::query::Query {
         project: project_id.clone(),
         layer: DbLayer::Wiki,
@@ -5685,8 +5646,8 @@ async fn run_federated_pass(
 /// module's private helpers.
 fn is_federated_source(path: &Path) -> bool {
     const EXTS: &[&str] = &[
-        "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "go", "java", "kt", "swift", "c",
-        "cc", "cpp", "h", "hpp", "rb", "php", "cs", "scala", "sh", "bash", "zsh", "ps1",
+        "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "go", "java", "kt", "swift", "c", "cc",
+        "cpp", "h", "hpp", "rb", "php", "cs", "scala", "sh", "bash", "zsh", "ps1",
     ];
     path.extension()
         .and_then(|e| e.to_str())
@@ -5762,8 +5723,7 @@ async fn run_perf_pass(
         let params = vec![
             serde_json::Value::String((*metric).into()),
             serde_json::Value::Number(
-                serde_json::Number::from_f64(*value)
-                    .unwrap_or_else(|| serde_json::Number::from(0)),
+                serde_json::Number::from_f64(*value).unwrap_or_else(|| serde_json::Number::from(0)),
             ),
             serde_json::Value::String((*unit).into()),
             serde_json::Value::String("inline build pass".into()),
@@ -5908,11 +5868,7 @@ struct AgentsStats {
 /// The build-time stamp guarantees the shard isn't 0 rows on a fresh
 /// project — the row is labelled `agent_name='build'` so it's trivially
 /// filterable by the recall surfaces.
-async fn run_agents_pass(
-    store: &Store,
-    project_id: &ProjectId,
-    project: &Path,
-) -> AgentsStats {
+async fn run_agents_pass(store: &Store, project_id: &ProjectId, project: &Path) -> AgentsStats {
     let mut stats = AgentsStats::default();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let session = format!("build-{}", project_id.as_str());
@@ -5924,10 +5880,7 @@ async fn run_agents_pass(
         serde_json::Value::String(now.clone()),
         serde_json::Value::String(now),
         serde_json::Value::String("ok".into()),
-        serde_json::Value::String(format!(
-            "inline build completed for {}",
-            project.display()
-        )),
+        serde_json::Value::String(format!("inline build completed for {}", project.display())),
     ];
     let resp = store
         .inject
@@ -6040,10 +5993,7 @@ mod tests {
         // No quotes / parens / spaces → already-clean, return verbatim.
         assert_eq!(extract_module("./foo").as_deref(), Some("./foo"));
         assert_eq!(extract_module("../bar").as_deref(), Some("../bar"));
-        assert_eq!(
-            extract_module("math_utils").as_deref(),
-            Some("math_utils")
-        );
+        assert_eq!(extract_module("math_utils").as_deref(), Some("math_utils"));
     }
 
     #[test]
@@ -6053,10 +6003,7 @@ mod tests {
             extract_module("import { X } from './foo';").as_deref(),
             Some("./foo")
         );
-        assert_eq!(
-            extract_module("import \"./bar\"").as_deref(),
-            Some("./bar")
-        );
+        assert_eq!(extract_module("import \"./bar\"").as_deref(), Some("./bar"));
     }
 
     #[test]
@@ -6117,10 +6064,7 @@ mod tests {
         let head = "# @mneme-intent: deferred — pending design review";
         let got = parse_mneme_intent(head).expect("intent should parse");
         assert_eq!(got.0, "deferred");
-        assert_eq!(
-            got.1.as_deref(),
-            Some("pending design review")
-        );
+        assert_eq!(got.1.as_deref(), Some("pending design review"));
     }
 
     #[test]
@@ -6145,15 +6089,23 @@ mod tests {
         // depends on the test runner, but the result must be absolute and
         // exist on disk.
         let got = resolve_project(None).expect("resolve_project must succeed");
-        assert!(got.is_absolute(), "expected absolute, got {}", got.display());
-        assert!(got.exists(), "expected existing path, got {}", got.display());
+        assert!(
+            got.is_absolute(),
+            "expected absolute, got {}",
+            got.display()
+        );
+        assert!(
+            got.exists(),
+            "expected existing path, got {}",
+            got.display()
+        );
     }
 
     #[test]
     fn resolve_project_passes_through_explicit_path() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let got = resolve_project(Some(dir.path().to_path_buf()))
-            .expect("resolve_project must succeed");
+        let got =
+            resolve_project(Some(dir.path().to_path_buf())).expect("resolve_project must succeed");
         // Canonicalisation may rewrite via `\\?\` on Windows or follow
         // symlinks on macOS — in both cases the file_name still matches.
         assert_eq!(got.file_name(), dir.path().file_name());
@@ -6181,10 +6133,8 @@ mod tests {
         // A `.rs` file is supported; a `.bin` random extension is not.
         // Expect exactly one count.
         let dir = tempfile::tempdir().expect("tempdir");
-        std::fs::write(dir.path().join("main.rs"), "fn main(){}\n")
-            .expect("write rs");
-        std::fs::write(dir.path().join("blob.bin"), b"ignored")
-            .expect("write bin");
+        std::fs::write(dir.path().join("main.rs"), "fn main(){}\n").expect("write rs");
+        std::fs::write(dir.path().join("blob.bin"), b"ignored").expect("write bin");
         let n = count_candidate_files(dir.path(), 1000);
         assert_eq!(n, 1, "expected 1 supported file, got {n}");
     }
@@ -6196,8 +6146,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let nm = dir.path().join("node_modules");
         std::fs::create_dir(&nm).expect("mkdir node_modules");
-        std::fs::write(nm.join("dep.js"), "module.exports={}")
-            .expect("write js");
+        std::fs::write(nm.join("dep.js"), "module.exports={}").expect("write js");
         let n = count_candidate_files(dir.path(), 1000);
         assert_eq!(n, 0);
     }
@@ -6233,9 +6182,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let pj = dir.path().join("package.json");
         let mut bytes: Vec<u8> = vec![0xEF, 0xBB, 0xBF];
-        bytes.extend_from_slice(
-            br#"{"name":"x","dependencies":{"lodash":"^4.17.21"}}"#,
-        );
+        bytes.extend_from_slice(br#"{"name":"x","dependencies":{"lodash":"^4.17.21"}}"#);
         std::fs::write(&pj, &bytes).expect("write package.json with BOM");
         let rows = parse_package_json(&pj).expect("BOM must not defeat parser");
         assert_eq!(rows.len(), 1);
@@ -6275,7 +6222,11 @@ mod tests {
         let m = discover_dep_manifests(dir.path());
         assert_eq!(m.package_json.len(), 1, "expected mcp/package.json");
         assert_eq!(m.cargo_toml.len(), 1, "expected cli/Cargo.toml");
-        assert_eq!(m.requirements_txt.len(), 1, "expected python/requirements.txt");
+        assert_eq!(
+            m.requirements_txt.len(),
+            1,
+            "expected python/requirements.txt"
+        );
     }
 
     #[test]
@@ -6342,24 +6293,25 @@ mod tests {
             },
         ] {
             let r = handle_response(resp.clone());
-            assert!(
-                r.is_ok(),
-                "expected Ok for {resp:?}, got {r:?}"
-            );
+            assert!(r.is_ok(), "expected Ok for {resp:?}, got {r:?}");
         }
 
         // Error variants — must surface as CliError::Supervisor.
         let r = handle_response(IpcResponse::Error {
             message: "boom".into(),
         });
-        assert!(matches!(r, Err(CliError::Supervisor(ref m)) if m == "boom"),
-            "Error must propagate verbatim: {r:?}");
+        assert!(
+            matches!(r, Err(CliError::Supervisor(ref m)) if m == "boom"),
+            "Error must propagate verbatim: {r:?}"
+        );
 
         let r = handle_response(IpcResponse::BadRequest {
             message: "unknown verb".into(),
         });
-        assert!(matches!(r, Err(CliError::Supervisor(ref m)) if m.contains("unknown verb")),
-            "BadRequest must surface as Supervisor error: {r:?}");
+        assert!(
+            matches!(r, Err(CliError::Supervisor(ref m)) if m.contains("unknown verb")),
+            "BadRequest must surface as Supervisor error: {r:?}"
+        );
     }
 
     /// SD-3: a simulated "future variant" (delivered as raw JSON via
@@ -6377,9 +6329,11 @@ mod tests {
             "response": "dispatched",
             "worker": "scanner-worker-2"
         });
-        let resp: IpcResponse = serde_json::from_value(payload)
-            .expect("dispatched response must deserialize");
-        assert!(matches!(resp, IpcResponse::Dispatched { ref worker } if worker == "scanner-worker-2"));
+        let resp: IpcResponse =
+            serde_json::from_value(payload).expect("dispatched response must deserialize");
+        assert!(
+            matches!(resp, IpcResponse::Dispatched { ref worker } if worker == "scanner-worker-2")
+        );
         assert!(handle_response(resp).is_ok());
     }
 
@@ -6418,7 +6372,10 @@ mod tests {
     fn simple_glob_match_handles_double_star_anywhere() {
         // The two patterns from the spec example must match the
         // expected paths and reject the obvious negatives.
-        assert!(simple_glob_match("**/*Calculator.ts", "src/lib/PriceCalculator.ts"));
+        assert!(simple_glob_match(
+            "**/*Calculator.ts",
+            "src/lib/PriceCalculator.ts"
+        ));
         assert!(simple_glob_match("**/*Calculator.ts", "PriceCalculator.ts"));
         assert!(!simple_glob_match("**/*Calculator.ts", "src/lib/Helper.ts"));
 
@@ -6552,13 +6509,9 @@ random prose with no bullet
         // test asserts the *client's wiring* rejects autospawn, which
         // is exactly the wiring we shipped to fix B-002.
         let bogus = if cfg!(windows) {
-            std::path::PathBuf::from(
-                "\\\\.\\pipe\\mneme-build-no-spawn-test-does-not-exist",
-            )
+            std::path::PathBuf::from("\\\\.\\pipe\\mneme-build-no-spawn-test-does-not-exist")
         } else {
-            std::path::PathBuf::from(
-                "/tmp/mneme-build-no-spawn-test-does-not-exist.sock",
-            )
+            std::path::PathBuf::from("/tmp/mneme-build-no-spawn-test-does-not-exist.sock")
         };
 
         let client = make_client_for_build(Some(bogus));
@@ -6653,7 +6606,11 @@ random prose with no bullet
         registry.register(pid);
 
         // Sanity: registry remembers the PID we just registered.
-        assert_eq!(registry.pids(), vec![pid], "registry must hold registered pid");
+        assert_eq!(
+            registry.pids(),
+            vec![pid],
+            "registry must hold registered pid"
+        );
 
         // Simulate the Ctrl-C cleanup path. This best-effort kills
         // the child via taskkill /F (Windows) or kill -TERM (Unix).
@@ -6789,8 +6746,7 @@ random prose with no bullet
         let line = community_status_line(&stats);
         assert!(line.contains("7"), "must echo community count: {line:?}");
         assert!(
-            line.to_lowercase().contains("leiden")
-                && line.to_lowercase().contains("deterministic"),
+            line.to_lowercase().contains("leiden") && line.to_lowercase().contains("deterministic"),
             "must mention Leiden + deterministic seed: {line:?}"
         );
     }
@@ -6824,8 +6780,7 @@ mod empty_shard_tests {
         // (which canonicalises) succeeds, then derive the id from it.
         let project_path = dir.path().join(name);
         std::fs::create_dir_all(&project_path).expect("mkdir project");
-        let project_id =
-            ProjectId::from_path(&project_path).expect("hash project");
+        let project_id = ProjectId::from_path(&project_path).expect("hash project");
         let store = Store::new(paths.clone());
         store
             .builder
@@ -6839,25 +6794,17 @@ mod empty_shard_tests {
     /// `SELECT COUNT(*)` on `table`.
     fn count_rows(paths: &PathManager, project_id: &ProjectId, layer: DbLayer, table: &str) -> i64 {
         let path = paths.shard_db(project_id, layer);
-        let conn = Connection::open_with_flags(
-            &path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )
-        .expect("open shard ro");
-        conn.query_row(
-            &format!("SELECT COUNT(*) FROM {table}"),
-            [],
-            |r| r.get::<_, i64>(0),
-        )
+        let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .expect("open shard ro");
+        conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| {
+            r.get::<_, i64>(0)
+        })
         .expect("count rows")
     }
 
     /// Seed graph.db with one file + a couple of nodes + an edge so the
     /// architecture / wiki / federated passes have something to chew on.
-    async fn seed_graph(
-        store: &Store,
-        project_id: &ProjectId,
-    ) {
+    async fn seed_graph(store: &Store, project_id: &ProjectId) {
         // Node A
         let _ = store
             .inject
@@ -6898,10 +6845,7 @@ mod empty_shard_tests {
     }
 
     /// Seed semantic.db with one community + membership for both nodes.
-    async fn seed_semantic(
-        store: &Store,
-        project_id: &ProjectId,
-    ) {
+    async fn seed_semantic(store: &Store, project_id: &ProjectId) {
         let resp = store
             .inject
             .insert(
@@ -6949,7 +6893,12 @@ mod empty_shard_tests {
         seed_semantic(&store, &pid).await;
         let stats = run_architecture_pass(&store, &pid, &paths).await;
         assert_eq!(stats.snapshots_written, 1, "exactly one snapshot per pass");
-        let n = count_rows(&paths, &pid, DbLayer::Architecture, "architecture_snapshots");
+        let n = count_rows(
+            &paths,
+            &pid,
+            DbLayer::Architecture,
+            "architecture_snapshots",
+        );
         assert!(n > 0, "architecture_snapshots must have rows; got {n}");
     }
 
@@ -6961,14 +6910,8 @@ mod empty_shard_tests {
         // snake_case function names + a single-import line.
         let mut learner = DefaultLearner::new();
         for i in 0..6 {
-            let src = format!(
-                "fn snake_case_{i}() {{}}\nfn another_snake_{i}() {{}}\n",
-            );
-            learner.observe_file(
-                Path::new(&format!("src/lib_{i}.rs")),
-                &src,
-                None,
-            );
+            let src = format!("fn snake_case_{i}() {{}}\nfn another_snake_{i}() {{}}\n",);
+            learner.observe_file(Path::new(&format!("src/lib_{i}.rs")), &src, None);
         }
         let stats = run_conventions_pass(&store, &pid, &learner).await;
         assert!(
@@ -7011,11 +6954,8 @@ mod empty_shard_tests {
         // Seed a tiny rust file under the project root the pass walks.
         let proj_root = dir.path().join("fed_test");
         std::fs::create_dir_all(&proj_root).expect("mkdir project");
-        std::fs::write(
-            proj_root.join("a.rs"),
-            "fn answer() -> i32 { 42 }\n",
-        )
-        .expect("write fixture");
+        std::fs::write(proj_root.join("a.rs"), "fn answer() -> i32 { 42 }\n")
+            .expect("write fixture");
         let stats = run_federated_pass(&pid, &proj_root, &paths).await;
         assert!(
             stats.indexed >= 1,
@@ -7034,9 +6974,9 @@ mod empty_shard_tests {
             &store,
             &pid,
             Duration::from_millis(123),
-            5,    // indexed
-            42,   // node_total
-            17,   // edge_total
+            5,  // indexed
+            42, // node_total
+            17, // edge_total
         )
         .await;
         assert!(
@@ -7052,12 +6992,24 @@ mod empty_shard_tests {
     async fn errors_db_populated_by_build_pass() {
         let (store, pid, paths, _dir) = fixture_store("err_test").await;
         let errors = vec![
-            ("parse failed: unexpected token".to_string(), "src/a.rs".to_string()),
-            ("parse failed: unexpected token".to_string(), "src/a.rs".to_string()),
-            ("read failed: permission denied".to_string(), "src/b.rs".to_string()),
+            (
+                "parse failed: unexpected token".to_string(),
+                "src/a.rs".to_string(),
+            ),
+            (
+                "parse failed: unexpected token".to_string(),
+                "src/a.rs".to_string(),
+            ),
+            (
+                "read failed: permission denied".to_string(),
+                "src/b.rs".to_string(),
+            ),
         ];
         let stats = run_errors_pass(&store, &pid, &errors).await;
-        assert_eq!(stats.captured, 3, "all three rows captured (incl dup encounter)");
+        assert_eq!(
+            stats.captured, 3,
+            "all three rows captured (incl dup encounter)"
+        );
         assert_eq!(stats.unique, 2, "two unique error_hash values");
         let n = count_rows(&paths, &pid, DbLayer::Errors, "errors");
         assert_eq!(n, 2, "deduplicated to 2 rows; got {n}");
@@ -7125,9 +7077,9 @@ mod empty_shard_tests {
                 // same observable: build cannot persist phase state.
                 let _ = source;
             }
-            other => panic!(
-                "expected CliError::Io for failed phase-transition save; got {other:?}"
-            ),
+            other => {
+                panic!("expected CliError::Io for failed phase-transition save; got {other:?}")
+            }
         }
     }
 
@@ -7142,7 +7094,10 @@ mod empty_shard_tests {
         let mut state = BuildState::new(project);
         state.enter_phase(BuildPhase::Multimodal);
         let r = save_phase_transition(project, &state);
-        assert!(r.is_ok(), "save_phase_transition must succeed on writable dir; got {r:?}");
+        assert!(
+            r.is_ok(),
+            "save_phase_transition must succeed on writable dir; got {r:?}"
+        );
     }
 
     // ---- Silent-1: graph insert response must surface failure ----------

@@ -59,10 +59,7 @@ pub async fn run(args: ViewArgs) -> CliResult<()> {
 /// guaranteed not to exist (QA-4: making the path-4 test deterministic
 /// regardless of whether the dev machine actually has the vision app
 /// installed). Production code always reaches this through [`run`].
-async fn run_with_default_bin(
-    args: ViewArgs,
-    default_bin: PathBuf,
-) -> CliResult<()> {
+async fn run_with_default_bin(args: ViewArgs, default_bin: PathBuf) -> CliResult<()> {
     // Path 1: explicit --bin pointing at an existing file.
     if let Some(p) = args.bin.as_ref() {
         if p.exists() {
@@ -196,7 +193,10 @@ fn open_browser(url: &str) -> CliResult<()> {
     }
     #[cfg(target_os = "macos")]
     {
-        Command::new("open").arg(url).spawn().map_err(CliError::io_pathless)?;
+        Command::new("open")
+            .arg(url)
+            .spawn()
+            .map_err(CliError::io_pathless)?;
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
@@ -377,10 +377,7 @@ mod tests {
         };
 
         let r = run_with_default_bin(args, fake_default).await;
-        assert!(
-            r.is_ok(),
-            "expected Ok from path-4 (v0.4 hint), got: {r:?}"
-        );
+        assert!(r.is_ok(), "expected Ok from path-4 (v0.4 hint), got: {r:?}");
     }
 
     /// M7 (D-window): `view::spawn_native`'s Windows `creation_flags` MUST

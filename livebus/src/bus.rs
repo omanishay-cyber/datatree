@@ -38,7 +38,9 @@ pub struct BusConfig {
 impl Default for BusConfig {
     fn default() -> Self {
         // 4096 events ≈ ~400ms of headroom at 10K events/sec.
-        Self { channel_capacity: 4096 }
+        Self {
+            channel_capacity: 4096,
+        }
     }
 }
 
@@ -65,7 +67,10 @@ impl std::fmt::Debug for EventBus {
         f.debug_struct("EventBus")
             .field("capacity", &self.inner.sender.capacity())
             .field("receivers", &self.inner.sender.receiver_count())
-            .field("published", &self.inner.published_count.load(Ordering::Relaxed))
+            .field(
+                "published",
+                &self.inner.published_count.load(Ordering::Relaxed),
+            )
             .field("dropped", &self.inner.dropped_count.load(Ordering::Relaxed))
             .finish()
     }
@@ -92,7 +97,9 @@ impl EventBus {
             published_count: AtomicU64::new(0),
             dropped_count: AtomicU64::new(0),
         };
-        Self { inner: Arc::new(inner) }
+        Self {
+            inner: Arc::new(inner),
+        }
     }
 
     /// Subscribe and receive *every* published event from this point forward.
@@ -270,9 +277,18 @@ mod bus_tests {
 
     #[test]
     fn wildcard_single_segment() {
-        assert!(topic_matches("project.*.file_changed", "project.abc.file_changed"));
-        assert!(!topic_matches("project.*.file_changed", "project.abc.def.file_changed"));
-        assert!(!topic_matches("project.*.file_changed", "session.abc.file_changed"));
+        assert!(topic_matches(
+            "project.*.file_changed",
+            "project.abc.file_changed"
+        ));
+        assert!(!topic_matches(
+            "project.*.file_changed",
+            "project.abc.def.file_changed"
+        ));
+        assert!(!topic_matches(
+            "project.*.file_changed",
+            "session.abc.file_changed"
+        ));
     }
 
     #[test]

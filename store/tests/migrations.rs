@@ -40,11 +40,7 @@ fn migrations_v0_to_v3_runs_idempotently_on_empty_db() {
     } else {
         // Once v0.4 populates MIGRATIONS the final version equals the
         // highest target. Future-proofs the test.
-        let highest_target = MIGRATIONS
-            .iter()
-            .map(|(t, _)| *t)
-            .max()
-            .expect("non-empty");
+        let highest_target = MIGRATIONS.iter().map(|(t, _)| *t).max().expect("non-empty");
         assert_eq!(final_version, highest_target);
         assert_eq!(user_version(&conn), highest_target);
     }
@@ -61,7 +57,10 @@ fn migrations_v0_to_v3_skips_already_applied_blocks() {
     let first = apply_migrations(&conn).expect("first run");
     let second = apply_migrations(&conn).expect("second run is no-op");
 
-    assert_eq!(first, second, "second run must converge to the same version");
+    assert_eq!(
+        first, second,
+        "second run must converge to the same version"
+    );
     assert_eq!(user_version(&conn), second);
 }
 
@@ -77,8 +76,7 @@ fn migrations_fail_loud_on_bad_sql() {
     // open a transaction per block, run statements, commit, bump.
     // The only difference is the migration table.
     let conn = fresh_db();
-    let bad_migrations: &[(u32, &[&str])] =
-        &[(1, &["THIS IS NOT VALID SQL AT ALL"])];
+    let bad_migrations: &[(u32, &[&str])] = &[(1, &["THIS IS NOT VALID SQL AT ALL"])];
 
     let result = run_with_table(&conn, bad_migrations);
     assert!(
@@ -120,8 +118,7 @@ fn migrations_can_add_column_to_existing_table() {
     let v2_migrations: &[(u32, &[&str])] =
         &[(2, &["ALTER TABLE nodes ADD COLUMN complexity_score REAL"])];
 
-    let final_version =
-        run_with_table(&conn, v2_migrations).expect("v2 migration applies");
+    let final_version = run_with_table(&conn, v2_migrations).expect("v2 migration applies");
     assert_eq!(final_version, 2);
     assert_eq!(user_version(&conn), 2);
 
@@ -144,11 +141,7 @@ fn migrations_can_add_column_to_existing_table() {
     // Pre-existing data must be preserved (NULL in the new column is
     // fine; SQLite auto-fills new columns with NULL).
     let preserved_name: String = conn
-        .query_row(
-            "SELECT name FROM nodes WHERE id = 1",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT name FROM nodes WHERE id = 1", [], |r| r.get(0))
         .expect("pre-existing row preserved");
     assert_eq!(preserved_name, "pre-existing");
 }
@@ -160,13 +153,9 @@ fn migrations_can_add_column_to_existing_table() {
 // MIGRATIONS table contents.
 // ---------------------------------------------------------------------
 
-fn run_with_table(
-    conn: &Connection,
-    table: &[(u32, &[&str])],
-) -> Result<u32, rusqlite::Error> {
-    let mut current: u32 = conn
-        .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?
-        as u32;
+fn run_with_table(conn: &Connection, table: &[(u32, &[&str])]) -> Result<u32, rusqlite::Error> {
+    let mut current: u32 =
+        conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? as u32;
 
     for (target, stmts) in table.iter() {
         if *target <= current {
