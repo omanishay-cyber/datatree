@@ -3,7 +3,7 @@
 //! Subcommands:
 //!   - `start`   — boot the supervisor in the foreground.
 //!   - `service-run` — used by the Windows service control manager; do not
-//!                     invoke directly.
+//!     invoke directly.
 //!   - `install` / `uninstall` — manage the Windows service registration.
 //!   - `stop`    — send a `Stop` over IPC.
 //!   - `restart` — send a `RestartAll` (or `Restart {child}`) over IPC.
@@ -18,7 +18,7 @@ use mneme_daemon::error::SupervisorError;
 use mneme_daemon::ipc::{self, ControlCommand, ControlResponse};
 use mneme_daemon::service::{self, ServiceAction};
 use mneme_daemon::watcher::{self, WatcherStatsHandle, DEFAULT_DEBOUNCE};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::error;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -349,7 +349,7 @@ fn print_response(resp: &ControlResponse) {
 }
 
 async fn round_trip(
-    socket: &PathBuf,
+    socket: &Path,
     cmd: &ControlCommand,
 ) -> Result<ControlResponse, SupervisorError> {
     let mut stream = ipc::connect_client(socket).await?;

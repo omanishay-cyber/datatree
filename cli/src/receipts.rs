@@ -170,8 +170,7 @@ impl Receipt {
         std::fs::create_dir_all(&dir).map_err(|e| CliError::io(&dir, e))?;
         let stamp = self
             .installed_at
-            .replace(':', "")
-            .replace('-', "")
+            .replace([':', '-'], "")
             .replace('T', "-");
         let stamp = stamp
             .split('.')

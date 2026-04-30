@@ -1,3 +1,10 @@
+// env_lock std::sync::Mutex held across .await to serialize env mutation.
+#![allow(
+    clippy::await_holding_lock,
+    clippy::doc_overindented_list_items,
+    clippy::doc_lazy_continuation
+)]
+
 //! Bug E (the resurrection-loop killer) — every hook command MUST silently
 //! no-op when the supervisor is down, WITHOUT calling
 //! `spawn_daemon_detached()` from `cli/src/ipc.rs`.

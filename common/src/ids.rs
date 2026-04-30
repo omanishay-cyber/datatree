@@ -56,6 +56,7 @@ impl SessionId {
     pub fn new() -> Self {
         SessionId(Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext)).to_string())
     }
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: impl Into<String>) -> Self {
         SessionId(s.into())
     }
@@ -81,6 +82,7 @@ impl fmt::Display for SessionId {
 pub struct SnapshotId(String);
 
 impl SnapshotId {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: impl Into<String>) -> Self {
         SnapshotId(s.into())
     }

@@ -237,28 +237,22 @@ fn try_register_and_run_scheduled_task(
         ])
         .output()?;
     if !create.status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!(
-                "schtasks /Create exit {}: {}",
-                create.status.code().unwrap_or(-1),
-                String::from_utf8_lossy(&create.stderr).trim()
-            ),
-        ));
+        return Err(std::io::Error::other(format!(
+            "schtasks /Create exit {}: {}",
+            create.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&create.stderr).trim()
+        )));
     }
 
     let run = Command::new("schtasks.exe")
         .args(["/Run", "/TN", task_name])
         .output()?;
     if !run.status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!(
-                "schtasks /Run exit {}: {}",
-                run.status.code().unwrap_or(-1),
-                String::from_utf8_lossy(&run.stderr).trim()
-            ),
-        ));
+        return Err(std::io::Error::other(format!(
+            "schtasks /Run exit {}: {}",
+            run.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&run.stderr).trim()
+        )));
     }
     Ok(())
 }

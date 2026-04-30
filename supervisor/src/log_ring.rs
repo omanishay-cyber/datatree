@@ -26,7 +26,7 @@ pub struct LogEntry {
 }
 
 /// Log severity.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     /// Verbose tracing output.
@@ -34,6 +34,7 @@ pub enum LogLevel {
     /// Debug information.
     Debug,
     /// Normal informational messages.
+    #[default]
     Info,
     /// Recoverable warnings.
     Warn,
@@ -41,12 +42,6 @@ pub enum LogLevel {
     Error,
     /// Fatal events; child usually exits afterwards.
     Fatal,
-}
-
-impl Default for LogLevel {
-    fn default() -> Self {
-        LogLevel::Info
-    }
 }
 
 impl LogLevel {

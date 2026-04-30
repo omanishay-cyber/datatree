@@ -153,13 +153,15 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
     // just a heads-up.
     let claude_is_target = targets.iter().any(|p| matches!(p, Platform::ClaudeCode));
     let writing_anything_but_mcp = !args.skip_manifest || !args.skip_hooks;
-    if claude_is_target && writing_anything_but_mcp && !args.dry_run {
-        if claude_code_likely_running() {
-            warn!(
-                "Claude Code appears to be running — close it before \
-                 re-launching so it picks up mneme cleanly. Continuing."
-            );
-        }
+    if claude_is_target
+        && writing_anything_but_mcp
+        && !args.dry_run
+        && claude_code_likely_running()
+    {
+        warn!(
+            "Claude Code appears to be running — close it before \
+             re-launching so it picks up mneme cleanly. Continuing."
+        );
     }
 
     let bar = make_bar(targets.len() as u64);
@@ -251,7 +253,7 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
     }
 
     println!();
-    println!("{:<14}  {:<8}  {}", "platform", "scope", "result");
+    println!("{:<14}  {:<8}  result", "platform", "scope");
     for entry in &report {
         println!(
             "{:<14}  {:<8}  {}",

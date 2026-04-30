@@ -16,7 +16,7 @@
 //! both faster end-to-end and easier to audit.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{BufReader, BufWriter, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -306,7 +306,7 @@ fn load_file(path: &Path) -> BrainResult<State> {
     }
 
     // Sanity: cursor at EOF.
-    let pos = r.seek(SeekFrom::Current(0))?;
+    let pos = r.stream_position()?;
     let len = r.get_ref().metadata()?.len();
     if pos != len {
         warn!(pos, len, "trailing bytes in embed index");

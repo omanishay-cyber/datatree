@@ -233,7 +233,7 @@ fn leiden_inner(
 /// Phase 1 — visit every node in randomised order, move it to the
 /// neighbour-community giving the largest positive modularity gain.
 fn local_move(
-    partition: &mut Vec<usize>,
+    partition: &mut [usize],
     adj: &[Vec<(usize, f64)>],
     strength: &[f64],
     two_m: f64,

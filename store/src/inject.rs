@@ -157,7 +157,7 @@ impl DefaultInject {
                     params: vec![serde_json::Value::String(key.clone())],
                 })
                 .await;
-            if q.success && q.data.as_ref().map_or(false, |v| !v.is_empty()) {
+            if q.success && q.data.as_ref().is_some_and(|v| !v.is_empty()) {
                 // already applied; return synthetic OK
                 return Response::ok(
                     RowId(0),

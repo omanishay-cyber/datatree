@@ -285,10 +285,10 @@ impl Scanner for SecretsScanner {
     }
 
     fn applies_to(&self, file: &Path) -> bool {
-        match file.extension().and_then(|e| e.to_str()) {
-            Some(ext) if SKIP_EXTS.iter().any(|s| s.eq_ignore_ascii_case(ext)) => false,
-            _ => true,
-        }
+        !matches!(
+            file.extension().and_then(|e| e.to_str()),
+            Some(ext) if SKIP_EXTS.iter().any(|s| s.eq_ignore_ascii_case(ext))
+        )
     }
 
     fn scan(&self, file: &Path, content: &str, _ast: Option<Ast<'_>>) -> Vec<Finding> {

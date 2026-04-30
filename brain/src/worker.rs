@@ -144,7 +144,7 @@ async fn handle(
                 let vectors = embedder.embed_batch(&texts)?;
                 let mut out = Vec::with_capacity(items.len());
                 let mut to_store: Vec<(crate::NodeId, Vec<f32>)> = Vec::new();
-                for ((node, _), v) in items.iter().zip(vectors.into_iter()) {
+                for ((node, _), v) in items.iter().zip(vectors) {
                     if let Some(n) = node {
                         to_store.push((*n, v.clone()));
                     }

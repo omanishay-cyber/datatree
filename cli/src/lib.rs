@@ -24,6 +24,13 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms)]
 #![warn(missing_debug_implementations)]
+// Doc-comment indentation lints under Rust 1.95 are heuristic and high-noise;
+// allow them at crate level rather than reformatting every multi-line list item.
+#![allow(
+    clippy::doc_lazy_continuation,
+    clippy::doc_overindented_list_items,
+    clippy::items_after_test_module
+)]
 
 pub mod build_heartbeat;
 pub mod build_lock;

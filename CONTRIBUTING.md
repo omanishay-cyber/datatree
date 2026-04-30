@@ -99,13 +99,15 @@ Your PR will get a template. Short version of what's in it:
 
 ## Communication
 
-- **GitHub Issues** — bug reports and feature requests (public, search-indexed)
+- **GitHub Issues** — bug reports, feature requests, commercial licensing inquiries (public, search-indexed)
 - **GitHub Discussions** — architecture questions, use cases, "is this a good idea?" conversations
-- **Email** — bhattanish@gmail.com (commercial licensing or security reports)
 
 ## Security
 
-If you find a security issue — **please don't open a public issue**. Email **bhattanish@gmail.com** with:
+If you find a security issue — **please don't open a public issue**. Use GitHub's private security advisory feature:
+**https://github.com/omanishay-cyber/mneme/security/advisories/new**
+
+Include:
 
 - A description of the vulnerability
 - Steps to reproduce

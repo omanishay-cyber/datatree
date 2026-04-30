@@ -10,8 +10,11 @@ No harassment, no bigotry, no dismissive snark. Ship code, not drama.
 
 ## Reporting
 
-If someone violates this in a way that affects you or someone else, email
-**bhattanish@gmail.com** directly. Include:
+If someone violates this in a way that affects you or someone else,
+report it via GitHub's private security advisory:
+**https://github.com/omanishay-cyber/mneme/security/advisories/new**
+
+Include:
 
 - What happened
 - Where it happened (link if possible)

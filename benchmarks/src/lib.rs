@@ -506,7 +506,7 @@ pub fn cold_baseline(repo: &Path, query: &str) -> BenchResult<(Vec<String>, u64)
         }
     }
 
-    hits.sort_by(|a, b| b.1.cmp(&a.1));
+    hits.sort_by_key(|h| std::cmp::Reverse(h.1));
     hits.truncate(5);
     let files: Vec<String> = hits.into_iter().map(|(p, _)| p).collect();
     let elapsed = start.elapsed().as_millis() as u64;
@@ -572,16 +572,12 @@ pub fn compare_vs_cold(
         });
     }
 
-    let mneme_precision_pct = if total_expected == 0 {
-        0
-    } else {
-        (dt_precision_hits * 100) / total_expected
-    };
-    let cold_precision_pct = if total_expected == 0 {
-        0
-    } else {
-        (cold_precision_hits * 100) / total_expected
-    };
+    let mneme_precision_pct = (dt_precision_hits * 100)
+        .checked_div(total_expected)
+        .unwrap_or(0);
+    let cold_precision_pct = (cold_precision_hits * 100)
+        .checked_div(total_expected)
+        .unwrap_or(0);
 
     Ok(CompareReport {
         rows,
@@ -935,8 +931,8 @@ pub fn bench_viz_scale(shard_graph_db: &Path) -> BenchResult<VizScaleReport> {
         .query_row("SELECT COUNT(*) FROM edges", [], |r| r.get::<_, i64>(0))
         .unwrap_or(0) as u64;
 
-    let bytes_per_node = if nodes == 0 { 0 } else { size / nodes };
-    let bytes_per_edge = if edges == 0 { 0 } else { size / edges };
+    let bytes_per_node = size.checked_div(nodes).unwrap_or(0);
+    let bytes_per_edge = size.checked_div(edges).unwrap_or(0);
 
     Ok(VizScaleReport {
         graph_db_bytes: size,
@@ -961,11 +957,9 @@ pub fn bench_recall(shard_graph_db: &Path, queries: &[GoldenQuery]) -> BenchResu
         hits += precision_at_n(&top, &q.expected_top, 10);
         total_expected += q.expected_top.len().min(10) as u32;
     }
-    let precision_at_10_pct = if total_expected == 0 {
-        0
-    } else {
-        (hits * 100) / total_expected
-    };
+    let precision_at_10_pct = (hits * 100)
+        .checked_div(total_expected)
+        .unwrap_or(0);
 
     Ok(RecallReport {
         queries: queries.len() as u32,

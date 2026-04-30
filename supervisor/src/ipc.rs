@@ -563,7 +563,7 @@ fn build_listener(path: &PathBuf) -> Result<Listener, SupervisorError> {
 }
 
 #[cfg(windows)]
-fn build_listener(path: &PathBuf) -> Result<Listener, SupervisorError> {
+fn build_listener(path: &Path) -> Result<Listener, SupervisorError> {
     let pipe_name = path
         .file_name()
         .and_then(|s| s.to_str())
@@ -1442,7 +1442,7 @@ mod query_runner {
         let guard = conn_handle
             .lock()
             .map_err(|e| format!("connection lock poisoned: {e}"))?;
-        f(&*guard)
+        f(&guard)
     }
 
     /// Resolve a project root to its `graph.db` path via `PathManager`.
@@ -1513,10 +1513,8 @@ mod query_runner {
             .map_err(|e| format!("exec like recall: {e}"))?;
 
         let mut hits = Vec::new();
-        for r in rows {
-            if let Ok(h) = r {
-                hits.push(h);
-            }
+        for h in rows.flatten() {
+            hits.push(h);
         }
         Ok(hits)
     }
@@ -1719,10 +1717,8 @@ mod query_runner {
             .map_err(|e| format!("exec godnodes: {e}"))?;
 
         let mut gods = Vec::new();
-        for r in rows {
-            if let Ok(g) = r {
-                gods.push(g);
-            }
+        for g in rows.flatten() {
+            gods.push(g);
         }
         Ok(gods)
     }
@@ -1744,11 +1740,10 @@ async fn write_response(
 ///
 /// Used by the binary's CLI subcommands and exposed publicly so other
 /// workers / tests can speak the same protocol.
-pub async fn connect_client(path: &PathBuf) -> Result<Stream, SupervisorError> {
+pub async fn connect_client(path: &Path) -> Result<Stream, SupervisorError> {
     #[cfg(unix)]
     {
         let name = path
-            .as_path()
             .to_fs_name::<GenericFilePath>()
             .map_err(|e| SupervisorError::Ipc(format!("name conversion failed: {e}")))?;
         <Stream as IpcStreamExt>::connect(name)

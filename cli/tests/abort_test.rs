@@ -1,3 +1,11 @@
+// Integration test holds a std::sync::Mutex (env_lock) across .await to
+// serialize env-var mutation. Allowed since these are sequential tests.
+#![allow(
+    clippy::await_holding_lock,
+    clippy::doc_overindented_list_items,
+    clippy::doc_lazy_continuation
+)]
+
 //! Integration tests for `mneme abort`.
 //!
 //! These tests exercise the in-process `commands::abort` API directly

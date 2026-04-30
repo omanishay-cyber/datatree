@@ -546,9 +546,12 @@ Copyright © 2026 **Anish Trivedi**.
 
 ## 💬 Contact
 
-- **Email** — bhattanish@gmail.com
-- **GitHub Issues** — bug reports, feature requests
-- **GitHub Discussions** — architecture questions, use cases
+- **GitHub Issues** — bug reports, feature requests, commercial licensing inquiries
+  → [github.com/omanishay-cyber/mneme/issues](https://github.com/omanishay-cyber/mneme/issues)
+- **GitHub Discussions** — architecture questions, use cases, "is this a good idea?"
+  → [github.com/omanishay-cyber/mneme/discussions](https://github.com/omanishay-cyber/mneme/discussions)
+- **Security advisories** — private vulnerability reports
+  → [github.com/omanishay-cyber/mneme/security/advisories/new](https://github.com/omanishay-cyber/mneme/security/advisories/new)
 
 ---
 

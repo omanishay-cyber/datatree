@@ -1,3 +1,10 @@
+// env_lock std::sync::Mutex held across .await to serialize env mutation.
+#![allow(
+    clippy::await_holding_lock,
+    clippy::doc_overindented_list_items,
+    clippy::doc_lazy_continuation
+)]
+
 //! QA-6 (Wave 4 cleanup): end-to-end fixture for [`HookCtx`] writers.
 //!
 //! Each test:

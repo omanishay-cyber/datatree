@@ -108,7 +108,7 @@ thiserror = "1"
 anyhow = "1"
 tracing = "0.1"
 # Real subscriber for the `mneme-brain` binary (WIDE-013 / REG-016).
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 
 # Lazy globals + small utils
 once_cell = "1"

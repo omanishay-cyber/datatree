@@ -175,8 +175,8 @@ fn slice_frontmatter(text: &str) -> Option<&str> {
     if !(body.starts_with("---\n") || body.starts_with("---\r\n")) {
         return None;
     }
-    let after_open = if body.starts_with("---\r\n") {
-        &body[5..]
+    let after_open = if let Some(s) = body.strip_prefix("---\r\n") {
+        s
     } else {
         &body[4..]
     };
@@ -531,7 +531,7 @@ pub fn suggest(task: &str, limit: usize) -> Vec<Suggestion> {
         }
     }
 
-    scored.sort_by(|a, b| b.score.cmp(&a.score));
+    scored.sort_by_key(|s| std::cmp::Reverse(s.score));
 
     if let Some(cw) = codeword_hit(task) {
         let already = scored.iter().any(|s| s.skill == "mneme-codewords");

@@ -185,6 +185,7 @@ impl Extractor {
         Ok(out)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn collect_named(
         &self,
         tree: &Tree,
@@ -549,11 +550,11 @@ fn is_callable_kind(kind: &str, lang: Language) -> bool {
 /// * `import * as N from 'm'`     → `["N"]` (namespace)
 /// * `import D, {A} from 'm'`     → `["D", "A"]` (combined)
 /// * `import 'polyfill'`          → `[]` (side-effect; caller falls back
-///                                       to the legacy single edge)
+///   to the legacy single edge)
 /// * `import type {T} from 'm'`   → `["T"]` (type-only counts —
-///                                          they're real graph-level
-///                                          dependencies even at runtime
-///                                          they vanish)
+///   they're real graph-level
+///   dependencies even at runtime
+///   they vanish)
 ///
 /// Strict-Rust hygiene: never panics. UTF-8 decode failures yield
 /// nothing — that binding is simply absent from the output, the build

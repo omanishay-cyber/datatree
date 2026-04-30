@@ -478,15 +478,13 @@ impl Ledger for SqliteLedger {
         )?;
         let rows = stmt.query_map([], Self::row_to_entry)?;
         let mut out = Vec::new();
-        for r in rows {
-            if let Ok(e) = r {
-                // Filter down to entries that were not resolved_by someone.
-                if let StepKind::OpenQuestion {
-                    resolved_by: None, ..
-                } = &e.kind
-                {
-                    out.push(e);
-                }
+        for e in rows.flatten() {
+            // Filter down to entries that were not resolved_by someone.
+            if let StepKind::OpenQuestion {
+                resolved_by: None, ..
+            } = &e.kind
+            {
+                out.push(e);
             }
         }
         Ok(out)
@@ -515,7 +513,7 @@ pub fn encode_vec_f32(v: &[f32]) -> Vec<u8> {
 /// Decode a little-endian byte blob back into a f32 vector. Returns None
 /// if the blob length isn't a multiple of 4.
 pub fn decode_vec_f32(bytes: &[u8]) -> Option<Vec<f32>> {
-    if bytes.len() % 4 != 0 {
+    if !bytes.len().is_multiple_of(4) {
         return None;
     }
     let mut out = Vec::with_capacity(bytes.len() / 4);

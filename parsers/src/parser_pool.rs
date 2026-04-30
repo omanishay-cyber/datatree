@@ -28,7 +28,7 @@ pub struct ParserLease {
 impl ParserLease {
     /// Mutable access to the underlying parser.
     pub fn parser(&mut self) -> &mut tree_sitter::Parser {
-        &mut *self.guard
+        &mut self.guard
     }
 
     /// Which language this lease parses.

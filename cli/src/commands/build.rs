@@ -2706,7 +2706,7 @@ fn parse_mneme_intent(head: &str) -> Option<(String, Option<String>)> {
                     // Trim trailing comment terminators (*/ etc)
                     Some(
                         reason_part
-                            .trim_end_matches(|c: char| c == '*' || c == '/' || c == ' ')
+                            .trim_end_matches(['*', '/', ' '])
                             .to_string(),
                     )
                 };
@@ -3027,6 +3027,7 @@ async fn run_intent_md_pass(
     // Cache parsed INTENT.md per directory so we don't re-read it for
     // every file in the same dir.
     use std::collections::HashMap;
+    #[allow(clippy::type_complexity)]
     let mut dir_cache: HashMap<PathBuf, Option<HashMap<String, (String, Option<String>)>>> =
         HashMap::new();
 
@@ -3444,10 +3445,10 @@ async fn run_betweenness_pass(
     let mut name_to_idx: HashMap<String, usize> = HashMap::with_capacity(raw_edges.len());
     let mut idx_to_name: Vec<String> = Vec::new();
     let mut adj: Vec<Vec<usize>> = Vec::new();
-    let mut intern = |s: &str,
-                      name_to_idx: &mut HashMap<String, usize>,
-                      idx_to_name: &mut Vec<String>,
-                      adj: &mut Vec<Vec<usize>>|
+    let intern = |s: &str,
+                  name_to_idx: &mut HashMap<String, usize>,
+                  idx_to_name: &mut Vec<String>,
+                  adj: &mut Vec<Vec<usize>>|
      -> usize {
         if let Some(&i) = name_to_idx.get(s) {
             return i;
@@ -3473,7 +3474,7 @@ async fn run_betweenness_pass(
     // Pick top-K source nodes by degree (sampled Brandes — captures
     // the high-BC bridges without paying full O(V^2 + V*E)).
     let mut degree_idx: Vec<(usize, usize)> = (0..v_count).map(|i| (i, adj[i].len())).collect();
-    degree_idx.sort_by(|a, b| b.1.cmp(&a.1));
+    degree_idx.sort_by_key(|d| std::cmp::Reverse(d.1));
     let sample_size = degree_idx.len().min(50);
     let sources: Vec<usize> = degree_idx
         .iter()
@@ -3532,8 +3533,8 @@ async fn run_betweenness_pass(
     } else {
         1.0
     };
-    for v in 0..v_count {
-        bc[v] *= norm;
+    for x in bc.iter_mut().take(v_count) {
+        *x *= norm;
     }
 
     // Persist (only nodes with non-zero BC; the rest stay at default 0).
@@ -3672,12 +3673,9 @@ async fn run_git_pass(store: &Store, project_id: &ProjectId, project: &Path) -> 
         let subject = parts[5];
 
         // ISO-8601 from epoch
-        let committed_at = format!(
-            "{}",
-            chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp_epoch, 0)
-                .map(|d| d.to_rfc3339())
-                .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
-        );
+        let committed_at = chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp_epoch, 0)
+            .map(|d| d.to_rfc3339())
+            .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
 
         // Take only first parent if there are multiple (merge commits)
         let parent_sha: Option<&str> = parent.split_whitespace().next().filter(|s| !s.is_empty());
@@ -4028,10 +4026,7 @@ fn parse_cargo_toml(path: &Path) -> Option<Vec<(String, String, bool)>> {
             };
             continue;
         }
-        let in_section = match current {
-            Some(_) => true,
-            None => false,
-        };
+        let in_section = current.is_some();
         if !in_section {
             continue;
         }
@@ -4265,9 +4260,8 @@ fn framework_for_path(p: &str) -> &'static str {
         "pytest"
     } else if lower.contains(".test.") || lower.contains(".spec.") {
         "vitest|jest"
-    } else if lower.contains("/__tests__/") || lower.contains("/tests/") {
-        "unknown"
     } else {
+        // Includes /__tests__/, /tests/, and anything else uncategorised.
         "unknown"
     }
 }
@@ -5459,7 +5453,7 @@ async fn run_wiki_pass(store: &Store, project_id: &ProjectId, paths: &PathManage
         // Pick `version = 1 + max(version)` for this slug so re-runs
         // don't violate the append-only contract documented in the
         // schema.
-        let next_version = next_wiki_version(&store, project_id, &page.slug).await;
+        let next_version = next_wiki_version(store, project_id, &page.slug).await;
 
         let entry_points_json =
             serde_json::to_string(&page.entry_points).unwrap_or_else(|_| "[]".into());

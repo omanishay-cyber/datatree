@@ -1468,8 +1468,8 @@ pub fn run_strict() -> i32 {
     println!();
     println!("  {:<16}{}", "timestamp:", utc_now_readable());
     println!(
-        "  {:<16}{}",
-        "mode:", "strict (G11 pre-flight verification)"
+        "  {:<16}strict (G11 pre-flight verification)",
+        "mode:"
     );
     println!();
 
@@ -1692,7 +1692,7 @@ pub fn check_build_toolchain() -> Vec<DoctorRow> {
         "link.exe",
         if link_ok {
             match &vc_tools_compiler_dir {
-                Some(d) if !which_on_path("link").is_some() => {
+                Some(d) if which_on_path("link").is_none() => {
                     format!("ok (via vswhere: {})", d.display())
                 }
                 _ => "ok".to_string(),
@@ -1705,7 +1705,7 @@ pub fn check_build_toolchain() -> Vec<DoctorRow> {
         "cl.exe",
         if cl_ok {
             match &vc_tools_compiler_dir {
-                Some(d) if !which_on_path("cl").is_some() => {
+                Some(d) if which_on_path("cl").is_none() => {
                     format!("ok (via vswhere: {})", d.display())
                 }
                 _ => "ok".to_string(),

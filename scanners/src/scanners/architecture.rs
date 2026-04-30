@@ -19,6 +19,8 @@
 //!
 //! Pure function of its inputs; the scanner holds no mutable state.
 
+#![allow(missing_docs)] // public struct fields are self-documenting (qualified_name, kind, …)
+
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use petgraph::graph::{NodeIndex, UnGraph};
@@ -215,10 +217,11 @@ fn build_coupling_matrix(nodes: &[ArchNode], edges: &[ArchEdge]) -> Vec<Coupling
             density: (cnt as f32) / denom,
         });
     }
-    out.sort_by(|x, y| (x.from_community, x.to_community).cmp(&(y.from_community, y.to_community)));
+    out.sort_by_key(|x| (x.from_community, x.to_community));
     out
 }
 
+#[allow(clippy::type_complexity)]
 fn build_risk_index(nodes: &[ArchNode]) -> Vec<CommunityRisk> {
     let mut acc: HashMap<u32, (u32, f32, u32, Vec<(String, u32)>)> = HashMap::new();
     for n in nodes {
@@ -240,7 +243,7 @@ fn build_risk_index(nodes: &[ArchNode]) -> Vec<CommunityRisk> {
             1.0
         };
         let risk = (callers as f32) * (0.1 + avg_crit) * security_multiplier;
-        syms.sort_by(|a, b| b.1.cmp(&a.1));
+        syms.sort_by_key(|s| std::cmp::Reverse(s.1));
         let top: Vec<String> = syms.into_iter().take(5).map(|(s, _)| s).collect();
         out.push(CommunityRisk {
             community_id: cid,
@@ -274,7 +277,7 @@ fn degree_top_k(nodes: &[ArchNode], edges: &[ArchEdge], k: usize) -> Vec<HubNode
             degree: *deg.get(&n.qualified_name).unwrap_or(&0),
         })
         .collect();
-    hubs.sort_by(|a, b| b.degree.cmp(&a.degree));
+    hubs.sort_by_key(|h| std::cmp::Reverse(h.degree));
     hubs.truncate(k);
     hubs
 }

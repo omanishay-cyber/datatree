@@ -459,7 +459,7 @@ pub fn estimate_tokens(s: &str) -> u32 {
     if s.is_empty() {
         0
     } else {
-        ((s.len() + CHARS_PER_TOKEN - 1) / CHARS_PER_TOKEN) as u32
+        s.len().div_ceil(CHARS_PER_TOKEN) as u32
     }
 }
 

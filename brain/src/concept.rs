@@ -3,10 +3,11 @@
 //! Two-stage pipeline:
 //!
 //!   1. **Deterministic** (always on) — regex/AST patterns over:
-//!         * function/class names → CamelCase / snake_case → noun phrases
-//!         * doc comments        → noun-phrase extraction
-//!         * Markdown headings   → topic strings
-//!     These are cheap, repeatable, and require no model.
+//!      * function/class names → CamelCase / snake_case → noun phrases
+//!      * doc comments        → noun-phrase extraction
+//!      * Markdown headings   → topic strings
+//!
+//!      These are cheap, repeatable, and require no model.
 //!
 //!   2. **LLM** (optional, `feature = "llm"`) — Phi-3-mini-4k second pass
 //!      that re-ranks deterministic concepts and adds a handful of

@@ -550,7 +550,7 @@ impl IpcClient {
         let first =
             tokio::time::timeout(self.timeout, round_trip(&socket_path, payload.clone())).await;
         match first {
-            Ok(Ok(resp)) => return Ok(resp),
+            Ok(Ok(resp)) => Ok(resp),
             Ok(Err(e)) => {
                 // Bug K: before bubbling the error up, re-read the
                 // discovery file once more — the supervisor may have

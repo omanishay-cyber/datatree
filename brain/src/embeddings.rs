@@ -15,6 +15,7 @@
 //!    * the `ORT_DYLIB_PATH` env var pointing at the shared library, **and**
 //!    * the model + tokenizer at `$MNEME_HOME/models/` (or the default
 //!      `~/.mneme/models/`).
+//!
 //!    If any of those are missing, we log `warn!` and fall back to the
 //!    hashing-trick backend — **never panic**.
 //!
@@ -188,7 +189,7 @@ impl Embedder {
                 let mut guard = self.inner.backend.lock();
                 guard.embed_batch(&to_compute_text)?
             };
-            for (slot, vec) in to_compute_idx.into_iter().zip(computed.into_iter()) {
+            for (slot, vec) in to_compute_idx.into_iter().zip(computed) {
                 let k = hash_key(texts[slot]);
                 self.inner.cache.insert(k, vec.clone());
                 out[slot] = Some(vec);
@@ -496,7 +497,7 @@ fn hashing_embed(text: &str, tk: Option<&Tokenizer>) -> Vec<f32> {
         Some(t) => {
             let enc = t.encode(lower.as_str(), false);
             match enc {
-                Ok(e) => e.get_tokens().iter().cloned().collect(),
+                Ok(e) => e.get_tokens().to_vec(),
                 Err(_) => whitespace_tokens(&lower),
             }
         }

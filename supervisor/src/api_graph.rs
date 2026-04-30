@@ -667,7 +667,7 @@ fn domain_of(p: Option<&str>) -> String {
     match p {
         None => "root".to_string(),
         Some(s) => {
-            for seg in s.split(|c: char| c == '/' || c == '\\') {
+            for seg in s.split(['/', '\\']) {
                 if !seg.is_empty() {
                     return seg.to_string();
                 }
@@ -715,7 +715,7 @@ fn insert_into_tree(
     language: Option<String>,
 ) {
     let segs: Vec<&str> = path
-        .split(|c: char| c == '/' || c == '\\')
+        .split(['/', '\\'])
         .filter(|s| !s.is_empty())
         .collect();
     if segs.is_empty() {
@@ -1393,7 +1393,7 @@ fn is_test_path(p: &str) -> bool {
 /// with its co-located or external test file.
 fn test_filename_candidates(src: &str) -> Vec<String> {
     let parts: Vec<&str> = src
-        .split(|c: char| c == '/' || c == '\\')
+        .split(['/', '\\'])
         .filter(|s| !s.is_empty())
         .collect();
     if parts.is_empty() {
@@ -1866,6 +1866,7 @@ async fn api_graph_theme_palette(State(state): State<ApiGraphState>) -> impl Int
                  LIMIT 2000",
             )
             .ok()?;
+        #[allow(clippy::type_complexity)]
         let raw: Vec<(i64, String, i64, String, Option<String>, String, String)> = stmt
             .query_map([], |r| {
                 Ok((
@@ -2021,7 +2022,7 @@ fn insert_into_hierarchy(
     file_path: Option<String>,
 ) {
     let segs: Vec<&str> = qualified_name
-        .split(|c: char| c == '.' || c == ':' || c == '/' || c == '\\')
+        .split(['.', ':', '/', '\\'])
         .filter(|s| !s.is_empty())
         .collect();
     if segs.is_empty() {

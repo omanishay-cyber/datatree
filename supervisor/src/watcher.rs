@@ -83,9 +83,11 @@ pub struct WatcherStats {
     pub total_ignored: u64,
     /// Total delete events processed.
     pub total_deletes: u64,
-    /// p50 / p95 / p99 save-to-graph latency in milliseconds.
+    /// p50 latency in milliseconds.
     pub p50_ms: u64,
+    /// p95 latency in milliseconds.
     pub p95_ms: u64,
+    /// p99 latency in milliseconds.
     pub p99_ms: u64,
     /// The most recent 256 latency samples. Used to recompute percentiles.
     samples_ms: Vec<u64>,
@@ -135,10 +137,12 @@ impl WatcherStats {
 pub struct WatcherStatsHandle(Arc<Mutex<WatcherStats>>);
 
 impl WatcherStatsHandle {
+    /// Create a fresh stats handle backed by a zero-initialised `WatcherStats`.
     pub fn new() -> Self {
         Self(Arc::new(Mutex::new(WatcherStats::default())))
     }
 
+    /// Take a snapshot of the current stats.
     pub fn snapshot(&self) -> WatcherStats {
         self.0.lock().clone()
     }
@@ -813,8 +817,10 @@ fn send_livebus_line(socket: &Path, line: &str) -> std::io::Result<()> {
 /// the hot path are logged and swallowed so the watcher never dies.
 #[derive(Debug, thiserror::Error)]
 pub enum WatcherError {
+    /// I/O error reading change events or graph DB.
     #[error("io: {0}")]
     Io(String),
+    /// Parsing or graph-conversion error on a changed file.
     #[error("parse: {0}")]
     Parse(String),
 }

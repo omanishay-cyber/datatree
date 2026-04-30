@@ -299,7 +299,6 @@ impl ChildManager {
         // exact composition.
         #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
             cmd.creation_flags(windows_worker_spawn_flags());
         }
 
@@ -318,7 +317,6 @@ impl ChildManager {
         let spawned = match spawned {
             Ok(child) => Ok(child),
             Err(e) if e.raw_os_error() == Some(5) => {
-                use std::os::windows::process::CommandExt;
                 cmd.creation_flags(windows_worker_spawn_flags_no_breakaway());
                 cmd.spawn()
             }
@@ -491,6 +489,7 @@ impl ChildManager {
     /// `Err(SendError<RestartRequest>)` if the receiver has been
     /// dropped (Bug L's "Closed" path).
     #[doc(hidden)]
+    #[allow(dead_code)]
     pub(crate) fn enqueue_restart_request_for_test(
         &self,
         req: RestartRequest,
@@ -503,6 +502,7 @@ impl ChildManager {
     /// dropped-count test which needs a child to attribute the
     /// `restart_dropped_count` increment to.
     #[doc(hidden)]
+    #[allow(dead_code)]
     pub(crate) async fn register_handle_for_test(&self, handle: ChildHandle) {
         let name = handle.spec.name.clone();
         let mut g = self.handles.write().await;
@@ -515,6 +515,7 @@ impl ChildManager {
     /// `monitor_child` does after `SendError`. The test for Bug L
     /// drives this directly because it cannot spawn a real worker.
     #[doc(hidden)]
+    #[allow(dead_code)]
     pub(crate) async fn simulate_dropped_restart_for_test(&self, name: &str) {
         let g = self.handles.read().await;
         if let Some(h) = g.get(name) {
@@ -1099,10 +1100,9 @@ fn probe_single_worker(
                 let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
                 let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
                 if !status.success() && stdout.trim().is_empty() && stderr.trim().is_empty() {
-                    return Err(Error::new(
-                        ErrorKind::Other,
-                        format!("--version exited with {status:?} and no output"),
-                    ));
+                    return Err(Error::other(format!(
+                        "--version exited with {status:?} and no output"
+                    )));
                 }
                 let mut combined = stdout;
                 if !stderr.trim().is_empty() {

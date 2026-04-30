@@ -1,3 +1,6 @@
+// CSV-style println!: literal column values are intentional alongside dynamic ones.
+#![allow(clippy::print_literal, clippy::type_complexity)]
+
 //! `bench_retrieval` — mneme retrieval + scaling benchmark driver.
 //!
 //! Subcommands:
@@ -625,7 +628,7 @@ fn short_path(p: &str) -> String {
     let normalised = p.replace('\\', "/");
     let parts: Vec<&str> = normalised.rsplit('/').collect();
     let take = parts.len().min(2);
-    let mut out: Vec<&str> = parts[..take].iter().copied().collect();
+    let mut out: Vec<&str> = parts[..take].to_vec();
     out.reverse();
     out.join("/")
 }

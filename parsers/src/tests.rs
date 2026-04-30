@@ -96,7 +96,7 @@ fn query_cache_warms_for_every_enabled_language() {
 fn errors_query_compiles_for_rust() {
     let q = query_cache::get_query(Language::Rust, QueryKind::Errors).unwrap();
     // The query has at least one capture (either ERROR or MISSING).
-    assert!(q.capture_names().len() >= 1);
+    assert!(!q.capture_names().is_empty());
 }
 
 // ---------------------------------------------------------------------------

@@ -8,6 +8,8 @@
 //! Bound exclusively to `127.0.0.1`. No authentication: this is a local-only
 //! daemon (see §22 of the design doc).
 
+#![allow(clippy::items_after_test_module)]
+
 use crate::api_graph;
 use crate::error::SupervisorError;
 use crate::job_queue::JobQueue;

@@ -88,20 +88,20 @@ fn config_validate_rejects_duplicates() {
 fn config_default_layout_has_all_workers() {
     let cfg = SupervisorConfig::default_layout();
     let names: Vec<&str> = cfg.children.iter().map(|c| c.name.as_str()).collect();
-    assert!(names.iter().any(|n| *n == "store-worker"));
+    assert!(names.contains(&"store-worker"));
     assert!(names.iter().any(|n| n.starts_with("parser-worker-")));
     assert!(names.iter().any(|n| n.starts_with("scanner-worker-")));
-    assert!(names.iter().any(|n| *n == "md-ingest-worker"));
+    assert!(names.contains(&"md-ingest-worker"));
     // multimodal extraction is now pure Rust and runs in-process from the
     // CLI (see cli::commands::graphify). No supervised child.
-    assert!(names.iter().any(|n| *n == "brain-worker"));
-    assert!(names.iter().any(|n| *n == "livebus-worker"));
+    assert!(names.contains(&"brain-worker"));
+    assert!(names.contains(&"livebus-worker"));
     // mcp-server and vision-server are intentionally NOT in the supervisor's
     // default layout — mcp-server is spawned per-Claude-Code-window via
     // `mneme mcp stdio`, and vision-server launches from `mneme view` or
     // the Tauri app. See `config.rs` line ~190 for the design rationale.
-    assert!(!names.iter().any(|n| *n == "mcp-server"));
-    assert!(!names.iter().any(|n| *n == "vision-server"));
+    assert!(!names.contains(&"mcp-server"));
+    assert!(!names.contains(&"vision-server"));
 }
 
 #[test]
@@ -117,9 +117,9 @@ fn latency_percentiles_basic() {
         h.record_latency_us(i);
     }
     let (p50, p95, p99) = h.latency_percentiles_us().expect("samples present");
-    assert!(p50 >= 49 && p50 <= 51);
-    assert!(p95 >= 94 && p95 <= 96);
-    assert!(p99 >= 98 && p99 <= 100);
+    assert!((49..=51).contains(&p50));
+    assert!((94..=96).contains(&p95));
+    assert!((98..=100).contains(&p99));
 }
 
 #[tokio::test]
