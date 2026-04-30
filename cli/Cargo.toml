@@ -93,6 +93,12 @@ chrono = { workspace = true }
 # and a time-ordered uuid for `ledger_entries.id`.
 blake3 = { workspace = true }
 uuid = { workspace = true }
+# `mneme abort` (graceful build cancellation) — needs cross-platform
+# liveness check on the PID stored inside `~/.mneme/projects/<id>/.lock`.
+# We can't shell out to `tasklist`/`ps` without losing portability and
+# parsability; sysinfo is already used in the supervisor (manager.rs)
+# for the same job, so reusing it keeps the workspace consistent.
+sysinfo = { workspace = true }
 # SEC-2: secrets_redact module scrubs AWS / OpenAI / Anthropic / Slack /
 # GitHub credential shapes from prompts before they hit history.db.
 # Using the workspace-pinned regex version keeps every crate on the

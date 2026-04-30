@@ -4,6 +4,7 @@
 //! for IPC-bound commands). `main.rs` picks one based on the parsed
 //! [`clap`] subcommand and bubbles the result.
 
+pub mod abort;
 pub mod audit;
 pub mod blast;
 pub mod build;
