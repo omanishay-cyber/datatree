@@ -1,0 +1,862 @@
+//! `mneme models` — local model management.
+//!
+//! The brain crate's semantic recall needs a sentence-embedding model
+//! (BGE-Small-En-v1.5, 384-dim, ~130 MB ONNX). This subcommand downloads and
+//! caches it into `~/.mneme/llm/` so every subsequent embed call is fully
+//! local.
+//!
+//! Subcommands:
+//! - `install` — install bundled models from a local directory.
+//! - `status`  — print which models are present and their sizes.
+//! - `path`    — print the model directory path (for scripts).
+//! - `install-onnx-runtime` — drop `onnxruntime.dll` into `~/.mneme/bin/`
+//!   so BGE works without manual PATH/ORT_DYLIB_PATH gymnastics. (Stub
+//!   in v0.3.2; auto-fetch lands in v0.3.3.)
+//!
+//! All other network-bearing work in mneme is forbidden; this command is
+//! the single explicit user-initiated download point.
+
+use clap::{Args, Subcommand};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use crate::error::CliError;
+use crate::CliResult;
+
+/// Filename of the local-models manifest written by `mneme models
+/// install --from-path`. One JSON file under the model root that lists
+/// every registered model file with its detected `kind`. `mneme doctor`
+/// reads this back to render the per-kind health box.
+pub const MANIFEST_FILENAME: &str = "manifest.json";
+
+/// Detected role of a model file inside the bundle. Bug C — the bundle
+/// ships 5 files but only the BGE ONNX was registered before this
+/// classification existed; the 4 GGUFs were silently skipped.
+///
+/// Mapping (see `classify_model_file`):
+/// - `*.onnx`             → `EmbeddingModel` (BGE-small-en-v1.5)
+/// - `tokenizer.json`     → `EmbeddingTokenizer` (BGE tokenizer)
+/// - `*.gguf|*.ggml|*.bin` containing `embed` (case-insensitive) → `EmbeddingLlm`
+/// - `*.gguf|*.ggml|*.bin` otherwise → `Llm`
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModelKind {
+    /// ONNX embedding model (e.g. BGE-Small-En-v1.5).
+    EmbeddingModel,
+    /// HuggingFace tokenizer.json paired with an embedding model.
+    EmbeddingTokenizer,
+    /// GGUF/GGML/bin LLM (e.g. phi-3-mini-4k, qwen-coder-0.5b).
+    Llm,
+    /// GGUF/GGML/bin embedding LLM (e.g. qwen-embed-0.5b,
+    /// nomic-embed-text).
+    EmbeddingLlm,
+}
+
+impl ModelKind {
+    /// Human-readable label for `mneme doctor` rendering.
+    pub fn label(&self) -> &'static str {
+        match self {
+            ModelKind::EmbeddingModel => "embedding-model",
+            ModelKind::EmbeddingTokenizer => "embedding-tokenizer",
+            ModelKind::Llm => "llm",
+            ModelKind::EmbeddingLlm => "embedding-llm",
+        }
+    }
+}
+
+/// One entry in `manifest.json`. `path` is stored relative to the
+/// manifest's parent directory so the bundle stays portable across
+/// machines (no absolute paths leak into the JSON).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestEntry {
+    /// Filename inside the model root (e.g. `bge-small-en-v1.5.onnx`).
+    pub name: String,
+    /// Detected kind.
+    pub kind: ModelKind,
+    /// File size in bytes.
+    pub size: u64,
+    /// Path relative to the model root (always equals `name` for the
+    /// flat layout used by `--from-path`, but kept distinct so a future
+    /// nested layout can extend without breaking readers).
+    pub path: String,
+}
+
+/// Top-level manifest shape persisted to `manifest.json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Manifest {
+    /// Schema version — bump if the on-disk shape changes
+    /// incompatibly. Readers must tolerate higher minor versions.
+    pub version: u32,
+    /// One entry per registered file. Order is deterministic
+    /// (alphabetical on `name`) so re-running install on the same
+    /// fixture yields the same JSON byte-for-byte.
+    pub entries: Vec<ManifestEntry>,
+}
+
+#[derive(Debug, Args)]
+pub struct ModelsArgs {
+    #[command(subcommand)]
+    pub op: Op,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Op {
+    /// Install bundled models from a local directory you already have.
+    ///
+    /// Pass `--from-path <dir>` pointing at a directory that contains
+    /// any combination of:
+    ///   * `bge-small-en-v1.5.onnx` + `tokenizer.json`  (BGE embedder)
+    ///   * `*.gguf` / `*.ggml` / `*.bin`                (LLMs / embed-LLMs)
+    /// Every recognised file is copied into `~/.mneme/models/` and
+    /// recorded in `manifest.json`. With `fastembed-install` enabled at
+    /// build time, omitting `--from-path` lets fastembed download BGE
+    /// directly.
+    ///
+    /// Network download via an arbitrary URL is only available when
+    /// `--from-url <url>` is passed explicitly — there are no implicit
+    /// network calls.
+    Install {
+        /// Local directory containing model files. Every `*.onnx`,
+        /// `tokenizer.json`, `*.gguf`, `*.ggml`, and `*.bin` inside is
+        /// classified and copied into `~/.mneme/models/`. Bug C fix —
+        /// previously only BGE was copied; the 4 bundled GGUFs were
+        /// silently skipped.
+        #[arg(long, value_name = "DIR")]
+        from_path: Option<PathBuf>,
+
+        /// Explicit download URL (opt-in network). Not yet implemented —
+        /// documented for forward compatibility so users know this is the
+        /// only path that can make a network call.
+        #[arg(long, value_name = "URL")]
+        from_url: Option<String>,
+
+        /// Force re-install even if already cached.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Show which models are installed.
+    Status,
+    /// Print the model directory path (useful for scripts).
+    Path,
+    /// Install the ONNX Runtime shared library (`onnxruntime.dll` on
+    /// Windows, `libonnxruntime.*` elsewhere) under `~/.mneme/bin/` so
+    /// the BGE embedder can find it without the user editing PATH or
+    /// setting `ORT_DYLIB_PATH`. Bug C followup — v0.3.2 ships this as
+    /// a stub that prints the manual procedure; v0.3.3 will auto-fetch
+    /// + sha256-verify the official release.
+    #[command(name = "install-onnx-runtime")]
+    InstallOnnxRuntime,
+}
+
+/// WIRE-014: async even though every code path is sync. The dispatcher in
+/// `main.rs` awaits every command handler — making `run` async lets the
+/// signature be uniform across the whole `commands::*::run` family without
+/// forcing the caller to special-case sync subcommands. There is no `await`
+/// inside; the body still runs to completion synchronously.
+pub async fn run(args: ModelsArgs) -> CliResult<()> {
+    match args.op {
+        Op::Install {
+            from_path,
+            from_url,
+            force,
+        } => install(from_path, from_url, force),
+        Op::Status => status(),
+        Op::Path => path_cmd(),
+        Op::InstallOnnxRuntime => install_onnx_runtime_stub(),
+    }
+}
+
+/// Model root. Resolves under `PathManager::default_root()` which
+/// honors `MNEME_HOME` -> `~/.mneme` -> OS default in one place
+/// (HOME-bypass-models fix). The previous duplicate `MNEME_HOME` check
+/// + `dirs::home_dir()` fallback is now centralized in `PathManager`.
+fn model_root() -> PathBuf {
+    common::paths::PathManager::default_root().root().join("models")
+}
+
+/// Public accessor for the model root used by other modules
+/// (`doctor.rs` reads the manifest from here). Same logic as the
+/// private `model_root()` so the CLI and the doctor never diverge.
+pub fn public_model_root() -> PathBuf {
+    model_root()
+}
+
+/// Write the `.installed` marker file that `mneme doctor` uses to detect
+/// a successful model install. Silent-4 fix (Class H-silent in
+/// `docs/dev/DEEP-AUDIT-2026-04-29.md`): the previous call sites used
+/// `fs::write(...).ok()`, swallowing io errors — if the marker write
+/// failed, doctor reported "not installed" forever even though the
+/// command had already printed "mneme: model installed". This wrapper
+/// converts the io::Error into a `CliError::Io` so the install
+/// command's caller (and the CLI's exit code) reflect the failure.
+fn write_install_marker(marker: &std::path::Path, payload: &[u8]) -> CliResult<()> {
+    fs::write(marker, payload).map_err(|e| CliError::Io {
+        path: Some(marker.to_path_buf()),
+        source: e,
+    })
+}
+
+fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) -> CliResult<()> {
+    let root = model_root();
+    fs::create_dir_all(&root).ok();
+
+    let marker = root.join(".installed");
+
+    if marker.exists() && !force && from_path.is_none() && from_url.is_none() {
+        println!(
+            "mneme: BGE-Small-En-v1.5 already installed at {}",
+            root.display()
+        );
+        println!("        · run with --force or --from-path to reinstall");
+        return Ok(());
+    }
+
+    // --- from-url: explicit opt-in network download. Not yet implemented ---
+    //
+    // WIRE-006: previously this silently no-op'd with a stderr warning,
+    // which meant scripts that asked for `--from-url` saw exit 0 + an
+    // un-installed model. We now hard-fail with a clear error so callers
+    // either pivot to `--from-path` or wait for the network path to land.
+    if let Some(url) = from_url {
+        return Err(CliError::Other(format!(
+            "--from-url not yet implemented (asked for {url:?}); \
+             use --from-path <dir> with a local copy of \
+             bge-small-en-v1.5.onnx + tokenizer.json instead"
+        )));
+    }
+
+    // --- from-path: copy local files (NO network) ---
+    //
+    // Bug C: previously this only copied two specific filenames
+    // (BGE ONNX + tokenizer.json) and silently skipped every other
+    // file in the bundle dir. The bundle ships 5 files (BGE ONNX +
+    // tokenizer + 3 GGUFs totalling ~3.5 GB) — 4 of those were never
+    // registered. Fixed by walking the dir, classifying each known
+    // model extension, copying every match, and persisting a
+    // manifest.json so `mneme doctor` can list them per kind.
+    if let Some(src_dir) = from_path {
+        if !src_dir.is_dir() {
+            eprintln!("mneme: --from-path {} is not a directory", src_dir.display());
+            return Ok(());
+        }
+        let registered = install_from_path_to_root(&src_dir, &root)?;
+
+        // Marker stays for backwards compat with `status()` (the
+        // legacy installed-check looks at .installed). Only write it
+        // if the BGE pair landed — otherwise users get a green status
+        // without a real embedder.
+        let bge_onnx_present = root.join("bge-small-en-v1.5.onnx").exists();
+        let bge_tok_present = root.join("tokenizer.json").exists();
+        if bge_onnx_present && bge_tok_present {
+            // Silent-4 fix (Class H-silent in `docs/dev/DEEP-AUDIT-2026-04-29.md`):
+            // marker write must NOT swallow io errors. If the marker fails
+            // to land, doctor reports "not installed" while the install
+            // banner says success — a textbook LIE-class drift. Propagate
+            // io::Error as CliError::Io so the install exit code reflects.
+            write_install_marker(&marker, b"v0.3.2 bge-small-en-v1.5 + bundle via --from-path\n")?;
+        }
+        println!(
+            "mneme: registered {registered} model file(s) into {}",
+            root.display()
+        );
+        println!("        · run `mneme doctor` to see them per kind");
+        println!("        · enable `real-embeddings` feature at build time to use BGE");
+        println!(
+            "        · on Windows also set ORT_DYLIB_PATH or place onnxruntime.dll on PATH"
+        );
+        println!(
+            "          (or run `mneme models install-onnx-runtime` to drop it under \
+             ~/.mneme/bin/)"
+        );
+        return Ok(());
+    }
+
+    // --- default install path: fastembed download (feature-gated) ---
+    println!(
+        "mneme: installing BGE-Small-En-v1.5 (~130 MB) into {}",
+        root.display()
+    );
+
+    #[cfg(feature = "fastembed-install")]
+    {
+        match ::brain::install_default_model() {
+            Ok(()) => {
+                // Silent-4 fix: same as above, propagate marker errors so
+                // doctor can never disagree with this success print.
+                write_install_marker(&marker, b"v0.2 BGESmallENV15 via fastembed\n")?;
+                println!("mneme: model installed");
+            }
+            Err(e) => {
+                eprintln!("mneme: install failed: {e}");
+                eprintln!("        · the embedder will run in fallback (hashing-trick) mode");
+                eprintln!("        · retry: mneme models install --force");
+                eprintln!(
+                    "        · or manual install: drop bge-small-en-v1.5.onnx + \
+                     tokenizer.json into {} and re-run with --from-path",
+                    root.display()
+                );
+            }
+        }
+    }
+
+    #[cfg(not(feature = "fastembed-install"))]
+    {
+        let _ = &marker;
+        println!("        · this mneme build was compiled without the `fastembed-install` feature.");
+        println!("          Two ways forward:");
+        println!("           1. rebuild with `--features fastembed-install` (pulls fastembed).");
+        println!("           2. manual: download BGE-small-en-v1.5.onnx + tokenizer.json and run:");
+        println!("                mneme models install --from-path <download-dir>");
+        println!("          Target directory: {}", root.display());
+    }
+
+    Ok(())
+}
+
+fn status() -> CliResult<()> {
+    let root = model_root();
+    println!("mneme model root: {}", root.display());
+
+    // New layout (v0.2.4+): files directly under root.
+    let onnx = root.join("bge-small-en-v1.5.onnx");
+    let tok = root.join("tokenizer.json");
+    let marker = root.join(".installed");
+
+    // Legacy layout (v0.2.0-v0.2.3): everything under `bge-small/` subdir.
+    let legacy = root.join("bge-small");
+    let legacy_marker = legacy.join(".installed");
+
+    let installed = marker.exists() || legacy_marker.exists();
+    if installed {
+        let size = if onnx.exists() {
+            fs::metadata(&onnx).map(|m| m.len()).unwrap_or(0)
+        } else {
+            directory_size(&legacy).unwrap_or(0)
+        };
+        println!(
+            "  [x] bge-small-en-v1.5    {} MB   {}",
+            size / 1_048_576,
+            root.display()
+        );
+        println!(
+            "       onnx:      {} {}",
+            if onnx.exists() { "[x]" } else { "[ ]" },
+            onnx.display()
+        );
+        println!(
+            "       tokenizer: {} {}",
+            if tok.exists() { "[x]" } else { "[ ]" },
+            tok.display()
+        );
+    } else {
+        println!("  [ ] bge-small-en-v1.5    not installed — run `mneme models install --from-path <dir>`");
+    }
+
+    // v0.3.2 (Bug C): if we have a manifest, also show the bundled
+    // GGUFs / extras per kind so the user sees the full inventory, not
+    // just BGE.
+    let manifest = read_manifest_or_empty(&root);
+    if !manifest.entries.is_empty() {
+        println!();
+        println!("  bundle manifest ({} entries):", manifest.entries.len());
+        for entry in &manifest.entries {
+            let mb = entry.size / 1_048_576;
+            println!(
+                "    [{kind:<19}] {name}    {mb} MB",
+                kind = entry.kind.label(),
+                name = entry.name,
+            );
+        }
+    }
+    Ok(())
+}
+
+fn path_cmd() -> CliResult<()> {
+    println!("{}", model_root().display());
+    Ok(())
+}
+
+fn directory_size(p: &std::path::Path) -> std::io::Result<u64> {
+    let mut total: u64 = 0;
+    for entry in walkdir::WalkDir::new(p).into_iter().filter_map(|e| e.ok()) {
+        if entry.file_type().is_file() {
+            if let Ok(meta) = entry.metadata() {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    Ok(total)
+}
+
+/// Pure classifier: map a filename (no path, just `name.ext`) to a
+/// `ModelKind` if mneme should register it, or `None` if the file is
+/// unrelated bundle noise (READMEs, configs, hidden markers, etc.).
+///
+/// Logic:
+///   * `*.onnx`             → `EmbeddingModel`
+///   * `tokenizer.json`     → `EmbeddingTokenizer`
+///   * `*.gguf|*.ggml|*.bin` containing `embed` (lowercase) → `EmbeddingLlm`
+///   * `*.gguf|*.ggml|*.bin` otherwise → `Llm`
+///   * everything else      → `None`
+///
+/// Case-insensitive on the extension; case-insensitive on the `embed`
+/// substring so `Embed`, `EMBED`, etc. all match.
+pub fn classify_model_file(name: &str) -> Option<ModelKind> {
+    let lower = name.to_ascii_lowercase();
+    if lower == "tokenizer.json" {
+        return Some(ModelKind::EmbeddingTokenizer);
+    }
+    if let Some(stem_ext) = name.rsplit_once('.') {
+        let ext = stem_ext.1.to_ascii_lowercase();
+        match ext.as_str() {
+            "onnx" => return Some(ModelKind::EmbeddingModel),
+            "gguf" | "ggml" | "bin" => {
+                let stem_lower = stem_ext.0.to_ascii_lowercase();
+                if stem_lower.contains("embed") {
+                    return Some(ModelKind::EmbeddingLlm);
+                }
+                return Some(ModelKind::Llm);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Walk `src_dir` for every classifiable model file, copy each into
+/// `root`, and persist a `manifest.json` listing what was registered.
+/// Returns the number of files registered.
+///
+/// This is the testable seam for Bug C: the production CLI calls it
+/// with `model_root()` as `root`; tests pass a `tempdir()` so they
+/// never touch the real `~/.mneme/`. Errors propagate as `CliError`
+/// — we no longer swallow copy failures with stderr-and-Ok.
+///
+/// The walker is shallow (top-level only). Recursive globbing into
+/// model subdirs is out of scope; the bundle is flat by design.
+pub fn install_from_path_to_root(src_dir: &Path, root: &Path) -> CliResult<usize> {
+    fs::create_dir_all(root)
+        .map_err(|e| CliError::Other(format!("create model root {}: {e}", root.display())))?;
+
+    let mut entries: Vec<ManifestEntry> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+
+    let read = fs::read_dir(src_dir)
+        .map_err(|e| CliError::Other(format!("read --from-path {}: {e}", src_dir.display())))?;
+    for dirent in read {
+        let dirent = match dirent {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("mneme: skipping unreadable entry: {e}");
+                continue;
+            }
+        };
+        let file_type = match dirent.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+        let name = match dirent.file_name().into_string() {
+            Ok(s) => s,
+            Err(_) => {
+                eprintln!("mneme: skipping non-utf8 filename in {}", src_dir.display());
+                continue;
+            }
+        };
+        let kind = match classify_model_file(&name) {
+            Some(k) => k,
+            None => {
+                skipped.push(name);
+                continue;
+            }
+        };
+
+        let src_path = dirent.path();
+        let dst_path = root.join(&name);
+        let bytes = fs::copy(&src_path, &dst_path).map_err(|e| {
+            CliError::Other(format!(
+                "copy {} -> {}: {e}",
+                src_path.display(),
+                dst_path.display()
+            ))
+        })?;
+        entries.push(ManifestEntry {
+            name: name.clone(),
+            kind,
+            size: bytes,
+            path: name,
+        });
+    }
+
+    // Deterministic ordering — same input dir always produces the same
+    // manifest bytes. Helps with diffability + reproducible installs.
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let manifest = Manifest {
+        version: 1,
+        entries,
+    };
+    let manifest_json = serde_json::to_string_pretty(&manifest)
+        .map_err(|e| CliError::Other(format!("serialize manifest.json: {e}")))?;
+    let manifest_path = root.join(MANIFEST_FILENAME);
+    fs::write(&manifest_path, manifest_json)
+        .map_err(|e| CliError::Other(format!("write {}: {e}", manifest_path.display())))?;
+
+    if !skipped.is_empty() {
+        eprintln!(
+            "mneme: skipped {} unrecognised file(s) in --from-path: {}",
+            skipped.len(),
+            skipped.join(", ")
+        );
+    }
+
+    Ok(manifest.entries.len())
+}
+
+/// Read the manifest at `<root>/manifest.json` if it exists. Returns
+/// `Ok(None)` when the file is absent (fresh installs / pre-Bug-C
+/// installs that never wrote one). `Err` only on I/O or JSON
+/// corruption — readers that just want a "best-effort" list can call
+/// `read_manifest_or_empty()`.
+pub fn read_manifest(root: &Path) -> CliResult<Option<Manifest>> {
+    let path = root.join(MANIFEST_FILENAME);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let body = fs::read_to_string(&path)
+        .map_err(|e| CliError::Other(format!("read {}: {e}", path.display())))?;
+    let manifest: Manifest = serde_json::from_str(&body)
+        .map_err(|e| CliError::Other(format!("parse {}: {e}", path.display())))?;
+    Ok(Some(manifest))
+}
+
+/// Best-effort wrapper used by `mneme doctor` — returns an empty
+/// manifest on any error, since the doctor must never fail loud over a
+/// missing/corrupt models manifest (it should just render an empty
+/// box).
+pub fn read_manifest_or_empty(root: &Path) -> Manifest {
+    match read_manifest(root) {
+        Ok(Some(m)) => m,
+        _ => Manifest {
+            version: 1,
+            entries: Vec::new(),
+        },
+    }
+}
+
+fn install_onnx_runtime_stub() -> CliResult<()> {
+    // Stub for v0.3.2 — full implementation lands in v0.3.3 once the
+    // download URL + sha256 verification flow is wired through the
+    // standard explicit-opt-in network path that `--from-url` will
+    // use. Surfacing the subcommand now lets `mneme models --help`
+    // discover it AND lets users see the documented requirement
+    // before the auto-fetch ships.
+    println!("mneme models install-onnx-runtime — STUB (v0.3.3 will auto-fetch)");
+    println!();
+    println!("  Mneme's BGE-Small-En-v1.5 embedder needs onnxruntime.dll on PATH");
+    println!("  (Windows) or libonnxruntime.so / .dylib (Linux/macOS).");
+    println!();
+    println!("  Manual install for now:");
+    println!("    1. Download the official ONNX Runtime release for your OS:");
+    println!("         https://github.com/microsoft/onnxruntime/releases");
+    println!("       (pick the `onnxruntime-win-x64-*.zip` for Windows-x64)");
+    println!("    2. Extract `onnxruntime.dll` (Win) / libonnxruntime.* (Unix)");
+    println!("       into either:");
+    println!(
+        "         · ~/.mneme/bin/   (mneme adds this to PATH at install time), or"
+    );
+    println!("         · any directory already on PATH");
+    println!("       Or set the `ORT_DYLIB_PATH` env var to the absolute file path.");
+    println!();
+    println!("  See `models/README.md` in the bundle for the full procedure.");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_url_returns_clear_error_not_silent_noop() {
+        // WIRE-006: passing --from-url must produce a hard error, not a
+        // print-and-exit-0. Scripts that ask for the network path must
+        // see exit non-zero so they pivot to --from-path or wait.
+        let r = install(None, Some("https://example.com/model".to_string()), false);
+        match r {
+            Err(CliError::Other(msg)) => assert!(
+                msg.contains("--from-url not yet implemented"),
+                "wrong message: {msg}"
+            ),
+            other => panic!("expected Other(--from-url not implemented), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn directory_size_reports_zero_for_empty_dir() {
+        let td = tempfile::tempdir().unwrap();
+        let n = directory_size(td.path()).unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn directory_size_counts_files() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(td.path().join("a.bin"), b"hello").unwrap();
+        std::fs::write(td.path().join("b.bin"), b"world!!").unwrap();
+        let n = directory_size(td.path()).unwrap();
+        assert_eq!(n, 5 + 7);
+    }
+
+    #[test]
+    fn status_does_not_panic_with_unset_root() {
+        // Smoke: should be safe to call even when the model root does
+        // not exist (fresh installs hit this path).
+        let _ = status();
+    }
+
+    #[test]
+    fn path_cmd_smoke() {
+        let _ = path_cmd();
+    }
+
+    /// Bug C — `mneme models install --from-path <dir>` must register
+    /// every model file present in `<dir>` (not just BGE). The bundle
+    /// ships 5 files (BGE ONNX, BGE tokenizer, 3 GGUFs); v0.3.0/v0.3.2
+    /// silently skipped 4 of them. Manifest at `<root>/manifest.json`
+    /// records `{name, kind, size, path}` per registered file. Kinds:
+    /// embedding-model, embedding-tokenizer, llm, embedding-llm.
+    #[test]
+    fn models_install_from_path_registers_all_bundled_files() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+
+        // 5 fake bundle files. Sizes follow the plan; small enough that
+        // the test stays fast but real enough that the manifest's
+        // `size` field is exercised.
+        let bge_onnx = src.path().join("bge-small-en-v1.5.onnx");
+        let bge_tok = src.path().join("tokenizer.json");
+        let phi_gguf = src.path().join("phi-3-mini-4k.gguf");
+        let qcoder_gguf = src.path().join("qwen-coder-0.5b.gguf");
+        let qembed_gguf = src.path().join("qwen-embed-0.5b.gguf");
+        std::fs::write(&bge_onnx, vec![0u8; 100 * 1024]).unwrap();
+        std::fs::write(&bge_tok, b"{\"placeholder\":true}").unwrap();
+        std::fs::write(&phi_gguf, vec![0u8; 100 * 1024]).unwrap();
+        std::fs::write(&qcoder_gguf, vec![0u8; 100 * 1024]).unwrap();
+        std::fs::write(&qembed_gguf, vec![0u8; 100 * 1024]).unwrap();
+
+        // Install from src into dst. Must NOT touch the real
+        // ~/.mneme/models — passing the dst root explicitly is the
+        // testable seam.
+        let count = install_from_path_to_root(src.path(), dst.path())
+            .expect("install_from_path_to_root should succeed");
+        assert_eq!(count, 5, "install_from_path_to_root should register 5 files");
+
+        // Manifest must exist at <dst>/manifest.json with 5 entries.
+        let manifest_path = dst.path().join("manifest.json");
+        assert!(
+            manifest_path.exists(),
+            "manifest.json was not created at {}",
+            manifest_path.display()
+        );
+        let body = std::fs::read_to_string(&manifest_path).unwrap();
+        let manifest: serde_json::Value = serde_json::from_str(&body)
+            .unwrap_or_else(|e| panic!("manifest.json not valid JSON: {e}\nbody:\n{body}"));
+        let entries = manifest
+            .get("entries")
+            .and_then(|v| v.as_array())
+            .expect("manifest.json missing entries[]");
+        assert_eq!(
+            entries.len(),
+            5,
+            "expected 5 manifest entries, got {}: {body}",
+            entries.len()
+        );
+
+        // Build a name -> kind map so order does not matter.
+        let mut got: std::collections::BTreeMap<String, String> = Default::default();
+        for entry in entries {
+            let name = entry
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let kind = entry
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            got.insert(name, kind);
+        }
+
+        assert_eq!(
+            got.get("bge-small-en-v1.5.onnx").map(String::as_str),
+            Some("embedding-model"),
+            "BGE onnx not classified embedding-model. manifest: {body}"
+        );
+        assert_eq!(
+            got.get("tokenizer.json").map(String::as_str),
+            Some("embedding-tokenizer"),
+            "tokenizer.json not classified embedding-tokenizer. manifest: {body}"
+        );
+        assert_eq!(
+            got.get("phi-3-mini-4k.gguf").map(String::as_str),
+            Some("llm"),
+            "phi-3-mini-4k.gguf not classified llm. manifest: {body}"
+        );
+        assert_eq!(
+            got.get("qwen-coder-0.5b.gguf").map(String::as_str),
+            Some("llm"),
+            "qwen-coder-0.5b.gguf not classified llm. manifest: {body}"
+        );
+        assert_eq!(
+            got.get("qwen-embed-0.5b.gguf").map(String::as_str),
+            Some("embedding-llm"),
+            "qwen-embed-0.5b.gguf not classified embedding-llm. manifest: {body}"
+        );
+
+        // All 5 files must have been copied into dst.
+        for f in [
+            "bge-small-en-v1.5.onnx",
+            "tokenizer.json",
+            "phi-3-mini-4k.gguf",
+            "qwen-coder-0.5b.gguf",
+            "qwen-embed-0.5b.gguf",
+        ] {
+            let p = dst.path().join(f);
+            assert!(p.exists(), "{f} was not copied to {}", p.display());
+        }
+    }
+
+    /// Kind-detection unit test — pure classifier, no I/O.
+    #[test]
+    fn classify_model_file_maps_extensions_and_names_to_kinds() {
+        // Embedding ONNX
+        assert_eq!(
+            classify_model_file("bge-small-en-v1.5.onnx"),
+            Some(ModelKind::EmbeddingModel)
+        );
+        assert_eq!(
+            classify_model_file("any-model.onnx"),
+            Some(ModelKind::EmbeddingModel)
+        );
+
+        // Tokenizer
+        assert_eq!(
+            classify_model_file("tokenizer.json"),
+            Some(ModelKind::EmbeddingTokenizer)
+        );
+
+        // GGUF: name contains "embed" → embedding-llm
+        assert_eq!(
+            classify_model_file("qwen-embed-0.5b.gguf"),
+            Some(ModelKind::EmbeddingLlm)
+        );
+        assert_eq!(
+            classify_model_file("nomic-embed-text.gguf"),
+            Some(ModelKind::EmbeddingLlm)
+        );
+
+        // GGUF without "embed" → llm
+        assert_eq!(
+            classify_model_file("phi-3-mini-4k.gguf"),
+            Some(ModelKind::Llm)
+        );
+        assert_eq!(
+            classify_model_file("qwen-coder-0.5b.gguf"),
+            Some(ModelKind::Llm)
+        );
+
+        // .ggml + .bin behave like .gguf
+        assert_eq!(classify_model_file("llama.ggml"), Some(ModelKind::Llm));
+        assert_eq!(
+            classify_model_file("model-embed.bin"),
+            Some(ModelKind::EmbeddingLlm)
+        );
+
+        // Unrelated files — None
+        assert_eq!(classify_model_file("README.md"), None);
+        assert_eq!(classify_model_file("config.toml"), None);
+        assert_eq!(classify_model_file(".installed"), None);
+    }
+
+    /// `read_manifest_or_empty` must not panic on a fresh root with
+    /// no manifest.json — the doctor depends on this for graceful
+    /// rendering when models haven't been installed yet.
+    #[test]
+    fn read_manifest_or_empty_returns_empty_for_missing_file() {
+        let td = tempfile::tempdir().unwrap();
+        let m = read_manifest_or_empty(td.path());
+        assert_eq!(m.version, 1);
+        assert!(
+            m.entries.is_empty(),
+            "expected empty entries on fresh root, got {:?}",
+            m.entries
+        );
+    }
+
+    /// Round-trip: install_from_path_to_root then read_manifest both
+    /// see the same entries.
+    #[test]
+    fn manifest_round_trip_through_disk() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        std::fs::write(src.path().join("model.onnx"), b"fake").unwrap();
+        std::fs::write(src.path().join("nomic-embed.gguf"), b"fake").unwrap();
+        std::fs::write(src.path().join("README.md"), b"ignored").unwrap();
+
+        let n = install_from_path_to_root(src.path(), dst.path()).unwrap();
+        assert_eq!(n, 2, "README.md should be skipped");
+
+        let manifest = read_manifest(dst.path()).unwrap().expect("manifest present");
+        let names: Vec<&str> = manifest.entries.iter().map(|e| e.name.as_str()).collect();
+        // Deterministic alphabetical order.
+        assert_eq!(names, vec!["model.onnx", "nomic-embed.gguf"]);
+    }
+
+    // ---- Silent-4: marker write must propagate io errors ---------------
+
+    /// RED → GREEN. Silent-4 in `docs/dev/DEEP-AUDIT-2026-04-29.md`:
+    /// `fs::write(&marker, ...).ok()` silently swallowed io errors,
+    /// letting the install print "model installed" while doctor still
+    /// reported "not installed" (because the marker never landed).
+    /// `write_install_marker` propagates the io::Error as
+    /// `CliError::Io` so the install command's exit code reflects the
+    /// failure and `mneme doctor` and the install banner cannot drift.
+    #[test]
+    fn write_install_marker_propagates_io_error() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // Point the marker at a directory rather than a file path —
+        // `fs::write` to a directory fails with `IsADirectory` /
+        // `PermissionDenied` depending on OS. Either kind surfaces
+        // as the same `CliError::Io` to the caller.
+        let bad = tmp.path().to_path_buf();
+        let r = write_install_marker(&bad, b"v0.x test\n");
+        match r {
+            Err(CliError::Io { path, source }) => {
+                assert_eq!(
+                    path.as_deref(),
+                    Some(bad.as_path()),
+                    "io error must carry the marker path; got {path:?}"
+                );
+                let _ = source;
+            }
+            other => panic!("expected CliError::Io for failed marker write; got {other:?}"),
+        }
+    }
+
+    /// Sanity GREEN: when the marker path is writable,
+    /// `write_install_marker` returns Ok and the bytes land on disk.
+    #[test]
+    fn write_install_marker_writes_payload_on_success() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let marker = tmp.path().join(".installed");
+        let payload = b"v0.2 unit-test marker\n";
+        let r = write_install_marker(&marker, payload);
+        assert!(r.is_ok(), "must succeed on writable path; got {r:?}");
+        let on_disk = fs::read(&marker).expect("read back marker");
+        assert_eq!(on_disk.as_slice(), payload);
+    }
+}

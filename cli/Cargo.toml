@@ -1,0 +1,128 @@
+[package]
+name = "mneme-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Mneme CLI: the `mneme` command-line tool. Drives install/build/view/audit/recall/step plus all hook entry points."
+
+# The user-facing binary is just `mneme`.
+[[bin]]
+name = "mneme"
+path = "src/main.rs"
+
+[lib]
+name = "mneme_cli"
+path = "src/lib.rs"
+
+[dependencies]
+# Async runtime — required for IPC, hook handlers, and parallel platform installs.
+tokio = { version = "1.40", features = ["rt", "rt-multi-thread", "macros", "io-util", "net", "fs", "time", "signal", "sync"] }
+
+# CLI parsing. Derive-style with rich help, env, and subcommand support.
+clap = { version = "4.5", features = ["derive", "env", "wrap_help", "color", "suggestions"] }
+
+# Serialization for hook JSON payloads, MCP config blobs, and step artifacts.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Errors.
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging — tracing-subscriber initialised in main with env filter.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "ansi"] }
+
+# IPC: client to the supervisor's Unix socket / named pipe.
+interprocess = { version = "2.2", features = ["tokio"] }
+
+# Hashing — used by markers.rs to detect user edits inside the marker block,
+# and by install.rs for content-addressable manifest backups.
+sha2 = "0.10"
+
+# Filesystem helpers.
+dirs = "5.0"
+walkdir = "2.5"
+# Cross-process advisory file locking — used by `mneme build` /
+# `mneme rebuild` to prevent two concurrent invocations from
+# corrupting the per-project SQLite shard. Portable across Windows
+# (LockFileEx) and Unix (flock). Audit fix L4 (v0.3.0).
+fs2 = "0.4"
+# ripgrep's gitignore parser — powers `.mnemeignore` + `.gitignore`
+# support in `mneme build` (P16). Supports nested ignore files and the
+# full gitignore spec (negation, directory-only, etc.).
+ignore = "0.4"
+
+# Pretty progress bars + colored output for `mneme build`, `install`, etc.
+indicatif = { version = "0.17", features = ["rayon"] }
+console = "0.15"
+
+# Workspace siblings linked in for the `mneme build` / `mneme audit`
+# in-process pipeline (CLI drives parse + store directly so v0.1 can ingest
+# real projects without needing the supervisor to route jobs).
+common = { path = "../common", package = "mneme-common" }
+store = { path = "../store", package = "mneme-store" }
+parsers = { path = "../parsers", package = "mneme-parsers" }
+multimodal = { path = "../multimodal-bridge", package = "mneme-multimodal" }
+# `brain` is required — the Step Ledger (F1) and Why-Chain (F6) run
+# in-process from the CLI. Heavy ONNX backends stay feature-gated inside
+# brain itself so this doesn't require a C++ toolchain.
+brain = { path = "../brain", package = "mneme-brain" }
+# Scanners library is linked for the `mneme audit` direct-fallback
+# path: when the supervisor is unreachable we spawn `mneme-scanners`
+# as a subprocess and persist streamed findings via the
+# `FindingsWriter` helper exported from this crate. Audit fix L14
+# (v0.3.0).
+scanners = { path = "../scanners", package = "mneme-scanners" }
+rusqlite = { workspace = true }
+# `which` — used by the platform install pipeline (I-1) to resolve an
+# absolute mneme exe path before writing it into MCP `command` fields.
+# PATH-resolution is preferred over `current_exe()` because users who
+# install via `iwr | iex` may run mneme out of a temp staging dir whose
+# path won't be valid post-install; `which::which("mneme")` finds the
+# canonical post-install location written into PATH by the installer.
+which = "6.0"
+# Used by the L12 staleness nag in `mneme inject` to compute the age
+# of `meta.db::projects.last_indexed_at` against wall-clock UTC.
+chrono = { workspace = true }
+# Bucket B4 fix: hook-side writers in `hook_writer.rs` need a stable
+# hash for `tool_calls.params_hash` (UNIQUE constraint on (tool, hash))
+# and a time-ordered uuid for `ledger_entries.id`.
+blake3 = { workspace = true }
+uuid = { workspace = true }
+# SEC-2: secrets_redact module scrubs AWS / OpenAI / Anthropic / Slack /
+# GitHub credential shapes from prompts before they hit history.db.
+# Using the workspace-pinned regex version keeps every crate on the
+# same engine (lock-file dedup; no extra binary size).
+regex = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+# Windows path normalisation so manifest paths produced on Win look POSIX
+# when written to JSON consumed by Bun.
+dunce = "1.0"
+
+[dev-dependencies]
+tempfile = "3.10"
+tokio = { version = "1.40", features = ["full", "test-util", "macros"] }
+
+[features]
+default = []
+# Enables linking the workspace `common` crate. Optional so this crate
+# compiles standalone while the workspace is still being assembled.
+with-common = []
+# Wires `mneme models install` through to `brain::install_default_model`,
+# which triggers fastembed to download BGE-Small-En-v1.5 into ~/.mneme/llm/.
+# Off by default so the workspace builds without a C++ toolchain; release
+# builds enable it.
+fastembed-install = ["brain/fastembed"]
+# K10 chaos-test-only hooks. Off by default — production binaries are
+# built without this feature so panic-injection / fault-injection paths
+# are absent from the user-facing release. Tests under
+# `cli/tests/chaos_tests.rs` enable this with
+# `cargo test --features test-hooks` to exercise the hardening paths.
+# Forwards the same feature into the supervisor + store crates so the
+# end-to-end `mneme build` path picks up the env-var hooks.
+test-hooks = ["store/test-hooks"]

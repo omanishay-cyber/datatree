@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="{{CSP}}" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mneme Graph</title>
+    <link rel="stylesheet" href="{{CSS_URI}}" />
+  </head>
+  <body>
+    <header class="mneme-toolbar">
+      <div class="mneme-title">
+        <span class="mneme-dot"></span>
+        <span>Mneme Graph</span>
+      </div>
+      <div class="mneme-actions">
+        <button id="mneme-refresh" class="mneme-btn" type="button" title="Refresh">
+          Refresh
+        </button>
+        <button id="mneme-toggle" class="mneme-btn" type="button" title="Toggle live/fallback">
+          Toggle mode
+        </button>
+        <div id="mneme-status" class="mneme-status" role="status">Loading...</div>
+      </div>
+    </header>
+    <main id="mneme-stage" class="mneme-stage">
+      <iframe
+        id="mneme-iframe"
+        src="{{VISION_URL}}"
+        title="Mneme Vision"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+      ></iframe>
+      <canvas id="mneme-canvas" width="1200" height="800"></canvas>
+      <aside id="mneme-legend" class="mneme-legend">
+        <h4>Legend</h4>
+        <ul>
+          <li><span class="swatch swatch-function"></span> function</li>
+          <li><span class="swatch swatch-class"></span> class/struct</li>
+          <li><span class="swatch swatch-interface"></span> trait/interface</li>
+          <li><span class="swatch swatch-module"></span> module</li>
+          <li><span class="swatch swatch-other"></span> other</li>
+        </ul>
+      </aside>
+      <aside id="mneme-tooltip" class="mneme-tooltip" hidden></aside>
+    </main>
+    <script id="mneme-snapshot" type="application/json">{{SNAPSHOT_JSON}}</script>
+    <script nonce="{{NONCE}}" src="{{JS_URI}}"></script>
+  </body>
+</html>

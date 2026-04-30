@@ -1,0 +1,23 @@
+metric,query,top_node,top_tokens,ms_p50,ms_mean,ms_min,ms_max
+per_query,where is DbLayer defined,,0,0.831,1.004,0.731,1.607
+per_query,callers of inject_file,,0,0.814,0.828,0.757,0.971
+per_query,drift detection,,0,0.74,0.751,0.728,0.799
+per_query,blast radius implementation,,0,0.715,0.723,0.679,0.771
+per_query,PathManager,<repo>/common\src\paths.rs::PathManager,53,0.063,0.081,0.058,0.144
+per_query,build_or_migrate,<repo>/store\src\builder.rs::DbBuilder.build_or_migrate,57,0.028,0.033,0.027,0.053
+per_query,Store::new,<repo>/store\src\lib.rs::Store.new,51,0.03,0.031,0.028,0.037
+per_query,parser pool,<repo>/parsers\src\incremental.rs::IncrementalParser.new,59,0.062,0.063,0.06,0.07
+per_query,embedding store,,0,0.882,0.872,0.81,0.925
+per_query,schema version,<repo>/store\src\schema.rs::version_table_sql,54,0.029,0.036,0.026,0.064
+
+metric,value
+files_indexed,290
+nodes,2274
+edges,17162
+graph_db_bytes,16314368
+bytes_per_node,7174.3
+bytes_per_edge,950.6
+search_ms_p50,0.412
+search_ms_p95,0.925
+search_ms_mean,0.442
+search_ms_max,1.607

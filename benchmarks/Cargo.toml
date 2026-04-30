@@ -1,0 +1,50 @@
+[package]
+name = "benchmarks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Mneme benchmarks: retrieval quality and token-reduction harness vs cold Claude baseline"
+publish = false
+
+[lib]
+name = "benchmarks"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bench_retrieval"
+path = "src/bin/bench_retrieval.rs"
+
+[dependencies]
+# Workspace siblings.
+common = { path = "../common", package = "mneme-common" }
+store = { path = "../store", package = "mneme-store" }
+parsers = { path = "../parsers", package = "mneme-parsers" }
+brain = { path = "../brain", package = "mneme-brain" }
+
+# Async runtime.
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "sync", "fs", "time"] }
+
+# SQL (direct reads against graph.db).
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# CLI.
+clap = { version = "4.5", features = ["derive"] }
+
+# Serialisation.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Errors.
+thiserror = "1.0"
+
+# Tracing.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Filesystem walk for cold-baseline grep.
+walkdir = "2.5"
+
+# Path canonicalisation.
+dunce = "1.0"

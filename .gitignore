@@ -1,0 +1,105 @@
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# personal sandbox folder: user puts their app source here for VM testing
+updated skills/
+
+# Bun / Node
+node_modules/
+build/
+.bun/
+
+# Bun/TS build outputs (NOT the dist/ packaging-manifests dir)
+dist/*.js
+dist/*.map
+dist/**/*.d.ts
+bun.lockb.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Mneme runtime data (per-user; never commit)
+# Keeps the old `.datatree/` pattern too so orphan dirs from pre-rename installs remain ignored.
+~/.mneme/
+.mneme/
+~/.datatree/
+.datatree/
+
+# Models (large; user installs via `mneme models install`)
+*.onnx
+*.gguf
+*.bin
+runtime/
+
+# Tauri
+src-tauri/target/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary
+tmp/
+*.tmp
+*.swp
+*~
+
+# Snapshot output of any indexed project
+.code-review-graph/
+
+# Backup files made by mneme's idempotent installer
+*.bak
+
+# Generated docs (regenerated from source)
+api-docs/
+
+# Local override configs
+.env
+.env.local
+*.local.json
+
+# Google Drive / OneDrive sync junk that sometimes appears
+.tmp.driveupload/
+.tmp.drive*
+.~*
+desktop.ini
+Thumbs.db
+
+# Internal build / status / design notes — never upload
+STATUS.md
+TEST_RUN.md
+VERIFICATION.md
+docs/design/
+.claude/
+vscode/out/
+vscode/node_modules/
+docs/dev/
+
+# Build/audit dev artifacts that have leaked into repo root before
+# Tracked in issues.md NEW-030 / WIDE-015 / REG-018.
+.src-changed
+**/.src-changed
+audit-output.txt
+build-after-l14.txt
+dups-before.txt
+audit-*.txt
+build-*.txt
+dups-*.txt
+release-staging/
+test-scripts/

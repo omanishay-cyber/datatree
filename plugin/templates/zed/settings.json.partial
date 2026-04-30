@@ -1,0 +1,18 @@
+{
+  "$comment": "mneme-marker v1.0 — merged into Zed settings.json. Existing context_servers entries are preserved.",
+  "context_servers": {
+    "mneme": {
+      "command": {
+        "path": "bun",
+        "args": ["{{mneme_root}}/mcp/index.ts"],
+        "env": {
+          "MNEME_HOME": "{{mneme_home}}",
+          "MNEME_PROJECT_ROOT": "{{project_root}}"
+        }
+      },
+      "settings": {
+        "transport": "stdio"
+      }
+    }
+  }
+}

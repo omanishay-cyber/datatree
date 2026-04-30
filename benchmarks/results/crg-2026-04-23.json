@@ -1,0 +1,112 @@
+{
+  "tool": "code-review-graph",
+  "version": "2.3.2",
+  "fixture": "mneme (datatree) repo",
+  "files_indexed": 290,
+  "nodes": 2274,
+  "edges": 17162,
+  "graph_db_bytes": 16314368,
+  "bytes_per_node": 7174.3,
+  "bytes_per_edge": 950.6,
+  "first_build_ms": 3666,
+  "incremental_no_changes_ms": 1041,
+  "incremental_one_touch_ms": 2182,
+  "search_ms_p50": 0.412,
+  "search_ms_p95": 0.925,
+  "search_ms_mean": 0.442,
+  "search_ms_max": 1.607,
+  "hits_on_10_golden_queries": 6,
+  "total_tokens_returned_10_queries": 327,
+  "queries": [
+    {
+      "query": "where is DbLayer defined",
+      "top_node": null,
+      "top_tokens": 0,
+      "ms_p50": 0.831,
+      "ms_mean": 1.004,
+      "ms_min": 0.731,
+      "ms_max": 1.607
+    },
+    {
+      "query": "callers of inject_file",
+      "top_node": null,
+      "top_tokens": 0,
+      "ms_p50": 0.814,
+      "ms_mean": 0.828,
+      "ms_min": 0.757,
+      "ms_max": 0.971
+    },
+    {
+      "query": "drift detection",
+      "top_node": null,
+      "top_tokens": 0,
+      "ms_p50": 0.74,
+      "ms_mean": 0.751,
+      "ms_min": 0.728,
+      "ms_max": 0.799
+    },
+    {
+      "query": "blast radius implementation",
+      "top_node": null,
+      "top_tokens": 0,
+      "ms_p50": 0.715,
+      "ms_mean": 0.723,
+      "ms_min": 0.679,
+      "ms_max": 0.771
+    },
+    {
+      "query": "PathManager",
+      "top_node": "<repo>/common\\src\\paths.rs::PathManager",
+      "top_tokens": 53,
+      "ms_p50": 0.063,
+      "ms_mean": 0.081,
+      "ms_min": 0.058,
+      "ms_max": 0.144
+    },
+    {
+      "query": "build_or_migrate",
+      "top_node": "<repo>/store\\src\\builder.rs::DbBuilder.build_or_migrate",
+      "top_tokens": 57,
+      "ms_p50": 0.028,
+      "ms_mean": 0.033,
+      "ms_min": 0.027,
+      "ms_max": 0.053
+    },
+    {
+      "query": "Store::new",
+      "top_node": "<repo>/store\\src\\lib.rs::Store.new",
+      "top_tokens": 51,
+      "ms_p50": 0.03,
+      "ms_mean": 0.031,
+      "ms_min": 0.028,
+      "ms_max": 0.037
+    },
+    {
+      "query": "parser pool",
+      "top_node": "<repo>/parsers\\src\\incremental.rs::IncrementalParser.new",
+      "top_tokens": 59,
+      "ms_p50": 0.062,
+      "ms_mean": 0.063,
+      "ms_min": 0.06,
+      "ms_max": 0.07
+    },
+    {
+      "query": "embedding store",
+      "top_node": null,
+      "top_tokens": 0,
+      "ms_p50": 0.882,
+      "ms_mean": 0.872,
+      "ms_min": 0.81,
+      "ms_max": 0.925
+    },
+    {
+      "query": "schema version",
+      "top_node": "<repo>/store\\src\\schema.rs::version_table_sql",
+      "top_tokens": 54,
+      "ms_p50": 0.029,
+      "ms_mean": 0.036,
+      "ms_min": 0.026,
+      "ms_max": 0.064
+    }
+  ]
+}

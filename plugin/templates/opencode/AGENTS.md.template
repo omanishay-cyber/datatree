@@ -1,0 +1,49 @@
+<!-- mneme-start v1.0 -->
+# Mneme (OpenCode)
+
+Mneme is a persistent knowledge graph of this project, exposed to
+OpenCode via the `mneme` MCP server (see `.opencode.json`) and the
+`.opencode/plugins/mneme.ts` plugin (file.edited + tool.execute.before
+hooks).
+
+## Tool usage rules (MANDATORY)
+
+**Use mneme MCP tools BEFORE OpenCode's built-in code search, file
+read, or grep.** The plugin's `tool.execute.before` hook will warn you
+when you reach for a shell tool without first calling mneme.
+
+On every task:
+
+1. `mneme.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`
+   at `detail_level="minimal"`.
+3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
+4. The `file.edited` hook keeps the graph fresh after every save.
+
+## Step ledger
+
+Steps append to `~/.mneme/projects/<id>/steps.jsonl`. Recover with
+`mneme.last_steps(n=10)`.
+
+## Drift detection
+
+Mneme flags symbol/doc/test drift. Address all flags before done.
+
+## Compaction resilience
+
+After a context reset, one `mneme.minimal_context(...)` call restores
+situational awareness from the persistent graph.
+
+## Workflow Codewords
+
+When the user starts a message with one of these single words, switch how you engage:
+
+| Word | What it means |
+|---|---|
+| `coldstart` | Pause. Observe only. Read context, draft a plan, do not touch code. Wait for `hotstart` or `firestart` before doing anything. |
+| `hotstart` | Resume with discipline. Numbered roadmap. Verify each step before moving to the next. |
+| `firestart` | Maximum loadout. Load every fireworks skill that matches the task, prime the mneme graph (`god_nodes`, `audit_corpus`, `recall_decision`), then proceed with `hotstart` discipline. |
+| `CHS` | "Check my screenshot" - read the latest file in the user's OS-native screenshot folder (Windows `Pictures/Screenshots`, macOS `Desktop`, Linux `Pictures/Screenshots`) and respond based on its contents. |
+
+These are not casual conversation. Treat them as commands. Full protocol per codeword lives in `~/.mneme/plugin/skills/mneme-codewords/SKILL.md`.
+<!-- mneme-end -->

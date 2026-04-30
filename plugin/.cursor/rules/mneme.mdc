@@ -1,0 +1,64 @@
+---
+description: Mneme — local persistent project memory + live code graph + 47 MCP tools. Always prefer mneme tools over Grep/Glob/Read for structural questions.
+globs: ["**/*"]
+alwaysApply: true
+---
+
+<!-- mneme-start v1.0 -->
+# Mneme — Cursor Rule
+
+This project has the **mneme** local daemon installed. Mneme provides
+Cursor with persistent SQLite memory, a live code graph, drift detection,
+a compaction-resilient step ledger, and 47 MCP tools (exposed via the
+stdio MCP server registered in `.cursor/mcp.json`).
+
+## Cursor-specific Tool Routing
+
+Cursor's "Apply" loop benefits from these mneme calls before any change:
+
+1. `recall_file(path)` — get the indexed summary + last-read hash. If
+   unchanged, skip the Read.
+2. `recall_constraint(scope='file', file=path)` — see what rules apply
+   (no hardcoded colors, no `any`, named exports only, etc.).
+3. `blast_radius(target=path)` — see every caller, dependent, and test
+   that will be affected. **Block large blast radii unless approved.**
+
+After the apply, mneme's PostToolUse hook captures the diff to
+history.db automatically.
+
+## Tool Catalog (when to use which)
+
+| Need | Mneme tool | Use instead of |
+|---|---|---|
+| Find usages | `find_references(symbol)` | `@codebase` grep |
+| Trace impact | `blast_radius(target)` | manual exploration |
+| File summary | `recall_file(path)` | reading the file |
+| Past decisions | `recall_decision(query)` | re-deriving |
+| Active rules | `recall_constraint(scope='file', file=path)` | reading rules/ |
+| Concept search | `recall_concept(query)` | `@docs` |
+| Architecture | `god_nodes()` + `audit_corpus()` | exploring |
+| Cycles | `cyclic_deps()` | manual check |
+| Drift | `drift_findings(severity='critical')` | linter run |
+| All scanners | `audit(scope='diff')` | save-and-pray |
+
+Target: **<= 5 tool calls per task, <= 800 tokens of context.**
+
+## Step Ledger
+
+For multi-step Cursor sessions, anchor in the step ledger:
+
+1. `step_plan_from(markdown_path)` to ingest a plan, or `step_status` to read
+2. `step_show` → do the work → `step_verify` → `step_complete`
+3. After **any** context reset, `step_resume()` first
+
+## Drift Redirects
+
+If your responses diverge from the goal twice in a row, the next prompt
+is prefixed with `<mneme-redirect>`. Re-anchor immediately.
+
+## Local Only
+
+Mneme makes zero outbound network calls. Everything stays in
+`~/.mneme/projects/`.
+
+<!-- mneme-end v1.0 -->

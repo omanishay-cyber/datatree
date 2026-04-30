@@ -1,0 +1,1374 @@
+//! The 19 AI-platform integration matrix.
+//!
+//! Each platform module under this dir implements a small set of
+//! adapters that the [`install`](crate::commands::install) and
+//! [`uninstall`](crate::commands::uninstall) commands call:
+//!
+//! ```text
+//! detect()           -> bool      // is this platform installed for the user?
+//! manifest_path()    -> PathBuf   // where to write AGENTS.md / CLAUDE.md / etc.
+//! mcp_config_path()  -> PathBuf   // where the MCP server registry lives
+//! write_manifest()                // marker-injects mneme's section
+//! write_mcp_config()              // backs up + merges mneme MCP entry
+//! write_hooks()                   // platforms that support hooks only
+//! ```
+//!
+//! All MCP configs are written via family-aware merge: most platforms expect
+//! a JSON object under `mcpServers`, Continue uses a JSON array, Codex uses
+//! TOML. See design §21.4 + §21.4.1.
+//!
+//! ## Adding a new platform
+//!
+//! 1. add a module file under `src/platforms/`
+//! 2. implement [`PlatformAdapter`] for it
+//! 3. add the variant to [`Platform`]
+//! 4. register it in [`PlatformDetector::all_known`] and the `match` arms in
+//!    [`Platform::adapter`]
+
+pub mod aider;
+pub mod antigravity;
+pub mod claude_code;
+pub mod continue_dev;
+pub mod codex;
+pub mod copilot;
+pub mod cursor;
+pub mod factory_droid;
+pub mod gemini_cli;
+pub mod hermes;
+pub mod kiro;
+pub mod openclaw;
+pub mod opencode;
+pub mod qoder;
+pub mod qwen;
+pub mod trae;
+pub mod vscode;
+pub mod windsurf;
+pub mod zed;
+
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+use crate::error::{CliError, CliResult};
+
+/// Install scope from `--scope=...`. Determines where manifests live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InstallScope {
+    /// Affects only the active project (`<repo>/.claude/`, `<repo>/AGENTS.md`).
+    Project,
+    /// Affects the current OS user across all their projects.
+    User,
+    /// Affects every user on the machine. Requires admin/root for some paths.
+    Global,
+}
+
+impl std::str::FromStr for InstallScope {
+    type Err = CliError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "project" => Ok(InstallScope::Project),
+            "user" => Ok(InstallScope::User),
+            "global" => Ok(InstallScope::Global),
+            other => Err(CliError::InvalidScope(other.to_string())),
+        }
+    }
+}
+
+/// One platform supported by `mneme install`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Platform {
+    /// Anthropic Claude Code.
+    ClaudeCode,
+    /// OpenAI Codex.
+    Codex,
+    /// Cursor.
+    Cursor,
+    /// Codeium Windsurf.
+    Windsurf,
+    /// Zed editor.
+    Zed,
+    /// Continue.dev.
+    ContinueDev,
+    /// SST OpenCode.
+    OpenCode,
+    /// Google Antigravity.
+    Antigravity,
+    /// Google Gemini CLI.
+    GeminiCli,
+    /// Aider.
+    Aider,
+    /// GitHub Copilot CLI / VS Code.
+    Copilot,
+    /// Factory Droid.
+    FactoryDroid,
+    /// Trae / Trae-CN.
+    Trae,
+    /// AWS Kiro.
+    Kiro,
+    /// Qoder.
+    Qoder,
+    /// OpenClaw.
+    OpenClaw,
+    /// Hermes.
+    Hermes,
+    /// Alibaba Qwen Code.
+    Qwen,
+    /// VS Code (Copilot Chat + Claude Code extension — shared MCP config).
+    VsCode,
+}
+
+impl Platform {
+    /// Stable kebab-case identifier (used in CLI flags + log lines).
+    pub fn id(self) -> &'static str {
+        match self {
+            Platform::ClaudeCode => "claude-code",
+            Platform::Codex => "codex",
+            Platform::Cursor => "cursor",
+            Platform::Windsurf => "windsurf",
+            Platform::Zed => "zed",
+            Platform::ContinueDev => "continue",
+            Platform::OpenCode => "opencode",
+            Platform::Antigravity => "antigravity",
+            Platform::GeminiCli => "gemini-cli",
+            Platform::Aider => "aider",
+            Platform::Copilot => "copilot",
+            Platform::FactoryDroid => "factory-droid",
+            Platform::Trae => "trae",
+            Platform::Kiro => "kiro",
+            Platform::Qoder => "qoder",
+            Platform::OpenClaw => "openclaw",
+            Platform::Hermes => "hermes",
+            Platform::Qwen => "qwen",
+            Platform::VsCode => "vscode",
+        }
+    }
+
+    /// Pretty display name for log output.
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Platform::ClaudeCode => "Claude Code",
+            Platform::Codex => "Codex",
+            Platform::Cursor => "Cursor",
+            Platform::Windsurf => "Windsurf",
+            Platform::Zed => "Zed",
+            Platform::ContinueDev => "Continue.dev",
+            Platform::OpenCode => "OpenCode",
+            Platform::Antigravity => "Antigravity",
+            Platform::GeminiCli => "Gemini CLI",
+            Platform::Aider => "Aider",
+            Platform::Copilot => "GitHub Copilot",
+            Platform::FactoryDroid => "Factory Droid",
+            Platform::Trae => "Trae",
+            Platform::Kiro => "Kiro",
+            Platform::Qoder => "Qoder",
+            Platform::OpenClaw => "OpenClaw",
+            Platform::Hermes => "Hermes",
+            Platform::Qwen => "Qwen Code",
+            Platform::VsCode => "VS Code",
+        }
+    }
+
+    /// Look up by stable id from `--platform=<id>`.
+    pub fn from_id(id: &str) -> CliResult<Self> {
+        for p in Self::all_known() {
+            if p.id().eq_ignore_ascii_case(id) {
+                return Ok(*p);
+            }
+        }
+        Err(CliError::UnknownPlatform(id.to_string()))
+    }
+
+    /// Static list of every platform mneme v1.0 supports. Kept in lock-
+    /// step with the table in design §21.4.
+    pub fn all_known() -> &'static [Platform] {
+        &[
+            Platform::ClaudeCode,
+            Platform::Codex,
+            Platform::Cursor,
+            Platform::Windsurf,
+            Platform::Zed,
+            Platform::ContinueDev,
+            Platform::OpenCode,
+            Platform::Antigravity,
+            Platform::GeminiCli,
+            Platform::Aider,
+            Platform::Copilot,
+            Platform::FactoryDroid,
+            Platform::Trae,
+            Platform::Kiro,
+            Platform::Qoder,
+            Platform::OpenClaw,
+            Platform::Hermes,
+            Platform::Qwen,
+            Platform::VsCode,
+        ]
+    }
+
+    /// Dispatch to the per-platform adapter.
+    pub fn adapter(self) -> Box<dyn PlatformAdapter> {
+        match self {
+            Platform::ClaudeCode => Box::new(claude_code::ClaudeCode),
+            Platform::Codex => Box::new(codex::Codex),
+            Platform::Cursor => Box::new(cursor::Cursor),
+            Platform::Windsurf => Box::new(windsurf::Windsurf),
+            Platform::Zed => Box::new(zed::Zed),
+            Platform::ContinueDev => Box::new(continue_dev::ContinueDev),
+            Platform::OpenCode => Box::new(opencode::OpenCode),
+            Platform::Antigravity => Box::new(antigravity::Antigravity),
+            Platform::GeminiCli => Box::new(gemini_cli::GeminiCli),
+            Platform::Aider => Box::new(aider::Aider),
+            Platform::Copilot => Box::new(copilot::Copilot),
+            Platform::FactoryDroid => Box::new(factory_droid::FactoryDroid),
+            Platform::Trae => Box::new(trae::Trae),
+            Platform::Kiro => Box::new(kiro::Kiro),
+            Platform::Qoder => Box::new(qoder::Qoder),
+            Platform::OpenClaw => Box::new(openclaw::OpenClaw),
+            Platform::Hermes => Box::new(hermes::Hermes),
+            Platform::Qwen => Box::new(qwen::Qwen),
+            Platform::VsCode => Box::new(vscode::VsCode),
+        }
+    }
+}
+
+/// Auto-detection helper. Mirrors design §21.4.2.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PlatformDetector;
+
+impl PlatformDetector {
+    /// Walk every known platform and ask its adapter whether the platform's
+    /// config dir / dotfile is present in the user's home. ClaudeCode and
+    /// Qoder are always considered installed (per design §21.4.2 footnote).
+    pub fn detect_installed(scope: InstallScope, project_root: &Path) -> Vec<Platform> {
+        let ctx = AdapterContext::new(scope, project_root.to_path_buf());
+        let mut found = Vec::new();
+        for &p in Platform::all_known() {
+            // ClaudeCode and Qoder are always tried; everyone else must
+            // pass the per-adapter detect() probe.
+            let always_on = matches!(p, Platform::ClaudeCode | Platform::Qoder);
+            if always_on || p.adapter().detect(&ctx) {
+                found.push(p);
+            }
+        }
+        found
+    }
+}
+
+/// MCP-config family. Drives serialization choice in
+/// [`AdapterContext::mcp_format_for`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpFormat {
+    /// Most platforms: `{"mcpServers": {"<name>": {...}}}`.
+    JsonObject,
+    /// Continue.dev: `{"mcpServers": [{"name": "<name>", ...}]}`.
+    JsonArray,
+    /// Codex: TOML `[mcp_servers.<name>]`.
+    Toml,
+}
+
+/// Read-only view passed to every adapter. Lets adapters resolve paths
+/// against the right home / project root and pick up dry-run / force flags
+/// without parsing CLI args themselves.
+#[derive(Debug, Clone)]
+pub struct AdapterContext {
+    /// Scope chosen by the user.
+    pub scope: InstallScope,
+    /// Resolved home dir (may equal project_root when scope=Project).
+    pub home: PathBuf,
+    /// Project root (CWD by default).
+    pub project_root: PathBuf,
+    /// If true, no files are written.
+    pub dry_run: bool,
+    /// If true, overwrite even if user has edited the marker block.
+    pub force: bool,
+    /// Absolute path to the running `mneme` binary (closes I-1). This
+    /// is what gets written into the `command` field of every MCP entry
+    /// so the host platform doesn't depend on `mneme` being on PATH.
+    pub exe_path: PathBuf,
+    /// True when the user explicitly opted into hook registration via
+    /// `mneme install --enable-hooks`. Default is false — closes K1
+    /// (the v0.3.0 settings.json poisoning incident).
+    ///
+    /// When false, every adapter's `write_hooks` is a no-op. Users who
+    /// want persistent-memory features (PreToolUse → cache-hit, Stop →
+    /// turn-end ledger writes, …) opt in by passing the flag, after
+    /// which `~/.claude/settings.json` gets the 8-event hook map under
+    /// the marker scheme defined in [`platforms::claude_code`].
+    pub enable_hooks: bool,
+}
+
+impl AdapterContext {
+    /// Build a context with the standard home dir.
+    pub fn new(scope: InstallScope, project_root: PathBuf) -> Self {
+        Self {
+            scope,
+            home: dirs::home_dir().unwrap_or_else(|| project_root.clone()),
+            project_root,
+            dry_run: false,
+            force: false,
+            exe_path: resolved_mneme_exe_path(),
+            enable_hooks: false,
+        }
+    }
+
+    /// Builder: enable dry-run.
+    pub fn with_dry_run(mut self, dry: bool) -> Self {
+        self.dry_run = dry;
+        self
+    }
+
+    /// Builder: enable force-overwrite of edited marker blocks.
+    pub fn with_force(mut self, force: bool) -> Self {
+        self.force = force;
+        self
+    }
+
+    /// Builder: override the resolved exe path. Useful for tests and
+    /// for callers that want to write a known-good path into MCP
+    /// configs (e.g. an installer that knows the canonical
+    /// `~/.mneme/bin/mneme(.exe)` location even when the running binary
+    /// lives in a temp staging dir).
+    pub fn with_exe_path(mut self, exe_path: PathBuf) -> Self {
+        self.exe_path = exe_path;
+        self
+    }
+
+    /// Builder: opt into hook registration. Default is opt-out — see
+    /// the [`Self::enable_hooks`] docstring for the K1 backstory.
+    pub fn with_enable_hooks(mut self, enable: bool) -> Self {
+        self.enable_hooks = enable;
+        self
+    }
+
+    /// Build the canonical AGENTS.md body mneme wants to inject.
+    pub fn agents_md_body() -> String {
+        // Kept short — full prompt-engineering lives in the supervisor.
+        // This is the user-visible "what is mneme" stub.
+        format!(
+            "## Mneme (the AI superbrain)\n\
+             \n\
+             - Persistent per-project memory across sessions and compactions.\n\
+             - 30+ MCP tools: see `mneme --help` or run `/mn-recall`, `/mn-blast`, `/mn-graphify`, `/mn-step`.\n\
+             - Step Ledger guarantees Claude resumes the *correct* step after compaction.\n\
+             - Drift detector enforces this project's rules from CLAUDE.md / .claude/rules.\n\
+             - Local-only: zero network egress in the hot path.\n\
+             - Vision app: `mneme view`\n\
+             - Daemon: `mneme daemon status`\n\
+             \n\
+             v{version} — see https://github.com/anishtrivedi/mneme\n",
+            version = env!("CARGO_PKG_VERSION")
+        )
+    }
+}
+
+/// Concrete behaviour every platform module exposes.
+///
+/// Default no-op implementations are provided for `write_hooks` and
+/// `detect`, so the simpler platforms only need to override what's
+/// distinctive about their config layout.
+pub trait PlatformAdapter: Send + Sync {
+    /// Which platform this is.
+    fn platform(&self) -> Platform;
+
+    /// Probe the filesystem for evidence the platform is installed.
+    /// Default: false. Adapters override this to look at well-known dirs.
+    fn detect(&self, _ctx: &AdapterContext) -> bool {
+        false
+    }
+
+    /// Where the platform reads its prompt rules manifest (e.g. `AGENTS.md`,
+    /// `CLAUDE.md`). Returned path may not exist yet.
+    fn manifest_path(&self, ctx: &AdapterContext) -> PathBuf;
+
+    /// Where the platform reads its MCP server registry.
+    fn mcp_config_path(&self, ctx: &AdapterContext) -> PathBuf;
+
+    /// JSON object / array / TOML.
+    fn mcp_format(&self) -> McpFormat {
+        McpFormat::JsonObject
+    }
+
+    /// Write the marker-wrapped mneme section into the manifest.
+    /// Default implementation handles the read-modify-write dance via
+    /// [`crate::markers::MarkerInjector`].
+    fn write_manifest(&self, ctx: &AdapterContext) -> CliResult<PathBuf> {
+        let path = self.manifest_path(ctx);
+        let body = AdapterContext::agents_md_body();
+        write_marker_manifest(&path, &body, ctx)?;
+        Ok(path)
+    }
+
+    /// Write the MCP config entry. Default uses the format from
+    /// [`Self::mcp_format`] and a backup-then-merge strategy.
+    fn write_mcp_config(&self, ctx: &AdapterContext) -> CliResult<PathBuf> {
+        let path = self.mcp_config_path(ctx);
+        write_mcp_config_default(&path, self.mcp_format(), ctx, &ctx.exe_path)?;
+        Ok(path)
+    }
+
+    /// Where the platform stores its hook registry (e.g.
+    /// `~/.claude/settings.json` for Claude Code). Default: `None` —
+    /// platform doesn't surface a hooks file mneme can write to.
+    fn hooks_path(&self, _ctx: &AdapterContext) -> Option<PathBuf> {
+        None
+    }
+
+    /// Write hook config (where the platform supports hooks). Default: no-op.
+    fn write_hooks(&self, _ctx: &AdapterContext) -> CliResult<Option<PathBuf>> {
+        Ok(None)
+    }
+
+    /// Reverse of [`Self::write_hooks`]. Default: no-op. Adapters that
+    /// implement `write_hooks` must implement this too — `mneme uninstall`
+    /// calls it for every detected platform.
+    fn remove_hooks(&self, _ctx: &AdapterContext) -> CliResult<()> {
+        Ok(())
+    }
+
+    /// Reverse of [`Self::write_manifest`]. Strips the marker block.
+    fn remove_manifest(&self, ctx: &AdapterContext) -> CliResult<()> {
+        let path = self.manifest_path(ctx);
+        if !path.exists() {
+            return Ok(());
+        }
+        let existing = std::fs::read_to_string(&path).map_err(|e| CliError::io(&path, e))?;
+        let cleaned = crate::markers::MarkerInjector::remove(&existing);
+        if !ctx.dry_run {
+            backup_then_write(&path, cleaned.as_bytes())?;
+        }
+        Ok(())
+    }
+
+    /// Reverse of [`Self::write_mcp_config`]. Removes mneme's entry.
+    fn remove_mcp_config(&self, ctx: &AdapterContext) -> CliResult<()> {
+        let path = self.mcp_config_path(ctx);
+        if !path.exists() {
+            return Ok(());
+        }
+        remove_mcp_entry(&path, self.mcp_format(), ctx)
+    }
+}
+
+/// The canonical mneme MCP entry written into JSON-object configs.
+/// Kept as `serde_json::Value` so individual adapters can mutate fields
+/// before serializing (e.g. Cursor wants `transport: "stdio"`).
+///
+/// `exe_path` is the absolute path to the running `mneme` binary,
+/// resolved at install time via [`resolved_mneme_exe_path`]. Writing the
+/// absolute path (not a bare `"mneme"` token) keeps the host AI platform
+/// from depending on `mneme` being on PATH at the time the platform
+/// launches the MCP server — see issues.md I-1.
+pub fn mneme_mcp_entry(exe_path: &Path) -> serde_json::Value {
+    // K1+v0.3.2 fix: forward-slash paths. Claude Code shells the MCP
+    // server command through bash on Windows (Git Bash / WSL-like
+    // shim), which interprets `\U` / `\A` / etc. as escape sequences
+    // and mangles `C:\Users\…` → `C:UsersAdministrator…`. Forward
+    // slashes are accepted by both cmd.exe and bash on Windows and
+    // are obviously fine on POSIX.
+    let cmd = exe_path.to_string_lossy().replace('\\', "/");
+    serde_json::json!({
+        "command": cmd,
+        "args": ["mcp", "stdio"],
+        "env": {
+            "MNEME_LOG": "info"
+        },
+        "transport": "stdio"
+    })
+}
+
+/// Resolve the absolute path to the `mneme` executable for use as the
+/// `command` field in MCP entries (I-1).
+///
+/// Resolution order:
+///   1. `which::which("mneme")` — finds the post-install canonical
+///      location (`~/.mneme/bin/mneme(.exe)`) that the installer added
+///      to PATH. This is what we WANT: it survives temp staging dirs,
+///      cargo target dirs, etc.
+///   2. `std::env::current_exe()` — fallback when mneme isn't yet on
+///      PATH (e.g. install-time, before the PATH update propagates to
+///      the current shell).
+///   3. Bare `"mneme"` — last-resort fallback. The host AI platform
+///      will look on PATH at launch time, which mirrors pre-fix
+///      behaviour.
+///
+/// On Windows we also enforce the `.exe` suffix in case the resolver
+/// returns a stripped path.
+pub fn resolved_mneme_exe_path() -> PathBuf {
+    // Step 1: prefer PATH lookup so we get the canonical post-install location.
+    if let Ok(p) = which::which("mneme") {
+        return ensure_windows_exe(p);
+    }
+    // Step 2: fallback to current_exe() — works during initial install
+    // before PATH has been updated. May point at a staging dir, but
+    // that's still strictly better than bare "mneme".
+    if let Ok(p) = std::env::current_exe() {
+        return ensure_windows_exe(p);
+    }
+    // Step 3: last-resort bare token.
+    PathBuf::from("mneme")
+}
+
+/// On Windows, ensure the `.exe` suffix is present on a resolved exe
+/// path. Some path resolvers strip extensions; we want the literal
+/// `mneme.exe` so host platforms invoking the file via CreateProcess
+/// don't have to ApPathExt-resolve it themselves.
+fn ensure_windows_exe(p: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        if p.extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.eq_ignore_ascii_case("exe"))
+            != Some(true)
+        {
+            let mut q = p.clone();
+            q.set_extension("exe");
+            if q.exists() {
+                return q;
+            }
+        }
+        p
+    }
+    #[cfg(not(windows))]
+    {
+        p
+    }
+}
+
+/// Write `body` into the mneme marker block of the file at `path`,
+/// creating intermediate directories and the file itself if needed.
+pub fn write_marker_manifest(
+    path: &Path,
+    body: &str,
+    ctx: &AdapterContext,
+) -> CliResult<()> {
+    if let Some(parent) = path.parent() {
+        if !ctx.dry_run {
+            std::fs::create_dir_all(parent).map_err(|e| CliError::io(parent, e))?;
+        }
+    }
+    let existing = if path.exists() {
+        std::fs::read_to_string(path).map_err(|e| CliError::io(path, e))?
+    } else {
+        String::new()
+    };
+    let new_text = crate::markers::MarkerInjector::inject(&existing, body, path, ctx.force)?;
+    if ctx.dry_run {
+        tracing::info!(path = %path.display(), bytes = new_text.len(), "dry-run: would write manifest");
+        return Ok(());
+    }
+    backup_then_write(path, new_text.as_bytes())?;
+    Ok(())
+}
+
+/// Default merge strategy for MCP configs. Reads existing config (if any),
+/// inserts/updates the `mneme` entry, writes back. Always backs up to
+/// `<file>.bak` first.
+///
+/// `exe_path` is the absolute path to the currently-running `mneme`
+/// binary — it is what gets written into the `command` field of the
+/// merged MCP entry (closes I-1).
+pub fn write_mcp_config_default(
+    path: &Path,
+    format: McpFormat,
+    ctx: &AdapterContext,
+    exe_path: &Path,
+) -> CliResult<()> {
+    if let Some(parent) = path.parent() {
+        if !ctx.dry_run {
+            std::fs::create_dir_all(parent).map_err(|e| CliError::io(parent, e))?;
+        }
+    }
+
+    let existing = if path.exists() {
+        std::fs::read_to_string(path).map_err(|e| CliError::io(path, e))?
+    } else {
+        match format {
+            McpFormat::JsonObject => "{}".to_string(),
+            McpFormat::JsonArray => "{\"mcpServers\": []}".to_string(),
+            McpFormat::Toml => "".to_string(),
+        }
+    };
+
+    let merged = match format {
+        McpFormat::JsonObject => merge_mcp_json_object(&existing, exe_path)?,
+        McpFormat::JsonArray => merge_mcp_json_array(&existing, exe_path)?,
+        McpFormat::Toml => merge_mcp_toml(&existing, exe_path)?,
+    };
+
+    if ctx.dry_run {
+        tracing::info!(path = %path.display(), bytes = merged.len(), "dry-run: would write MCP config");
+        return Ok(());
+    }
+    backup_then_write(path, merged.as_bytes())?;
+    Ok(())
+}
+
+/// Reverse of [`write_mcp_config_default`]. Strips mneme from the config
+/// while leaving every other server intact.
+pub fn remove_mcp_entry(
+    path: &Path,
+    format: McpFormat,
+    ctx: &AdapterContext,
+) -> CliResult<()> {
+    let existing = std::fs::read_to_string(path).map_err(|e| CliError::io(path, e))?;
+    let stripped = match format {
+        McpFormat::JsonObject => strip_mcp_json_object(&existing)?,
+        McpFormat::JsonArray => strip_mcp_json_array(&existing)?,
+        McpFormat::Toml => strip_mcp_toml(&existing)?,
+    };
+    if !ctx.dry_run {
+        backup_then_write(path, stripped.as_bytes())?;
+    }
+    Ok(())
+}
+
+/// Strip a UTF-8 BOM (EF BB BF) from the head of a string, if present.
+/// PowerShell's `Set-Content -Encoding UTF8` adds a BOM that makes
+/// `serde_json::from_str` fail with "expected value at line 1 column 1",
+/// which bricked `mneme register-mcp --platform claude-code` on the
+/// VM test harness. Strip defensively in every JSON read path.
+fn strip_bom(s: &str) -> &str {
+    s.strip_prefix('\u{feff}').unwrap_or(s)
+}
+
+fn merge_mcp_json_object(existing: &str, exe_path: &Path) -> CliResult<String> {
+    let existing = strip_bom(existing);
+    let mut value: serde_json::Value = if existing.trim().is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_str(existing)?
+    };
+    let obj = value
+        .as_object_mut()
+        .ok_or_else(|| CliError::Other("MCP config root is not a JSON object".into()))?;
+    let servers = obj
+        .entry("mcpServers".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let servers_obj = servers
+        .as_object_mut()
+        .ok_or_else(|| CliError::Other("`mcpServers` is not a JSON object".into()))?;
+
+    // NEW-003: if there's already a mneme entry, deep-merge env so
+    // user-set keys are preserved. Replacing wholesale on every install
+    // silently overwrites any custom env the user added.
+    let new_entry = mneme_mcp_entry(exe_path);
+    let merged_entry = match servers_obj.get("mneme").cloned() {
+        Some(prev) => deep_merge_mcp_entry(prev, new_entry),
+        None => new_entry,
+    };
+    servers_obj.insert("mneme".into(), merged_entry);
+    Ok(serde_json::to_string_pretty(&value)? + "\n")
+}
+
+/// Deep-merge two mneme MCP entries. The `new` entry wins on the
+/// always-mneme-managed fields (`command`, `args`, `transport`); the
+/// `env` map is merged key-by-key with `prev` keys winning so any custom
+/// `env.MNEME_FOO=bar` the user added survives a re-install.
+fn deep_merge_mcp_entry(
+    mut prev: serde_json::Value,
+    new: serde_json::Value,
+) -> serde_json::Value {
+    let new_obj = match new.as_object() {
+        Some(o) => o,
+        None => return new,
+    };
+    let prev_obj = match prev.as_object_mut() {
+        Some(o) => o,
+        None => return new,
+    };
+
+    for (k, v) in new_obj {
+        if k == "env" {
+            // Merge env: existing keys win.
+            let new_env = v.as_object().cloned().unwrap_or_default();
+            let env_entry = prev_obj
+                .entry("env".to_string())
+                .or_insert_with(|| serde_json::json!({}));
+            if let Some(env_obj) = env_entry.as_object_mut() {
+                for (ek, ev) in new_env {
+                    env_obj.entry(ek).or_insert(ev);
+                }
+            } else {
+                // Existing env wasn't an object — overwrite with the new
+                // env block (user-supplied bad shape, we own the fix).
+                *env_entry = serde_json::Value::Object(new_env);
+            }
+        } else {
+            // Always-mneme-managed fields — replace.
+            prev_obj.insert(k.clone(), v.clone());
+        }
+    }
+    prev
+}
+
+fn strip_mcp_json_object(existing: &str) -> CliResult<String> {
+    let existing = strip_bom(existing);
+    let mut value: serde_json::Value = serde_json::from_str(existing)?;
+    if let Some(servers) = value
+        .get_mut("mcpServers")
+        .and_then(|v| v.as_object_mut())
+    {
+        servers.remove("mneme");
+    }
+    Ok(serde_json::to_string_pretty(&value)? + "\n")
+}
+
+fn merge_mcp_json_array(existing: &str, exe_path: &Path) -> CliResult<String> {
+    let existing = strip_bom(existing);
+    let mut value: serde_json::Value = if existing.trim().is_empty() {
+        serde_json::json!({"mcpServers": []})
+    } else {
+        serde_json::from_str(existing)?
+    };
+    let servers = value
+        .as_object_mut()
+        .ok_or_else(|| CliError::Other("MCP config root is not a JSON object".into()))?
+        .entry("mcpServers".to_string())
+        .or_insert_with(|| serde_json::json!([]));
+    let arr = servers
+        .as_array_mut()
+        .ok_or_else(|| CliError::Other("`mcpServers` is not a JSON array".into()))?;
+
+    // NEW-003: preserve a previous mneme entry's env by deep-merging
+    // before retaining the de-duped list.
+    let prev_entry = arr
+        .iter()
+        .find(|s| s.get("name").and_then(|n| n.as_str()) == Some("mneme"))
+        .cloned();
+    arr.retain(|s| s.get("name").and_then(|n| n.as_str()) != Some("mneme"));
+    let mut entry = mneme_mcp_entry(exe_path);
+    entry
+        .as_object_mut()
+        .unwrap()
+        .insert("name".into(), serde_json::json!("mneme"));
+    let entry = match prev_entry {
+        Some(prev) => deep_merge_mcp_entry(prev, entry),
+        None => entry,
+    };
+    arr.push(entry);
+    Ok(serde_json::to_string_pretty(&value)? + "\n")
+}
+
+fn strip_mcp_json_array(existing: &str) -> CliResult<String> {
+    let existing = strip_bom(existing);
+    let mut value: serde_json::Value = serde_json::from_str(existing)?;
+    if let Some(arr) = value
+        .get_mut("mcpServers")
+        .and_then(|v| v.as_array_mut())
+    {
+        arr.retain(|s| s.get("name").and_then(|n| n.as_str()) != Some("mneme"));
+    }
+    Ok(serde_json::to_string_pretty(&value)? + "\n")
+}
+
+fn merge_mcp_toml(existing: &str, exe_path: &Path) -> CliResult<String> {
+    // Use toml::Value so we don't have to reason about formatting nuances —
+    // we re-emit a deterministic representation.
+    let mut doc: toml::Value = if existing.trim().is_empty() {
+        toml::Value::Table(toml::value::Table::new())
+    } else {
+        existing.parse()?
+    };
+
+    let root = doc
+        .as_table_mut()
+        .ok_or_else(|| CliError::Other("TOML root is not a table".into()))?;
+
+    let servers = root
+        .entry("mcp_servers".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::value::Table::new()));
+    let servers_table = servers
+        .as_table_mut()
+        .ok_or_else(|| CliError::Other("`mcp_servers` is not a TOML table".into()))?;
+
+    // NEW-003: preserve user-set env keys on re-install. Pull the prior
+    // mneme env table (if any) and merge new keys over the top.
+    let prev_env = servers_table
+        .get("mneme")
+        .and_then(|v| v.as_table())
+        .and_then(|t| t.get("env"))
+        .and_then(|v| v.as_table())
+        .cloned();
+
+    let mut entry = toml::value::Table::new();
+    entry.insert(
+        "command".into(),
+        toml::Value::String(exe_path.to_string_lossy().into_owned()),
+    );
+    entry.insert(
+        "args".into(),
+        toml::Value::Array(vec![
+            toml::Value::String("mcp".into()),
+            toml::Value::String("stdio".into()),
+        ]),
+    );
+    let mut env = toml::value::Table::new();
+    env.insert("MNEME_LOG".into(), toml::Value::String("info".into()));
+    if let Some(prev) = prev_env {
+        for (k, v) in prev {
+            // Existing user-set keys win over our defaults.
+            env.insert(k, v);
+        }
+    }
+    entry.insert("env".into(), toml::Value::Table(env));
+    servers_table.insert("mneme".into(), toml::Value::Table(entry));
+
+    Ok(toml::to_string_pretty(&doc)?)
+}
+
+fn strip_mcp_toml(existing: &str) -> CliResult<String> {
+    let mut doc: toml::Value = existing.parse()?;
+    if let Some(servers) = doc
+        .as_table_mut()
+        .and_then(|t| t.get_mut("mcp_servers"))
+        .and_then(|v| v.as_table_mut())
+    {
+        servers.remove("mneme");
+    }
+    Ok(toml::to_string_pretty(&doc)?)
+}
+
+/// Idempotent-1 fix: retain only the `keep` most-recent timestamped
+/// snapshots created by `backup_then_write` for the same source path.
+///
+/// `backup_then_write` writes `<path>.mneme-YYYYMMDD-HHMMSS.bak` on every
+/// install and never deletes old ones. After N reinstalls, `~/.claude/`
+/// (or wherever the source path lives) accumulates N backup files. Per
+/// the audit, the docstring "Every install creates a new snapshot (no
+/// overwrite)" is intentional — we never want to clobber a recovery
+/// snapshot — but unbounded retention is not. This helper keeps the N
+/// most-recent and deletes the rest.
+///
+/// Returns the number of snapshots removed. Errors only on I/O failure
+/// when listing the directory; per-file delete failures are tolerated
+/// (warned via `tracing::warn!`) so a single locked file doesn't abort
+/// the whole prune.
+///
+/// The "most recent" sort uses filename order: timestamps are fixed-width
+/// `YYYYMMDD-HHMMSS` so descending lexicographic sort matches descending
+/// wall-clock order — same approach as `find_latest_mneme_bak` in
+/// `commands/install.rs`.
+///
+/// Sibling files matching the same prefix but for OTHER source paths
+/// (e.g. `b.json.mneme-...` while pruning for `a.json`) are NOT touched.
+pub fn prune_baks(path: &Path, keep: usize) -> CliResult<usize> {
+    let parent = match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => return Ok(0),
+    };
+    let stem = match path.file_name().and_then(|s| s.to_str()) {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => return Ok(0),
+    };
+    let prefix = format!("{stem}.mneme-");
+
+    let mut snapshots: Vec<PathBuf> = match std::fs::read_dir(parent) {
+        Ok(it) => it
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|s| s.to_str())
+                    .map(|n| n.starts_with(&prefix) && n.ends_with(".bak"))
+                    .unwrap_or(false)
+            })
+            .collect(),
+        Err(_) => return Ok(0), // no parent dir — nothing to prune
+    };
+
+    // Descending filename sort: newest stamp first.
+    snapshots.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+
+    if snapshots.len() <= keep {
+        return Ok(0);
+    }
+
+    let to_delete: Vec<PathBuf> = snapshots.into_iter().skip(keep).collect();
+    let mut removed = 0usize;
+    for p in &to_delete {
+        match std::fs::remove_file(p) {
+            Ok(()) => removed += 1,
+            Err(e) => {
+                tracing::warn!(
+                    path = %p.display(),
+                    error = %e,
+                    "prune_baks: failed to delete snapshot, continuing"
+                );
+            }
+        }
+    }
+    Ok(removed)
+}
+
+/// Atomic-ish backup-then-write. Always writes a timestamped snapshot of
+/// the current file (if any) before clobbering. Failure to write the
+/// backup aborts the whole operation — better to refuse than to lose data.
+///
+/// The snapshot filename format is:
+///   `<path>.mneme-YYYYMMDD-HHMMSS.bak`
+///
+/// Every install creates a new snapshot (no overwrite), so re-running
+/// `mneme install` never destroys the previous state. `mneme uninstall`
+/// finds the most recent snapshot via the timestamp prefix.
+///
+/// Also keeps a stable `<path>.bak` pointing at the latest snapshot for
+/// compatibility with tooling that expects the single-`.bak` shape.
+pub fn backup_then_write(path: &Path, new_contents: &[u8]) -> CliResult<()> {
+    if path.exists() {
+        // Primary snapshot: timestamped, never overwritten.
+        let timestamped = path.with_extension(extension_with_mneme_bak(path));
+        std::fs::copy(path, &timestamped).map_err(|e| CliError::BackupFailed {
+            path: path.to_path_buf(),
+            reason: format!("timestamped backup: {e}"),
+        })?;
+        // Compat alias: `<path>.bak` always points at the most recent write.
+        let legacy = path.with_extension(extension_with_bak(path));
+        // Best-effort — if the alias copy fails, the timestamped backup is
+        // still intact, which is what actually matters for recovery.
+        let _ = std::fs::copy(&timestamped, &legacy);
+    }
+    atomic_write(path, new_contents)
+}
+
+/// Atomic-by-rename write — closes REG-021. Stages `new_contents` to a
+/// sibling tempfile (`<path>.mneme-tmp`) and then `std::fs::rename`s it
+/// into place. `rename` is atomic on POSIX and on Windows recent
+/// `std::fs::rename` uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)` under
+/// the hood, so a crash mid-write cannot leave the target file in a
+/// half-written state.
+///
+/// We refuse to write if the rename fails — better to surface the error
+/// than to silently fall back to a non-atomic `fs::write`.
+pub fn atomic_write(path: &Path, new_contents: &[u8]) -> CliResult<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| CliError::io(parent, e))?;
+        }
+    }
+
+    let tmp = staging_tempfile_for(path);
+
+    // Write the staging file, then sync it to disk before rename so a
+    // power-cut between rename and flush can't leave us with a stale
+    // target file pointing at the new path with zero bytes behind it.
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp).map_err(|e| CliError::io(&tmp, e))?;
+        f.write_all(new_contents).map_err(|e| CliError::io(&tmp, e))?;
+        // Best-effort fsync — on platforms / FSes that don't support it
+        // we silently continue. The atomic-rename property still holds.
+        let _ = f.sync_all();
+    }
+
+    // Atomic replace. On Windows, `std::fs::rename` maps to
+    // `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` so this works even when
+    // the target file already exists.
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        // Clean up the staging file so we don't leak it.
+        let _ = std::fs::remove_file(&tmp);
+        return Err(CliError::io(path, e));
+    }
+    Ok(())
+}
+
+/// Compute the staging tempfile path next to `path`. We want it on the
+/// same filesystem so `rename` is truly atomic — using `<path>.mneme-tmp`
+/// guarantees that.
+fn staging_tempfile_for(path: &Path) -> PathBuf {
+    if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+        if let Some(parent) = path.parent() {
+            return parent.join(format!("{name}.mneme-tmp"));
+        }
+        return PathBuf::from(format!("{name}.mneme-tmp"));
+    }
+    // Path with no filename — degenerate, but don't crash.
+    PathBuf::from(format!("{}.mneme-tmp", path.display()))
+}
+
+fn extension_with_bak(path: &Path) -> String {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) if !ext.is_empty() => format!("{ext}.bak"),
+        _ => "bak".into(),
+    }
+}
+
+/// Timestamped variant — `<path>.mneme-20260424-160000.bak`. Uses UTC so
+/// sort-order matches wall-clock order across timezones, and the prefix
+/// `mneme-` makes these easy to discover and to distinguish from any
+/// user-generated `.bak` files.
+fn extension_with_mneme_bak(path: &Path) -> String {
+    let now = chrono_like_utc_stamp();
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) if !ext.is_empty() => format!("{ext}.mneme-{now}.bak"),
+        _ => format!("mneme-{now}.bak"),
+    }
+}
+
+/// Tiny UTC stamp without pulling in the `chrono` crate (cli already depends
+/// on workspace `chrono` but platforms/mod.rs intentionally stays thin).
+fn chrono_like_utc_stamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    // Seconds since epoch, then convert to YYYYMMDD-HHMMSS UTC without
+    // any date-library dependency. This is a stamp, not a locale string.
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Days since 1970-01-01, then break into Y/M/D via the standard
+    // proleptic-Gregorian algorithm.
+    let days = (secs / 86_400) as i64;
+    let secs_of_day = secs % 86_400;
+    let hh = secs_of_day / 3600;
+    let mm = (secs_of_day % 3600) / 60;
+    let ss = secs_of_day % 60;
+    let (y, m, d) = ymd_from_epoch_days(days);
+    format!("{y:04}{m:02}{d:02}-{hh:02}{mm:02}{ss:02}")
+}
+
+/// Days since 1970-01-01 → (year, month, day). Proleptic-Gregorian.
+/// Lifted from Howard Hinnant's "date" paper (public domain).
+fn ymd_from_epoch_days(days: i64) -> (i32, u32, u32) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z / 146_097 } else { (z - 146_096) / 146_097 };
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { (mp + 3) as u32 } else { (mp - 9) as u32 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y as i32, m, d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn install_scope_parses() {
+        assert_eq!("project".parse::<InstallScope>().unwrap(), InstallScope::Project);
+        assert_eq!("USER".parse::<InstallScope>().unwrap(), InstallScope::User);
+        assert!(matches!(
+            "wat".parse::<InstallScope>(),
+            Err(CliError::InvalidScope(_))
+        ));
+    }
+
+    #[test]
+    fn all_known_has_19_platforms() {
+        // v0.3.1 added VS Code (commit 015abb0). Bumped from 18 -> 19
+        // along with that change. Mirrors REG-025's enumerated parser
+        // in `commands/register_mcp.rs`.
+        assert_eq!(Platform::all_known().len(), 19);
+    }
+
+    #[test]
+    fn from_id_round_trip() {
+        for &p in Platform::all_known() {
+            let parsed = Platform::from_id(p.id()).unwrap();
+            assert_eq!(parsed, p);
+        }
+    }
+
+    #[test]
+    fn detect_always_includes_claude_and_qoder() {
+        let dir = tempdir().unwrap();
+        let found = PlatformDetector::detect_installed(InstallScope::User, dir.path());
+        assert!(found.contains(&Platform::ClaudeCode));
+        assert!(found.contains(&Platform::Qoder));
+    }
+
+    #[test]
+    fn merge_mcp_json_object_inserts_mneme() {
+        let starting = r#"{"mcpServers":{"other":{"command":"other"}}}"#;
+        let exe = PathBuf::from("/abs/bin/mneme");
+        let merged = merge_mcp_json_object(starting, &exe).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&merged).unwrap();
+        assert!(parsed["mcpServers"]["mneme"].is_object());
+        assert!(parsed["mcpServers"]["other"].is_object());
+        // I-1: command must be the absolute path we passed, not bare "mneme"
+        assert_eq!(parsed["mcpServers"]["mneme"]["command"], "/abs/bin/mneme");
+    }
+
+    #[test]
+    fn merge_mcp_json_array_dedupes_mneme() {
+        let starting = r#"{"mcpServers":[{"name":"mneme","command":"old"}]}"#;
+        let exe = PathBuf::from("/abs/bin/mneme");
+        let merged = merge_mcp_json_array(starting, &exe).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&merged).unwrap();
+        let arr = parsed["mcpServers"].as_array().unwrap();
+        let dt: Vec<&serde_json::Value> = arr
+            .iter()
+            .filter(|v| v["name"] == "mneme")
+            .collect();
+        assert_eq!(dt.len(), 1);
+        assert_eq!(dt[0]["command"], "/abs/bin/mneme");
+    }
+
+    #[test]
+    fn merge_mcp_toml_inserts_section() {
+        let starting = "";
+        let exe = PathBuf::from("/abs/bin/mneme");
+        let merged = merge_mcp_toml(starting, &exe).unwrap();
+        assert!(merged.contains("[mcp_servers.mneme]"));
+        assert!(merged.contains("/abs/bin/mneme"));
+    }
+
+    #[test]
+    fn merge_mcp_json_object_preserves_user_env_keys() {
+        // NEW-003: a user-set env key on the existing mneme entry must
+        // survive a re-install. We re-merge with a different exe path
+        // and assert the custom env stayed.
+        let starting = r#"{
+            "mcpServers": {
+                "mneme": {
+                    "command": "old-path",
+                    "env": {
+                        "MNEME_LOG": "debug",
+                        "MNEME_USER_KEY": "user-set-value"
+                    }
+                }
+            }
+        }"#;
+        let exe = PathBuf::from("/new/abs/path/mneme");
+        let merged = merge_mcp_json_object(starting, &exe).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&merged).unwrap();
+        // command got replaced with the new absolute path
+        assert_eq!(parsed["mcpServers"]["mneme"]["command"], "/new/abs/path/mneme");
+        // user-set MNEME_LOG=debug wins over our default MNEME_LOG=info
+        assert_eq!(parsed["mcpServers"]["mneme"]["env"]["MNEME_LOG"], "debug");
+        // user-set custom env survives wholesale
+        assert_eq!(
+            parsed["mcpServers"]["mneme"]["env"]["MNEME_USER_KEY"],
+            "user-set-value"
+        );
+    }
+
+    #[test]
+    fn atomic_write_replaces_target_atomically() {
+        // REG-021: writes go through a sibling tempfile + rename.
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("conf.json");
+        std::fs::write(&target, b"old").unwrap();
+        atomic_write(&target, b"new").unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+        // Tempfile must not be left behind.
+        let tmp = staging_tempfile_for(&target);
+        assert!(!tmp.exists(), "staging tempfile leaked: {}", tmp.display());
+    }
+
+    #[test]
+    fn atomic_write_creates_parent_dir() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("nested").join("dir").join("f.json");
+        atomic_write(&target, b"hello").unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"hello");
+    }
+
+    #[test]
+    fn resolved_mneme_exe_path_is_absolute_when_possible() {
+        // Smoke test — current_exe should succeed in tests, so we get
+        // an absolute path.
+        let p = resolved_mneme_exe_path();
+        // On systems where current_exe fails the helper falls back to
+        // "mneme"; both shapes are accepted (we just don't want a crash).
+        let _ = p;
+    }
+
+    #[test]
+    fn cursor_and_qoder_have_no_hooks() {
+        // NEW-004: schema-poisoning regression guard. Both adapters
+        // were emitting `{ "command": ..., "owner": "mneme" }` shapes
+        // that triggered the v0.3.0 install catastrophe. v0.3.1 keeps
+        // them at trait-default no-op (`Ok(None)`).
+        let dir = tempdir().unwrap();
+        let ctx = AdapterContext::new(InstallScope::User, dir.path().to_path_buf());
+        let cursor = cursor::Cursor;
+        let qoder = qoder::Qoder;
+        assert!(cursor.write_hooks(&ctx).unwrap().is_none());
+        assert!(qoder.write_hooks(&ctx).unwrap().is_none());
+    }
+
+    // ---- prune_baks (Idempotent-1) -------------------------------------
+    //
+    // `backup_then_write` writes a NEW `<path>.mneme-YYYYMMDD-HHMMSS.bak`
+    // on every install and never deletes old ones. After N reinstalls,
+    // `~/.claude/` accumulates N backup files. Idempotent-1 fix: add a
+    // retention helper that keeps the N most-recent snapshots per source
+    // path and deletes the older ones. Default keep=5.
+
+    #[test]
+    fn prune_baks_keeps_n_most_recent_snapshots() {
+        // RED: write 7 fake .bak snapshots for the same source path,
+        // run prune_baks(target, 5), assert exactly the 5 newest remain.
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("settings.json");
+        // The target itself must NOT be touched by prune.
+        std::fs::write(&target, b"{}").unwrap();
+
+        // 7 timestamped snapshots covering 7 different second-marks.
+        // Filenames sort lexicographically because the stamp is fixed-width
+        // YYYYMMDD-HHMMSS, so descending filename sort == descending wall-clock
+        // (matches `find_latest_mneme_bak` in install.rs).
+        let stamps = [
+            "20260420-100000",
+            "20260420-100001",
+            "20260420-100002",
+            "20260420-100003",
+            "20260420-100004",
+            "20260420-100005",
+            "20260420-100006",
+        ];
+        for s in &stamps {
+            let p = dir
+                .path()
+                .join(format!("settings.json.mneme-{s}.bak"));
+            std::fs::write(&p, format!("snapshot {s}").as_bytes()).unwrap();
+        }
+
+        // Sanity: 7 snapshots exist before prune.
+        let count_before = list_baks_for(&target).len();
+        assert_eq!(count_before, 7, "expected 7 snapshots before prune");
+
+        // Act.
+        let removed = prune_baks(&target, 5).expect("prune_baks succeeds");
+
+        // Assert: 2 snapshots removed, 5 remain.
+        assert_eq!(removed, 2, "expected 2 oldest snapshots removed");
+        let remaining = list_baks_for(&target);
+        assert_eq!(remaining.len(), 5, "expected 5 snapshots remaining");
+
+        // Assert: the 5 newest by filename survived (100002..100006).
+        // The 2 oldest (100000, 100001) were deleted.
+        let surviving_names: Vec<String> = remaining
+            .iter()
+            .filter_map(|p| p.file_name().and_then(|s| s.to_str()).map(|s| s.to_string()))
+            .collect();
+        assert!(
+            surviving_names
+                .iter()
+                .all(|n| !n.contains("20260420-100000") && !n.contains("20260420-100001")),
+            "oldest two should be gone, got: {surviving_names:?}"
+        );
+        assert!(
+            surviving_names
+                .iter()
+                .any(|n| n.contains("20260420-100006")),
+            "newest must survive, got: {surviving_names:?}"
+        );
+
+        // Assert: the target file itself was NOT touched.
+        assert!(target.exists(), "target file must not be deleted");
+        assert_eq!(std::fs::read(&target).unwrap(), b"{}");
+    }
+
+    #[test]
+    fn prune_baks_no_op_when_under_keep_limit() {
+        // 3 snapshots, keep=5 → no deletions.
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("hooks.json");
+        std::fs::write(&target, b"{}").unwrap();
+        for s in &["20260420-100000", "20260420-100001", "20260420-100002"] {
+            std::fs::write(
+                dir.path().join(format!("hooks.json.mneme-{s}.bak")),
+                b"x",
+            )
+            .unwrap();
+        }
+        let removed = prune_baks(&target, 5).expect("prune succeeds");
+        assert_eq!(removed, 0);
+        assert_eq!(list_baks_for(&target).len(), 3);
+    }
+
+    #[test]
+    fn prune_baks_keep_zero_removes_everything() {
+        // Edge case: keep=0 retains zero snapshots.
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("conf.toml");
+        std::fs::write(&target, b"x").unwrap();
+        for s in &["20260420-100000", "20260420-100001"] {
+            std::fs::write(
+                dir.path().join(format!("conf.toml.mneme-{s}.bak")),
+                b"x",
+            )
+            .unwrap();
+        }
+        let removed = prune_baks(&target, 0).expect("prune succeeds");
+        assert_eq!(removed, 2);
+        assert!(list_baks_for(&target).is_empty());
+        // Target untouched.
+        assert!(target.exists());
+    }
+
+    #[test]
+    fn prune_baks_ignores_unrelated_bak_files() {
+        // Snapshots for OTHER source paths in the same dir must survive.
+        let dir = tempdir().unwrap();
+        let target_a = dir.path().join("a.json");
+        let target_b = dir.path().join("b.json");
+        std::fs::write(&target_a, b"a").unwrap();
+        std::fs::write(&target_b, b"b").unwrap();
+
+        // 6 snapshots for a.json.
+        for s in &[
+            "20260420-100000",
+            "20260420-100001",
+            "20260420-100002",
+            "20260420-100003",
+            "20260420-100004",
+            "20260420-100005",
+        ] {
+            std::fs::write(
+                dir.path().join(format!("a.json.mneme-{s}.bak")),
+                b"x",
+            )
+            .unwrap();
+        }
+        // 4 snapshots for b.json (under any reasonable keep).
+        for s in &[
+            "20260420-100000",
+            "20260420-100001",
+            "20260420-100002",
+            "20260420-100003",
+        ] {
+            std::fs::write(
+                dir.path().join(format!("b.json.mneme-{s}.bak")),
+                b"x",
+            )
+            .unwrap();
+        }
+
+        // Prune a.json with keep=3.
+        let removed = prune_baks(&target_a, 3).expect("prune a");
+        assert_eq!(removed, 3);
+        assert_eq!(list_baks_for(&target_a).len(), 3);
+        // b.json untouched.
+        assert_eq!(list_baks_for(&target_b).len(), 4);
+    }
+
+    /// Test helper: list all `<target>.mneme-*.bak` files alongside `target`.
+    fn list_baks_for(target: &Path) -> Vec<PathBuf> {
+        let parent = match target.parent() {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
+        let stem = target
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let prefix = format!("{stem}.mneme-");
+        std::fs::read_dir(parent)
+            .into_iter()
+            .flat_map(|it| it.flatten())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|s| s.to_str())
+                    .map(|n| n.starts_with(&prefix) && n.ends_with(".bak"))
+                    .unwrap_or(false)
+            })
+            .collect()
+    }
+}

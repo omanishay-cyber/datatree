@@ -1,0 +1,89 @@
+[package]
+name = "mneme-multimodal"
+version.workspace = true
+edition.workspace = true
+license = "Apache-2.0"
+description = "Pure-Rust multimodal extraction for mneme (PDF / Image / Audio / Video / Markdown). No Python sidecar."
+
+[lib]
+name = "mneme_multimodal"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mneme-multimodal"
+path = "src/main.rs"
+
+[features]
+# Defaults: PDF + Markdown only — pure Rust, no system libs.
+#
+# Closes I-20. OCR (image text extraction via libtesseract) is opt-in:
+# build with `--features tesseract` if you want it. Tesseract +
+# leptonica are NOT bundled because adding them would (a) bloat the
+# release tarball with ~50 MB of native deps and (b) force every user
+# to install a C++ build toolchain even when they only ever need
+# PDF / Markdown extraction. Users who do want OCR install
+# `tesseract-ocr` from their system package manager (or
+# `winget install UB-Mannheim.TesseractOCR` on Windows) and then
+# build mneme with `cargo build --features tesseract`.
+#
+# Whisper (audio) and ffmpeg (video) follow the same pattern — opt-in,
+# system libs assumed, no bundled binaries. See `docs/dev-setup.md`
+# for the full build-with-OCR / build-with-Whisper recipes.
+default = []
+
+# OCR over images via libtesseract. Requires `tesseract` / `leptonica`
+# system packages. When disabled, the ImageExtractor falls back to a
+# noop that records dimensions only.
+tesseract = ["dep:tesseract"]
+
+# Audio transcription via whisper.cpp bindings. Requires a C++ toolchain
+# plus a Whisper GGML model on disk (path set by the caller).
+whisper = ["dep:whisper-rs", "dep:hound"]
+
+# Video frame sampling + audio decoding via ffmpeg. Requires ffmpeg
+# system libs (libavformat / libavcodec / libavutil).
+ffmpeg = ["dep:ffmpeg-next"]
+
+# Build every optional extractor at once (CI convenience).
+all-extractors = ["tesseract", "whisper", "ffmpeg"]
+
+[dependencies]
+# Workspace siblings
+common = { path = "../common", package = "mneme-common" }
+
+# Core async + error plumbing
+tokio = { workspace = true, features = ["full"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+dirs.workspace = true
+sha2.workspace = true
+
+# PDF — pure Rust, no system deps.
+pdf-extract = "0.7"
+
+# Markdown — pure Rust.
+pulldown-cmark = "0.12"
+
+# Image decoding (also used by OCR extractor for pixel handoff).
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    "webp",
+    "gif",
+    "bmp",
+    "tiff",
+] }
+
+# Feature-gated C FFI extractors.
+tesseract = { version = "0.15", optional = true }
+whisper-rs = { version = "0.13", optional = true, default-features = false }
+hound = { version = "3.5", optional = true }
+ffmpeg-next = { version = "7.0", optional = true }
+
+[dev-dependencies]
+tempfile = "3.10"

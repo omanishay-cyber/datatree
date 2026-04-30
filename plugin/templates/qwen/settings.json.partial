@@ -1,0 +1,14 @@
+{
+  "$comment": "mneme-marker v1.0 — merged into Qwen Code settings.json. Existing keys preserved.",
+  "mcpServers": {
+    "mneme": {
+      "command": "bun",
+      "args": ["{{mneme_root}}/mcp/index.ts"],
+      "type": "stdio",
+      "env": {
+        "MNEME_HOME": "{{mneme_home}}",
+        "MNEME_PROJECT_ROOT": "{{project_root}}"
+      }
+    }
+  }
+}

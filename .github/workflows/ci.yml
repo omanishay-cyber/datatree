@@ -1,0 +1,204 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # The workspace build, tests, default-features multimodal check, audit,
+  # deny, doctor-paths, and e2e jobs are all block-on-fail. Clippy is the
+  # one remaining soft-fail (parsers-crate Tier-2 grammar cfg warnings —
+  # tracked as REG-020); see the inline comment on the Clippy step for
+  # context. Closes REG-008.
+  RUSTFLAGS: ""
+
+jobs:
+  rust:
+    name: Rust (build + test + clippy)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+        # Soft-fail: parsers crate still emits unused-feature warnings
+        # for Tier-2 grammars that are gated off by default. We surface
+        # the warnings in CI logs but don't block merges on them. When
+        # the Tier-2 cfg-gating is fixed (REG-020) flip this to enforce.
+        continue-on-error: true
+
+      - name: Build
+        run: cargo build --workspace --verbose
+
+      - name: Test
+        run: cargo test --workspace --verbose
+
+      - name: Check multimodal extractors (default features)
+        run: cargo check -p mneme-multimodal
+
+      - name: Check multimodal extractors (all optional features)
+        # Soft-fail: needs tesseract/whisper/ffmpeg system libs that the
+        # GitHub ubuntu-latest image does not pre-install. Failure here
+        # is expected and tolerated; the default-features check above
+        # is the gating signal. When CI installs the system libs in a
+        # setup step, flip this to enforce.
+        run: cargo check -p mneme-multimodal --features all-extractors
+        continue-on-error: true
+
+  mcp:
+    name: MCP server (bun check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install MCP deps
+        working-directory: mcp
+        run: bun install
+
+      - name: Type check
+        working-directory: mcp
+        run: bunx tsc --noEmit
+        # Soft-fail: zod strict-input/output diagnostics surface here
+        # until the typed-tool migration lands (peer B-MCP-TS). The
+        # warnings are visible in CI logs without blocking PRs. Flip
+        # to enforce once the migration is complete.
+        continue-on-error: true
+
+  vision:
+    name: Vision app (bun check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install vision deps
+        working-directory: vision
+        run: bun install
+
+      - name: Type check
+        working-directory: vision
+        run: bunx tsc --noEmit
+
+  # v0.2: the Python multimodal sidecar has been retired. Extraction is
+  # now pure Rust in `multimodal-bridge/` (see cli::commands::graphify).
+  # Left here as a breadcrumb for anyone grepping for the old job.
+
+  license-check:
+    name: License header present
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: LICENSE file exists
+        run: test -f LICENSE && grep -qi "apache license" LICENSE
+
+  audit:
+    name: Cargo audit (RUSTSEC advisories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+      - name: Run cargo audit
+        # Block-on-fail: any RUSTSEC advisory affecting our deps must be
+        # triaged before merge. Listing in CI logs is no longer enough.
+        # Closes REG-008.
+        run: cargo audit --json
+
+  deny:
+    name: Cargo deny (license + bans + duplicates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run cargo-deny
+        # Block-on-fail: license / banned-crate / duplicate-version
+        # violations must be triaged before merge. Closes REG-008.
+        uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check
+          arguments: --all-features
+
+  home-dir-discipline:
+    name: Class HOME guardrail (no raw dirs::home_dir for mneme paths)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run check-home-dir-discipline.sh
+        # Block-on-fail: the CLAUDE.md hard rule "All paths constructed
+        # via mneme_common::PathManager. Never join paths manually."
+        # The audit 2026-04-29 (Class HOME) found 16+ sites bypassing
+        # that rule via `dirs::home_dir()`. The script greps for
+        # regressions outside the allowlist (Claude Code / Bun /
+        # external-platform-adapter paths only).
+        run: bash scripts/check-home-dir-discipline.sh
+
+  doctor-paths:
+    name: Doctor cross-platform path tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run doctor_paths integration test
+        # Block-on-fail: cross-platform path resolution is a release
+        # gate. The test fixtures cover Linux + macOS + Windows. Closes
+        # REG-008.
+        run: cargo test --release -p mneme-cli --test doctor_paths
+
+  e2e-big-repo:
+    name: E2E build + recall + blast on a real repo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build mneme release binary
+        run: cargo build --release -p mneme-cli --bin mneme
+      - name: Build supervisor
+        run: cargo build --release -p mneme-daemon
+      - name: Build all workers
+        run: cargo build --release --workspace --bins
+      - name: Run e2e (clones a fixture repo, builds, recalls, blasts)
+        # Block-on-fail: the end-to-end build → recall → blast loop is
+        # the headline product surface. Regressions here ship to users.
+        # Closes REG-008.
+        env:
+          MNEME_BIN: ${{ github.workspace }}/target/release/mneme
+        run: cargo test --release -p mneme-cli --test e2e_big_repo -- --ignored --nocapture

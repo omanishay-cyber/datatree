@@ -1,0 +1,140 @@
+[package]
+name = "mneme-brain"
+version.workspace = true
+edition.workspace = true
+description = "Mneme BRAIN — local-only embeddings, Leiden clustering, concept extraction"
+license.workspace = true
+
+[[bin]]
+name = "mneme-brain"
+path = "src/main.rs"
+
+[lib]
+name = "mneme_brain"
+path = "src/lib.rs"
+
+[features]
+# B-010 (v0.3.2-v2-home): real-embeddings is now ON by default in
+# production builds. The `ort` crate's `load-dynamic` feature means the
+# build still succeeds without a system `onnxruntime.dll` (link is
+# deferred to runtime), and `RealBackend::try_new` returns Err on missing
+# DLL/model so the embedder GRACEFULLY falls back to hashing-trick. The
+# only cost of enabling-by-default is a slightly bigger binary; the upside
+# is real BGE embeddings work on any machine that has `onnxruntime.dll`
+# on PATH (or `ORT_DYLIB_PATH` set) without requiring users to know about
+# a non-default cargo feature flag. `cargo check --workspace` still
+# succeeds on any machine because the dependency is dynamic-load.
+default = ["real-embeddings"]
+# Optional local LLM (Phi-3-mini-4k Q4_K_M via llama.cpp).
+# Enabling pulls in a native build of llama.cpp; disabled by default to keep
+# the workspace buildable in fully offline / no-toolchain environments.
+llm = ["dep:llama-cpp-2"]
+# Optional BGE reranker (cross-encoder). Disabled by default: enabling
+# requires a fastembed build that ships the reranker model surface, which
+# is not yet stable across all tier-1 targets. See brain/src/reranker.rs.
+reranker = []
+# Real BGE-small-en-v1.5 embeddings via the `ort` crate (direct ONNX
+# Runtime bindings).
+#
+# OFF by default because ORT Runtime requires a system-installed
+# `onnxruntime.dll` / `libonnxruntime.so` OR an explicit `ORT_DYLIB_PATH`
+# env var. Enabling this without a working ORT install produces runtime
+# load errors (not compile errors — `load-dynamic` defers linking to
+# runtime).
+#
+# Typical enablement flow:
+#   1. `cargo install --features real-embeddings`
+#   2. Drop `onnxruntime.dll` on PATH or set `ORT_DYLIB_PATH=...`
+#   3. `mneme models install <path-to-bge-small-en-v1.5.onnx>`
+#
+# If the feature is enabled but the DLL/model is missing at runtime, the
+# embedder gracefully falls back to the hashing-trick backend.
+real-embeddings = ["dep:ort", "dep:ndarray"]
+# Back-compat alias — older `cli` crate wiring references `brain/fastembed`
+# to enable the install path. Map it to the new feature so the workspace
+# keeps compiling without touching cli/Cargo.toml.
+fastembed = ["real-embeddings"]
+
+[dependencies]
+# Workspace sibling — provides shared types (NodeId, EdgeKind, etc.).
+# Marked optional via path-only so build can proceed even before `common`
+# crate lands; downstream code is gated with `cfg(feature = "with-common")`
+# only where strictly necessary. See src/lib.rs for the local fallback.
+common = { path = "../common", package = "mneme-common" }
+
+# Async runtime + channel primitives
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "time",
+    "fs",
+    "io-util",
+    "signal",
+] }
+
+# HuggingFace tokenizers (pure-Rust; no network at load time when given a
+# local tokenizer.json path). Used by the fallback hashing-trick backend
+# for consistent token-level segmentation.
+tokenizers = { version = "0.22", default-features = false, features = [
+    "onig",
+] }
+
+# Graph + numerics
+petgraph = { version = "0.6", features = ["serde-1"] }
+# ndarray — pulled in when `real-embeddings` feature is enabled.
+# Version 0.17 matches what `ort 2.0.0-rc.12` re-exports; using 0.16 here
+# creates two parallel ndarray crates in the dep graph and ort's
+# `Value::from_array` will not accept our `Array2`.
+ndarray = { version = "0.17", optional = true, features = ["serde"] }
+
+# Direct ONNX Runtime bindings — only compiled in when `real-embeddings`
+# feature is active. We rely on the `load-dynamic` feature so compilation
+# never fails because of a missing `onnxruntime.dll`; linking is deferred
+# to runtime. See brain/src/embeddings.rs::RealBackend for the load path.
+ort = { workspace = true, optional = true, features = ["load-dynamic"] }
+
+# Serde + IO
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# WIDE-002: bumped 1.3 -> 2.x. Migration code in `federated.rs` writes
+# a leading `0x02` magic byte for v2 records and falls back to a v1
+# decoder for legacy blobs (which start with their bincode 1.x
+# length-prefix, never `0x02`).
+bincode = { version = "2", features = ["serde"] }
+
+# Error handling + logging
+thiserror = "1"
+anyhow = "1"
+tracing = "0.1"
+# Real subscriber for the `mneme-brain` binary (WIDE-013 / REG-016).
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Lazy globals + small utils
+once_cell = "1"
+parking_lot = "0.12"
+rand = "0.8"
+rand_chacha = "0.3"
+sha2 = "0.10"
+hex = "0.4"
+regex = "1"
+dashmap = "6.1"
+memmap2 = "0.9"
+dirs = "5"
+
+# Step Ledger (F1) — persistent, append-only ledger keyed by ULID-ish ids.
+# We use uuid v7 (time-sortable) because the workspace already depends on it.
+uuid = { version = "1.10", features = ["v4", "v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { workspace = true }
+
+# Local LLM (feature-gated)
+llama-cpp-2 = { version = "0.1.79", optional = true, default-features = false }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
+
+[package.metadata.docs.rs]
+all-features = false
+no-default-features = true

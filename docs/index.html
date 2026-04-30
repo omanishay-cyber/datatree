@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>mneme — Claude never starts cold. Claude never loses its place.</title>
+  <meta name="description" content="Persistent per-project AI superbrain. Survives context compaction. Indexes code. Injects context. 100% local. Works with Claude Code, Codex, Cursor, and 15 more." />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="mneme — the AI superbrain for Claude Code" />
+  <meta property="og:description" content="Persistent per-project memory + 14 views + drift detector + 47 MCP tools (40 wired). 100% local. 18 AI tools supported." />
+  <meta property="og:url" content="https://omanishay-cyber.github.io/mneme/" />
+  <meta property="og:image" content="https://omanishay-cyber.github.io/mneme/og.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1280" />
+  <meta property="og:image:height" content="640" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E🌳%3C/text%3E%3C/svg%3E" />
+
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --bg-2: #111827;
+      --bg-3: #1e293b;
+      --text: #e6edf3;
+      --muted: #8b93a7;
+      --accent-a: #4191E1;
+      --accent-b: #41E1B5;
+      --accent-c: #22D3EE;
+      --accent-d: #a78bfa;
+      --radius: 12px;
+      --radius-lg: 16px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.55;
+    }
+    body {
+      -webkit-font-smoothing: antialiased;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* grain overlay — separates us from generic dark landings */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: 0.05;
+      mix-blend-mode: overlay;
+    }
+
+    /* ambient background gradient blobs */
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 15% 10%, rgba(65,145,225,0.12), transparent 60%),
+        radial-gradient(ellipse 50% 40% at 85% 30%, rgba(65,225,181,0.09), transparent 65%),
+        radial-gradient(ellipse 60% 50% at 50% 95%, rgba(34,211,238,0.07), transparent 70%);
+    }
+
+    .page { position: relative; z-index: 2; }
+
+    a { color: var(--accent-a); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, pre { font-family: "JetBrains Mono", "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    pre {
+      background: rgba(17,24,39,0.6);
+      padding: 18px 22px;
+      border-radius: var(--radius);
+      overflow-x: auto;
+      font-size: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+    pre code { color: #cbd5e1; }
+    code:not(pre code) {
+      background: rgba(255,255,255,0.08);
+      padding: 2px 6px;
+      border-radius: 5px;
+      font-size: 0.9em;
+    }
+
+    /* ============================================================ */
+    /*  HERO — split layout, wordmark + terminal demo                */
+    /* ============================================================ */
+    .hero {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 90px 24px 40px;
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 56px;
+      align-items: center;
+    }
+    .hero-left { min-width: 0; }
+    .hero-right { min-width: 0; }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .logo {
+      font-size: 54px;
+      line-height: 1;
+      animation: float 6s ease-in-out infinite;
+      display: inline-block;
+      filter: drop-shadow(0 4px 20px rgba(65,225,181,0.25));
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+    .version-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      background: rgba(65,225,181,0.12);
+      border: 1px solid rgba(65,225,181,0.45);
+      border-radius: 999px;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent-b);
+    }
+    .version-pill::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-b);
+      box-shadow: 0 0 8px var(--accent-b);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    h1.wordmark {
+      font-size: clamp(64px, 10vw, 112px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+      margin-bottom: 18px;
+    }
+    .gradient-text {
+      background: linear-gradient(100deg, var(--accent-a) 0%, var(--accent-b) 50%, var(--accent-c) 100%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: gradient-sweep 8s ease-in-out infinite;
+    }
+    @keyframes gradient-sweep {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .tagline {
+      font-size: clamp(22px, 2.6vw, 30px);
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+      margin-bottom: 14px;
+      line-height: 1.25;
+    }
+    .subtag {
+      font-size: 16px;
+      color: var(--muted);
+      margin-bottom: 28px;
+      max-width: 520px;
+    }
+
+    .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px; }
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 26px;
+      border-radius: var(--radius);
+      font-weight: 600;
+      font-size: 15px;
+      transition: transform 0.15s ease, filter 0.2s ease, box-shadow 0.2s ease;
+    }
+    .cta-primary {
+      background: linear-gradient(100deg, var(--accent-a), var(--accent-b));
+      color: #0b0f19;
+      box-shadow: 0 10px 30px -10px rgba(65,225,181,0.45);
+    }
+    .cta-primary:hover {
+      filter: brightness(1.08);
+      transform: translateY(-2px);
+      text-decoration: none;
+      box-shadow: 0 14px 34px -10px rgba(65,225,181,0.6);
+    }
+    .cta-secondary {
+      border: 1px solid rgba(255,255,255,0.18);
+      color: var(--text);
+      background: rgba(255,255,255,0.03);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .cta-secondary:hover {
+      background: rgba(255,255,255,0.08);
+      transform: translateY(-2px);
+      text-decoration: none;
+    }
+
+    .hero-meta {
+      display: flex;
+      gap: 22px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .hero-meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+    }
+    .hero-meta strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ============================================================ */
+    /*  TERMINAL DEMO — right side of hero                           */
+    /* ============================================================ */
+    .terminal {
+      background: rgba(11,15,25,0.7);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-lg);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      overflow: hidden;
+      box-shadow:
+        0 30px 80px -20px rgba(0,0,0,0.6),
+        0 0 0 1px rgba(65,225,181,0.08),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+      position: relative;
+    }
+    .terminal::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(65,145,225,0.08), transparent 40%, rgba(65,225,181,0.06));
+      pointer-events: none;
+    }
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.02);
+    }
+    .terminal-bar .dots {
+      display: flex;
+      gap: 7px;
+    }
+    .terminal-bar .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+    .dot-r { background: #ff5f57; }
+    .dot-y { background: #febc2e; }
+    .dot-g { background: #28c840; }
+    .terminal-bar .title {
+      flex: 1;
+      text-align: center;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .terminal-body {
+      padding: 22px 24px;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 13.5px;
+      line-height: 1.7;
+      min-height: 320px;
+      position: relative;
+    }
+    .terminal-line {
+      opacity: 0;
+      animation: term-fade-in 0.4s ease-out forwards;
+    }
+    .terminal-line.l1 { animation-delay: 0.2s; }
+    .terminal-line.l2 { animation-delay: 1.1s; }
+    .terminal-line.l3 { animation-delay: 1.6s; }
+    .terminal-line.l4 { animation-delay: 2.1s; }
+    .terminal-line.l5 { animation-delay: 2.6s; }
+    .terminal-line.l6 { animation-delay: 3.2s; }
+    .terminal-line.l7 { animation-delay: 3.7s; }
+    @keyframes term-fade-in {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .t-prompt { color: var(--accent-b); }
+    .t-flag { color: var(--accent-c); }
+    .t-str { color: #fbbf24; }
+    .t-dim { color: var(--muted); }
+    .t-match {
+      color: var(--text);
+      padding-left: 20px;
+      position: relative;
+    }
+    .t-match::before {
+      content: "→";
+      position: absolute;
+      left: 0;
+      color: var(--accent-b);
+    }
+    .t-score { color: var(--accent-a); font-weight: 600; }
+    .t-caret {
+      display: inline-block;
+      width: 8px;
+      height: 14px;
+      background: var(--accent-b);
+      vertical-align: text-bottom;
+      margin-left: 2px;
+      animation: blink 1.1s steps(2) infinite;
+    }
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    /* ============================================================ */
+    /*  MEASURED-WIN RIBBON                                          */
+    /* ============================================================ */
+    .ribbon {
+      max-width: 1180px;
+      margin: 20px auto 40px;
+      padding: 0 24px;
+    }
+    .ribbon-inner {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      padding: 22px 28px;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(100deg,
+        rgba(65,145,225,0.10),
+        rgba(65,225,181,0.10),
+        rgba(34,211,238,0.10));
+      border: 1px solid rgba(65,225,181,0.25);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+    .ribbon-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 0 20px;
+      border-left: 1px solid rgba(255,255,255,0.08);
+    }
+    .ribbon-stat:first-child { border-left: none; padding-left: 0; }
+    .ribbon-stat .num {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+    .ribbon-stat .num.g1 { color: var(--accent-b); }
+    .ribbon-stat .num.g2 { color: var(--accent-c); }
+    .ribbon-stat .num.g3 { color: var(--accent-a); }
+    .ribbon-stat .label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    /* ============================================================ */
+    /*  SECTIONS — reveal on scroll                                   */
+    /* ============================================================ */
+    section {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 70px 24px;
+    }
+    section h2 {
+      font-size: clamp(28px, 3.4vw, 40px);
+      font-weight: 800;
+      margin-bottom: 10px;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+    section h2 .accent {
+      background: linear-gradient(100deg, var(--accent-a), var(--accent-b), var(--accent-c));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    section .lead {
+      color: var(--muted);
+      font-size: 16px;
+      margin-bottom: 32px;
+      max-width: 740px;
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+    }
+    .reveal.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ============================================================ */
+    /*  FEATURE CARDS — glass with colored left border per card      */
+    /* ============================================================ */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      position: relative;
+      background: rgba(17,24,39,0.55);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-lg);
+      padding: 26px 26px 26px 30px;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      overflow: hidden;
+      transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    .card::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: var(--card-accent, var(--accent-a));
+      opacity: 0.8;
+    }
+    .card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 0% 0%, var(--card-accent-rgba, rgba(65,145,225,0.08)), transparent 60%);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(255,255,255,0.14);
+      box-shadow: 0 20px 50px -20px rgba(0,0,0,0.5);
+    }
+    .card:hover::after { opacity: 1; }
+    .card.c-a { --card-accent: var(--accent-a); --card-accent-rgba: rgba(65,145,225,0.12); }
+    .card.c-b { --card-accent: var(--accent-b); --card-accent-rgba: rgba(65,225,181,0.12); }
+    .card.c-c { --card-accent: var(--accent-c); --card-accent-rgba: rgba(34,211,238,0.12); }
+    .card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+    .card p { color: var(--muted); font-size: 14.5px; }
+    .card .icon {
+      font-size: 28px;
+      margin-bottom: 14px;
+      display: inline-block;
+    }
+
+    /* ============================================================ */
+    /*  BENCH TABLE — animated bars                                  */
+    /* ============================================================ */
+    .bench-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(17,24,39,0.55);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+    .bench-table th, .bench-table td {
+      padding: 13px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      text-align: left;
+      font-size: 14px;
+    }
+    .bench-table th {
+      background: rgba(255,255,255,0.03);
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .bench-table tr:last-child td { border-bottom: none; }
+    .bench-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .bench-table td:last-child { color: var(--accent-b); font-weight: 600; }
+    .bench-table strong { color: var(--accent-c); }
+    .bar-cell {
+      position: relative;
+      padding-right: 24px;
+    }
+    .bar-cell .bar {
+      display: block;
+      height: 4px;
+      background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+      border-radius: 2px;
+      margin-top: 6px;
+      width: 0;
+      transition: width 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .bench-table.is-visible .bar-cell .bar {
+      width: var(--bar-w, 50%);
+    }
+
+    /* ============================================================ */
+    /*  QUOTE                                                         */
+    /* ============================================================ */
+    .quote {
+      max-width: 780px;
+      margin: 40px auto;
+      padding: 28px 32px;
+      border-left: 3px solid var(--accent-a);
+      background: rgba(65,145,225,0.06);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 8px;
+      font-size: 16.5px;
+      color: #cbd5e1;
+      line-height: 1.65;
+    }
+    .quote strong { color: var(--accent-b); }
+
+    /* ============================================================ */
+    /*  PLATFORMS / CHIPS                                            */
+    /* ============================================================ */
+    .platforms {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 24px;
+    }
+    .chip {
+      display: inline-block;
+      padding: 8px 14px;
+      background: rgba(17,24,39,0.6);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 999px;
+      font-size: 13px;
+      color: var(--text);
+      transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .chip:hover {
+      transform: translateY(-2px);
+      border-color: rgba(65,225,181,0.4);
+      background: rgba(65,225,181,0.06);
+    }
+
+    /* ============================================================ */
+    /*  FOOTER                                                        */
+    /* ============================================================ */
+    footer {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 60px 24px 40px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    footer a { color: var(--muted); transition: color 0.2s ease; }
+    footer a:hover { color: var(--accent-b); text-decoration: none; }
+    footer .links { margin-bottom: 16px; }
+    footer .links a { margin: 0 10px; }
+
+    /* ============================================================ */
+    /*  RESPONSIVE                                                    */
+    /* ============================================================ */
+    @media (max-width: 900px) {
+      .hero {
+        grid-template-columns: 1fr;
+        gap: 36px;
+        padding: 60px 20px 24px;
+      }
+      .ribbon-inner {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      .ribbon-stat {
+        border-left: none;
+        border-top: 1px solid rgba(255,255,255,0.08);
+        padding: 12px 0 0;
+      }
+      .ribbon-stat:first-child { border-top: none; padding-top: 0; }
+      section { padding: 50px 18px; }
+    }
+
+    /* ============================================================ */
+    /*  REDUCED MOTION                                               */
+    /* ============================================================ */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+      .reveal { opacity: 1 !important; transform: none !important; }
+      .terminal-line { opacity: 1 !important; transform: none !important; }
+      .bench-table .bar-cell .bar { width: var(--bar-w, 50%) !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ============================================================ -->
+  <!--  HERO                                                         -->
+  <!-- ============================================================ -->
+  <div class="hero">
+    <div class="hero-left">
+      <div class="logo-row">
+        <span class="logo" aria-hidden="true">🌳</span>
+        <span class="version-pill">v0.2.3 · live</span>
+      </div>
+      <h1 class="wordmark"><span class="gradient-text">mneme</span></h1>
+      <p class="tagline">Claude never starts cold.<br/>Claude never loses its place.</p>
+      <p class="subtag">The persistent memory layer for AI coding. Survives context compaction. Indexes your code. Injects the right 1–3K tokens every turn. 100% local.</p>
+
+      <div class="cta-row">
+        <a class="cta cta-primary" href="https://github.com/omanishay-cyber/mneme#-quick-start">Install in 60 s →</a>
+        <a class="cta cta-secondary" href="https://github.com/omanishay-cyber/mneme">View on GitHub</a>
+      </div>
+
+      <div class="hero-meta">
+        <span><strong>47</strong>&nbsp;MCP tools</span>
+        <span><strong>18</strong>&nbsp;AI platforms</span>
+        <span><strong>0</strong>&nbsp;network calls</span>
+      </div>
+    </div>
+
+    <div class="hero-right">
+      <div class="terminal" role="img" aria-label="Terminal demonstration of mneme recall command returning three results">
+        <div class="terminal-bar">
+          <div class="dots" aria-hidden="true">
+            <span class="dot dot-r"></span>
+            <span class="dot dot-y"></span>
+            <span class="dot dot-g"></span>
+          </div>
+          <div class="title">~/projects/my-app · mneme</div>
+        </div>
+        <div class="terminal-body">
+          <div class="terminal-line l1"><span class="t-prompt">$</span> mneme recall <span class="t-str">"auth flow"</span></div>
+          <div class="terminal-line l2"><span class="t-dim">→ 3 hits from graph (resumption-ready)</span></div>
+          <div class="terminal-line l3"><span class="t-match">auth/login.ts<span class="t-dim"> — email+password, OAuth, JWT rotation</span> <span class="t-score">0.94</span></span></div>
+          <div class="terminal-line l4"><span class="t-match">auth/middleware.ts<span class="t-dim"> — bearer check, role gate</span> <span class="t-score">0.88</span></span></div>
+          <div class="terminal-line l5"><span class="t-match">docs/AUTH.md<span class="t-dim"> — threat model, 14 step ledger entries</span> <span class="t-score">0.81</span></span></div>
+          <div class="terminal-line l6"><span class="t-dim">  injected 2.3K tokens · 0 ms network · 1.8 ms SQLite</span></div>
+          <div class="terminal-line l7"><span class="t-prompt">$</span><span class="t-caret" aria-hidden="true"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!--  MEASURED-WIN RIBBON                                          -->
+  <!-- ============================================================ -->
+  <div class="ribbon">
+    <div class="ribbon-inner reveal">
+      <div class="ribbon-stat">
+        <span class="num g1">1000×</span>
+        <span class="label">faster incremental reindex vs CRG</span>
+      </div>
+      <div class="ribbon-stat">
+        <span class="num g2">47</span>
+        <span class="label">MCP tools · 14 views · 27 languages</span>
+      </div>
+      <div class="ribbon-stat">
+        <span class="num g3">0</span>
+        <span class="label">network calls · 100% local · measured v0.2.3</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!--  FEATURES                                                     -->
+  <!-- ============================================================ -->
+  <section class="reveal">
+    <h2>The <span class="accent">three flaws</span> every AI assistant has</h2>
+    <p class="lead">Mneme fixes all three at the architecture level — not the prompt level.</p>
+
+    <div class="features">
+      <div class="card c-a">
+        <span class="icon" aria-hidden="true">🧊</span>
+        <h3>Starts cold every time</h3>
+        <p>Claude re-reads the same files, asks the same questions, rediscovers your codebase on every task. Mneme's graph means it already knows.</p>
+      </div>
+      <div class="card c-b">
+        <span class="icon" aria-hidden="true">🧠</span>
+        <h3>Forgets mid-task</h3>
+        <p>Context compaction wipes the conversation. Without mneme, Claude restarts from a guess. <strong>With mneme, it resumes at the exact verified step.</strong></p>
+      </div>
+      <div class="card c-c">
+        <span class="icon" aria-hidden="true">🎯</span>
+        <h3>Drifts from your rules</h3>
+        <p>CLAUDE.md says "no hardcoded colors" — five prompts later it hardcodes one. Mneme's drift detector enforces every rule in real time.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  KILLER FEATURE                                                -->
+  <!-- ============================================================ -->
+  <section class="reveal">
+    <h2>The <span class="accent">killer feature</span> — compaction resilience</h2>
+
+    <div class="quote">
+      You give Claude a 100-step task. Context compacts at step 50.<br/>
+      Without mneme: Claude restarts from 30 or re-reads every doc.<br/>
+      <strong>With mneme: Claude resumes at step 51. Verified. No re-reading.</strong>
+    </div>
+
+    <p class="lead">The Step Ledger is a numbered, verification-gated plan that lives in SQLite. Every step records its acceptance check. When compaction wipes Claude's working memory, the next turn auto-injects a ~5K-token resumption bundle with the verbatim goal, completed steps, current position, and remaining work. No other MCP does this.</p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  BENCHMARKS                                                    -->
+  <!-- ============================================================ -->
+  <section class="reveal">
+    <h2>Benchmarks vs <span class="accent">code-review-graph</span></h2>
+    <p class="lead">Measured against the current state-of-the-art code-graph MCP.</p>
+
+    <table class="bench-table" id="benchTable">
+      <thead>
+        <tr><th>Metric</th><th>CRG (SoTA)</th><th>mneme</th><th>Improvement</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="bar-cell">Token reduction — code review<span class="bar" style="--bar-w: 38%;"></span></td><td>6.8×</td><td><strong>1.338× mean / 3.542× p95</strong></td><td>measured v0.2.3</td></tr>
+        <tr><td class="bar-cell">First build (cold)<span class="bar" style="--bar-w: 55%;"></span></td><td>10 s (500 files)</td><td><strong>4,970 ms on 359 files</strong></td><td>measured v0.2.3</td></tr>
+        <tr><td class="bar-cell">Incremental update<span class="bar" style="--bar-w: 99%;"></span></td><td>&lt;2 s</td><td><strong>p95 = 0 ms, max = 2 ms</strong></td><td>measured v0.2.3</td></tr>
+        <tr><td class="bar-cell">Visualization ceiling<span class="bar" style="--bar-w: 95%;"></span></td><td>~5 000 nodes</td><td><strong>100 000+</strong> (design, not yet benchmarked)</td><td>design target</td></tr>
+        <tr><td class="bar-cell">MCP tools<span class="bar" style="--bar-w: 78%;"></span></td><td>24</td><td><strong>47</strong></td><td>+23</td></tr>
+        <tr><td class="bar-cell">Visualization views<span class="bar" style="--bar-w: 92%;"></span></td><td>1 (D3)</td><td><strong>14 (WebGL)</strong></td><td>14×</td></tr>
+        <tr><td class="bar-cell">Platforms supported<span class="bar" style="--bar-w: 70%;"></span></td><td>10</td><td><strong>18</strong></td><td>+8</td></tr>
+        <tr><td class="bar-cell">Compaction survival<span class="bar" style="--bar-w: 100%;"></span></td><td>❌</td><td><strong>✅</strong></td><td>category-defining</td></tr>
+        <tr><td class="bar-cell">Multimodal (PDF / audio / video)<span class="bar" style="--bar-w: 100%;"></span></td><td>❌</td><td><strong>✅</strong></td><td>—</td></tr>
+      </tbody>
+    </table>
+
+    <h2 style="margin-top:56px;">With <span class="accent">tree-sitter</span> alone, vs. with mneme</h2>
+    <p class="lead">Tree-sitter is a parser library, not a code-graph or MCP server. This table is what you get out of the box with raw tree-sitter against what mneme gives you by wiring tree-sitter into a persistent SQLite graph with 47 MCP tools.</p>
+
+    <table class="bench-table" id="benchTableTreeSitter">
+      <thead>
+        <tr><th>Surface</th><th>Raw tree-sitter</th><th>mneme (tree-sitter + SQLite + MCP)</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <!-- Source: parsers/Cargo.toml Tier-1 + Tier-2 grammar list; parsers/src/language.rs enum -->
+        <tr><td class="bar-cell">Languages available<span class="bar" style="--bar-w: 60%;"></span></td><td>150+ community grammars (any you build yourself)</td><td><strong>27 Language enum variants, 25 grammar crates bundled by default</strong> (TS, TSX, JS, JSX, Python, Rust, Go, Java, C, C++, C#, Ruby, PHP, Bash, JSON, Lua, TOML, YAML, Markdown, Swift, Kotlin, Scala, Svelte, Solidity, Julia, Zig, Haskell; Vue variant reserved)</td><td>tree-sitter has more raw grammars; mneme bundles the ones with working query patterns</td></tr>
+        <!-- Source: tree-sitter CLI docs (init, test, build, parse, query) -->
+        <tr><td class="bar-cell">Code-graph queries shipped<span class="bar" style="--bar-w: 100%;"></span></td><td>- (you write .scm files by hand)</td><td><strong>7 canonical query kinds per language</strong>: Functions, Classes, Calls, Imports, Decorators, Comments, Errors (parsers/src/query_cache.rs)</td><td>mneme compiles the queries once, caches in a DashMap, reuses across every file</td></tr>
+        <!-- Source: mcp/src/tools/index.ts STATIC_TOOL_FILES list -->
+        <tr><td class="bar-cell">MCP tools<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>47</strong></td><td>tree-sitter has no MCP surface; mneme wires every query through a typed MCP tool</td></tr>
+        <!-- Source: parsers/src/parser_pool.rs + parsers/src/incremental.rs -->
+        <tr><td class="bar-cell">Incremental parsing<span class="bar" style="--bar-w: 60%;"></span></td><td>Yes (edit-tree API, but no caching layer)</td><td><strong>LRU-cached previous trees per file + tokio worker pool (cpu_count * 4)</strong></td><td>mneme amortises the edit-tree cost; raw tree-sitter leaves it to the caller</td></tr>
+        <!-- Source: store/src/schema.rs + store/src/inject.rs -->
+        <tr><td class="bar-cell">Persistent store<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>22 sharded SQLite DBs (graph.db, history.db, corpus.db, decisions.db, ...) + global meta.db</strong></td><td>tree-sitter is stateless; mneme persists every node and edge</td></tr>
+        <!-- Source: benchmarks/BENCHMARKS.md measured 2026-04-23 -->
+        <tr><td class="bar-cell">Incremental update latency<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>p50 = 0 ms, p95 = 0 ms, max = 2 ms on 100 samples</strong> (single-file inject)</td><td>measured v0.2.3 on the mneme repo itself; raw tree-sitter has no persist step to measure</td></tr>
+        <!-- Source: brain/src/embed_store.rs + benchmarks/BENCHMARKS.md -->
+        <tr><td class="bar-cell">Semantic embeddings<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>pure-Rust hashing-trick default, opt-in bge-small from local path</strong></td><td>100% local; no tree-sitter equivalent</td></tr>
+        <!-- Source: scanners/src/scanners/ directory (11 scanner modules) -->
+        <tr><td class="bar-cell">Scanners built on top<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>11 (theme, types, security, a11y, perf, drift, ipc, md-drift, secrets, refactor, architecture)</strong></td><td>each scanner is a tree-sitter query + SQLite write</td></tr>
+        <!-- Source: livebus/src/ + mcp/src/compaction_guard.ts + step_resume tool -->
+        <tr><td class="bar-cell">Compaction-survival Step Ledger<span class="bar" style="--bar-w: 100%;"></span></td><td>-</td><td><strong>numbered, verification-gated, SQLite-persisted, resumption bundle ~5K tokens</strong></td><td>architectural, not a parser concern</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:40px; font-size:1.05rem; color: var(--muted);">How to reproduce</h3>
+    <p class="lead" style="font-size:0.95rem;">Every mneme number above is from <code>benchmarks/</code> in this repo or directly measurable in source. To get your own numbers:</p>
+    <pre><code>## 1. Clone and build
+git clone https://github.com/omanishay-cyber/mneme &amp;&amp; cd mneme
+cargo build --release -p benchmarks --bin bench_retrieval
+
+## 2. Index the repo you want to measure
+cargo run --release -p cli --bin mneme -- build /path/to/repo
+
+## 3. Run the full benchmark suite on that repo
+./target/release/bench_retrieval.exe bench-all /path/to/repo \
+    &gt; benchmarks/results/$(date -I).csv \
+    2&gt; benchmarks/results/$(date -I).stderr
+
+## 4. Individual benches (cold, warm, incremental, viz-scale, recall, compare)
+./target/release/bench_retrieval.exe bench-first-build  /path/to/repo --format json
+./target/release/bench_retrieval.exe bench-incremental  /path/to/repo --format json
+./target/release/bench_retrieval.exe bench-recall       /path/to/repo benchmarks/fixtures/golden.json --format json
+./target/release/bench_retrieval.exe bench-token-reduction /path/to/repo --format json
+
+## 5. CRG head-to-head (requires Python 3.10+)
+cd benchmarks/crg-compare
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install code-review-graph
+python run_crg_bench.py</code></pre>
+    <p class="lead" style="font-size:0.9rem; color: var(--muted);">Raw results from mneme's own run: <code>benchmarks/results/2026-04-23.csv</code> + <code>benchmarks/results/crg-2026-04-23.json</code>. Full methodology and caveats in <a href="https://github.com/omanishay-cyber/mneme/blob/main/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  PLATFORMS                                                     -->
+  <!-- ============================================================ -->
+  <section class="reveal">
+    <h2>Works with <span class="accent">everything</span></h2>
+    <p class="lead">One <code>mneme install</code> configures every AI tool it detects.</p>
+    <div class="platforms">
+      <span class="chip">Claude Code</span>
+      <span class="chip">Codex</span>
+      <span class="chip">Cursor</span>
+      <span class="chip">Windsurf</span>
+      <span class="chip">Zed</span>
+      <span class="chip">Continue</span>
+      <span class="chip">OpenCode</span>
+      <span class="chip">Google Antigravity</span>
+      <span class="chip">Gemini CLI</span>
+      <span class="chip">Aider</span>
+      <span class="chip">GitHub Copilot CLI / VS Code</span>
+      <span class="chip">Factory Droid</span>
+      <span class="chip">Trae / Trae-CN</span>
+      <span class="chip">Kiro</span>
+      <span class="chip">Qoder</span>
+      <span class="chip">OpenClaw</span>
+      <span class="chip">Hermes</span>
+      <span class="chip">Qwen Code</span>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  SKILLS + CODEWORDS                                            -->
+  <!-- ============================================================ -->
+  <section class="reveal">
+    <h2>20 expert skills + 4 workflow <span class="accent">codewords</span></h2>
+    <p class="lead">Mneme ships a full skill arsenal. Claude auto-loads the right expert for the task. Four single-word verbs switch how Claude engages.</p>
+
+    <h3 style="margin-top:36px; font-size:1.1rem;">Codewords - one-word session control</h3>
+    <table class="bench-table">
+      <thead>
+        <tr><th>Word</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>coldstart</code></td><td>Pause. Observe only. Read context, draft a plan, do not touch code.</td></tr>
+        <tr><td><code>hotstart</code></td><td>Resume with discipline. Numbered roadmap. <code>step_verify</code> after each step.</td></tr>
+        <tr><td><code>firestart</code></td><td>Maximum loadout. Load all fireworks skills + prime mneme graph + hotstart.</td></tr>
+        <tr><td><code>CHS</code></td><td>"Check my screenshot" - read the latest file in your Screenshots folder.</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:36px; font-size:1.1rem;">Fireworks skills - auto-dispatched by keyword</h3>
+    <p class="lead" style="font-size:0.95rem;">Each skill is a full package: <code>SKILL.md</code> with triggers + protocol, plus a <code>references/</code> folder of deep how-to docs. Skills sleep until a matching keyword appears in your message - a Rust task never fires the React skill.</p>
+    <div class="platforms" style="margin-top:16px;">
+      <span class="chip">architect</span>
+      <span class="chip">charts</span>
+      <span class="chip">config</span>
+      <span class="chip">debug</span>
+      <span class="chip">design</span>
+      <span class="chip">devops</span>
+      <span class="chip">estimation</span>
+      <span class="chip">flutter</span>
+      <span class="chip">go</span>
+      <span class="chip">patterns</span>
+      <span class="chip">performance</span>
+      <span class="chip">python</span>
+      <span class="chip">react</span>
+      <span class="chip">refactor</span>
+      <span class="chip">rust</span>
+      <span class="chip">research</span>
+      <span class="chip">review</span>
+      <span class="chip">security</span>
+      <span class="chip">taskmaster</span>
+      <span class="chip">test</span>
+      <span class="chip">vscode</span>
+      <span class="chip">workflow</span>
+      <span class="chip" style="background: rgba(65, 225, 181, 0.15); color: var(--accent);">mneme-codewords</span>
+    </div>
+    <p class="lead" style="font-size:0.9rem; color: var(--muted); margin-top:16px;">Type <code>firestart</code> on your next complex task. Mneme loads the full arsenal, primes your code graph, builds a numbered ledger, and works through it with verification gates - one step at a time.</p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  ARCHITECTURE                                                  -->
+  <!-- ============================================================ -->
+  <section class="reveal">
+    <h2><span class="accent">Architecture</span> — multi-process, fault-tolerant, 100% local</h2>
+<pre><code>Marketplace plugin (global / user / project scope)
+└─ SUPERVISOR (Rust, Windows service / launchd / systemd)
+   ├─ STORE           22-layer SQLite sharded per project + WAL
+   ├─ MCP server      Bun TS, 47 tools, JSON-RPC stdio
+   ├─ PARSERS         Tree-sitter, 27 languages, num_cpus×4
+   ├─ SCANNERS        Theme / security / a11y / perf / drift
+   ├─ MD-INGEST       Drinks every .md like CLAUDE.md
+   ├─ BRAIN           Pure-Rust embeddings + Leiden clustering
+   ├─ MULTIMODAL      Python sidecar — PDF / Whisper / OCR
+   ├─ LIVE BUS        SSE/WebSocket push channel
+   ├─ VISION          14-view WebGL desktop+web app
+   └─ HEALTH          60 s self-test, SLA dashboard</code></pre>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  FOOTER                                                        -->
+  <!-- ============================================================ -->
+  <footer>
+    <div class="links">
+      <a href="https://github.com/omanishay-cyber/mneme">GitHub</a>
+      <a href="https://github.com/omanishay-cyber/mneme/blob/main/docs/design/2026-04-23-datatree-design.md">Design doc</a>
+      <a href="https://github.com/omanishay-cyber/mneme/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/omanishay-cyber/mneme/blob/main/LICENSE">License</a>
+      <a href="mailto:(GitHub Issues or Discussions)">Contact</a>
+    </div>
+    <p>© 2026 <strong>Anish Trivedi</strong>. Apache-2.0 — open-source, free to use, commercial restrictions apply.</p>
+    <p style="margin-top:8px;opacity:0.6;">🌳 Named after Mneme, the Greek muse of memory.</p>
+  </footer>
+
+</div>
+
+<script>
+  // Reveal-on-scroll via IntersectionObserver
+  (function () {
+    if (typeof window === 'undefined') return;
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const targets = document.querySelectorAll('.reveal, .bench-table');
+    if (prefersReduced || !('IntersectionObserver' in window)) {
+      targets.forEach(function (t) { t.classList.add('is-visible'); });
+      return;
+    }
+    const io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    targets.forEach(function (t) { io.observe(t); });
+  })();
+</script>
+
+</body>
+</html>
