@@ -144,6 +144,13 @@ enum Command {
     Daemon(commands::daemon::DaemonArgs),
     /// Cache management: du | prune | gc | drop. (NEW-058)
     Cache(commands::cache::CacheArgs),
+    /// Gracefully cancel an in-progress `mneme build`. Reads the
+    /// per-project `.lock` stamp, sends SIGTERM/CTRL_C, waits up to
+    /// `--timeout-secs` for graceful exit, then escalates to
+    /// SIGKILL/TerminateProcess. Always runs `wal_checkpoint(TRUNCATE)`
+    /// on every shard DB and removes the stale `.lock` afterwards so
+    /// the next build starts from a clean slate.
+    Abort(commands::abort::AbortArgs),
     /// Launch the Bun MCP server (used by Claude Code / Codex / etc.
     /// to talk to mneme via stdio). `mneme mcp stdio`.
     Mcp {
@@ -208,6 +215,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
         Command::SessionEnd(args) => commands::session_end::run(args, socket_override).await,
         Command::Daemon(args) => commands::daemon::run(args, socket_override).await,
         Command::Cache(args) => commands::cache::run(args).await,
+        Command::Abort(args) => commands::abort::run(args).await,
         Command::Mcp { transport } => launch_mcp(transport).await,
     }
 }

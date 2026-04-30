@@ -368,6 +368,11 @@ pub async fn unregister(args: RegisterMcpArgs) -> CliResult<()> {
         // LIE-4: --status is a query-only mode added on the uninstall
         // surface; unregister-mcp never queries the marker.
         status: false,
+        // B-015: nuclear-uninstall opt-out flags. unregister-mcp is the
+        // strict per-platform inverse of `register`, so neither flag
+        // applies — leave them at clap defaults.
+        keep_state: false,
+        keep_platforms_only: false,
     };
     uninstall::run(uninstall_args).await
 }
