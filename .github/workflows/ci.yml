@@ -146,7 +146,10 @@ jobs:
       - name: Run cargo-deny
         # Block-on-fail: license / banned-crate / duplicate-version
         # violations must be triaged before merge. Closes REG-008.
-        uses: EmbarkStudios/cargo-deny-action@v1
+        # @v2 ships with cargo-deny 0.16+ on newer Rust toolchain so it can
+        # parse edition=2024 manifests in transitive deps (wit-bindgen 0.57.1
+        # via wasip2 -> requires Rust 1.85+).
+        uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
           arguments: --all-features
