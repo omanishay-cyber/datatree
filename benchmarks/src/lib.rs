@@ -957,9 +957,7 @@ pub fn bench_recall(shard_graph_db: &Path, queries: &[GoldenQuery]) -> BenchResu
         hits += precision_at_n(&top, &q.expected_top, 10);
         total_expected += q.expected_top.len().min(10) as u32;
     }
-    let precision_at_10_pct = (hits * 100)
-        .checked_div(total_expected)
-        .unwrap_or(0);
+    let precision_at_10_pct = (hits * 100).checked_div(total_expected).unwrap_or(0);
 
     Ok(RecallReport {
         queries: queries.len() as u32,

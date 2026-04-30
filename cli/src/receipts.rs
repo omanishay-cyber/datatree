@@ -168,10 +168,7 @@ impl Receipt {
     pub fn save(&self) -> CliResult<PathBuf> {
         let dir = receipts_dir()?;
         std::fs::create_dir_all(&dir).map_err(|e| CliError::io(&dir, e))?;
-        let stamp = self
-            .installed_at
-            .replace([':', '-'], "")
-            .replace('T', "-");
+        let stamp = self.installed_at.replace([':', '-'], "").replace('T', "-");
         let stamp = stamp
             .split('.')
             .next()

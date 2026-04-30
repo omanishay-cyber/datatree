@@ -714,10 +714,7 @@ fn insert_into_tree(
     line_count: i64,
     language: Option<String>,
 ) {
-    let segs: Vec<&str> = path
-        .split(['/', '\\'])
-        .filter(|s| !s.is_empty())
-        .collect();
+    let segs: Vec<&str> = path.split(['/', '\\']).filter(|s| !s.is_empty()).collect();
     if segs.is_empty() {
         return;
     }
@@ -1392,10 +1389,7 @@ fn is_test_path(p: &str) -> bool {
 /// the TS `testFilenameCandidates` helper. Used to pair a source file
 /// with its co-located or external test file.
 fn test_filename_candidates(src: &str) -> Vec<String> {
-    let parts: Vec<&str> = src
-        .split(['/', '\\'])
-        .filter(|s| !s.is_empty())
-        .collect();
+    let parts: Vec<&str> = src.split(['/', '\\']).filter(|s| !s.is_empty()).collect();
     if parts.is_empty() {
         return Vec::new();
     }

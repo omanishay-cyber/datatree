@@ -2704,11 +2704,7 @@ fn parse_mneme_intent(head: &str) -> Option<(String, Option<String>)> {
                     None
                 } else {
                     // Trim trailing comment terminators (*/ etc)
-                    Some(
-                        reason_part
-                            .trim_end_matches(['*', '/', ' '])
-                            .to_string(),
-                    )
+                    Some(reason_part.trim_end_matches(['*', '/', ' ']).to_string())
                 };
                 return Some((kind_lower, reason));
             }

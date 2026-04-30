@@ -1467,10 +1467,7 @@ pub fn run_strict() -> i32 {
     print_banner();
     println!();
     println!("  {:<16}{}", "timestamp:", utc_now_readable());
-    println!(
-        "  {:<16}strict (G11 pre-flight verification)",
-        "mode:"
-    );
+    println!("  {:<16}strict (G11 pre-flight verification)", "mode:");
     println!();
 
     let mut all_ok = true;

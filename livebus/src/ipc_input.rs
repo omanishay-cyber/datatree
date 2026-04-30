@@ -26,11 +26,11 @@ use std::path::PathBuf;
 
 use interprocess::local_socket::tokio::Stream as IpcStream;
 use interprocess::local_socket::traits::tokio::Listener as ListenerT;
-use interprocess::local_socket::{ListenerOptions, Name};
-#[cfg(windows)]
-use interprocess::local_socket::{GenericNamespaced, ToNsName};
 #[cfg(unix)]
 use interprocess::local_socket::{GenericFilePath, ToFsName};
+#[cfg(windows)]
+use interprocess::local_socket::{GenericNamespaced, ToNsName};
+use interprocess::local_socket::{ListenerOptions, Name};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{debug, error, info, warn};
 
