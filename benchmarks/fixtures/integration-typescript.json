@@ -1,0 +1,68 @@
+{
+  "_": "Retrieval queries against the TypeScript compiler source (~2M LOC). Stress test for Mneme's scale limits.",
+  "queries": [
+    {
+      "q": "type checker control flow analysis",
+      "expect_top_k": [
+        "src/compiler/checker.ts"
+      ]
+    },
+    {
+      "q": "AST parser emit statement",
+      "expect_top_k": [
+        "src/compiler/parser.ts",
+        "src/compiler/emitter.ts"
+      ]
+    },
+    {
+      "q": "language service completion",
+      "expect_top_k": [
+        "src/services/completions.ts"
+      ]
+    },
+    {
+      "q": "declaration emit",
+      "expect_top_k": [
+        "src/compiler/transformers/declarations.ts"
+      ]
+    },
+    {
+      "q": "module resolution",
+      "expect_top_k": [
+        "src/compiler/moduleNameResolver.ts"
+      ]
+    },
+    {
+      "q": "scanner lexer token",
+      "expect_top_k": [
+        "src/compiler/scanner.ts"
+      ]
+    },
+    {
+      "q": "diagnostic messages",
+      "expect_top_k": [
+        "src/compiler/diagnosticMessages.json",
+        "src/compiler/diagnosticInformationMap.generated.ts"
+      ]
+    },
+    {
+      "q": "project reference build",
+      "expect_top_k": [
+        "src/compiler/tsbuild.ts",
+        "src/compiler/tsbuildPublic.ts"
+      ]
+    },
+    {
+      "q": "JSX transformer",
+      "expect_top_k": [
+        "src/compiler/transformers/jsx.ts"
+      ]
+    },
+    {
+      "q": "decorators transform",
+      "expect_top_k": [
+        "src/compiler/transformers/legacyDecorators.ts"
+      ]
+    }
+  ]
+}

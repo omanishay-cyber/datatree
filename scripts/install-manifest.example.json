@@ -1,0 +1,22 @@
+{
+  "$comment": "mneme install manifest -- example shape. Lives at ~/.mneme/install-manifest.json. Updated on every install/uninstall run. Single source of truth for what mneme installed vs. what was already on the machine.",
+
+  "mneme_version": "0.2.0",
+  "installed_at": "2026-04-23T15:00:00Z",
+
+  "installed_by_mneme": [
+    "bun",
+    "tesseract"
+  ],
+
+  "preexisting": [
+    "python3",
+    "ffmpeg"
+  ],
+
+  "models": {
+    "bge-small-en-v1.5": "~/.mneme/llm/bge-small/model.onnx",
+    "phi3-mini": null,
+    "faster-whisper-base": null
+  }
+}

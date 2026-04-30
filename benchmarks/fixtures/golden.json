@@ -1,0 +1,86 @@
+[
+  {
+    "query": "where is DbLayer defined",
+    "kind": "recall",
+    "expected_top": [
+      "common/src/layer.rs",
+      "common/src/lib.rs"
+    ]
+  },
+  {
+    "query": "callers of inject_file",
+    "kind": "references",
+    "target": "inject",
+    "expected_top": [
+      "store/src/inject.rs",
+      "cli/src/commands/build.rs",
+      "benchmarks/src/lib.rs"
+    ]
+  },
+  {
+    "query": "drift detection",
+    "kind": "recall",
+    "expected_top": [
+      "cli/src/commands/drift.rs",
+      "scanners"
+    ]
+  },
+  {
+    "query": "blast radius implementation",
+    "kind": "recall",
+    "expected_top": [
+      "cli/src/commands/blast.rs"
+    ]
+  },
+  {
+    "query": "PathManager",
+    "kind": "recall",
+    "expected_top": [
+      "common/src/paths.rs",
+      "common/src/lib.rs",
+      "store/src/lib.rs",
+      "cli/src/commands/build.rs",
+      "benchmarks/src/lib.rs"
+    ]
+  },
+  {
+    "query": "build_or_migrate",
+    "kind": "references",
+    "target": "build_or_migrate",
+    "expected_top": [
+      "store/src/builder.rs",
+      "cli/src/commands/build.rs",
+      "benchmarks/src/lib.rs"
+    ]
+  },
+  {
+    "query": "Store::new",
+    "kind": "recall",
+    "expected_top": [
+      "store/src/lib.rs"
+    ]
+  },
+  {
+    "query": "parser pool",
+    "kind": "recall",
+    "expected_top": [
+      "parsers/src/parser_pool.rs",
+      "parsers/src/lib.rs"
+    ]
+  },
+  {
+    "query": "embedding store",
+    "kind": "recall",
+    "expected_top": [
+      "brain/src/embed_store.rs",
+      "brain/src/lib.rs"
+    ]
+  },
+  {
+    "query": "schema version",
+    "kind": "recall",
+    "expected_top": [
+      "store/src/schema.rs"
+    ]
+  }
+]

@@ -1,0 +1,11 @@
+# mneme-marker v1.0
+# Merged into ~/.codex/config.toml by the mneme install command.
+# Existing keys are preserved; only [mcp_servers.mneme] is replaced.
+
+[mcp_servers.mneme]
+command = "bun"
+args    = ["{{mneme_root}}/mcp/index.ts"]
+
+[mcp_servers.mneme.env]
+MNEME_HOME         = "{{mneme_home}}"
+MNEME_PROJECT_ROOT = "{{project_root}}"

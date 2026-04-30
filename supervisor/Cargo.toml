@@ -1,0 +1,137 @@
+[package]
+name = "mneme-daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Mneme master supervisor: spawns and watches all worker child processes."
+
+[[bin]]
+name = "mneme-daemon"
+path = "src/main.rs"
+
+[lib]
+name = "mneme_daemon"
+path = "src/lib.rs"
+
+[dependencies]
+# Workspace deps (resolved from root Cargo.toml [workspace.dependencies] block)
+tokio = { version = "1.40", features = ["full"] }
+tokio-util = "0.7"
+futures = "0.3"
+async-trait = "0.1"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+thiserror = "1.0"
+anyhow = "1.0"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+# B-005 fix: write supervisor logs to `~/.mneme/logs/supervisor.log`
+# (rotated daily, keep 7 days). The daemon-logs IPC handler tails
+# this file when the in-memory ring is empty so operators have a
+# durable record once the daemon has been running long enough that
+# the bounded ring has rolled over.
+tracing-appender = "0.2"
+
+chrono = { version = "0.4", features = ["serde"] }
+
+interprocess = { version = "2.2", features = ["tokio"] }
+sysinfo = "0.32"
+# Phase A · F2: enable axum's `ws` feature so the production daemon can host
+# the `/ws` livebus relay (see `supervisor/src/ws.rs`). Without `ws`, the
+# `axum::extract::ws::{WebSocket, WebSocketUpgrade}` types don't exist and
+# the build fails. The relay forwards events from the in-process
+# `mneme_livebus::EventBus` to subscribers over WebSocket text frames.
+axum = { version = "0.7", features = ["ws"] }
+tokio-stream = "0.1"
+
+# Phase A · F2: re-use the livebus crate's `EventBus`, `SubscriberManager`,
+# `Event`, and topic-validation helpers instead of re-implementing them.
+# This keeps the production WS relay schema-identical to the standalone
+# `mneme-livebus` daemon binary so frontend clients can talk to either
+# without code changes.
+livebus = { path = "../livebus", package = "mneme-livebus" }
+
+num_cpus = "1.16"
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# F1 D0+D1: static-file serving for the vision SPA out of `~/.mneme/static/vision/`.
+# `fs` feature provides `tower_http::services::ServeDir`. Version pinned to 0.5
+# for axum 0.7 compatibility (see F1-DATA-LAYER-DECISION.md §4).
+tower-http = { version = "0.5", features = ["fs"] }
+
+# A2 deeper-fix (EC2 Wave 1 2026-04-27): the SPA fallback handler uses
+# `tower::service_fn` to wrap the cached-bytes closure passed to
+# `ServeDir::fallback(...)`. Pre-loading index.html at compose time
+# makes the SPA boot resilient to per-request fs latency on EC2 (slow
+# IO, antivirus probes, blocking-pool starvation). `util` is the only
+# feature we need.
+tower = { version = "0.5", features = ["util"] }
+
+# Filesystem watching (incremental reindex on save).
+notify = "6.1"
+walkdir = "2.5"
+parking_lot = "0.12"
+dunce = "1.0"
+# Home-directory resolution for the durable job-queue path
+# (`~/.mneme/run/jobs.db`). v0.3.0 audit fix L5.
+dirs = "5.0"
+
+# ANSI escape stripping for worker stdout/stderr forwarders. Workers that
+# emit colored output (any TTY-aware logger) would otherwise embed ESC[..]
+# sequences in our captured log lines and break the JSON parse path.
+strip-ansi-escapes = "0.2"
+
+# Local workspace members
+# `common` crate is referenced via path; Cargo will resolve relative to this Cargo.toml.
+common = { path = "../common", package = "mneme-common" }
+store = { path = "../store", package = "mneme-store" }
+parsers = { path = "../parsers", package = "mneme-parsers" }
+
+# Read-side access to `graph.db` for the supervisor-mediated recall /
+# blast / godnodes IPC handlers. Read-only; per-shard writer invariant
+# is preserved because the supervisor never opens these connections
+# with SQLITE_OPEN_READ_WRITE.
+rusqlite = { workspace = true }
+
+# I2 fix (phase-a-issues.md): the watcher needs to write `files.sha256`
+# every time it reindexes a file so the vision treemap / heatmap /
+# file-tree queries get rows. SHA-256 is the column the schema names,
+# so we use it here for consistency with the CLI build path.
+sha2 = "0.10"
+
+# SD-1 fix (v0.3.2): supervisor-mediated hook write handlers in
+# `ipc.rs` mint blake3 hashes for `tool_cache.tool_calls.params_hash`
+# and uuid-v7 ids for `tasks.ledger_entries.id`. Versions match the
+# CLI's `hook_writer.rs` so wire-equivalent rows land in the same
+# shard regardless of which path wrote them.
+blake3 = { workspace = true }
+uuid = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal", "process", "fs"] }
+
+[features]
+default = []
+with-common = []
+# K10 chaos-test-only hooks. Off by default — production binaries are
+# built without this feature so the `--inject-crash` flag and any
+# panic-injection points are absent from the user-facing release. Tests
+# under `cli/tests/chaos_tests.rs` enable this with
+# `cargo test --features test-hooks` to exercise the hardening paths.
+test-hooks = []
+
+[dev-dependencies]
+tokio = { version = "1.40", features = ["full", "test-util", "macros"] }
+tempfile = "3.10"
+# A2 deeper-fix: `tower` itself is a regular dep now (used by
+# `compose_app_router`'s SPA fallback closure). Tests use the same
+# crate via `tower::ServiceExt::oneshot` for unit-level router tests.

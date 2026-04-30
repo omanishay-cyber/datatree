@@ -1,0 +1,86 @@
+name: integration-tests
+
+# Builds Mneme, indexes real repositories, runs the golden retrieval query
+# suite via `bench_retrieval compare`, and uploads the markdown report as a
+# CI artifact.
+#
+# This workflow runs on every push to main and PRs. Regression-threshold
+# gating is NOT active yet — baselines must be committed to repo first. For
+# now each run simply proves the pipeline works end-to-end and emits a
+# reproducible report that anyone can inspect in the Actions UI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: retrieval suite on ${{ matrix.fixture }}
+    runs-on: ubuntu-latest
+    # Soft-fail: golden retrieval baselines are not yet committed to
+    # the repo, so this workflow runs as a smoke test only — it proves
+    # the build → index → query pipeline works end-to-end on real
+    # external repos. Once baselines land here, flip this off so a
+    # regression on the django / typescript fixtures blocks merge.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture:
+          - mneme-self
+          - django
+          - typescript
+    steps:
+      - name: Checkout Mneme
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: integration-${{ matrix.fixture }}
+
+      - name: Build Mneme release
+        run: cargo build --release -p mneme-cli -p benchmarks
+
+      - name: Clone fixture repo
+        run: |
+          case "${{ matrix.fixture }}" in
+            mneme-self)
+              echo "FIXTURE_PATH=${{ github.workspace }}" >> "$GITHUB_ENV"
+              ;;
+            django)
+              git clone --depth=1 https://github.com/django/django.git /tmp/django
+              echo "FIXTURE_PATH=/tmp/django" >> "$GITHUB_ENV"
+              ;;
+            typescript)
+              git clone --depth=1 https://github.com/microsoft/TypeScript.git /tmp/typescript
+              echo "FIXTURE_PATH=/tmp/typescript" >> "$GITHUB_ENV"
+              ;;
+          esac
+
+      - name: Run retrieval comparison
+        run: |
+          mkdir -p /tmp/bench-out
+          ./target/release/bench_retrieval compare "$FIXTURE_PATH" \
+            > /tmp/bench-out/${{ matrix.fixture }}.md 2>&1 || true
+          head -c 8192 /tmp/bench-out/${{ matrix.fixture }}.md
+
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ matrix.fixture }}
+          path: /tmp/bench-out/${{ matrix.fixture }}.md
+          if-no-files-found: ignore

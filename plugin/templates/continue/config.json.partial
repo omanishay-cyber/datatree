@@ -1,0 +1,15 @@
+{
+  "$comment": "mneme-marker v1.0 — Continue uses an ARRAY of mcpServers. The install command merges this entry into the existing array, deduplicating by name.",
+  "mcpServers": [
+    {
+      "name": "mneme",
+      "command": "bun",
+      "args": ["{{mneme_root}}/mcp/index.ts"],
+      "transport": "stdio",
+      "env": {
+        "MNEME_HOME": "{{mneme_home}}",
+        "MNEME_PROJECT_ROOT": "{{project_root}}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# mneme-marker v1.0
+# Merged into .aider.conf.yml by the mneme install command.
+# Existing keys are preserved; only the keys below are added/overwritten.
+
+# Treat mneme's CONVENTIONS.md as a project-level system prompt addition.
+read:
+  - CONVENTIONS.md
+
+# Mneme owns these files; do not let Aider scan them.
+aiderignore:
+  - .mneme/
+  - "**/.mneme/"
+
+# Refresh the graph after every successful Aider commit.
+lint-cmd:
+  - "sh: mneme update --quiet || true"

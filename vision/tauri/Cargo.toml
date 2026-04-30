@@ -1,0 +1,25 @@
+[package]
+name = "mneme-vision-tauri"
+version = "0.1.0"
+description = "Tauri desktop wrapper for the mneme Vision app"
+authors = ["Anish Trivedi"]
+edition = "2021"
+rust-version = "1.75"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+# Default to using the bundled dist/ build of the web app.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+# NOTE: workspace [profile.release] in the root Cargo.toml owns the
+# release profile for the entire workspace. A duplicate block here
+# previously caused conflicting `panic = "abort"` (root) vs
+# `lto = true / opt-level = "s"` (here) — fixed by deletion (I-17).

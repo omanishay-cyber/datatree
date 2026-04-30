@@ -1,0 +1,52 @@
+[package]
+name = "mneme-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Database Operations Layer (Builder/Finder/Path/Query/Inject/Lifecycle) for mneme"
+
+[lib]
+name = "mneme_store"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mneme-store"
+path = "src/main.rs"
+
+[dependencies]
+common = { path = "../common", package = "mneme-common" }
+tokio.workspace = true
+async-trait.workspace = true
+rusqlite.workspace = true
+r2d2.workspace = true
+r2d2_sqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono.workspace = true
+sha2.workspace = true
+blake3.workspace = true
+uuid.workspace = true
+dirs.workspace = true
+walkdir.workspace = true
+interprocess.workspace = true
+once_cell.workspace = true
+futures.workspace = true
+clap.workspace = true
+parking_lot = "0.12"
+
+[features]
+default = []
+# K10 chaos-test-only hooks. Off by default. When enabled, the builder
+# checks `MNEME_TEST_FAIL_FS_AT_BYTES` and installs a write-counting
+# update_hook + commit_hook that fails inserts after the configured
+# byte budget — simulating `SQLITE_FULL` without needing a real custom
+# VFS. Production releases never see this code path because the entire
+# `test_fs_full` module is `#[cfg(any(test, feature = "test-hooks"))]`.
+test-hooks = []
+
+[dev-dependencies]
+tempfile = "3.13"

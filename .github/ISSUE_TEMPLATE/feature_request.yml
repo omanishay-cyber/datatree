@@ -1,0 +1,48 @@
+name: 💡 Feature request
+description: Suggest a new MCP tool, scanner, view, platform, or capability
+labels: ["enhancement", "needs-discussion"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem you're trying to solve
+      description: Skip the feature. Describe the pain.
+      placeholder: "When I'm debugging, I can never remember what similar bug we already fixed 2 weeks ago…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed feature
+      description: How mneme could help. A sketch is fine.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Which part of mneme?
+      options:
+        - MCP tool (new or improved)
+        - Scanner (new drift rule)
+        - Vision view (new visualisation)
+        - CLI command
+        - Platform installer (new AI tool support)
+        - Tree-sitter grammar (new language)
+        - Step Ledger behaviour
+        - Drift detector rule
+        - Install flow
+        - Documentation
+        - Other (explain)
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds have you tried? What other tools solve this?
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I'd be willing to submit a PR if we agree on the design

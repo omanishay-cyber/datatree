@@ -1,0 +1,72 @@
+{
+  "_": "Golden retrieval queries against Mneme's own source tree. Each query lists the top-K file paths the retrieval engine SHOULD return. CI fails if precision@5 drops more than 20% from baseline.",
+  "queries": [
+    {
+      "q": "Where is DbLayer defined?",
+      "expect_top_k": [
+        "common/src/layer.rs"
+      ]
+    },
+    {
+      "q": "callers of inject_file",
+      "expect_top_k": [
+        "store/src/inject.rs",
+        "cli/src/commands/build.rs",
+        "supervisor/src/watcher.rs"
+      ]
+    },
+    {
+      "q": "drift detection",
+      "expect_top_k": [
+        "scanners/src/scanners/",
+        "scanners/src/registry.rs"
+      ]
+    },
+    {
+      "q": "step ledger schema",
+      "expect_top_k": [
+        "brain/src/ledger.rs",
+        "store/src/schema.rs"
+      ]
+    },
+    {
+      "q": "supervisor named pipe rebind Windows",
+      "expect_top_k": [
+        "supervisor/src/service.rs",
+        "supervisor/src/main.rs"
+      ]
+    },
+    {
+      "q": "BGE small embedder",
+      "expect_top_k": [
+        "brain/src/embeddings.rs"
+      ]
+    },
+    {
+      "q": "tree-sitter parser pool",
+      "expect_top_k": [
+        "parsers/src/parser_pool.rs",
+        "parsers/src/lib.rs"
+      ]
+    },
+    {
+      "q": "Leiden community detection",
+      "expect_top_k": [
+        "brain/src/leiden.rs"
+      ]
+    },
+    {
+      "q": "architecture overview coupling matrix",
+      "expect_top_k": [
+        "scanners/src/scanners/architecture.rs"
+      ]
+    },
+    {
+      "q": "wiki generator from Leiden communities",
+      "expect_top_k": [
+        "brain/src/wiki.rs",
+        "mcp/src/tools/wiki_generate.ts"
+      ]
+    }
+  ]
+}

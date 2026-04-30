@@ -1,0 +1,85 @@
+// mneme-marker v1.0
+// OpenCode plugin: keeps the mneme graph fresh and nudges the agent
+// toward graph-first reads.
+//
+// Hooks:
+//   - file.edited            -> incremental graph update
+//   - tool.execute.before    -> warn when grep/read/glob runs without a
+//                               prior mneme.* call this turn
+//
+// The plugin talks to the mneme daemon over its local HTTP API
+// (default http://127.0.0.1:7777). It never blocks tool execution; if
+// the daemon is unavailable, hooks degrade to a no-op.
+
+import type { Plugin } from "@opencode/plugin";
+
+const MNEME_ROOT = "{{mneme_root}}";
+const MNEME_HOME = "{{mneme_home}}";
+const DAEMON_URL    = "http://127.0.0.1:7777";
+
+const SHELL_READ_TOOLS = new Set([
+    "bash", "shell", "grep", "ripgrep", "rg", "find", "cat", "head",
+    "tail", "read", "read_file", "glob", "list_files",
+]);
+
+let mnemeUsedThisTurn = false;
+let turnId = 0;
+
+async function safePost(path: string, body: unknown): Promise<void> {
+    try {
+        await fetch(DAEMON_URL + path, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(2000),
+        });
+    } catch {
+        // daemon down — hook is best-effort, never blocks the agent
+    }
+}
+
+const plugin: Plugin = {
+    name: "mneme",
+    version: "1.0.0",
+
+    async onTurnStart() {
+        turnId += 1;
+        mnemeUsedThisTurn = false;
+    },
+
+    hooks: {
+        "file.edited": async ({ path, change }) => {
+            await safePost("/v1/graph/incremental", {
+                project_root: process.cwd(),
+                file: path,
+                change_kind: change ?? "edit",
+                source: "opencode.file.edited",
+            });
+        },
+
+        "tool.execute.before": async ({ tool, args, abort }) => {
+            const name = (tool?.name ?? "").toLowerCase();
+
+            if (name.startsWith("mneme.") || name === "mneme") {
+                mnemeUsedThisTurn = true;
+                return;
+            }
+
+            if (SHELL_READ_TOOLS.has(name) && !mnemeUsedThisTurn) {
+                console.warn(
+                    "[mneme] " + name + " invoked without a prior mneme.* call. " +
+                    "Graph-first usage is recommended — call mneme.minimal_context first " +
+                    "(see AGENTS.md). Continuing anyway."
+                );
+                // intentionally NOT calling abort() — this is a nudge, not a block
+            }
+        },
+    },
+
+    meta: {
+        mnemeRoot: MNEME_ROOT,
+        mnemeHome: MNEME_HOME,
+    },
+};
+
+export default plugin;

@@ -1,0 +1,83 @@
+{
+  "name": "mneme",
+  "version": "0.3.2",
+  "displayName": "Mneme — The AI Superbrain",
+  "description": "Persistent per-project SQLite memory + 14-view live graph + drift detector + 47 MCP tools + 20 expert skills + 4 workflow codewords (coldstart/hotstart/firestart/CHS). Claude never starts cold, never loses its place, and always has the right expert loaded.",
+  "author": "Anish Trivedi",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/omanishay-cyber/mneme",
+  "scopes": ["global", "user", "project"],
+  "platforms": ["win32", "darwin", "linux"],
+  "components": {
+    "hooks": [],
+    "skills": [
+      "skills/mneme-query.md",
+      "skills/mneme-audit.md",
+      "skills/mneme-resume.md",
+      "skills/mneme-codewords/SKILL.md",
+      "skills/fireworks-architect/SKILL.md",
+      "skills/fireworks-charts/SKILL.md",
+      "skills/fireworks-config/SKILL.md",
+      "skills/fireworks-debug/SKILL.md",
+      "skills/fireworks-design/SKILL.md",
+      "skills/fireworks-devops/SKILL.md",
+      "skills/fireworks-estimation/SKILL.md",
+      "skills/fireworks-flutter/SKILL.md",
+      "skills/fireworks-go/SKILL.md",
+      "skills/fireworks-patterns/SKILL.md",
+      "skills/fireworks-performance/SKILL.md",
+      "skills/fireworks-python/SKILL.md",
+      "skills/fireworks-react/SKILL.md",
+      "skills/fireworks-refactor/SKILL.md",
+      "skills/fireworks-research/SKILL.md",
+      "skills/fireworks-review/SKILL.md",
+      "skills/fireworks-rust/SKILL.md",
+      "skills/fireworks-security/SKILL.md",
+      "skills/fireworks-taskmaster/SKILL.md",
+      "skills/fireworks-test/SKILL.md",
+      "skills/fireworks-vscode/SKILL.md",
+      "skills/fireworks-workflow/SKILL.md"
+    ],
+    "agents": [
+      "agents/mneme-archivist.md",
+      "agents/mneme-drift-hunter.md",
+      "agents/mneme-blast-tracer.md",
+      "agents/mneme-step-verifier.md",
+      "agents/mneme-doctor.md",
+      "agents/mneme-resumer.md"
+    ],
+    "commands": [
+      { "name": "/mn-view", "command": "mneme view" },
+      { "name": "/mn-audit", "command": "mneme audit" },
+      { "name": "/mn-recall", "command": "mneme recall" },
+      { "name": "/mn-blast", "command": "mneme blast" },
+      { "name": "/mn-graphify", "command": "mneme graphify" },
+      { "name": "/mn-godnodes", "command": "mneme godnodes" },
+      { "name": "/mn-drift", "command": "mneme drift" },
+      { "name": "/mn-history", "command": "mneme history" },
+      { "name": "/mn-snap", "command": "mneme snap" },
+      { "name": "/mn-doctor", "command": "mneme doctor" },
+      { "name": "/mn-rebuild", "command": "mneme rebuild" },
+      { "name": "/mn-step", "command": "mneme step" },
+      { "name": "/mn-why", "command": "mneme why" },
+      { "name": "/mn-status", "command": "mneme status" },
+      { "name": "/mn-build", "command": "mneme build" },
+      { "name": "/mn-update", "command": "mneme update" },
+      { "name": "/mn-rollback", "command": "mneme rollback" }
+    ],
+    "manifests": {
+      "claude": "CLAUDE.md",
+      "agents": "AGENTS.md",
+      "gemini": "GEMINI.md",
+      "qoder": "QODER.md",
+      "qwen": "QWEN.md",
+      "cursor": ".cursor/rules/mneme.mdc",
+      "kiro": ".kiro/steering/mneme.md"
+    }
+  },
+  "install": {
+    "preInstall": "scripts/preinstall.js",
+    "postInstall": "scripts/postinstall.js",
+    "preUninstall": "scripts/preuninstall.js"
+  }
+}

@@ -1,0 +1,47 @@
+<!-- mneme-start v1.0 -->
+# Mneme (GitHub Copilot)
+
+Copilot Chat (VS Code, JetBrains, GitHub.com) reads
+`.github/copilot-instructions.md` as repo-level guidance. In VS Code,
+Copilot can also call MCP tools (see `.vscode/mcp.json` ->
+`servers.mneme`).
+
+## Tool usage rules (MANDATORY)
+
+**When MCP is available, call mneme MCP tools BEFORE Copilot's
+built-in `#codebase`, `#file`, or `#search` references.** When MCP is
+not available (Copilot Chat on GitHub.com), summarise the relevant
+slice from mneme first using the CLI and paste it into the chat.
+
+On every task:
+
+1. `mneme.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`
+   at `detail_level="minimal"`.
+3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
+
+## Coding standards (Copilot)
+
+- Use the symbols mneme returns. Do not invent function/module names.
+- When suggesting an edit that changes a public signature, also surface
+  the impact set from `mneme.impact(symbol=...)` in the explanation.
+
+## Step ledger / drift / compaction
+
+- Ledger: `~/.mneme/projects/<id>/steps.jsonl`.
+- Address symbol/doc/test drift before declaring done.
+- Re-prime via `mneme.minimal_context(...)` after any reset.
+
+## Workflow Codewords
+
+When the user starts a message with one of these single words, switch how you engage:
+
+| Word | What it means |
+|---|---|
+| `coldstart` | Pause. Observe only. Read context, draft a plan, do not touch code. Wait for `hotstart` or `firestart` before doing anything. |
+| `hotstart` | Resume with discipline. Numbered roadmap. Verify each step before moving to the next. |
+| `firestart` | Maximum loadout. Load every fireworks skill that matches the task, prime the mneme graph (`god_nodes`, `audit_corpus`, `recall_decision`), then proceed with `hotstart` discipline. |
+| `CHS` | "Check my screenshot" - read the latest file in the user's OS-native screenshot folder (Windows `Pictures/Screenshots`, macOS `Desktop`, Linux `Pictures/Screenshots`) and respond based on its contents. |
+
+These are not casual conversation. Treat them as commands. Full protocol per codeword lives in `~/.mneme/plugin/skills/mneme-codewords/SKILL.md`.
+<!-- mneme-end -->

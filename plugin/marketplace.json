@@ -1,0 +1,54 @@
+{
+  "$schema": "https://claude.ai/schemas/plugin-marketplace.json",
+  "name": "mneme-marketplace",
+  "description": "Mneme — persistent, incrementally-updated knowledge graph for token-efficient code work across 18 AI coding platforms.",
+  "owner": {
+    "name": "Anish Trivedi",
+    "url": "https://github.com/anishtrivedi"
+  },
+  "plugins": [
+    {
+      "name": "mneme",
+      "git": "https://github.com/omanishay-cyber/mneme",
+      "version": "0.3.2",
+      "description": "Per-user code knowledge graph daemon + MCP server. Installs across Claude Code, Codex, Cursor, Windsurf, Zed, Continue, OpenCode, Antigravity, Gemini CLI, Aider, GitHub Copilot, Factory Droid, Trae, Kiro, Qoder, OpenClaw, Hermes, and Qwen Code.",
+      "homepage": "https://github.com/omanishay-cyber/mneme",
+      "license": "Apache-2.0",
+      "keywords": [
+        "knowledge-graph",
+        "mcp",
+        "code-review",
+        "context-engineering",
+        "incremental",
+        "tree-sitter",
+        "embeddings",
+        "drift-detection"
+      ],
+      "lifecycle": {
+        "preinstall":   "scripts/preinstall.js",
+        "postinstall":  "scripts/postinstall.js",
+        "preuninstall": "scripts/preuninstall.js"
+      },
+      "platforms": [
+        "claude-code",
+        "codex",
+        "cursor",
+        "windsurf",
+        "zed",
+        "continue",
+        "opencode",
+        "antigravity",
+        "gemini-cli",
+        "aider",
+        "copilot",
+        "factory-droid",
+        "trae",
+        "kiro",
+        "qoder",
+        "openclaw",
+        "hermes",
+        "qwen"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+[package]
+name = "mneme-md-ingest"
+version.workspace = true
+edition.workspace = true
+license = "Apache-2.0"
+description = "v0.1 stub: markdown ingestion worker placeholder (real impl in v0.2)"
+
+[[bin]]
+name = "mneme-md-ingest"
+path = "src/main.rs"
+
+[dependencies]
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Typed worker→supervisor IPC for `WorkerCompleteJob` telemetry (task P15).
+# Additive: we still consume stdin as NDJSON and log to stderr; the IPC
+# push is a fire-and-forget notification, never a hard dep on supervisor
+# liveness.
+common = { path = "../common", package = "mneme-common" }
+serde.workspace = true
+serde_json.workspace = true

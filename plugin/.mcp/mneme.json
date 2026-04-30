@@ -1,0 +1,10 @@
+{
+  "_comment": "Canonical MCP server entry for mneme. This file is reference-only. The actual entry written into each platform's config (Claude Code, Cursor, Codex, etc.) is generated dynamically by `cli/src/platforms/mod.rs::mneme_mcp_entry()`. Edit there to change the canonical shape — do NOT consume this file at runtime.",
+  "mneme": {
+    "command": "mneme",
+    "args": ["mcp"],
+    "env": {
+      "MNEME_LOG": "info"
+    }
+  }
+}

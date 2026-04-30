@@ -1,0 +1,48 @@
+<!-- mneme-start v1.0 -->
+# Mneme (Gemini CLI)
+
+Gemini CLI reads `GEMINI.md` from the project root and your home
+directory. This block teaches Gemini how to use the mneme knowledge
+graph, exposed as an MCP server (see `~/.gemini/settings.json` ->
+`mcpServers.mneme`).
+
+## Tool usage rules (MANDATORY)
+
+**Call mneme MCP tools BEFORE Gemini's built-in `read_file`,
+`grep`, `glob`, or `shell` tools** for any structural or semantic
+question about this codebase.
+
+On every task:
+
+1. `mneme.minimal_context(task="<description>")` — ~100 tokens.
+2. Iterate with `mneme.query`, `mneme.impact`, `mneme.search`
+   at `detail_level="minimal"`.
+3. Open files only as directed. Budget: <= 5 calls + <= 800 tokens.
+4. Edits update the graph incrementally via the supervisor's watcher.
+
+## Long-context discipline
+
+Gemini's huge context window is not a license to dump the repo into the
+prompt. Mneme's minimal context is far denser per token. Use full
+files only after mneme narrows the search.
+
+## Step ledger / drift / compaction
+
+- Ledger: `~/.mneme/projects/<id>/steps.jsonl`,
+  read with `mneme.last_steps(n=10)`.
+- Address symbol/doc/test drift before done.
+- After any reset, re-prime with `mneme.minimal_context(...)`.
+
+## Workflow Codewords
+
+When the user starts a message with one of these single words, switch how you engage:
+
+| Word | What it means |
+|---|---|
+| `coldstart` | Pause. Observe only. Read context, draft a plan, do not touch code. Wait for `hotstart` or `firestart` before doing anything. |
+| `hotstart` | Resume with discipline. Numbered roadmap. Verify each step before moving to the next. |
+| `firestart` | Maximum loadout. Load every fireworks skill that matches the task, prime the mneme graph (`god_nodes`, `audit_corpus`, `recall_decision`), then proceed with `hotstart` discipline. |
+| `CHS` | "Check my screenshot" - read the latest file in the user's OS-native screenshot folder (Windows `Pictures/Screenshots`, macOS `Desktop`, Linux `Pictures/Screenshots`) and respond based on its contents. |
+
+These are not casual conversation. Treat them as commands. Full protocol per codeword lives in `~/.mneme/plugin/skills/mneme-codewords/SKILL.md`.
+<!-- mneme-end -->

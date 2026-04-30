@@ -1,0 +1,51 @@
+{
+  "$schema": "https://claude.ai/claude-code/plugin-marketplace-schema.json",
+  "name": "mneme",
+  "displayName": "mneme — the AI superbrain",
+  "description": "Persistent per-project memory that survives context compaction. 26-shard SQLite, 47/47 MCP tools wired, 14 visualization views, 11 drift scanners, compaction-resilient Step Ledger, FTS5-accelerated keyword search, opt-in BGE-small ONNX embeddings. 100% local.",
+  "version": "0.3.2",
+  "author": "Anish Trivedi",
+  "homepage": "https://omanishay-cyber.github.io/mneme/",
+  "repository": "https://github.com/omanishay-cyber/mneme",
+  "license": "Apache-2.0",
+  "plugins": [
+    {
+      "name": "mneme",
+      "version": "0.3.2",
+      "description": "AI superbrain MCP — persistent memory, blast-radius queries, drift detection, Step Ledger that survives compaction.",
+      "source": {
+        "type": "github",
+        "repository": "omanishay-cyber/mneme",
+        "ref": "main",
+        "path": "plugin"
+      },
+      "manifest": "plugin/plugin.json",
+      "lifecycle": {
+        "preInstall": "scripts/preinstall.js",
+        "postInstall": "scripts/postinstall.js",
+        "preUninstall": "scripts/preuninstall.js"
+      },
+      "supports": {
+        "platforms": ["win32", "darwin", "linux"],
+        "claudeCode": ">=0.1.0",
+        "node": ">=20",
+        "rust": ">=1.78"
+      },
+      "categories": ["context", "memory", "code-graph", "multimodal", "productivity"],
+      "keywords": [
+        "mcp",
+        "claude-code",
+        "ai-superbrain",
+        "persistent-memory",
+        "code-graph",
+        "blast-radius",
+        "tree-sitter",
+        "compaction-resilient",
+        "drift-detector",
+        "local-first",
+        "step-ledger",
+        "multimodal"
+      ]
+    }
+  ]
+}

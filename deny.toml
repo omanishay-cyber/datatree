@@ -1,0 +1,177 @@
+# cargo-deny config for mneme.
+# Run via: cargo deny check
+# CI runs this on every push + PR (continue-on-error in v0.1).
+#
+# Three checks: licenses, banned crates, advisories.
+# Loosest-acceptable defaults today; tighten in v0.2 once we have a baseline.
+
+[graph]
+# Build for the platforms we ship to (Windows + Unix). Skip wasm/embedded.
+targets = [
+    { triple = "x86_64-pc-windows-msvc" },
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-apple-darwin" },
+]
+
+[advisories]
+# Run via the GitHub-hosted RUSTSEC advisory database. Refresh on every CI run.
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/RustSec/advisory-db"]
+# v0.1 records but does not enforce. v0.2 flips things to "deny". Today we
+# want visibility without blocking CI.
+# cargo-deny 0.15+ accepts "all" | "workspace" | "transitive" | "none" on
+# `unmaintained` (old "warn" is gone). "all" is the most permissive + logs.
+yanked = "warn"
+unmaintained = "all"
+ignore = [
+    # paste — upstream author archived the repo; alternatives (pastey,
+    # with_builtin_macros) exist but switching requires a tokenizers fork.
+    # No CVE, just unmaintained.
+    "RUSTSEC-2024-0436",
+    # number_prefix — used transitively by indicatif for progress bar units.
+    # Upstream alternative: unit-prefix. Waiting on indicatif upstream fix.
+    "RUSTSEC-2025-0119",
+    # RUSTSEC-2026-0002 (lru IterMut stacked-borrow unsoundness) — closed
+    # by WIDE-018 / WIDE-002: parsers/Cargo.toml now pins lru 0.17, which
+    # is past the affected 0.12.x range. Ignore left out; add back only if
+    # an older lru re-appears in the dep graph.
+    # bincode v1.3.3 — upstream says v2 is the new line; v1 is unmaintained.
+    # We use it for the embedding-cache serde. Migrate to bincode v2 in v0.4.
+    "RUSTSEC-2025-0141",
+]
+
+[licenses]
+# Workspace-private crates (publish = false in their manifest) are
+# exempt from the license-allow check. mneme-md-ingest declares
+# `license = "Proprietary"` which cargo-deny doesn't recognise as a
+# valid SPDX expression — but it's a workspace-internal stub, never
+# published, so the allow-only model has nothing to evaluate against.
+private = { ignore = true }
+
+# Apache-2.0-compatible licenses we accept upstream.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "ISC",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "0BSD",
+    "OpenSSL",
+]
+# cargo-deny 0.15+ removed `deny = [...]` — use allow-only model. Anything
+# not in `allow` above is rejected by default. To flag copyleft explicitly,
+# rely on the absence from `allow`.
+# Be lenient on confidence — many crates have ambiguous license text.
+confidence-threshold = 0.8
+exceptions = []
+
+# WIDE-001: mneme-md-ingest is a workspace-internal stub manifest that
+# declares `license = "Proprietary"` (not a valid SPDX expression). It's
+# never published; whitelist the crate so cargo-deny doesn't fail
+# licenses on it. Once the v0.4 multimodal sidecar overhaul lands and
+# md-ingest gets a real license string this can be removed.
+[[licenses.clarify]]
+name = "mneme-md-ingest"
+expression = "Apache-2.0"
+license-files = []
+
+[bans]
+# v0.3.0 (audit fix L9): single-version invariant is enforced. Every
+# duplicate that remains after `cargo tree --duplicates --workspace` is
+# justified below — see `skip` entries. New duplicates that creep in via
+# transitive bumps fail CI.
+multiple-versions = "deny"
+wildcards = "warn"
+highlight = "all"
+deny = []
+# Each entry below has a one-line rationale documenting why the duplicate
+# cannot be unified today. Re-evaluate on every release: if the upstream
+# crate that locked the older version has bumped, drop the skip.
+skip = [
+    # base64 0.13 is locked into spm_precompiled (a pinned tokenizers
+    # transitive). 0.22 is what every modern http stack speaks. Cannot
+    # unify without forking spm_precompiled.
+    { crate = "base64", reason = "spm_precompiled pins 0.13; ecosystem moved to 0.22+" },
+    # cpufeatures 0.2 vs 0.3: sha1 (rustcrypto) still ships 0.2; chacha20
+    # (the AEAD line) is on 0.3. Both lines maintained; unification
+    # requires upstream sha1 0.11 (not yet released).
+    { crate = "cpufeatures", reason = "sha1 0.10 pins 0.2; chacha20 0.10 ships 0.3 — both upstream-blocked" },
+    # getrandom split: rand 0.8 / tokenizers / ahash bundle pulls 0.2 and
+    # 0.3; rand 0.10 pulls 0.4. Tokenizers 0.20 cannot bump rand without
+    # a major API revision.
+    { crate = "getrandom", reason = "rand 0.8 vs 0.10 ecosystem split (tokenizers/ahash vs uuid)" },
+    # hashbrown 0.14 (rusqlite hashlink), 0.15 (lru/dashmap legacy), 0.17
+    # (indexmap/petgraph). 0.14 is a transitive lock on hashlink 0.9.
+    { crate = "hashbrown", reason = "rusqlite/hashlink pin 0.14; ecosystem moved to 0.15+ then 0.17" },
+    # itertools 0.10/0.11/0.12 once required a skip; ecosystem has since
+    # converged on a single version, leaving the entry as dead config —
+    # removed to silence the cargo-deny `unnecessary-skip` warning. Restore
+    # if a transitive bump re-introduces a duplicate.
+    # rand 0.8 (tokenizers, brain inline RNG, tungstenite) vs rand 0.10
+    # (uuid v1.10 v7 generator). Cannot unify without dropping uuid v7
+    # support.
+    { crate = "rand", reason = "uuid 1.10 forces 0.10; tokenizers/tungstenite still on 0.8" },
+    # rand_core mirror split — same reason as `rand` above.
+    { crate = "rand_core", reason = "parallels the rand 0.8/0.10 split" },
+    # windows-result 0.1 (windows-core 0.57 via sysinfo) vs 0.4
+    # (windows-registry 0.6 via hyper-util). sysinfo 0.32 cannot bump
+    # windows-core without a major release.
+    { crate = "windows-result", reason = "sysinfo 0.32 pins windows-core 0.57; hyper-util uses windows-registry 0.6" },
+    # windows-sys: 0.48 (dirs-sys + notify), 0.52 (windows-service), 0.59
+    # (console 0.15), 0.61 (modern clap/anstream/tokio/interprocess).
+    # Four parallel Windows API generations live across the ecosystem;
+    # unification requires every transitive to bump simultaneously.
+    { crate = "windows-sys", reason = "dirs-sys/notify (0.48), windows-service (0.52), console (0.59), modern stack (0.61) — four parallel generations" },
+    # windows-targets mirror split — same reason as `windows-sys` above.
+    { crate = "windows-targets", reason = "parallels windows-sys 0.48 vs 0.52 split" },
+    # windows_x86_64_msvc 0.48 vs 0.52 — direct fallout of the
+    # windows-sys/windows-targets split.
+    { crate = "windows_x86_64_msvc", reason = "parallels windows-targets 0.48 vs 0.52 split" },
+    # windows_x86_64_gnu 0.48 vs 0.52 — direct fallout of the
+    # windows-sys/windows-targets split, GNU ABI variant.
+    { crate = "windows_x86_64_gnu", reason = "parallels windows-targets 0.48 vs 0.52 split (GNU ABI)" },
+    # bitflags 1.3 (notify 6.1 → inotify 0.9 on Linux) vs 2.x (modern
+    # ecosystem). notify 7+ is the migration path; deferred to v0.4 with
+    # the broader filesystem-watcher overhaul. Doesn't affect Windows
+    # builds; tracked for cleanup. (WIDE-001.)
+    { crate = "bitflags", reason = "notify 6.1 → inotify 0.9 still pins 1.x on Linux; rest of ecosystem on 2.x" },
+    # mio 0.8 (notify 6.1) vs mio 1.x (tokio 1.40). Same notify-bump
+    # path. Tracked alongside the bitflags skip; both clear when notify
+    # 7+ lands. (WIDE-001.)
+    { crate = "mio", reason = "notify 6.1 still pins mio 0.8; tokio 1.40 ships mio 1.x" },
+    # dashmap once needed a skip when brain pinned 5.x; brain now uses
+    # 6.x and the ecosystem has converged on the same line, so the skip
+    # is dead config — removed to silence the cargo-deny `unnecessary-skip`
+    # warning.
+    # rand_chacha 0.3 (older dep tree) vs 0.9 (rand 0.9 ecosystem).
+    # tokenizers 0.22 + macro_rules_attribute pins 0.9; some transitives
+    # still pull 0.3. Bump deferred — pure transitive churn.
+    { crate = "rand_chacha", reason = "tokenizers 0.22 ecosystem pins rand_chacha 0.9; transitive deps still on 0.3" },
+    # thiserror 1.x vs 2.x. Some transitive crates haven't migrated to 2.x;
+    # mneme-brain itself uses 2.x. Bump deferred — same pattern as
+    # bitflags/mio/dashmap.
+    { crate = "thiserror", reason = "mneme-brain on 2.x; transitive ecosystem still has 1.x holdouts" },
+    { crate = "thiserror-impl", reason = "follows thiserror — same skip rationale" },
+    # rustix 0.38 (which 6.0 → mneme-cli, Linux only) vs rustix 1.x
+    # (tempfile 3.27 dev-dep, modern ecosystem). `which 7.x` migrates to
+    # rustix 1.x but introduces an unrelated MSRV bump; deferred to v0.4
+    # alongside the broader cli toolchain refresh.
+    { crate = "rustix", reason = "which 6.0 pins rustix 0.38 on Linux; tempfile 3.27 ships rustix 1.x — fixed by bumping which to 7.x in v0.4" },
+    # Direct fallout of the rustix 0.38 vs 1.x split (Linux only).
+    { crate = "linux-raw-sys", reason = "parallels rustix 0.38 vs 1.x split — clears when which bumps to 7.x" },
+]
+skip-tree = []
+
+[sources]
+# Where we accept dependencies from.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

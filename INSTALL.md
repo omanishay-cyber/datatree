@@ -1,0 +1,324 @@
+# INSTALL.md — mneme v0.3.2 home package
+
+Two ways to use this package: **install** (run pre-built mneme on your machine) or **work on it** (edit source). Same zip, both supported.
+
+---
+
+## Quick install (5 minutes, no admin)
+
+The canonical install path uses `-LocalZip` so the installer never has to call out to GitHub Releases (which still serves v0.3.0 until v0.3.2 is published). Following the steps below verbatim is the supported, offline-friendly path.
+
+```powershell
+# 1. Open PowerShell (any user, no admin needed)
+# 2. Extract the home zip wherever you want, then:
+cd "<extracted-path>\mneme final 2026-04-29\release"
+Expand-Archive -Path mneme-v0.3.2-windows-x64.zip -DestinationPath "$env:USERPROFILE\.mneme" -Force
+cd "$env:USERPROFILE\.mneme"
+.\scripts\install.ps1 -LocalZip "<extracted-path>\mneme final 2026-04-29\release\mneme-v0.3.2-windows-x64.zip"
+```
+
+That's it. The installer:
+
+1. Stops any running mneme processes (3-pass kill ladder — graceful → taskkill → hard abort if locks remain)
+2. Verifies Bun is installed (installs it if missing)
+3. Adds `~/.mneme/bin` to user PATH
+4. Adds Defender exclusions for `~/.mneme` and `~/.claude` (best-effort if not elevated)
+5. Starts the mneme daemon in the background
+6. Registers the mneme MCP server with Claude Code: writes the `mcpServers.mneme` entry to `~/.claude.json` AND, by default (K1 fix in v0.3.2), writes the 8 mneme hook entries under `~/.claude/settings.json::hooks` so the persistent-memory pipeline (history.db, tasks.db, tool_cache.db, livestate.db) actually fills. Pass `--no-hooks` / `--skip-hooks` to opt out. Hook bodies are crash-safe: every hook binary reads STDIN JSON and exits 0 on any internal error, so a mneme bug can never block your tool calls.
+7. Verifies post-install: every required binary present, daemon responding
+
+**To verify it worked:**
+
+```powershell
+mneme --version           # should print 0.3.2
+mneme doctor              # full diagnostic boxes (Bun, Node, Git, MSVC, ~/.mneme, ~/.claude)
+mneme cache du            # show what mneme is using on disk
+claude mcp list           # should show: mneme: ✓ Connected
+```
+
+If `claude mcp list` shows mneme connected, the headline test passes.
+
+---
+
+## First-run sanity (after install)
+
+```powershell
+# index this very project (or any project you want)
+cd C:\path\to\some\project
+mneme build .
+
+# basic ops
+mneme status             # what's indexed, last build time
+mneme cache du           # disk usage breakdown by directory + per project
+mneme cache du --json    # same data as JSON for scripting
+mneme daemon status      # is the supervisor up? per-worker pid/uptime
+mneme daemon logs        # tail the last 200 lines of daemon log
+```
+
+If any of these print sensible output, you're set.
+
+---
+
+## Cache management (NEW in v0.3.0 — basic ops, ship-blocker)
+
+The `~/.mneme/projects/<id>/` shards grow with each indexed project. To reclaim space:
+
+```powershell
+mneme cache du                                  # see what's using disk
+mneme cache prune --older-than 30d --dry-run    # preview which snapshots would be deleted
+mneme cache prune --older-than 30d              # delete snapshots older than 30 days
+mneme cache gc --dry-run                        # preview which DBs would be VACUUMed
+mneme cache gc                                  # VACUUM all shard DBs (+ wal_checkpoint truncate)
+mneme cache drop <project-path> --yes           # nuke a single project's cache (destructive)
+```
+
+Without these, first-launch users would have no recovery path on small drives. Now they do.
+
+---
+
+## Working on the source
+
+```powershell
+# 1. Extract the home zip
+# 2. Open a shell in mneme-home-package\source\
+cd "<extracted-path>\mneme-home-package\source"
+
+# 3. Build everything
+cargo build --workspace --release
+
+# 4. Run individual crate tests
+cargo test --workspace
+
+# 5. MCP server (TypeScript)
+cd mcp
+bun install      # only if node_modules wasn't included in zip
+bunx tsc --noEmit
+bun test
+```
+
+The home zip ships with `mcp/node_modules` (~100 MB, needed for MCP to run pre-built) but NOT `vision/node_modules` (~576 MB, regenerable from `bun install`).
+
+---
+
+## 6. Vision app (Tauri)
+
+> **STATUS:** shipped (vision SPA at `static/vision/`; `mneme-vision.exe`
+> in bin payload; SPA fallback via explicit-route handler). All 17
+> `/api/graph/*` endpoints respond with real shard data. Cycle-3 EC2
+> verified the round-trip (`GET /` and SPA-router URLs) via Wave 3
+> Agent M's cached-`Arc<[u8]>` handler at `supervisor/src/health.rs:317-411`.
+
+The CLI command `mneme view` launches `mneme-vision.exe` from
+`~/.mneme/bin/`. The browser fallback at `http://127.0.0.1:7777/` serves
+the dashboard from `~/.mneme/static/vision/index.html` — see the
+"v0.3 Known Limitations" table below for the full status matrix.
+
+### Prerequisites for vision dev
+
+To run `tauri dev` (or build the vision app from source), the following
+must be on PATH:
+
+| Prerequisite | Why required | Install |
+|---|---|---|
+| **Bun 1.3+** | `tauri.conf.json` declares `"beforeDevCommand": "bun server.ts"` — `tauri dev` invokes Bun to start the dev API server. Production builds also need Bun to run `vite build`. | Windows: `irm bun.sh/install.ps1 \| iex` · macOS/Linux: `curl -fsSL https://bun.sh/install \| bash` |
+| **Rust 1.78+ + cargo** | Tauri shell compiles with `cargo build --release` inside `vision/tauri/` | Standard `rustup` install |
+| **Platform Tauri deps** | Windows: WebView2 (preinstalled on Win 11) + MSVC Build Tools · macOS: Xcode CLT · Linux: `webkit2gtk-4.1`, `libsoup-3.0`, `libgtk-3` | Per-platform — see [tauri.app/start/prerequisites](https://tauri.app/start/prerequisites/) |
+
+Without Bun on PATH, `tauri dev` fails cryptically (the `beforeDevCommand`
+errors before Tauri reports a useful diagnostic). Production `tauri build`
+shipped binaries do **not** need Bun at runtime — Bun is a dev-only tool.
+
+### Bun install (vision dev)
+
+The Tauri config (`vision/tauri/tauri.conf.json`) has
+`"beforeDevCommand": "bun server.ts"` — `tauri dev` will fail cryptically
+without Bun on PATH. Install Bun 1.3+ first:
+
+```powershell
+# Windows
+irm bun.sh/install.ps1 | iex
+```
+
+```bash
+# macOS / Linux
+curl -fsSL https://bun.sh/install | bash
+```
+
+### What's missing in source (you must add these to build)
+
+| Missing file | Why required | Symptom if absent |
+|---|---|---|
+| `vision/tauri/build.rs` | `tauri::generate_context!()` requires `OUT_DIR` set by `tauri-build` | `error: OUT_DIR env var is not set, do you have a build script?` |
+| `vision/tauri/icons/icon.png` | Referenced as `bundle.icon` in `tauri.conf.json` | Bundle stage fails |
+| `vision/tauri/icons/icon.ico` | Tauri-build embeds .ico into Windows .exe via Windows Resource | `'icons/icon.ico' not found; required for generating a Windows Resource file during tauri-build` |
+
+Minimum viable `build.rs`:
+
+```rust
+// vision/tauri/build.rs
+fn main() {
+    tauri_build::build()
+}
+```
+
+Generate `icons/icon.ico` from any PNG via `magick convert`, Python PIL,
+or an online ICO generator (multi-size: 16/32/48/64/128/256).
+
+### Known gotchas (read before you build)
+
+1. **Workspace mismatch.** `vision/tauri/` is neither in `[workspace.members]`
+   nor `[workspace.exclude]` in the root `Cargo.toml`. Running `cargo build
+   --release` inside `vision/tauri/` errors with `current package believes
+   it's in a workspace when it's not`. Fix: add an empty `[workspace]`
+   table to `vision/tauri/Cargo.toml` OR add the path to
+   `workspace.exclude` at the root.
+
+2. **Hardcoded `"url": "http://127.0.0.1:7777"` in `tauri.conf.json`
+   window config.** When Tauri opens, the window loads the daemon root —
+   which 404s. The bundled `frontendDist: "../dist"` is never used. Fix:
+   remove the `url` field; Tauri 2.0 will then load `index.html` from
+   `frontendDist` via the `tauri://` custom protocol.
+
+3. **Frontend uses relative URLs that don't resolve in production
+   Tauri.** `vision/src/api.ts`, `vision/src/api/graph.ts`,
+   `vision/src/components/SidePanel.tsx`, and
+   `vision/src/components/TimelineScrubber.tsx` all `fetch("/api/graph/...")`.
+   When the page is loaded via `tauri://localhost/index.html`, those
+   relative fetches resolve to `tauri://localhost/api/graph/*`, which
+   Tauri's custom-protocol handler answers with the bundled `index.html`
+   (SPA fallback). Result: `Unexpected token '<', "<!DOCTYPE "... is not
+   valid JSON` — empty dashboard. The frontend was designed to talk to
+   the Bun server in `vision/server.ts`; in production nothing spawns it.
+
+4. **Vision Bun server defaults to port 7777 — collides with the mneme
+   daemon.** `vision/server.ts` reads `process.env.VISION_PORT ?? 7777`.
+   The daemon's HTTP `/health` is also on 7777. To run the dev server
+   alongside the daemon, set `VISION_PORT=7782` (or anything not 7777).
+
+5. **No production data layer.** Every `/api/graph/*` endpoint is in
+   TypeScript-Bun, none in Rust. Even after building the Tauri binary,
+   the views are empty because the production Tauri shell has no API to
+   talk to. v0.4 plan: either spawn `bun server.ts` from Tauri's
+   `main.rs`, or reimplement the 17 endpoints as `#[tauri::command]`
+   invocations.
+
+For now, **prefer the CLI + MCP surface**. The 48 MCP tools cover the same
+data the views would render.
+
+```powershell
+# 6. (skip — vision is not shippable in v0.3)
+# When v0.4 lands, this section will become:
+#   cd vision
+#   bun install
+#   bun run build
+#   cd tauri
+#   cargo build --release
+```
+
+`.git/` is included so you can `git log`, branch, commit, and push (you have 63 commits ahead of `origin/main` — `git push origin main` from this checkout pushes all of v0.3.0).
+
+---
+
+## v0.3 Known Limitations
+
+Mirrors the canonical table in [`CLAUDE.md`](CLAUDE.md) §"Known limitations in v0.3" (lines 55-78). v0.3.2 changes are reflected below.
+
+| Surface | Status | Notes |
+|---|---|---|
+| `mneme view` (Tauri vision app) | shipped (vision SPA at static/vision/; mneme-vision.exe in bin payload; SPA fallback via explicit-route handler) | F1 D2-D4 wired all 17 daemon JSON endpoints + frontend `API_BASE`; 14/14 view components in `vision/src/views/*.tsx` consume real shard data. Browser fallback at `http://127.0.0.1:7777/` serves the dashboard via the cached-`Arc<[u8]>` explicit-route handler at `supervisor/src/health.rs:317-411` (Wave 3 Agent M, cycle-3 EC2 verified). |
+| WebSocket livebus relay (`/ws`) | dev-only, partial | `livebus/` crate compiles + SSE/WebSocket schema defined, but production daemon does not host the `/ws` endpoint. Used only in dev when both Bun server and Tauri are local. |
+| Voice navigation (`/api/voice`) | stub | Endpoint returns `{enabled: false, phase: "stub"}`. No voice recognition wired. |
+| Per-worker `rss_mb` on Windows | resolved (C1 in v0.3.2) | Supervisor SLA snapshot now reports real `rss_mb` values on Windows via `GetProcessMemoryInfo`. Previously always `0`. |
+| Tesseract OCR (image text) | opt-in, off by default | Shipped `mneme-multimodal` binary built without `tesseract` feature. Indexed images record dimensions + EXIF only. To enable: `cargo build -p mneme-multimodal --features tesseract` after installing libtesseract + leptonica. Tracked as I-20. |
+| Real BGE-small ONNX embeddings | opt-in via `mneme models install` | Default install runs pure-Rust hashing-trick embedder (works, lower recall). Real embeddings require `mneme models install --from-path <dir>` because `.onnx` + tokenizer aren't bundled. |
+| Claude Code hooks | default-on (K1 fix in v0.3.2) | `mneme install` now writes the 8 hook entries under `~/.claude/settings.json::hooks` by default. Without hooks the persistent-memory pipeline (history.db, tasks.db, tool_cache.db, livestate.db) stays empty. To skip, pass `--no-hooks` / `--skip-hooks`. Every hook binary reads STDIN JSON and exits 0 on internal error — a mneme bug can never block the user's tool calls. |
+
+For the full list of what shipped, see `docs-and-memory/V0.3.0-WHATS-IN.md`. For phase-A categorisation of remaining issues, see `docs-and-memory/phase-a-issues.md`.
+
+---
+
+## Uninstall
+
+```powershell
+# Remove platform configs (Claude Code MCP entry, etc.)
+mneme uninstall --platform claude-code
+
+# Full removal: stop daemon, drop PATH entries, remove Defender exclusions, delete state
+mneme uninstall --all --purge-state
+```
+
+`--all` runs the full nuclear path: taskkill the daemon + workers, drop `~/.mneme/bin` from user PATH, remove Defender exclusions for `~/.mneme` and `~/.claude`, then with `--purge-state` deletes `~/.mneme/` entirely. Without `--purge-state`, project shards survive so you can reinstall later without re-indexing.
+
+---
+
+## Troubleshooting
+
+**`claude mcp list` shows mneme as not connected:**
+- Run `mneme doctor` to see what's missing
+- Verify `mneme.exe` is on PATH (`where mneme` in PowerShell)
+- Verify `~/.claude.json` has `mcpServers.mneme.command` pointing at `mneme.exe` (or full path)
+- The v0.3.0 installer writes the absolute path via `which::which("mneme")` (closes I-1 from VMware audit)
+
+**Install fails with "FATAL: N mneme process(es) still running":**
+- Close any open VS Code with mneme MCP active, or any other Claude session
+- Run `mneme daemon stop`
+- If still failing: `taskkill /F /T /IM mneme-daemon.exe` then rerun installer
+
+**Install fails because Bun missing:**
+- The installer auto-installs Bun via the official Bun installer (bun.sh)
+- If that fails: `irm bun.sh/install.ps1 | iex` manually, then rerun mneme installer
+
+**Daemon won't start:**
+- `mneme daemon logs --lines 500` — check for panic / config error
+- `mneme doctor` — Windows: ensure MSVC Build Tools probe doesn't show MISSING
+- Check `~/.mneme/run/daemon.pid` exists; if stale, `mneme daemon stop` then `mneme daemon start`
+
+**`mneme build .` is slow:**
+- First run on a large repo (>50K LOC) takes minutes — parsing every file via tree-sitter
+- Watch progress: `mneme daemon logs --lines 100` (look for `worker=parsers status=running`)
+- Subsequent runs use the incremental cache (~10× faster)
+
+**Disk filling up:**
+- `mneme cache du` — see breakdown
+- `mneme cache prune --older-than 30d` — drop old snapshots
+- `mneme cache gc` — VACUUM shards (typical 20-40% reduction)
+- `mneme cache drop <project>` — nuke a project entirely
+
+---
+
+## Where things live on your machine after install
+
+```
+%USERPROFILE%\
+├── .mneme\
+│   ├── bin\                    # 9 mneme binaries (~250 MB)
+│   ├── mcp\                    # MCP server (TypeScript + node_modules)
+│   ├── projects\<id>\          # per-project shards (graph.db + 25 others)
+│   ├── snapshots\<id>\         # point-in-time DB copies
+│   ├── cache\                  # docs/embed/multimodal cache (LRU bounded)
+│   ├── models\                 # LLM weights (only if --features=llm)
+│   ├── install-receipts\       # what install wrote (for clean uninstall)
+│   ├── run\daemon.pid          # supervisor PID (for `mneme daemon status`)
+│   ├── meta.db                 # global metadata
+│   └── supervisor.pipe         # IPC socket name
+└── .claude\
+    └── (existing Claude config — mneme adds only mcpServers.mneme entry)
+```
+
+---
+
+## Related docs in this package
+
+- `docs-and-memory/SESSION-2026-04-25-FINAL.md` — what got built today
+- `docs-and-memory/V0.3.0-WHATS-IN.md` — full v0.3.0 feature catalog
+- `docs-and-memory/V0.3.1-PLUS-ROADMAP.md` — what's deferred / next-up
+- `docs-and-memory/issues.md` — issue tracker (closed + remaining)
+- `docs-and-memory/memory/` — Anish's memory files (preserve these on home machine)
+
+---
+
+## License
+
+Apache-2.0. Copyright 2026 Anish Trivedi & Kruti Trivedi.
+
+Sole copyright holder. Permissive: use, modify, distribute, sublicense, including commercially. Requires attribution + NOTICE preservation.
