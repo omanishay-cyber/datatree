@@ -141,15 +141,8 @@
       margin-bottom: 20px;
     }
     .logo {
-      font-size: 54px;
-      line-height: 1;
-      animation: float 6s ease-in-out infinite;
       display: inline-block;
-      filter: drop-shadow(0 4px 20px rgba(65,225,181,0.25));
-    }
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-6px); }
+      vertical-align: middle;
     }
     .version-pill {
       display: inline-flex;
@@ -179,23 +172,17 @@
     }
 
     h1.wordmark {
-      font-size: clamp(64px, 10vw, 112px);
-      font-weight: 800;
-      letter-spacing: -0.04em;
+      font-size: clamp(64px, 10vw, 120px);
+      font-weight: 700;
+      letter-spacing: -0.045em;
       line-height: 0.95;
       margin-bottom: 18px;
+      color: var(--text-strong);
     }
+    /* Single solid color — no rainbow gradient. Per UI/UX Pro Max anti-pattern:
+       'Bright neon colors + AI purple/pink gradients' is generic-AI flavor. */
     .gradient-text {
-      background: linear-gradient(100deg, var(--accent-a) 0%, var(--accent-b) 50%, var(--accent-c) 100%);
-      background-size: 200% 100%;
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      animation: gradient-sweep 8s ease-in-out infinite;
-    }
-    @keyframes gradient-sweep {
-      0%, 100% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
+      color: var(--accent-green);
     }
 
     .tagline {
@@ -226,15 +213,15 @@
       transition: transform 0.15s ease, filter 0.2s ease, box-shadow 0.2s ease;
     }
     .cta-primary {
-      background: linear-gradient(100deg, var(--accent-blue), var(--accent-cyan));
+      background: var(--text-strong);
       color: #ffffff;
-      box-shadow: var(--shadow-cta);
+      cursor: pointer;
     }
     .cta-primary:hover {
-      filter: brightness(1.05);
-      transform: translateY(-2px);
+      background: var(--accent-green);
+      transform: translateY(-1px);
       text-decoration: none;
-      box-shadow: 0 4px 8px rgba(42,126,211,0.22), 0 14px 34px rgba(42,126,211,0.30);
+      box-shadow: 0 6px 16px rgba(22,163,124,0.22);
     }
     .cta-secondary {
       border: 1px solid var(--line-strong);
@@ -432,10 +419,7 @@
       color: var(--text-strong);
     }
     section h2 .accent {
-      background: linear-gradient(100deg, var(--accent-blue), var(--accent-green));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
+      color: var(--accent-green);
     }
     section .lead {
       color: var(--muted);
@@ -992,7 +976,11 @@
   <div class="hero">
     <div class="hero-left">
       <div class="logo-row">
-        <span class="logo" aria-hidden="true">🌳</span>
+        <svg class="logo" width="44" height="44" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect x="3" y="3" width="26" height="26" rx="6" fill="#0a0a0c"/>
+          <path d="M8 22 L8 12 L11 12 L16 18 L21 12 L24 12 L24 22" stroke="#16a37c" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="16" cy="9.5" r="1.4" fill="#16a37c"/>
+        </svg>
         <span class="version-pill">v0.3.2 · live</span>
       </div>
       <h1 class="wordmark"><span class="gradient-text">mneme</span></h1>
