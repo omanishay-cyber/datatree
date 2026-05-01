@@ -60,15 +60,24 @@ jobs:
         run: cargo build --workspace --verbose
 
       - name: Test
-        # B-022 (D:\Mneme Dome cycle, 2026-04-30): cap test parallelism on
-        # ubuntu so the 7-GB GitHub runner doesn't OOM-cancel mid-suite.
-        # Earlier `ubuntu-latest` runs were force-cancelled at the 9-min
-        # mark (per WHAT-I-BROKE-2026-04-30 §2). `--test-threads=2` keeps
-        # the daemon-spawn-heavy supervisor + cli tests from doubling-up.
-        # Windows + macOS retain default parallelism (no observed OOM).
+        # B-022 v3 (D:\Mneme Dome cycle, 2026-05-01): drop to
+        # --test-threads=1 (fully serial) on ubuntu. v1 with
+        # --test-threads=2 + ubuntu-22.04 still cancelled at the 9-min
+        # mark (CI run 25202102909). Either the OOM is worse than 2-thread
+        # tolerates OR it's actually a wall-clock issue (free-tier reclaim)
+        # rather than memory. Serial is the safe bet — slower but
+        # deterministic. Plus split into per-crate runs so a single
+        # crate's slowness doesn't blow the 9-min budget if it's wall-time
+        # and not OOM. Windows + macOS retain default parallelism.
         run: |
           if [ "${{ runner.os }}" = "Linux" ]; then
-            cargo test --workspace --verbose -- --test-threads=2
+            for crate in mneme-common mneme-store mneme-parsers mneme-scanners \
+                         mneme-livebus mneme-multimodal mneme-md-ingest \
+                         mneme-brain mneme-daemon mneme-cli; do
+              echo "::group::cargo test -p $crate"
+              cargo test -p "$crate" --verbose -- --test-threads=1
+              echo "::endgroup::"
+            done
           else
             cargo test --workspace --verbose
           fi
