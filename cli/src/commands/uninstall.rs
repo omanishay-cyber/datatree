@@ -696,31 +696,31 @@ fn purge_mneme_state() {
         // If the bin/ dir survives because of the self-locked mneme.exe,
         // we still spawn the detached fallback for that one binary.
         let mut sync_remaining: Vec<std::path::PathBuf> = Vec::new();
-        let sync_target_dirs: Vec<&str> = vec![
-            "cache", "install-receipts", "logs", "mcp", "models",
-            "plugin", "projects", "run", "scripts", "static", "vision-dist",
-        ];
-        let sync_target_files: Vec<&str> = vec![
-            ".install-manifest.json", "CHANGELOG.md", "CLAUDE.md", "INSTALL.md",
-            "LICENSE", "README.md", "VERSION.txt", "uninstall.ps1",
-            "supervisor.pipe", "meta.db",
-        ];
-        // Delete every NON-bin item synchronously first.
-        for sub in &sync_target_dirs {
-            let p = mneme_dir.join(sub);
-            if p.exists() {
-                if let Err(e) = std::fs::remove_dir_all(&p) {
+        // B-025 (audit follow-up, 2026-04-30): enumerate everything in
+        // ~/.mneme except `bin/` (the self-locked one). Replaces the
+        // earlier hard-coded list which missed `llm/`, `crashes/`,
+        // `brain/`, `supervisor.log`, `livebus.log`, etc. — and would
+        // silently leak any future top-level dir/file that mneme might
+        // add. Future-proof + complete.
+        if let Ok(entries) = std::fs::read_dir(&mneme_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                let name = entry.file_name();
+                if name == "bin" {
+                    // bin/ holds the running mneme.exe — defer to the
+                    // detached fallback (and B-024 residue notice).
+                    continue;
+                }
+                let ftype = entry.file_type();
+                let is_dir = ftype.map(|t| t.is_dir()).unwrap_or(false);
+                let result = if is_dir {
+                    std::fs::remove_dir_all(&p)
+                } else {
+                    std::fs::remove_file(&p)
+                };
+                if let Err(e) = result {
                     sync_remaining.push(p.clone());
                     warn!(path = %p.display(), error = %e, "sync delete failed");
-                }
-            }
-        }
-        for sub in &sync_target_files {
-            let p = mneme_dir.join(sub);
-            if p.exists() {
-                if let Err(e) = std::fs::remove_file(&p) {
-                    sync_remaining.push(p.clone());
-                    warn!(path = %p.display(), error = %e, "sync file delete failed");
                 }
             }
         }

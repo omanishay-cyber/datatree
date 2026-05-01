@@ -54,11 +54,26 @@ impl ScanWorker {
     }
 
     /// Run every applicable scanner on a single job. Never panics — each
-    /// scanner is wrapped in [`std::panic::catch_unwind`] via `tokio::task::spawn_blocking`
-    /// indirection so a regex bug or stack overflow can't take the worker
-    /// down. (We avoid spawn_blocking here because the scanner work is
-    /// very short; instead we use catch_unwind on the synchronous part.)
+    /// scanner is wrapped in [`std::panic::catch_unwind`] so a regex bug
+    /// or stack overflow can't take the worker down.
+    ///
+    /// Async wrapper around [`Self::run_one_blocking`] for callers that
+    /// need a `Future`. The body is purely synchronous; use
+    /// `run_one_blocking` directly + `spawn_blocking` if you need real
+    /// preemption (B-019 / B-027 — `tokio::time::timeout` cannot
+    /// interrupt sync code, so the orchestrator wraps `run_one_blocking`
+    /// in `tokio::task::spawn_blocking` for the per-file timeout).
     pub async fn run_one(&self, job: ScanJob) -> ScanResult {
+        self.run_one_blocking(job)
+    }
+
+    /// Synchronous body of [`Self::run_one`]. Extracted so the per-file
+    /// timeout in `scanners/src/main.rs::run_orchestrator_mode` can wrap
+    /// it in `tokio::task::spawn_blocking` and have `tokio::time::timeout`
+    /// actually preempt CPU-bound scanner code (B-027 / 2026-04-30 audit
+    /// follow-up to B-019: tokio cannot interrupt sync futures, only
+    /// blocking-pool futures).
+    pub fn run_one_blocking(&self, job: ScanJob) -> ScanResult {
         let started = Instant::now();
         let mut findings = Vec::new();
         let mut failed_scanners = Vec::new();

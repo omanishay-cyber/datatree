@@ -516,6 +516,15 @@ fn process_scanner_line(line: &str, outcome: &mut StreamOutcome) {
     if trimmed.is_empty() {
         return;
     }
+    // B-027 (D:\Mneme Dome cycle, 2026-05-01): scanner subprocess emits
+    // periodic `{"_progress": true, ...}` heartbeat lines (B-019) so the
+    // CLI's read-loop budget doesn't false-positive a hang on long
+    // stretches of zero-finding files. They are NOT findings — skip them
+    // before falling through to the Finding deserializer (which would
+    // log "skipping malformed finding line" at debug for every beat).
+    if trimmed.contains("\"_progress\"") {
+        return;
+    }
     // Try the summary marker first — it's the LAST line, so success
     // shortcircuits.
     if trimmed.starts_with("{\"_done\"") || trimmed.contains("\"_done\":true") {
@@ -635,6 +644,12 @@ struct DoneSummary {
     #[allow(dead_code)]
     findings: usize,
     errors: usize,
+    /// B-027 (2026-05-01 audit follow-up to B-019): files killed by the
+    /// per-file 60s timeout. `#[serde(default)]` keeps backward-compat
+    /// with older scanner subprocesses that don't emit this field.
+    #[allow(dead_code)]
+    #[serde(default)]
+    timeouts: usize,
     duration_ms: u64,
 }
 

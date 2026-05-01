@@ -423,15 +423,37 @@ async fn run_orchestrator_mode(cmd: OrchestratorCommand) -> std::io::Result<()> 
         // makes the catch_unwind in worker.rs a no-op, so process-level
         // diagnostics are the only signal).
         eprintln!("[scan-file] {}", path.display());
-        // B-019: per-file timeout. Any single file taking >60s indicates
-        // a runaway scanner; we record it and move on. The stderr
-        // checkpoint above pinpoints the offender for postmortem.
-        let res = match tokio::time::timeout(PER_FILE_TIMEOUT, worker.run_one(job)).await {
-            Ok(r) => r,
+        // B-019 / B-027 (D:\Mneme Dome cycle, 2026-04-30): per-file
+        // timeout via spawn_blocking. The original B-019 wrapped
+        // `worker.run_one(job).await` in `tokio::time::timeout` — but
+        // `run_one`'s body is purely synchronous (no .await points), so
+        // tokio's timer cannot preempt it. The fix is to run the
+        // sync body on the blocking pool: tokio CAN cancel a JoinHandle
+        // returned by spawn_blocking when the timeout fires (the OS
+        // thread keeps running until the scanner returns naturally,
+        // but the orchestrator's await unblocks immediately).
+        let worker_clone = worker.clone();
+        let path_for_log = path.to_path_buf();
+        let res = match tokio::time::timeout(
+            PER_FILE_TIMEOUT,
+            tokio::task::spawn_blocking(move || worker_clone.run_one_blocking(job)),
+        )
+        .await
+        {
+            Ok(Ok(r)) => r,
+            Ok(Err(join_err)) => {
+                eprintln!(
+                    "[scan-spawn-error] {} ({})",
+                    path_for_log.display(),
+                    join_err
+                );
+                errors += 1;
+                continue;
+            }
             Err(_) => {
                 eprintln!(
                     "[scan-timeout] {} (exceeded {}s)",
-                    path.display(),
+                    path_for_log.display(),
                     PER_FILE_TIMEOUT.as_secs()
                 );
                 timeouts += 1;
@@ -492,6 +514,7 @@ async fn run_orchestrator_mode(cmd: OrchestratorCommand) -> std::io::Result<()> 
         "scanned": scanned,
         "findings": findings_total,
         "errors": errors,
+        "timeouts": timeouts,
         "duration_ms": duration_ms,
     });
     let mut summary_bytes = serde_json::to_vec(&summary)?;
