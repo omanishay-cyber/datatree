@@ -86,6 +86,12 @@ async fn main() -> std::io::Result<()> {
         let ipc_tap = ipc_tap_tx.clone();
         worker_handles.push(tokio::spawn(async move {
             let worker = ScanWorker::new(registry, id as u32);
+            // B-029 (D:\Mneme Dome cycle, 2026-05-01): same per-file
+            // timeout the orchestrator path uses (B-019/B-027). Without
+            // it, a single pathological file can wedge a pool worker
+            // forever — and the watchdog won't restart it (no worker
+            // emits heartbeats per audit finding 1.1).
+            const PER_FILE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
             // Each worker pops jobs from a shared mutex-protected receiver
             // (single channel, multiple consumers).
             loop {
@@ -94,7 +100,43 @@ async fn main() -> std::io::Result<()> {
                     guard.recv().await
                 };
                 let Some(job) = job else { break };
-                let res = worker.run_one(job).await;
+                let job_path_for_log = job.file_path.clone();
+                let job_id = job.job_id;
+                let worker_clone = worker.clone();
+                let res = match tokio::time::timeout(
+                    PER_FILE_TIMEOUT,
+                    tokio::task::spawn_blocking(move || worker_clone.run_one_blocking(job)),
+                )
+                .await
+                {
+                    Ok(Ok(r)) => r,
+                    Ok(Err(join_err)) => {
+                        eprintln!(
+                            "[pool-scan-spawn-error] worker={} file={} ({})",
+                            id,
+                            job_path_for_log.display(),
+                            join_err
+                        );
+                        continue;
+                    }
+                    Err(_) => {
+                        eprintln!(
+                            "[pool-scan-timeout] worker={} file={} (exceeded {}s)",
+                            id,
+                            job_path_for_log.display(),
+                            PER_FILE_TIMEOUT.as_secs()
+                        );
+                        // Still emit a synthetic ScanResult so downstream
+                        // counters stay consistent; failed_scanners signals
+                        // the timeout.
+                        ScanResult {
+                            job_id,
+                            findings: Vec::new(),
+                            scan_duration_ms: PER_FILE_TIMEOUT.as_millis() as u64,
+                            failed_scanners: vec!["timeout".to_string()],
+                        }
+                    }
+                };
                 // Tap: best-effort IPC telemetry push. A full channel
                 // just drops the tap — the primary batcher path still
                 // completes.

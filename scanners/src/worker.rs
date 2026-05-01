@@ -57,14 +57,59 @@ impl ScanWorker {
     /// scanner is wrapped in [`std::panic::catch_unwind`] so a regex bug
     /// or stack overflow can't take the worker down.
     ///
-    /// Async wrapper around [`Self::run_one_blocking`] for callers that
-    /// need a `Future`. The body is purely synchronous; use
-    /// `run_one_blocking` directly + `spawn_blocking` if you need real
-    /// preemption (B-019 / B-027 — `tokio::time::timeout` cannot
-    /// interrupt sync code, so the orchestrator wraps `run_one_blocking`
-    /// in `tokio::task::spawn_blocking` for the per-file timeout).
+    /// B-029 (D:\Mneme Dome cycle, 2026-05-01): bakes the per-file 60s
+    /// timeout in via `tokio::task::spawn_blocking` so EVERY caller of
+    /// `run_one` (pool worker, library `run` helper, `scan_and_persist`,
+    /// orchestrator fallback) inherits real preemption — not the
+    /// theatrical version that pre-B-027 tokio::time::timeout couldn't
+    /// enforce against sync futures. On timeout, returns a synthetic
+    /// `ScanResult` with `failed_scanners=["timeout"]` so callers can
+    /// detect + count the event without changing return type.
+    ///
+    /// Callers that want different timeout semantics (e.g. infinite for
+    /// debugging) should call [`Self::run_one_blocking`] directly + manage
+    /// their own preemption.
     pub async fn run_one(&self, job: ScanJob) -> ScanResult {
-        self.run_one_blocking(job)
+        const PER_FILE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+        let job_id = job.job_id;
+        let path_for_log = job.file_path.clone();
+        let worker_clone = self.clone();
+        match tokio::time::timeout(
+            PER_FILE_TIMEOUT,
+            tokio::task::spawn_blocking(move || worker_clone.run_one_blocking(job)),
+        )
+        .await
+        {
+            Ok(Ok(r)) => r,
+            Ok(Err(join_err)) => {
+                tracing::error!(
+                    worker_id = self.id,
+                    file = %path_for_log.display(),
+                    error = %join_err,
+                    "scan task panicked or was cancelled inside spawn_blocking",
+                );
+                ScanResult {
+                    job_id,
+                    findings: Vec::new(),
+                    scan_duration_ms: 0,
+                    failed_scanners: vec!["join_error".to_string()],
+                }
+            }
+            Err(_) => {
+                tracing::warn!(
+                    worker_id = self.id,
+                    file = %path_for_log.display(),
+                    timeout_secs = PER_FILE_TIMEOUT.as_secs(),
+                    "scanner exceeded per-file timeout; emitting synthetic timeout result",
+                );
+                ScanResult {
+                    job_id,
+                    findings: Vec::new(),
+                    scan_duration_ms: PER_FILE_TIMEOUT.as_millis() as u64,
+                    failed_scanners: vec!["timeout".to_string()],
+                }
+            }
+        }
     }
 
     /// Synchronous body of [`Self::run_one`]. Extracted so the per-file
