@@ -1,29 +1,30 @@
 <!-- mneme-start v1.0 -->
-# Mneme — Qoder Manifest
+# Mneme - Qoder Manifest
 
 > This file is consumed by **Qoder** as a project context file. Mneme
 > integrates with Qoder via the same MCP server + hooks used by Claude
 > Code; this manifest documents the Qoder-specific routing rules.
 
-This project has the **mneme** local daemon installed. Mneme provides
+This project has the **mneme** local daemon installed (v0.3.2). Mneme provides
 Qoder with persistent SQLite memory, a live code graph, drift detection, a
-compaction-resilient step ledger, and 30+ MCP tools.
+compaction-resilient step ledger, and **48 MCP tools** + **11 scanners** +
+**8 hooks** + **14 WebGL views**.
 
 ## Qoder-specific Tool Routing
 
 Qoder's chat-then-act loop benefits from mneme's structured recall.
 Before any code action:
 
-1. `recall_file(path)` — confirm the file is in the index and get a summary.
-2. `recall_constraint(scope='file', file=path)` — get rules that apply.
-3. `blast_radius(target=path)` — know what your edit will ripple into.
+1. `recall_file(path)` - confirm the file is in the index and get a summary.
+2. `recall_constraint(scope='file', file=path)` - get rules that apply.
+3. `blast_radius(target=path)` - know what your edit will ripple into.
 
-Then act, and after the action ends call no extra hooks — mneme's
+Then act, and after the action ends call no extra hooks - mneme's
 PostToolUse capture writes the change to history.db automatically.
 
 ## Tool Catalog
 
-Same as Claude/AGENTS.md — see those files for the full list. Highlights:
+Same as Claude/AGENTS.md - see those files for the full list. Highlights:
 
 - `recall_*` family for memory
 - `blast_radius`, `call_graph`, `find_references` for impact

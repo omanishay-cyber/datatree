@@ -1,18 +1,19 @@
 <!-- mneme-start v1.0 -->
-# Mneme — Qwen-Code Manifest
+# Mneme - Qwen-Code Manifest
 
 > This file is consumed by **Qwen-Code** (Alibaba's Qwen-coder CLI) as a
 > project context file. Mneme integrates via stdio MCP, identically to
 > Claude Code.
 
-This project has the **mneme** local daemon installed. Mneme gives
+This project has the **mneme** local daemon installed (v0.3.2). Mneme gives
 Qwen-Code persistent SQLite memory, a live code graph, drift detection, a
-compaction-resilient step ledger, and 30+ MCP tools.
+compaction-resilient step ledger, and **48 MCP tools** + **11 scanners** +
+**8 hooks** + **14 WebGL views**.
 
 ## Qwen-specific Tool Routing
 
 Qwen tends to over-Read large files. Mneme's `recall_file` returns the
-hash + summary in <5ms — use it first and skip the Read entirely if the
+hash + summary in <5ms - use it first and skip the Read entirely if the
 file is unchanged since you last saw it.
 
 For large refactors, ALWAYS run `blast_radius(target)` first. Qwen's wide
@@ -36,7 +37,7 @@ Same set as the universal AGENTS.md. Quick reference:
 ## Step Ledger + Compaction
 
 After any Qwen context reset, call `step_resume()` first. The bundle
-includes the verification gate for the current step — pass it before
+includes the verification gate for the current step - pass it before
 `step_complete()`.
 
 ## Local Only

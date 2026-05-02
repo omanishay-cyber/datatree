@@ -1,15 +1,17 @@
 <!-- mneme-start v1.0 -->
-# Mneme — Universal Agent Manifest
+# Mneme - Universal Agent Manifest
 
 > This file is the **universal** version of mneme's plugin manifest. It is
 > used identically by Codex, Cursor (via .cursor/rules), OpenCode, Aider,
 > Trae, Continue, Cline, RooCode, and any other AI harness that reads
 > AGENTS.md as a project-rules file.
 
-This project has the **mneme** local daemon installed. Mneme exposes:
-- 30+ MCP tools (recall, code graph, drift, step ledger, time machine, health)
-- 8 hooks (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd, PreCompact, SubagentStop)
-- 14 view modes for the live code graph
+This project has the **mneme** local daemon installed (v0.3.2). Mneme exposes:
+- **48 MCP tools** (recall, code graph, drift, step ledger, time machine, health, conventions, refactor, wiki, intent, federated)
+- **11 built-in scanners** (theme, security, perf, a11y, drift, ipc, md-drift, secrets, refactor, architecture, types)
+- **8 hooks** (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd, PreCompact, SubagentStop)
+- **14 WebGL views** for the live code graph
+- **22 sharded SQLite DBs** + global meta.db
 - Compaction-resilient Step Ledger
 
 All mneme state is stored in local SQLite shards under
@@ -35,15 +37,15 @@ answer the question structurally:
 
 Token-efficiency target: **<= 5 tool calls per task, <= 800 tokens of context.**
 
-## Step Ledger — Compaction Resilience
+## Step Ledger - Compaction Resilience
 
 Mneme's killer feature is the Step Ledger. Whenever you take on a task
 with three or more steps:
 
-1. `step_plan_from(markdown_path)` — ingest a plan, or `step_status` to read it.
-2. For each step: `step_show` → do the work → `step_verify` → `step_complete`.
+1. `step_plan_from(markdown_path)` - ingest a plan, or `step_status` to read it.
+2. For each step: `step_show` -> do the work -> `step_verify` -> `step_complete`.
 3. After **any context reset**, call `step_resume()` first. Continue from the
-   current step — do not restart from the beginning.
+   current step - do not restart from the beginning.
 
 ## Drift Detection
 
@@ -79,7 +81,7 @@ no cloud sync. All extraction, embedding, and audit work runs locally
 | Live push latency | <50ms |
 | Resume bundle | <100ms |
 
-If you observe a tool exceeding budget, run `health()` — supervisor will
+If you observe a tool exceeding budget, run `health()` - supervisor will
 report the slow worker.
 
 ## Workflow Codewords

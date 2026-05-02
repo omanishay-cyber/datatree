@@ -1,14 +1,14 @@
 <!-- mneme-start v1.0 -->
-# Mneme — Gemini CLI Manifest
+# Mneme - Gemini CLI Manifest
 
 > This file is consumed by **Gemini CLI** as a project context file. Mneme
 > works identically in Gemini sessions; the rules below are tuned for
 > Gemini's tool-use model.
 
-This project has the **mneme** local daemon installed. Mneme gives
+This project has the **mneme** local daemon installed (v0.3.2). Mneme gives
 Gemini CLI a persistent SQLite memory, live code graph, drift detector,
-step ledger, and 30+ MCP tools — all stored locally under
-`~/.mneme/projects/`.
+step ledger, and **48 MCP tools** + **11 scanners** + **8 hooks** + **14 WebGL
+views** - all stored locally under `~/.mneme/projects/`.
 
 ## Gemini-specific Tool Routing
 
@@ -16,9 +16,9 @@ Gemini CLI's strongest pattern is "ask one tool, get structured JSON, decide
 next." Mneme returns deterministic JSON for every tool, so chain like:
 
 ```
-recall_file(path) → if hash unchanged && summary present, skip the read
-recall_constraint(scope='file', file=path) → constraints to honor in your edit
-blast_radius(target) → know what you'll affect before you edit
+recall_file(path) -> if hash unchanged && summary present, skip the read
+recall_constraint(scope='file', file=path) -> constraints to honor in your edit
+blast_radius(target) -> know what you'll affect before you edit
 ```
 
 Prefer these over `read_file` / `glob` / `search_file_content` whenever
@@ -40,7 +40,7 @@ the structural answer is sufficient.
 
 Gemini's chat compaction can occur silently. After **any** unexpected
 context reset, call `step_resume()` immediately. Continue from the
-current step — do not restart.
+current step - do not restart.
 
 ## Drift Redirects
 

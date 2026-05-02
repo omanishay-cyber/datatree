@@ -1,10 +1,11 @@
 <!-- mneme-start v1.0 -->
-# Mneme — Persistent Project Memory + Live Code Graph
+# Mneme - Persistent Project Memory + Live Code Graph
 
-This project has the **mneme** plugin installed. Mneme is a local,
+This project has the **mneme** plugin installed (v0.3.2). Mneme is a local,
 no-internet daemon that gives Claude Code a persistent SQLite memory, a
 live code graph, a drift detector, a step ledger that survives compaction,
-and 30+ MCP tools.
+and **48 MCP tools** + **11 scanners** + **8 hooks** + **14 WebGL views**
+backed by **22 sharded SQLite DBs**.
 
 ## Tool Usage Rules (always follow before Grep/Glob/Read)
 
@@ -32,17 +33,17 @@ Fall back to Grep/Glob/Read **only** when mneme doesn't cover what you need.
 
 Multi-step tasks **must** be tracked in the step ledger. The ledger is a
 SQLite-backed list of numbered steps with acceptance commands. It survives
-context compaction — when context resets, the resumer rebuilds where you were.
+context compaction - when context resets, the resumer rebuilds where you were.
 
 Use this loop for any task with **3 or more** steps:
 
-1. `step_plan_from(markdown_path)` — turn a plan into a ledger
+1. `step_plan_from(markdown_path)` - turn a plan into a ledger
    (or call `step_status` if a plan already exists).
 2. For each step:
-   - `step_show(step_id)` — read the step
+   - `step_show(step_id)` - read the step
    - Do the work
-   - `step_verify(step_id)` — run the acceptance check
-   - `step_complete(step_id)` — advance (only after verify passes)
+   - `step_verify(step_id)` - run the acceptance check
+   - `step_complete(step_id)` - advance (only after verify passes)
 3. After **every compaction or session restart**, call `step_resume()` first.
 
 Never combine fixes. **One fix = one step.** This is non-negotiable.
@@ -62,7 +63,7 @@ tagged red (critical) / yellow (should-fix) / green (info).
 
 Drift redirects: if your responses diverge from the active goal for **2+
 consecutive turns**, mneme prepends a `<mneme-redirect>` block to your
-next prompt. **Take it seriously** — re-anchor to the active step before
+next prompt. **Take it seriously** - re-anchor to the active step before
 continuing.
 
 ## Compaction Resilience
@@ -86,11 +87,11 @@ it manually.
 | `recall_file`, `recall_decision`, `recall_todo` | <= 5ms | always before Read |
 | `blast_radius`, `call_graph`, `find_references` | <= 5ms | before Edit/Write |
 | `recall_concept` (semantic search) | <= 50ms | open-ended exploration |
-| `audit*`, `drift_findings` | 50–500ms | before commit, on demand |
-| `graphify_corpus` | seconds–minutes | once per major change |
+| `audit*`, `drift_findings` | 50-500ms | before commit, on demand |
+| `graphify_corpus` | seconds-minutes | once per major change |
 
 If a tool is slow (>1s), mneme's `health()` will be yellow/red. Tell the
-user — do not silently retry.
+user - do not silently retry.
 
 ## What mneme captures (privacy)
 
