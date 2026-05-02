@@ -12,13 +12,13 @@ Last updated: 2026-05-02 (after v0.3.2 + 52-fix audit cycle).
 
 ## ✅ Shipped in v0.3.0 (previously parked)
 
-- ~~Wire remaining MCP tools to real data~~ → **done** - 47/47 wired (was 3/47 at v0.2.0).
-- ~~Real BGE-small ONNX embeddings~~ → **done** - `brain` `real-embeddings` feature, `ort` with `api-24` + `load-dynamic`, 384-dim BGE inference, graceful fallback when model absent.
-- ~~Supervisor-mediated worker dispatch~~ → **done** - `common::Job`, `supervisor::JobQueue`, `cli build --dispatch` flag, requeue-on-child-exit.
-- ~~Multimodal PDF ingestion end-to-end~~ → **done** - pure-Rust `pdf-extract 0.7` path; every PDF page becomes a graph node indexed via FTS5.
-- ~~Julia + Zig Tree-sitter grammar queries~~ → **done** - node type names corrected against `src/node-types.json`; both smoke tests green.
-- ~~Benchmark CSV numbers published against external baseline~~ → **done** - `BENCHMARKS.md` now has the mneme-vs-CRG section (1000× incremental, 6.6× density).
-- ~~CI benchmark seed baseline~~ → **done** - baseline workflow is the manual-trigger publisher; bench workflow runs on every PR with 10% regression threshold.
+- ~~Wire remaining MCP tools to real data~~ -> **done** - 47/47 wired (was 3/47 at v0.2.0).
+- ~~Real BGE-small ONNX embeddings~~ -> **done** - `brain` `real-embeddings` feature, `ort` with `api-24` + `load-dynamic`, 384-dim BGE inference, graceful fallback when model absent.
+- ~~Supervisor-mediated worker dispatch~~ -> **done** - `common::Job`, `supervisor::JobQueue`, `cli build --dispatch` flag, requeue-on-child-exit.
+- ~~Multimodal PDF ingestion end-to-end~~ -> **done** - pure-Rust `pdf-extract 0.7` path; every PDF page becomes a graph node indexed via FTS5.
+- ~~Julia + Zig Tree-sitter grammar queries~~ -> **done** - node type names corrected against `src/node-types.json`; both smoke tests green.
+- ~~Benchmark CSV numbers published against external baseline~~ -> **done** - `BENCHMARKS.md` now has the mneme-vs-CRG section (1000× incremental, 6.6× density).
+- ~~CI benchmark seed baseline~~ -> **done** - baseline workflow is the manual-trigger publisher; bench workflow runs on every PR with 10% regression threshold.
 
 ---
 
@@ -27,7 +27,7 @@ Last updated: 2026-05-02 (after v0.3.2 + 52-fix audit cycle).
 ### 1. Workers emit `WorkerCompleteJob` IPC
 - **What:** Supervisor-dispatched `Job::Parse` jobs are routed to workers, but workers still write their results via stdout instead of emitting a `WorkerCompleteJob` IPC message back up to the supervisor. Until they do, the dispatched persistence path depends on stdout parsing rather than the typed IPC round-trip.
 - **Why deferred:** ~80 LoC per worker (parsers / scanners / brain / md-ingest); mechanical but touches four crates.
-- **Acceptance:** `cargo test --workspace` includes a round-trip test - supervisor dispatches `Job::Parse` → worker processes → worker emits `WorkerCompleteJob` → supervisor marks job completed; `graph.db` rows appear.
+- **Acceptance:** `cargo test --workspace` includes a round-trip test - supervisor dispatches `Job::Parse` -> worker processes -> worker emits `WorkerCompleteJob` -> supervisor marks job completed; `graph.db` rows appear.
 - **Effort:** 1 day.
 
 ### 2. Expose `Job::Scan` / `Job::Embed` / `Job::Ingest` in the CLI
@@ -42,11 +42,11 @@ Last updated: 2026-05-02 (after v0.3.2 + 52-fix audit cycle).
 - **Acceptance:** kill `-9` the supervisor mid-dispatch; restart; in-flight jobs are requeued on restart rather than lost.
 - **Effort:** 2 days.
 
-### 4. Audio / video / OCR multimodal extractors
-- **What:** v0.3.0 shipped the PDF extractor end-to-end. Audio (Whisper), video (ffmpeg → frame OCR), and images (Tesseract) are feature-gated placeholders in `multimodal-bridge`. The supervisor spawn + IPC path is ready; the per-format extractors are not.
-- **Why deferred:** each format is its own small project (Whisper model download, ffmpeg binary bundling, Tesseract language packs). Useful but niche.
-- **Acceptance:** `mneme build ./dir-with-audio-video-images --features whisper,ffmpeg,tesseract` indexes speech transcripts + frame text + image OCR as graph nodes discoverable via `recall_concept`.
-- **Effort:** 1 day per format.
+### 4. Audio / video multimodal extractors (image OCR shipped in v0.3.2)
+- **What:** v0.3.0 shipped the PDF extractor end-to-end. **v0.3.2 (B-1) shipped image OCR via Tesseract runtime shellout** - `multimodal-bridge/src/image.rs::locate_tesseract_exe` probes both `PATH` and the UB-Mannheim install path; install.ps1 auto-installs `UB-Mannheim.TesseractOCR` via winget. Audio (Whisper) and video (ffmpeg -> frame OCR) remain feature-gated placeholders in `multimodal-bridge`. The supervisor spawn + IPC path is ready; the per-format extractors for Whisper / ffmpeg are not.
+- **Why deferred:** each remaining format is its own small project (Whisper model download, ffmpeg binary bundling). Useful but niche.
+- **Acceptance:** `mneme build ./dir-with-audio-video --features whisper,ffmpeg` indexes speech transcripts + frame text as graph nodes discoverable via `recall_concept`.
+- **Effort:** 1 day per remaining format.
 
 ### 5. True per-page bbox + heading extraction for PDFs
 - **What:** v0.3.0's `pdf-extract 0.7` path gives page-level text only. Real PDF analysis (bounding boxes, heading levels, figure captions) needs a swap to `lopdf` or `pdfium-render`.
@@ -71,7 +71,7 @@ Last updated: 2026-05-02 (after v0.3.2 + 52-fix audit cycle).
 ## Tier 2 - Needs human involvement (NOT agent-delegable)
 
 ### 8. 60-second demo video
-- **What:** a short screen recording showing: `mneme install` → `mneme build .` → `/mn-recall_concept` returning real hits → `/mn-blast_radius` on a file → `/mn-step_resume` after a simulated compaction. Embed the recorded asciinema (or mp4) in README hero.
+- **What:** a short screen recording showing: `mneme install` -> `mneme build .` -> `/mn-recall_concept` returning real hits -> `/mn-blast_radius` on a file -> `/mn-step_resume` after a simulated compaction. Embed the recorded asciinema (or mp4) in README hero.
 - **Why parked:** requires a human behind the keyboard. Cannot be delegated to an agent because it needs screen-recording of a real terminal session + voiceover or caption.
 - **How to tackle:**
   - Install asciinema on Windows via WSL (`apt install asciinema`) OR use OBS Studio for a windowed recording.
@@ -88,7 +88,7 @@ Last updated: 2026-05-02 (after v0.3.2 + 52-fix audit cycle).
   - Stack: Astro 4.x + Tailwind + the existing `og.png` and `og.svg` from `docs/`. Or Next 15 app router + Tailwind.
   - Sections: hero + demo embed + feature grid (re-use the README stats) + install tabs + footer with GitHub link.
   - Host: Cloudflare Pages (free, connects directly to GitHub; auto-deploy on push to `main` or a dedicated `site` branch).
-  - DNS: apex + www → Cloudflare Pages. Add CAA record for Let's Encrypt.
+  - DNS: apex + www -> Cloudflare Pages. Add CAA record for Let's Encrypt.
 - **Effort:** 1 day end-to-end (domain + scaffold + content + deploy). Add 1 day polish for hero visuals.
 
 ---

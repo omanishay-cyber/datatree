@@ -13,7 +13,7 @@ mneme is a **local daemon** that **indexes your project into a SQLite graph** an
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      SUPERVISOR (Rust)                              │
-│  watchdog · restart · SLA · HTTP /health · 22 workers auto-scaled   │
+│  watchdog * restart * SLA * HTTP /health * 22 workers auto-scaled   │
 └──┬──────────┬───────────┬──────────┬──────────┬──────────┬─────────┘
    │          │           │          │          │          │
    ▼          ▼           ▼          ▼          ▼          ▼
@@ -66,7 +66,17 @@ Each worker (parsers, scanners, brain, livebus, store, md-ingest) runs as a sepa
 
 ### 3. 100% local
 
-No outbound network calls in the hot path. By default, embeddings are computed by a pure-Rust hashing-trick embedder that ships with the binaries - no ONNX native DLL, no Hugging Face download, no API key, no telemetry. Real BGE-small-en-v1.5 ONNX embeddings (384-dim) are available as an opt-in via the `brain` crate's `real-embeddings` feature using ONNX Runtime 1.24.4 with dynamic loading - still local, still no network call. If you block mneme at the firewall, it keeps working.
+No outbound network calls in the hot path. **As of v0.3.2, real
+BGE-small-en-v1.5 ONNX embeddings (384-dim) are on by default**: the
+bootstrap downloads the model once (~133 MB) from the HF Hub mirror
+at `huggingface.co/aaditya4u/mneme-models` and the `brain` crate
+loads it via ONNX Runtime 1.24.4 (bundled `onnxruntime.dll` in
+`~/.mneme/bin/`, auto-pinned via `ORT_DYLIB_PATH` so the bundled
+copy always wins over Win11 24H2's System32 hijack). The pure-Rust
+hashing-trick embedder is still in the tree as a fallback - flip
+`MNEME_FORCE_HASH_EMBED=1` to use it instead of BGE. After install,
+nothing leaves your machine: block mneme at the firewall and it keeps
+working.
 
 The model lineup that ships with v0.3.2:
 

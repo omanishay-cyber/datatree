@@ -32,9 +32,9 @@ curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/ins
 curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh | bash
 ```
 
-> **Requirements:** 64-bit OS (x64 or ARM64) · CPU with AVX2 / BMI2 / FMA
+> **Requirements:** 64-bit OS (x64 or ARM64) * CPU with AVX2 / BMI2 / FMA
 > (Intel Haswell 2013+ or AMD Excavator 2015+ - virtually every PC sold since
-> 2013) · 5 GB free disk · no admin required. 32-bit Windows is not supported
+> 2013) * 5 GB free disk * no admin required. 32-bit Windows is not supported
 > (Bun runtime requirement). The binaries are built against the
 > `x86-64-v3` baseline so older CPUs without AVX2 will fail at runtime - see
 > [`docs/faq.md`](faq.md) for what to do on older hardware.

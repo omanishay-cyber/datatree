@@ -12,10 +12,10 @@ toolchains below.
 | Tool | Version | Install hint |
 |---|---|---|
 | Rust | 1.78+ stable | `winget install Rustlang.Rustup` / `curl https://sh.rustup.rs` |
-| **Bun** | **1.3+** (HARD prereq for the MCP server + Vision SPA) | Win: `irm bun.sh/install.ps1 \| iex` · Unix: `curl -fsSL https://bun.sh/install \| bash` · `winget install Oven-sh.Bun` |
+| **Bun** | **1.3+** (HARD prereq for the MCP server + Vision SPA) | Win: `irm bun.sh/install.ps1 \| iex` * Unix: `curl -fsSL https://bun.sh/install \| bash` * `winget install Oven-sh.Bun` |
 | Python | 3.10+ | `winget install Python.Python.3.12` / system package manager |
 | Git | any recent | system package manager |
-| C/C++ toolchain | platform default | Windows: VS 2022 Build Tools · macOS: Xcode CLT · Linux: `build-essential` |
+| C/C++ toolchain | platform default | Windows: VS 2022 Build Tools * macOS: Xcode CLT * Linux: `build-essential` |
 
 > **Bun on PATH is a hard prerequisite for `mcp/src/index.ts` and the Vision
 > dev server.** Both spawn `bun` directly. Without Bun on PATH the MCP server

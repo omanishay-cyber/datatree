@@ -1049,13 +1049,15 @@
   <!-- ============================================================ -->
   <div class="install-hero reveal">
     <div class="install-pane">
-      <div class="install-eyebrow">install · windows · powershell</div>
+      <div class="install-eyebrow">install * one command per OS * no admin needed * auto-detects arch</div>
       <div class="install-title">One command. No ceremony. No admin needed.</div>
-      <div class="install-cmd">iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)</div>
+      <div class="install-cmd"><strong style="color:#41E1B5">windows (PowerShell):</strong><br/>iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)</div>
+      <div class="install-cmd" style="margin-top:8px"><strong style="color:#41E1B5">macOS (Intel + Apple Silicon):</strong><br/>curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-mac.sh | bash</div>
+      <div class="install-cmd" style="margin-top:8px"><strong style="color:#41E1B5">linux (x64 + ARM64):</strong><br/>curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh | bash</div>
       <div class="install-foot">
-        Downloads the v0.3.2 release, extracts to <code>~/.mneme</code>, registers the MCP server with Claude Code, hooks up persistent memory.
+        Downloads the v0.3.2 release, extracts to <code>~/.mneme</code>, pulls 5 model files (~3.4 GB) from the Hugging Face Hub mirror at <a href="https://huggingface.co/aaditya4u/mneme-models">aaditya4u/mneme-models</a> (GitHub Releases as fallback), registers the MCP server + 8 hooks + plugin slash commands with Claude Code.
         Restart Claude after install. Verify with <code>mneme doctor</code> and <code>claude mcp list</code>.<br/>
-        macOS / Linux: see the <a href="https://github.com/omanishay-cyber/mneme/blob/main/INSTALL.md">INSTALL.md</a>.
+        Requires AVX2/BMI2/FMA (Intel Haswell 2013+ / AMD Excavator 2015+). Full details: <a href="https://github.com/omanishay-cyber/mneme/blob/main/INSTALL.md">INSTALL.md</a>.
       </div>
     </div>
   </div>
@@ -1179,7 +1181,7 @@
           </tr>
           <tr>
             <td class="cmp-q">Smart semantic search (not just keyword)?</td>
-            <td class="cmp-mneme"><span class="cmp-yes">YES</span> - pure-Rust hashing default, BGE embeddings opt-in</td>
+            <td class="cmp-mneme"><span class="cmp-yes">YES</span> - real BGE-small-en-v1.5 ONNX embeddings on by default in v0.3.2 (auto-pulled from HF Hub mirror)</td>
             <td><span class="cmp-no">No</span> (keyword only)</td>
             <td><span class="cmp-mid">Partial</span> - pulls models from network</td>
             <td><span class="cmp-no">No</span></td>
@@ -1193,7 +1195,7 @@
           </tr>
           <tr>
             <td class="cmp-q">Multimodal (indexes PDFs, images, audio)?</td>
-            <td class="cmp-mneme"><span class="cmp-yes">YES</span> - Python sidecar, fault-isolated</td>
+            <td class="cmp-mneme"><span class="cmp-yes">YES</span> - PDF + image OCR on by default (Tesseract auto-installed via winget on install, B-1 fix); Whisper / ffmpeg still compile-time opt-in (v0.5)</td>
             <td><span class="cmp-no">No</span></td>
             <td><span class="cmp-mid">Partial</span> (text only by default)</td>
             <td><span class="cmp-no">No</span></td>

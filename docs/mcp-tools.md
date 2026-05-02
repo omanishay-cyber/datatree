@@ -76,7 +76,7 @@ and output is zod-validated at the MCP server boundary; the schemas live in
 | `step_verify` | Run acceptance check | `{step_id}` | `VerifyResult` |
 | `step_complete` | Mark complete (only if verify passes) | `{step_id}` | `Ok` |
 | `step_resume` | Emit resumption bundle (compaction recovery) | `{}` | `ResumptionBundle` |
-| `step_plan_from` | Ingest markdown roadmap → ledger | `{markdown_path}` | `Roadmap` |
+| `step_plan_from` | Ingest markdown roadmap -> ledger | `{markdown_path}` | `Roadmap` |
 | `resume` | Wide resume - latest session + step + open work | `{}` | `ResumeBundle` |
 | `suggest_skill` | Read `plugin/skills/*/SKILL.md` and recommend next skill | `{context?}` | `SkillSuggestion[]` |
 

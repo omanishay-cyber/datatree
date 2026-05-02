@@ -32,7 +32,7 @@ mirror for the model weights). After that, nothing leaves your machine.
 
 ### How is this different from code-review-graph or graphify?
 
-- **code-review-graph** (CRG) is the state-of-the-art deterministic code graph. mneme's structural graph builds on the same idea (Tree-sitter AST → SQLite) but adds 21 more storage layers (22 total + meta.db), compaction resilience, and the Step Ledger. Measured p95 token reduction is 3.5x (see [BENCHMARKS.md](../benchmarks/BENCHMARKS.md)); CRG comparison pending a Linux CI run.
+- **code-review-graph** (CRG) is the state-of-the-art deterministic code graph. mneme's structural graph builds on the same idea (Tree-sitter AST -> SQLite) but adds 21 more storage layers (22 total + meta.db), compaction resilience, and the Step Ledger. Measured p95 token reduction is 3.5x (see [BENCHMARKS.md](../benchmarks/BENCHMARKS.md)); CRG comparison pending a Linux CI run.
 - **graphify** is a multimodal knowledge-graph builder that uses LLM subagents to extract concepts from PDFs/audio/video. mneme absorbs graphify's multimodal pipeline as one of its workers - they're complementary, not competing.
 
 See the README's benchmark table for a feature-by-feature comparison.

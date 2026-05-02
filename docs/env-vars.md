@@ -36,7 +36,7 @@ default, scope, and effect.
 | `MNEME_SOCKET` | alias for MNEME_IPC | Older name; both honored. |
 | `MNEME_SUPERVISOR_SOCKET` | alias for MNEME_IPC | Older name; all three resolve to the same value. |
 | `MNEME_IPC_TIMEOUT_MS` | `120000` (CLI side) / `30000` (server side) | Override per-call IPC timeout. Bug B-017 reduced doctor's effective timeout to 3s by wrapping its specific call. |
-| `MNEME_SUPERVISOR_TIMEOUT_MS` | `2000` | Worker → supervisor `report_complete` timeout. |
+| `MNEME_SUPERVISOR_TIMEOUT_MS` | `2000` | Worker -> supervisor `report_complete` timeout. |
 | `MNEME_IPC_MAX_CONNS` | `256` | Cap on concurrent IPC connections the supervisor accepts. (Wave 4 default bump from 64.) |
 
 ## Workers + scanning
@@ -68,6 +68,13 @@ default, scope, and effect.
 | `MNEME_LIVEBUS` | `ws://127.0.0.1:7778/ws` | Override the livebus WebSocket URL the CLI connects to. |
 | `MNEME_JOBS_DB` | `$MNEME_HOME/run/jobs.db` | Path to the supervisor's job queue DB. |
 
+## Embedding backend
+
+| Variable | Default | Effect |
+|---|---|---|
+| `MNEME_FORCE_HASH_EMBED` | unset | Set to `1` to bypass BGE-small-en-v1.5 entirely and force the pure-Rust hashing-trick fallback embedder. Useful when the bundled ONNX Runtime DLL is missing/corrupt and you need recall to keep working. Logged on first call: `MNEME_FORCE_HASH_EMBED=1 set - skipping BGE, using hashing-trick`. See `brain/src/embeddings.rs`. |
+| `ORT_DYLIB_PATH` | auto-pinned to `~/.mneme/bin/onnxruntime.dll` on first BGE call | Override the ONNX Runtime shared library path. v0.3.2 sets this automatically inside `RealBackend::try_new` so the bundled `onnxruntime.dll` (1.24.4) wins over any stale System32 copy (defeats the Win11 24H2 hijack). Override only if you have a known-good 1.24.x DLL elsewhere. |
+
 ## Test-only (do NOT set in production)
 
 | Variable | Effect |
@@ -84,7 +91,11 @@ default, scope, and effect.
 the chain in this order on every CLI/daemon boot:
 
 1. `MNEME_HOME` env var (operator override)
-2. `dirs::home_dir().join(".mneme")` (the historical default)
+2. `PathManager::default_root()` -> `~/.mneme` (resolved via OS-aware
+   home detection, never a raw `dirs::home_dir()` call - the **Class
+   HOME guardrail** forbids bypass; raw home reads were removed in
+   B11 to defeat the case where `dirs::home_dir()` returns `C:\` on
+   service-account profiles)
 3. OS fallback: Unix `/var/lib/mneme`, Windows `%PROGRAMDATA%\mneme`
 
 If all three fail (extreme edge case - see Bug VIS-13 fix), the
