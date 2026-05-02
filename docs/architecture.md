@@ -2,22 +2,25 @@
 
 The 10-minute read on how mneme is built, in plain English, without exposing the internal design plan.
 
+Current version: **v0.3.2** (hotfix, 2026-05-02).
+
 ## Mental model in one paragraph
 
-mneme is a **local daemon** that **indexes your project into a SQLite graph** and **feeds Claude exactly the right slice of that graph at every turn**. The daemon runs as a supervisor that spawns worker processes for parsing, scanning, pushing live events, and bridging Python. An MCP server speaks JSON-RPC to Claude (or Codex, Cursor, etc.) and hits the graph via direct `bun:sqlite` reads or through the supervisor for writes. A Step Ledger stored in the graph is what lets Claude survive context compaction - it's just numbered rows in SQLite with verification commands attached.
+mneme is a **local daemon** that **indexes your project into a SQLite graph** and **feeds Claude exactly the right slice of that graph at every turn**. The daemon runs as a supervisor that spawns 22 worker processes (auto-scaled to your CPU count) for parsing, scanning, embedding, pushing live events, and bridging Python. An MCP server speaks JSON-RPC to Claude (or Codex, Cursor, etc.) and hits the graph via direct `bun:sqlite` reads or through the supervisor for writes. A Step Ledger stored in the graph is what lets Claude survive context compaction - it's just numbered rows in SQLite with verification commands attached.
 
-## The 10 moving parts
+## The moving parts
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      SUPERVISOR (Rust)                              │
-│            watchdog · restart · SLA · HTTP /health                  │
+│  watchdog · restart · SLA · HTTP /health · 22 workers auto-scaled   │
 └──┬──────────┬───────────┬──────────┬──────────┬──────────┬─────────┘
    │          │           │          │          │          │
    ▼          ▼           ▼          ▼          ▼          ▼
 ┌──────┐ ┌────────┐ ┌─────────┐ ┌─────────┐ ┌──────┐ ┌──────────┐
 │STORE │ │PARSERS │ │SCANNERS │ │MD-INGEST│ │BRAIN │ │ LIVE BUS │
 │(Rust)│ │(Rust)  │ │(Rust)   │ │(Rust)   │ │(Rust)│ │(Rust)    │
+│  x1  │ │ xCPU   │ │xCPU/2   │ │  x1     │ │ x1   │ │  x1      │
 └──────┘ └────────┘ └─────────┘ └─────────┘ └──────┘ └──────────┘
    │
    ▼  (single-writer, many-reader)
@@ -25,25 +28,29 @@ mneme is a **local daemon** that **indexes your project into a SQLite graph** an
    ├─ graph.db          ← Tree-sitter-parsed nodes + edges
    ├─ history.db        ← conversation turns + decisions
    ├─ tasks.db          ← Step Ledger
-   ├─ findings.db       ← scanner output
+   ├─ findings.db       ← scanner output (streams incrementally)
    ├─ semantic.db       ← embeddings + concepts
-   └─ (21 more layer-specific DBs)
+   └─ (17 more layer-specific shards, 22 total + meta.db)
 
 Separately:
 ┌─────────────┐     ┌──────────────┐    ┌───────────────────────┐
 │ MCP server  │     │ Vision app   │    │ Multimodal sidecar    │
-│ (Bun TS)    │     │ (Bun TS +    │    │ (Python)              │
-│             │     │  Tauri)      │    │                       │
+│ (Bun TS)    │     │ (Bun TS SPA) │    │ (Python)              │
+│             │     │              │    │                       │
 │ 48 tools    │     │ 14 views     │    │ PDF / Whisper / OCR   │
 │ JSON-RPC    │     │ WebGL        │    │ msgpack over stdio    │
 │ over stdio  │     │              │    │                       │
 └──────┬──────┘     └──────┬───────┘    └───────────┬───────────┘
        │                   │                         │
-       │ bun:sqlite         │ WebSocket              │ spawned by
-       │ read-only          │ to Live Bus            │ multimodal-bridge
+       │ bun:sqlite        │ WebSocket               │ spawned by
+       │ read-only         │ to Live Bus             │ multimodal-bridge
        ▼                   ▼                         ▼
    [ same shards ]     [ live updates ]         [ async jobs ]
 ```
+
+> The Tauri shell that previously wrapped the Vision app is dev/build-only as of
+> v0.3.2 - the shipped Vision surface is the Bun-served SPA at
+> `http://127.0.0.1:7777/`.
 
 ## Design principles (the ones worth knowing)
 
@@ -59,9 +66,22 @@ Each worker (parsers, scanners, brain, livebus, store, md-ingest) runs as a sepa
 
 ### 3. 100% local
 
-No outbound network calls in the hot path. By default, embeddings are computed by a pure-Rust hashing-trick embedder that ships with the binaries - no ONNX native DLL, no Hugging Face download, no API key, no telemetry. As of v0.3.0, real BGE-small-en-v1.5 ONNX embeddings are available as an opt-in build (`brain` crate `real-embeddings` feature) using dynamic ORT loading - still local, still no network call. If you block mneme at the firewall, it keeps working.
+No outbound network calls in the hot path. By default, embeddings are computed by a pure-Rust hashing-trick embedder that ships with the binaries - no ONNX native DLL, no Hugging Face download, no API key, no telemetry. Real BGE-small-en-v1.5 ONNX embeddings (384-dim) are available as an opt-in via the `brain` crate's `real-embeddings` feature using ONNX Runtime 1.24.4 with dynamic loading - still local, still no network call. If you block mneme at the firewall, it keeps working.
 
-The only exception is `mneme models install --from-path <local-mirror>` which copies pre-downloaded model files from a path you specify - still local.
+The model lineup that ships with v0.3.2:
+
+| Model | Size | Role |
+|---|---|---|
+| **bge-small-en-v1.5** (ONNX) | ~33 MB | semantic concept embeddings (384-dim) |
+| **Qwen 2.5 Coder 0.5B** (GGUF) | ~340 MB | code-aware completion / tool selection |
+| **Qwen 2.5 Embed 0.5B** (GGUF) | ~340 MB | code embedding for cross-file recall |
+| **Phi-3-mini-4k-instruct Q4_K_M** (GGUF) | ~2.28 GB | reasoning + summary |
+
+Models are downloaded once from
+https://huggingface.co/aaditya4u/mneme-models (primary) with a GitHub
+Releases fallback. The only other "network" exception is `mneme models
+install --from-path <local-mirror>` which copies pre-downloaded model files
+from a path you specify - still local.
 
 ### 4. Marker-based idempotent injection
 
@@ -70,6 +90,26 @@ When `mneme install` writes to your `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.
 ### 5. Append-only schema
 
 `store/src/schema.rs` is append-only. Columns get added; they never get dropped or renamed. To rename something conceptually, add the new column, stop writing the old one, and leave the old column in place forever. This makes rolling upgrades safe and means downgrading is always OK.
+
+## The 11 built-in scanners
+
+`mneme audit` fans the file list across the scanner-worker pool (~5x faster on
+multi-core machines as of v0.3.2 / B12) and streams findings into `findings.db`
+incrementally so a long audit never loses partial results on timeout.
+
+| Scanner | Catches |
+|---|---|
+| `theme` | Hardcoded colors, missing `dark:` variants in Tailwind classes |
+| `types_ts` | `any`, non-null `!`, unsafe casts |
+| `security` | Secrets, `eval`, missing IPC validation, dangerous patterns |
+| `a11y` | Missing aria-labels, contrast issues, alt-text gaps |
+| `perf` | Missing `useMemo`/`useCallback`, sync I/O on render path |
+| `drift` | CLAUDE.md rule violations (custom constraints) |
+| `ipc` | Electron IPC handlers without zod schemas |
+| `markdown_drift` | Stale `.md` claims that no longer match source |
+| `secrets` | Credential shapes (AWS keys, GitHub tokens, etc.) |
+| `refactor` | Code-smell suggestions (long functions, deep nesting) |
+| `architecture` | Cross-layer violations, cyclic deps |
 
 ## Data flow - "what happens when I run `mneme build`"
 
@@ -81,7 +121,7 @@ When `mneme install` writes to your `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.
 3. **Write** every node and edge into `graph.db` through the store's single-writer channel
 4. Done - the shard is now queryable by any MCP tool or any other client
 
-Incremental rebuilds reuse cached Tree-sitter trees keyed by file content hash (blake3). Unchanged files are zero-cost on subsequent builds.
+Incremental rebuilds reuse cached Tree-sitter trees keyed by file content hash (blake3). Unchanged files are zero-cost on subsequent builds. Pass `--rebuild` to force a full re-parse from scratch (added in v0.3.2 / B11).
 
 ## Data flow - "what happens when Claude calls `blast_radius()`"
 
@@ -113,7 +153,7 @@ No prompt engineering. No "remember the rules". The state lives in SQLite - it c
 
 ## Language choices, briefly
 
-- **Rust** for the supervisor, store, parsers, scanners, livebus, brain - everything that must be fast, fault-tolerant, and statically linkable. Single binary per worker, ~5–20 MB each.
+- **Rust** for the supervisor, store, parsers, scanners, livebus, brain - everything that must be fast, fault-tolerant, and statically linkable. The workspace ships 12 crates (`common`, `supervisor`, `store`, `parsers`, `scanners`, `livebus`, `multimodal-bridge`, `cli`, `md-ingest`, `brain`, `benchmarks`, `vision/tauri` excluded) with binaries 5-50 MB each.
 - **Bun + TypeScript** for the MCP server and vision app - hot-reloadable tool definitions, fast cold start, zod at the boundary. `bun:sqlite` is the fastest SQLite binding in any runtime.
 - **Python** for the multimodal sidecar - the ecosystem around PDF extraction (PyMuPDF), OCR (Tesseract), and speech-to-text (faster-whisper) is irreplaceable.
 
@@ -121,9 +161,11 @@ The three languages talk over msgpack or JSON on Unix-domain sockets / Windows n
 
 ## Where to go next
 
-- [`INSTALL.md`](../INSTALL.md) - install paths + troubleshooting
+- [`docs/INSTALL.md`](INSTALL.md) - install paths + troubleshooting
+- [`docs/dev-setup.md`](dev-setup.md) - build from source
 - [`docs/mcp-tools.md`](mcp-tools.md) - reference for every MCP tool
 - [`docs/faq.md`](faq.md) - common questions
+- [`docs/env-vars.md`](env-vars.md) - all `MNEME_*` env vars
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) - how to add a scanner, language, view, or MCP tool
 
 ---

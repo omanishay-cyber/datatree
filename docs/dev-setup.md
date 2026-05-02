@@ -1,23 +1,31 @@
 # Developer setup
 
-You want to work on mneme itself (not just use it). Here's the ~20-minute setup.
+You want to work on mneme itself (not just use it). Here's the ~20-minute setup
+to build v0.3.2 from source.
+
+If you only want to *use* mneme, follow [`docs/INSTALL.md`](INSTALL.md) instead -
+the bootstrap installer pulls pre-built binaries and you don't need any of the
+toolchains below.
 
 ## Prereqs
 
 | Tool | Version | Install hint |
 |---|---|---|
 | Rust | 1.78+ stable | `winget install Rustlang.Rustup` / `curl https://sh.rustup.rs` |
-| **Bun** | **1.3+ (HARD prereq for vision dev mode)** | Win: `irm bun.sh/install.ps1 \| iex` · Unix: `curl -fsSL https://bun.sh/install \| bash` · `winget install Oven-sh.Bun` |
+| **Bun** | **1.3+** (HARD prereq for the MCP server + Vision SPA) | Win: `irm bun.sh/install.ps1 \| iex` · Unix: `curl -fsSL https://bun.sh/install \| bash` · `winget install Oven-sh.Bun` |
 | Python | 3.10+ | `winget install Python.Python.3.12` / system package manager |
 | Git | any recent | system package manager |
 | C/C++ toolchain | platform default | Windows: VS 2022 Build Tools · macOS: Xcode CLT · Linux: `build-essential` |
 
-> **Bun on PATH is a hard prerequisite for `vision/server.ts` and Tauri dev
-> mode.** `vision/tauri/tauri.conf.json` declares
-> `"beforeDevCommand": "bun server.ts"` - Tauri unconditionally spawns
-> `bun` and waits. Without Bun on PATH it fails with no useful diagnostic.
-> Install Bun via the one-liner above before running `tauri dev` or any
-> `bun run` script under `vision/` or `mcp/`.
+> **Bun on PATH is a hard prerequisite for `mcp/src/index.ts` and the Vision
+> dev server.** Both spawn `bun` directly. Without Bun on PATH the MCP server
+> fails at boot and the Vision SPA never starts. Install Bun via the one-liner
+> above before running any `bun run` script under `vision/` or `mcp/`.
+>
+> The standalone Tauri shell at `vision/tauri/` is build-only as of v0.3.2 -
+> the shipped Vision UX is the Bun-served SPA at `http://127.0.0.1:7777/`.
+> Tauri is excluded from the workspace and does not need to be built unless
+> you're hacking on the desktop wrapper.
 
 Nice-to-haves:
 - **rust-analyzer** for your IDE - Rust inspection
@@ -34,7 +42,7 @@ cd mneme
 ## One-time build
 
 ```bash
-# Rust workspace - 10 crates, 400+ transitive deps
+# Rust workspace - 12 crates, 400+ transitive deps
 cargo build --workspace            # debug build, ~5 min cold
 # or
 cargo build --workspace --release  # release build, ~10 min cold
@@ -45,7 +53,7 @@ cd mcp && bun install && cd ..
 # Vision app
 cd vision && bun install && cd ..
 
-# Python multimodal sidecar
+# Python multimodal sidecar (optional)
 cd workers/multimodal && pip install -e . && cd ../..
 ```
 
@@ -71,9 +79,8 @@ cargo build -p mneme-multimodal --features tesseract
 cargo build -p mneme-multimodal --features all-extractors
 ```
 
-Closes I-20. Tesseract is not bundled because it adds ~50 MB of native
-binaries and forces every user to install a C++ toolchain even if they
-only ever extract PDFs.
+Tesseract is not bundled because it adds ~50 MB of native binaries and forces
+every user to install a C++ toolchain even if they only ever extract PDFs.
 
 ## Run the daemon
 
@@ -86,7 +93,12 @@ cargo run --bin mneme-supervisor -- start
 ./target/debug/mneme-supervisor start       # macOS/Linux
 ```
 
-The supervisor spawns `1 (store) + num_cpus (parsers) + num_cpus/2 (scanners) + 1 (md-ingest) + 1 (brain) + 1 (livebus)` workers (~16 on an 8-core machine; ~9 on a 4-core machine - `supervisor/src/config.rs:104-180`) and binds `http://127.0.0.1:7777/health`. Hit it:
+The supervisor spawns 22 worker processes auto-scaled to your CPU count -
+`1 (store) + num_cpus (parsers) + num_cpus/2 (scanners) + 1 (md-ingest) + 1 (brain) + 1 (livebus) + ...` -
+and binds `http://127.0.0.1:7777/health`. On a typical 8-core dev box that's
+`1 + 8 + 4 + 1 + 1 + 1 = 16` per-class workers (the rest are dispatch + queue
+workers). Hit it:
+
 ```bash
 curl http://127.0.0.1:7777/health
 ```
@@ -103,6 +115,12 @@ cargo run --bin mneme -- build .
 # nodes:   1000+
 # edges:   2000+
 # shard:   ~/.mneme/projects/<sha>/
+```
+
+Pass `--rebuild` to force a full re-parse (added in v0.3.2 / B11):
+
+```bash
+cargo run --bin mneme -- build . --rebuild
 ```
 
 ## Development loop
@@ -124,12 +142,16 @@ cargo run --bin mneme -- build .
 3. Add per-language query patterns to `parsers/src/query_cache.rs`
 4. `cargo build --features your_lang`
 
-### Add a new scanner
+### Add a new scanner (currently 11 built-in)
 
 1. Create `scanners/src/scanners/your_rule.rs` - copy `theme.rs` as a template
 2. Implement the `Scanner` trait: `name()`, `applies_to(file)`, `scan(file, content, ast)`
 3. Register in `scanners/src/registry.rs`
 4. `cargo build -p mneme-scanners`
+
+The full list of built-in scanners (see [`docs/architecture.md`](architecture.md#the-11-built-in-scanners)):
+`theme`, `types_ts`, `security`, `a11y`, `perf`, `drift`, `ipc`, `markdown_drift`,
+`secrets`, `refactor`, `architecture`.
 
 ### Add a new vision view
 
@@ -181,7 +203,10 @@ cd mcp && bun test
 cd workers/multimodal && pytest
 ```
 
-v0.3.0 ships with `cargo test --workspace` fully green (280+ tests, 0 failed, 0 ignored) - parsers, supervisor, store, scanners, brain, md-ingest, cli, livebus all pass (includes 30 new supervisor/common tests for the job-dispatch path, 4 new brain tests for the ONNX inference path, and 7 new scanner tests).
+v0.3.2 ships with `cargo test --workspace` fully green - parsers, supervisor,
+store, scanners, brain, md-ingest, cli, livebus, common, multimodal-bridge,
+benchmarks all pass. Test counts grow with the v0.3.2 hotfix wave (52-fix
+audit cycle plus B-007/B-017+ regression tests).
 
 ## Debugging
 
@@ -196,10 +221,13 @@ MNEME_LOG=mneme_store=trace,info cargo run --bin mneme-supervisor -- start
 cargo run --bin mneme -- daemon logs
 ```
 
+See [`docs/env-vars.md`](env-vars.md) for the full `MNEME_*` environment
+reference.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every push:
-- Rust build + clippy + tests (Ubuntu / macOS / Windows)
+- Rust build + clippy + tests on Ubuntu / macOS / Windows
 - MCP server `bun install` + `tsc --noEmit`
 - Vision app `bun install` + `tsc --noEmit`
 - Cargo audit (RUSTSEC) - **block-on-fail**
@@ -208,7 +236,9 @@ cargo run --bin mneme -- daemon logs
 - E2E build + recall + blast on a real repo - **block-on-fail**
 - LICENSE header check
 
-The remaining `continue-on-error: true` lines are intentional soft-fails (parsers-crate clippy warnings, mcp tsc strict-input lint, multimodal all-extractors lib check) and each is annotated with a "Soft-fail:" comment explaining why.
+A separate release workflow builds the 6 platform binaries (Win / Mac / Linux
+x x64 / arm64) and uploads them to the release as ZIP / tarball assets used
+by the bootstrap installers.
 
 ## Code style
 
