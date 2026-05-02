@@ -232,8 +232,12 @@ impl ImageExtractor {
 ///      canonical UB-Mannheim install path. Works even when the
 ///      shell that spawned us hasn't picked up the PATH change yet
 ///      (the common case immediately after `install.ps1 -WithMultimodal`).
-///   3. `C:\Program Files (x86)\Tesseract-OCR\tesseract.exe` — older
-///      32-bit install path, kept for completeness.
+///
+/// Bug-2026-05-02 (B11.65): the third candidate
+/// (`C:\Program Files (x86)\Tesseract-OCR\tesseract.exe`) was dropped.
+/// UB-Mannheim hasn't shipped an x86 installer in years -- every modern
+/// install lands in `Program Files\` (x64), so the dead probe only added
+/// stat-noise on every OCR call.
 ///
 /// Returns `None` if no tesseract binary can be located. Public so
 /// `OCR_RUNTIME_AVAILABLE` (lib.rs) can reuse the same check.
@@ -247,17 +251,13 @@ pub fn locate_tesseract_exe() -> Option<std::path::PathBuf> {
             return Some(std::path::PathBuf::from("tesseract"));
         }
     }
-    // 2 + 3. Windows fixed install paths.
+    // 2. Windows fixed install path (x64 only -- x86 dropped in B11.65).
     #[cfg(windows)]
     {
-        for candidate in [
-            "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
-            "C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe",
-        ] {
-            let p = std::path::PathBuf::from(candidate);
-            if p.exists() {
-                return Some(p);
-            }
+        let candidate = "C:\\Program Files\\Tesseract-OCR\\tesseract.exe";
+        let p = std::path::PathBuf::from(candidate);
+        if p.exists() {
+            return Some(p);
         }
     }
     None

@@ -89,6 +89,21 @@ pub struct BuildArgs {
     /// nothing.
     #[arg(long)]
     pub quiet: bool,
+
+    /// Force a clean rebuild from scratch — wipe the build-state.json
+    /// checkpoint and start over. Different from --full (which forces
+    /// re-parse but may still honor the resume cursor). Use --rebuild
+    /// when you want zero state carryover from prior builds.
+    ///
+    /// B11.5 (2026-05-02): `--full` re-parses every file but a leftover
+    /// `<project>/.mneme/build-state.json` from a Ctrl-C'd run still
+    /// short-circuits the resume cursor + per-pass `BuildPhase` checks.
+    /// `--rebuild` removes the checkpoint BEFORE `build_state::load` is
+    /// called and implies `--full`, so the next pass walks the project
+    /// as if it had never been built before. Use this when a previous
+    /// build was interrupted and you want a guaranteed-fresh state.
+    #[arg(long)]
+    pub rebuild: bool,
 }
 
 /// File-count threshold above which `mneme build` prompts the user to
@@ -132,9 +147,41 @@ fn save_phase_transition(
 }
 
 /// Entry point used by `main.rs`.
-pub async fn run(args: BuildArgs, socket_override: Option<PathBuf>) -> CliResult<()> {
+pub async fn run(mut args: BuildArgs, socket_override: Option<PathBuf>) -> CliResult<()> {
     let project = resolve_project(args.project.clone())?;
-    info!(project = %project.display(), full = args.full, dispatch = args.dispatch, "building mneme graph");
+
+    // B11.5 (2026-05-02): `--rebuild` wipes the build-state.json
+    // checkpoint and forces `--full` so the next pass starts from a
+    // guaranteed-clean slate. Must run BEFORE `build_state::load(..)`
+    // is invoked (inside `run_inline` / dispatched-path equivalents),
+    // otherwise the resume cursor still short-circuits work the user
+    // explicitly asked us to redo.
+    if args.rebuild {
+        let state_path = crate::commands::build_state::state_path(&project);
+        if state_path.exists() {
+            info!(
+                path = %state_path.display(),
+                "--rebuild: removing existing build-state.json"
+            );
+            // Best-effort: a stale checkpoint we can't delete shouldn't
+            // crash the build; the resume cursor will at worst skip
+            // some files we'd otherwise re-parse, which `--full` (set
+            // below) already counteracts for correctness.
+            std::fs::remove_file(&state_path).ok();
+        }
+        // --rebuild implies --full; otherwise the parse loop's
+        // per-file SHA short-circuit would skip files the user
+        // expects to be re-indexed.
+        args.full = true;
+    }
+
+    info!(
+        project = %project.display(),
+        full = args.full,
+        dispatch = args.dispatch,
+        rebuild = args.rebuild,
+        "building mneme graph"
+    );
 
     // Pre-flight guard — refuse to chew through tens of thousands of files
     // without explicit consent. See BIG_PROJECT_FILE_THRESHOLD docstring
@@ -366,6 +413,13 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // build remains correct.
     use crate::commands::build_state::{self, BuildState};
     let resume_state = build_state::load(&project);
+    // B14 (2026-05-02): the build summary's `indexed: 56 of 1477` line
+    // is opaque on resumed builds — users assume 1421 files were
+    // *skipped* due to errors when really they're already-done from a
+    // prior pass. Capture the resume flag here so the summary block
+    // can disambiguate `(N skipped via resume cursor)` vs the regular
+    // unsupported / binary / gitignore / too-large buckets.
+    let was_resume = resume_state.is_some();
     if let Some(rs) = resume_state.as_ref() {
         info!(
             files_done = rs.files_done,
@@ -896,6 +950,13 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // `audit::run` (which dials the supervisor and would auto-spawn
     // `mneme-daemon` on a dead pipe — leaking processes the user
     // explicitly opted out of).
+    //
+    // B14.5 (2026-05-02): without this set_phase the heartbeat tick
+    // kept printing `phase=embed` for the entire audit window, making
+    // it look like embed was hanging when the daemon was actually
+    // chewing through scanners. Same fix for tests/git/deps/intent/
+    // conventions/federated/write-summary below.
+    heartbeat.set_phase("audit");
     let audit_stats = run_audit_pass(&project, args.inline, &children).await;
 
     // 8. Tests-shard population (I1). Copies (file_path, framework)
@@ -903,6 +964,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // tests.db::test_files. K5 already does the heuristic detection
     // during the parse loop; this pass just materialises the result
     // into the canonical shard.
+    heartbeat.set_phase("tests-scan");
     let tests_stats = run_tests_pass(&store, &project_id, &paths).await;
 
     // 9. Git-shard population (I1). Mines `git log` for commits +
@@ -911,6 +973,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // view + decision-recall git-history heuristics had no data.
     // Failure non-fatal: missing git, non-git directory, sparse repo —
     // all just leave git.db empty.
+    heartbeat.set_phase("git-scan");
     let git_stats = run_git_pass(&store, &project_id, &project).await;
 
     // 10. Deps-shard population (I1). Parses package.json (npm),
@@ -918,6 +981,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // for top-level dependencies. Populates deps.db.dependencies.
     // Future: pull vulnerabilities via local advisory feed (out of
     // scope this pass).
+    heartbeat.set_phase("deps-scan");
     let deps_stats = run_deps_pass(&store, &project_id, &project).await;
 
     // 11. Betweenness centrality pass (H6). Sampled Brandes algorithm
@@ -936,6 +1000,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // Files without a magic comment get an inferred row source='git'
     // when git history shows them as long-stable (>1 year unchanged
     // and >2k LOC) — coarse heuristic, marked low-confidence.
+    heartbeat.set_phase("intent");
     let mut intent_stats = run_intent_pass(&store, &project_id, &project, &paths).await;
 
     // 12b. J2 — git-history intent heuristics. Mines git.db for files
@@ -974,6 +1039,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // loop into conventions.db::conventions. One row per inferred
     // pattern with a deterministic id (sha256 over kind+payload) so
     // re-runs upsert in place.
+    heartbeat.set_phase("conventions");
     let conventions_stats = run_conventions_pass(&store, &project_id, &convention_learner).await;
 
     // 15. Wiki pass (I1 batch 3). For each Leiden community we just
@@ -993,6 +1059,7 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // populated as a side-effect of `mneme build` instead of requiring
     // an explicit `mneme federated scan`. Local-only — fingerprints
     // never leave the box without the opt-in marker.
+    heartbeat.set_phase("federated");
     let federated_stats = run_federated_pass(&project_id, &project, &paths).await;
 
     // 17. Perf-baselines pass (I1 batch 3). Capture build-time
@@ -1000,6 +1067,14 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // perf.db::baselines. The perf scanner already produces *findings*;
     // this pass produces *baselines*, which is the empty-shard the
     // Phase A audit flagged (different table, same shard).
+    //
+    // B14.5 (2026-05-02): single phase label covers the trailing
+    // bookkeeping passes (perf / errors / livestate / agents / staleness
+    // stamp / shard-summary print). Every one of them is fast enough on
+    // its own that a per-pass label would just churn the heartbeat
+    // tick; rolling them up under `write-summary` matches the user's
+    // mental model ("the build is done, it's writing the summary").
+    heartbeat.set_phase("write-summary");
     let perf_stats = run_perf_pass(
         &store,
         &project_id,
@@ -1059,7 +1134,26 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     println!();
     println!("build complete:");
     println!("  walked:       {total} files");
-    println!("  indexed:      {indexed}");
+    // B14 (2026-05-02): on a resumed build, `indexed: 56 of 1477`
+    // looks like 1421 files failed when really they were already
+    // indexed in a prior pass. Compute the resume-cursor delta and
+    // surface it inline so the user can tell at a glance how much of
+    // the gap is "carried over" vs "filtered". Only the resumed path
+    // takes the new line; the --full / fresh path keeps the existing
+    // single-number form.
+    let resumed_via_cursor = if was_resume && !args.full {
+        total.saturating_sub(indexed).saturating_sub(skipped_total)
+    } else {
+        0
+    };
+    if resumed_via_cursor > 0 {
+        println!(
+            "  indexed:      {indexed} ({resumed_via_cursor} skipped via resume cursor; {} unsupported; {} binary; {} .gitignore; {} too-large)",
+            skipped_unsupported, skipped_binary, skipped_gitignore, skipped_too_large
+        );
+    } else {
+        println!("  indexed:      {indexed}");
+    }
     // K15: categorize the skip bucket so a `354 skipped` line is no
     // longer a black box. The four categories are exhaustive — every
     // `continue` from the parse loop above maps to exactly one of them.
@@ -1067,6 +1161,10 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
         "  skipped:      {skipped_total} ({} binary, {} unsupported language, {} .gitignore, {} too-large)",
         skipped_binary, skipped_unsupported, skipped_gitignore, skipped_too_large
     );
+    // B14 (2026-05-02): point the user at `--rebuild` for a
+    // guaranteed-fresh start. The flag landed in the same v0.3.2 hotfix
+    // (B11.5) so the suggestion is always actionable.
+    println!("  (use --rebuild to start over from scratch)");
     println!("  nodes:        {node_total}");
     println!("  edges:        {edge_total}");
     // K14 + Bug B-1+ (2026-05-02): the 4,122 pages/sec figure is
@@ -2261,6 +2359,9 @@ async fn run_audit_pass_ipc_then_fallback(
     let ipc_attempt = client
         .request(crate::ipc::IpcRequest::Audit {
             scope: "full".to_string(),
+            // B11.7 (v0.3.2): pass project so the supervisor can fan
+            // out per-file Job::Scan to the scanner-worker pool.
+            project: Some(project.to_path_buf()),
         })
         .await;
 
@@ -6665,6 +6766,10 @@ random prose with no bullet
         // have spawned the second daemon on EC2.
         let req = crate::ipc::IpcRequest::Audit {
             scope: "full".into(),
+            // B11.7 (v0.3.2): test still exercises the connect-failure
+            // path; project value is irrelevant here (never reaches the
+            // supervisor) but we set it for shape correctness.
+            project: None,
         };
 
         let rt = tokio::runtime::Runtime::new().unwrap();

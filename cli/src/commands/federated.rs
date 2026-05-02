@@ -131,7 +131,7 @@ fn cmd_opt_in() -> CliResult<()> {
         "mneme: federated upload opt-in recorded at {}",
         marker.display()
     );
-    println!("       · v0.2: no network upload yet — `mneme federated sync` is a stub.");
+    println!("       * v0.2: no network upload yet — `mneme federated sync` is a stub.");
     Ok(())
 }
 

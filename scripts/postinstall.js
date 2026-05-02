@@ -28,7 +28,7 @@ const MNEME_PLUGIN = join(MNEME_HOME, "plugin");
 
 function log(msg) { process.stdout.write(`mneme: ${msg}\n`); }
 function warn(msg) { process.stderr.write(`mneme: ${msg}\n`); }
-function info(msg) { process.stdout.write(`        · ${msg}\n`); }
+function info(msg) { process.stdout.write(`        * ${msg}\n`); }
 
 // ---------- platform ----------
 
@@ -149,7 +149,7 @@ async function main() {
     return;
   }
 
-  info(`platform: ${platform()} ${arch()} → asset: ${asset.name}`);
+  info(`platform: ${platform()} ${arch()} -> asset: ${asset.name}`);
 
   let releaseUrl, zipUrl;
   try {

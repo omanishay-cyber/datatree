@@ -273,7 +273,7 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
                 .unwrap_or(0);
             let mark = match status {
                 "running" | "healthy" => "✓",
-                "pending" | "starting" => "…",
+                "pending" | "starting" => "...",
                 "failed" | "crashed" => "✗",
                 _ => "?",
             };
@@ -726,7 +726,7 @@ fn render_models_box() {
     line(
         "✓ registered",
         &format!(
-            "{} files · {} MB  ({} embedding, {} tokenizer, {} llm, {} embed-llm)",
+            "{} files * {} MB  ({} embedding, {} tokenizer, {} llm, {} embed-llm)",
             manifest.entries.len(),
             total_mb,
             embedding_models,
@@ -740,7 +740,7 @@ fn render_models_box() {
     for entry in &manifest.entries {
         let mb = entry.size / 1_048_576;
         line(
-            &format!("  · {}", entry.name),
+            &format!("  * {}", entry.name),
             &format!("{:<19}  {} MB", entry.kind.label(), mb),
         );
     }

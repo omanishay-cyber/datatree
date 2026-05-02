@@ -180,6 +180,13 @@ pub async fn run(args: RebuildArgs, socket_override: Option<PathBuf>) -> CliResu
         // already opted-in to noise. Default to noisy (`quiet=false`)
         // so the per-30-s heartbeat fires during the silent passes.
         quiet: false,
+        // B11.5 (2026-05-02): `mneme rebuild` already wiped the shard
+        // and dropped everything in Steps 1-3 above. The build-state
+        // checkpoint is gone with the rest of it, so there's nothing
+        // for `--rebuild` to clear here — leave the flag false to
+        // avoid the redundant `info!("--rebuild: removing existing
+        // build-state.json")` log on a path that has nothing to remove.
+        rebuild: false,
     };
     crate::commands::build::run_inline(build_args, project.clone()).await?;
 

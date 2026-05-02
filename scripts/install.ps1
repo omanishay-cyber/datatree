@@ -867,7 +867,7 @@ if ($NoToolchain) {
                         $machinePath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
                         $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
                         $env:PATH = "$machinePath;$userPath"
-                        # B6: literal "Tesseract" (was `tesseract` — backtick-t was a PowerShell tab escape that ate the T)
+                        # B6: literal "Tesseract" (was `tesseract` -- backtick-t was a PowerShell tab escape that ate the T)
                         Write-OK "[G9] Tesseract OCR installed (re-open shell if Tesseract not on PATH yet)"
                     } else {
                         Write-Warn ("[G9] winget Tesseract install exited {0} - non-fatal, continuing" -f $p.ExitCode)
@@ -1727,6 +1727,40 @@ if (-not (Test-Path $MnemeBin)) {
     }
 }
 
+# B1.5 (2026-05-02): register the mneme plugin (commands / agents /
+# skills) with Claude Code so the slash commands `/mn-build`,
+# `/mn-recall`, `/mn-why`, etc. autocomplete in Claude Code. Without
+# this step the staged `plugin/` dir lives at
+# %USERPROFILE%\.mneme\plugin but Claude Code only scans
+# %USERPROFILE%\.claude\plugins for plugins, so users see "MCP works
+# but where are the slash commands?" and have no obvious next step.
+#
+# Symlink first (zero-copy, always reflects updates inside ~/.mneme).
+# Symlinks on Windows require Developer Mode OR an elevated shell --
+# fall back to a recursive copy if `New-Item -SymbolicLink` is denied.
+$pluginSrc = Join-Path $MnemeHome 'plugin'
+$claudePluginsDir = Join-Path $env:USERPROFILE '.claude\plugins'
+$mnemePluginDest = Join-Path $claudePluginsDir 'mneme'
+if (Test-Path $pluginSrc) {
+    if (-not (Test-Path $claudePluginsDir)) {
+        New-Item -ItemType Directory -Path $claudePluginsDir -Force | Out-Null
+    }
+    if (Test-Path $mnemePluginDest) {
+        Remove-Item -Recurse -Force $mnemePluginDest -ErrorAction SilentlyContinue
+    }
+    try {
+        # Symlink first (no copy, always fresh)
+        New-Item -ItemType SymbolicLink -Path $mnemePluginDest -Target $pluginSrc -ErrorAction Stop | Out-Null
+        Write-OK ("plugin registered (symlink): {0} -> {1}" -f $mnemePluginDest, $pluginSrc)
+    } catch {
+        # Symlink requires Developer Mode or admin; fallback to copy.
+        Copy-Item -Recurse -Force $pluginSrc $mnemePluginDest
+        Write-OK ("plugin registered (copy): {0}" -f $mnemePluginDest)
+    }
+} else {
+    Write-Warn ("plugin directory not found at {0} - slash commands /mn-* won't work in Claude Code" -f $pluginSrc)
+}
+
 # ============================================================================
 # Step 7b - Auto-install bundled models (BGE + GGUFs)
 # ============================================================================
@@ -1896,5 +1930,17 @@ Write-Host "  Uninstall:" -ForegroundColor White
 Write-Host "    mneme uninstall --platform claude-code"
 Write-Host "    Remove-Item -Recurse -Force $MnemeHome"
 Write-Host ""
-Write-Host "  Open a NEW terminal if the PATH change was just applied." -ForegroundColor Yellow
+# B11 (2026-05-02): the soft "Open a NEW terminal..." line was the LAST
+# thing the user saw, but in plain Yellow text it competed with every
+# other Yellow OK / WARN line above it -- and users reliably missed it,
+# then hit "mneme not found" running `mneme doctor` in the same shell.
+# Promote it to a boxed banner so it cannot be skimmed past. MUST stay
+# the last visible block in the success path so the next thing the
+# user reads after install is "open a NEW terminal".
+Write-Host ""
+Write-Host "  +---------------------------------------------------------+" -ForegroundColor Yellow
+Write-Host "  |  IMPORTANT: open a NEW PowerShell terminal before       |" -ForegroundColor Yellow
+Write-Host "  |  running 'mneme doctor' or 'mneme build' -- the PATH    |" -ForegroundColor Yellow
+Write-Host "  |  change just applied is not visible in this session.    |" -ForegroundColor Yellow
+Write-Host "  +---------------------------------------------------------+" -ForegroundColor Yellow
 Write-Host ""

@@ -224,7 +224,7 @@ fn run_du(json: bool) -> CliResult<()> {
                 let total_p = p.shards_bytes + p.snapshots_bytes;
                 let short = &p.id[..16.min(p.id.len())];
                 println!(
-                    "    {}…  {:>10}  (shards: {} + snapshots: {})",
+                    "    {}...  {:>10}  (shards: {} + snapshots: {})",
                     short,
                     human(total_p),
                     human(p.shards_bytes),

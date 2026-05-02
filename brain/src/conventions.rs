@@ -110,7 +110,7 @@ impl ConventionPattern {
                 format!("{} uses {}", scope.as_str(), style.as_str())
             }
             Self::ImportOrder { order } => {
-                format!("import order: {}", order.join(" → "))
+                format!("import order: {}", order.join(" -> "))
             }
             Self::ErrorHandling { pattern } => format!("errors: {pattern}"),
             Self::TestLayout { colocated, naming } => {

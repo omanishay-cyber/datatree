@@ -212,7 +212,7 @@ fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) ->
             "mneme: BGE-Small-En-v1.5 already installed at {}",
             root.display()
         );
-        println!("        · run with --force or --from-path to reinstall");
+        println!("        * run with --force or --from-path to reinstall");
         return Ok(());
     }
 
@@ -270,7 +270,7 @@ fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) ->
             "mneme: registered {registered} model file(s) into {}",
             root.display()
         );
-        println!("        · run `mneme doctor` to see them per kind");
+        println!("        * run `mneme doctor` to see them per kind");
         // Bug-2026-05-02 cosmetic: removed two stale tips that suggested
         // the user "enable real-embeddings feature at build time" and
         // "set ORT_DYLIB_PATH or place onnxruntime.dll on PATH". Both
@@ -311,10 +311,10 @@ fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) ->
                 // zero exit so the bootstrap halts (Bug G-6 part B
                 // makes that halt FATAL).
                 eprintln!("mneme: install failed: {e}");
-                eprintln!("        · the embedder will run in fallback (hashing-trick) mode");
-                eprintln!("        · retry: mneme models install --force");
+                eprintln!("        * the embedder will run in fallback (hashing-trick) mode");
+                eprintln!("        * retry: mneme models install --force");
                 eprintln!(
-                    "        · or manual install: drop bge-small-en-v1.5.onnx + \
+                    "        * or manual install: drop bge-small-en-v1.5.onnx + \
                      tokenizer.json into {} and re-run with --from-path",
                     root.display()
                 );
@@ -329,7 +329,7 @@ fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) ->
     {
         let _ = &marker;
         println!(
-            "        · this mneme build was compiled without the `fastembed-install` feature."
+            "        * this mneme build was compiled without the `fastembed-install` feature."
         );
         println!("          Two ways forward:");
         println!("           1. rebuild with `--features fastembed-install` (pulls fastembed).");
@@ -580,7 +580,7 @@ pub fn install_from_path_to_root(src_dir: &Path, root: &Path) -> CliResult<usize
 
         let merged_size = dst.metadata().map(|m| m.len()).unwrap_or(0);
         eprintln!(
-            "mneme: merged {} parts → {} ({} bytes)",
+            "mneme: merged {} parts -> {} ({} bytes)",
             part_count,
             dst.display(),
             merged_size
@@ -729,8 +729,8 @@ fn install_onnx_runtime_stub() -> CliResult<()> {
     println!("       (pick the `onnxruntime-win-x64-*.zip` for Windows-x64)");
     println!("    2. Extract `onnxruntime.dll` (Win) / libonnxruntime.* (Unix)");
     println!("       into either:");
-    println!("         · ~/.mneme/bin/   (mneme adds this to PATH at install time), or");
-    println!("         · any directory already on PATH");
+    println!("         * ~/.mneme/bin/   (mneme adds this to PATH at install time), or");
+    println!("         * any directory already on PATH");
     println!("       Or set the `ORT_DYLIB_PATH` env var to the absolute file path.");
     println!();
     println!("  See `models/README.md` in the bundle for the full procedure.");

@@ -523,7 +523,7 @@ fn first_non_heading_paragraph(text: &str) -> String {
     const MAX: usize = 500;
     if buf.chars().count() > MAX {
         let truncated: String = buf.chars().take(MAX).collect();
-        format!("{truncated}…")
+        format!("{truncated}...")
     } else {
         buf
     }

@@ -45,6 +45,12 @@ pub async fn run(args: UpdateArgs, socket_override: Option<PathBuf>) -> CliResul
         // including the silent embed/graph passes. Default to
         // noisy (`quiet=false`) so the heartbeat fires.
         quiet: false,
+        // B11.5 (2026-05-02): `mneme update` is the OPPOSITE of
+        // `--rebuild` — it explicitly wants the resume cursor + the
+        // existing checkpoint preserved so it can do a true incremental
+        // pass. Hard-coded to false; `--rebuild` belongs on `mneme
+        // build`, not `mneme update`.
+        rebuild: false,
     };
     crate::commands::build::run(build_args, socket_override).await
 }

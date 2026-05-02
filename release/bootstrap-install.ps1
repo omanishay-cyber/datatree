@@ -437,3 +437,16 @@ if ($NoModels) {
     Write-Host "    iex (irm https://github.com/omanishay-cyber/mneme/releases/download/$Version/bootstrap-install.ps1)"
 }
 Write-Host "  Restart Claude Code so it picks up the new MCP server." -ForegroundColor Yellow
+
+# B11 (2026-05-02): make the PATH-just-applied warning the LAST visible
+# block. The bootstrap installer stuffed a one-line yellow note among
+# half a dozen other yellow OK / WARN lines and users skim past it,
+# then hit "mneme: command not found" running `mneme doctor` in the
+# same shell. Boxed banner survives the skim.
+Write-Host ""
+Write-Host "  +---------------------------------------------------------+" -ForegroundColor Yellow
+Write-Host "  |  IMPORTANT: open a NEW PowerShell terminal before       |" -ForegroundColor Yellow
+Write-Host "  |  running 'mneme doctor' or 'mneme build' -- the PATH    |" -ForegroundColor Yellow
+Write-Host "  |  change just applied is not visible in this session.    |" -ForegroundColor Yellow
+Write-Host "  +---------------------------------------------------------+" -ForegroundColor Yellow
+Write-Host ""
