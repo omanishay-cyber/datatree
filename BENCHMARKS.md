@@ -87,7 +87,7 @@ Mneme itself - the repo that contains this file.
 
 | # | Ratio |
 |---|---|
-| 1 | 0.00 (mneme returned 0 files → undefined, capped at 0 by the harness) |
+| 1 | 0.00 (mneme returned 0 files -> undefined, capped at 0 by the harness) |
 | 2 | 2.83 |
 | 3 | 0.00 |
 | 4 | 1.66 |
@@ -236,7 +236,7 @@ populates top-10.
 ### Fixture change applied
 
 Only one query was touched - `PathManager` - where `expected_top` was
-expanded from 2 → 5 paths to reflect the verified top-10 overlap:
+expanded from 2 -> 5 paths to reflect the verified top-10 overlap:
 
 | Query | Before | After |
 |---|---|---|
@@ -295,7 +295,7 @@ current retrieval primitive.
 
 Source of truth for this refresh:
 [`benchmarks/fixtures/golden.json`](benchmarks/fixtures/golden.json) (diff:
-`PathManager.expected_top` grew from 2 → 5 entries).
+`PathManager.expected_top` grew from 2 -> 5 entries).
 
 ## Mneme vs CRG
 

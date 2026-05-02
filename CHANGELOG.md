@@ -11,13 +11,13 @@ Versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed (install pipeline + plugin commands + diagnostic chain)
 
-- **B1 - `install.ps1` now runs `bun install --frozen-lockfile` after extract.** Without this, `~/.mneme/mcp/node_modules/` shipped empty (or missing `zod` / `@modelcontextprotocol/sdk` / `ajv`) and the MCP server crashed silently on first start with `error: ENOENT while resolving package 'zod' from 'C:\Users\POS\.mneme\mcp\src\types.ts'`. Claude Code's `/mcp` panel showed `mneme · failed`. Step 5b in `scripts/install.ps1` now invokes Bun, fails the install loud if exit code != 0, and reports `MCP node_modules installed` on success.
+- **B1 - `install.ps1` now runs `bun install --frozen-lockfile` after extract.** Without this, `~/.mneme/mcp/node_modules/` shipped empty (or missing `zod` / `@modelcontextprotocol/sdk` / `ajv`) and the MCP server crashed silently on first start with `error: ENOENT while resolving package 'zod' from 'C:\Users\POS\.mneme\mcp\src\types.ts'`. Claude Code's `/mcp` panel showed `mneme * failed`. Step 5b in `scripts/install.ps1` now invokes Bun, fails the install loud if exit code != 0, and reports `MCP node_modules installed` on success.
 - **B1.5 - Mneme plugin slash commands now register with Claude Code on install.** Pre-fix, after a clean install + `mneme: connected`, typing `/mn-build` (or `/mn-recall`, `/mn-why`, `/mn-resume`, etc.) in Claude Code showed `Unknown command`. The release zip's `plugin/commands/` subtree was dropped at `~/.mneme/plugin/` but never linked into Claude's plugin search path. Install step 7 now copies/symlinks the plugin into Claude's plugin directory so the slash commands surface in autocomplete.
 - **B2 - `stage-release-zip.ps1` refuses to ship broken zips.** Previously, the staging script blindly robocopied `mcp/` even if the source `node_modules/` was empty - producing a zip that crashed on first install. New pre-stage assertion: `mcp/node_modules/zod/package.json` MUST exist (auto-runs `bun install --frozen-lockfile` if missing); abort with `Fail "mcp/node_modules missing zod - refusing to stage broken zip"` otherwise. Mirror assertion for `@modelcontextprotocol/sdk`. Defense in depth with B1.
 - **B3 - `mneme doctor` MCP probe captures and echoes the child's stderr on failure.** Pre-fix, when the MCP server failed to start, doctor reported the unhelpful `could not probe MCP server - child closed stdout before response arrived` with no actionable diagnostic. The probe now captures stderr alongside stdout, prints the last 20 lines on probe failure, and includes the child's exit code. Users see the actual error (e.g. `ENOENT while resolving package 'zod'`) instead of guessing.
 - **B12 - Audit findings now stream to `findings.db` per-batch (no more 0-finding outcomes on timeout).** Pre-fix, `mneme-scanners` accumulated findings in process memory and only wrote them to `findings.db` at end-of-run. When the audit subprocess was killed by the wall-clock timeout (or any reason), the entire in-memory buffer (37,423 findings on Orion!) was lost. Build summary said "audit: ran" with `findings.db: 0` and the user had no idea their audit was binned. Scanners now `INSERT` into `findings.db` per-N-files (or every K seconds, whichever comes first) using SQLite WAL - partial findings persist even on hard kill.
 - **B13 - Audit fan-out uses idle scanner-workers from the supervisor pool.** Previously the audit phase spawned ONE single-threaded `mneme-scanners.exe` subprocess that walked all files sequentially while 6 idle `scanner-worker-N` daemon processes sat idle. Audit now becomes a typed job dispatched by the supervisor: file list is split into N batches, one batch per worker, results aggregated. **5–10× faster on multi-core machines** (POS 22-core: ~13 min audit drops to ~1–2 min on the same corpus).
-- **B14.5 - Heartbeat phase label now updates when audit starts.** Pre-fix, when the build pipeline transitioned from embed → audit, `cli/src/commands/build.rs` failed to call `heartbeat.set_phase("audit")`. The user saw stale `phase=embed processed=8003/8003` for 13+ minutes while audit was actually running - leaving the impression that embed had hung. Audit invocation now correctly sets phase + resets total/processed counters.
+- **B14.5 - Heartbeat phase label now updates when audit starts.** Pre-fix, when the build pipeline transitioned from embed -> audit, `cli/src/commands/build.rs` failed to call `heartbeat.set_phase("audit")`. The user saw stale `phase=embed processed=8003/8003` for 13+ minutes while audit was actually running - leaving the impression that embed had hung. Audit invocation now correctly sets phase + resets total/processed counters.
 - **B17 - All BGE / ORT inference pipeline now stable on Windows.** Bundled `onnxruntime.dll` bumped to **1.24.4** (matches what `ort 2.0.0-rc.12` expects on the API-24 ABI). Pre-fix, the Windows-shipped 1.20.x DLL would silently hang `RealBackend::try_new` on first BGE inference call - embedder fell back to hashing-trick without warning. Bundled DLL pinned via `ORT_DYLIB_PATH` so the in-tree version always wins over `System32`.
 
 ### Fixed (cosmetic - Anish's "even small cosmetic has to be fixed")
@@ -25,7 +25,7 @@ Versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 - **B4 - 41 spurious orphan-cleanup warnings on upgrade installs.** Pre-fix, `Remove-Item` on already-deleted manifest entries warned 41 times per upgrade. Now `Test-Path` guard before each `Remove-Item`; only real failures warn. Final summary `removed N orphan(s)` is the truth.
 - **B5 - PowerShell progress chatter (`Writing web request / Writing request stream`) silenced inside model downloads.** Inner `Get-Asset` function now sets `$ProgressPreference = 'SilentlyContinue'` locally instead of inheriting from the parent.
 - **B6 - Typo `re-open shell if  esseract not on PATH yet` (leading space + missing T) corrected.** Source had a backtick-t (PowerShell tab escape) where it should have had `Tesseract`. Now reads `re-open shell if Tesseract not on PATH yet`.
-- **B7 - Mojibake on Windows console: all `→` and `·` in user-facing prints replaced with ASCII `->` and `*`.** Windows console default code page (CP437/CP850) interpreted UTF-8 bytes as Latin-1, rendering `→` as `ΓåÆ` and `·` as `┬╖`. Workspace-wide grep + ASCII-ify pass on `cli/src/commands/models.rs` and other user-facing print sites. Box-drawing chars (`╔═╗║╚╝`) are CP437-safe and stay as-is.
+- **B7 - Mojibake on Windows console: all `->` and `*` in user-facing prints replaced with ASCII `->` and `*`.** Windows console default code page (CP437/CP850) interpreted UTF-8 bytes as Latin-1, rendering `->` as `ΓåÆ` and `*` as `┬╖`. Workspace-wide grep + ASCII-ify pass on `cli/src/commands/models.rs` and other user-facing print sites. Box-drawing chars (`╔═╗║╚╝`) are CP437-safe and stay as-is.
 - **B8 - Tesseract install on winget now refreshes PATH in the current process** so the immediate post-install capability check passes (cosmetic - runtime fallback in `multimodal-bridge/src/image.rs` already worked).
 - **B9 - Step 5b header renamed** from misleading "Bun cache check (prevents stale-bytecode MCP failures)" to accurate "install MCP node_modules (bun install --frozen-lockfile)".
 - **B10 - `doctor --strict` no longer prints install hints for tools that ARE detected.** Hint list now filtered against detected status.
@@ -77,8 +77,8 @@ Only after all 9 checks pass: clobber-upload zip + bootstrap to v0.3.2 release.
 
 ### Fixed (Wave 4 - 2026-04-30 office cycle)
 
-- **B-017 - Build heartbeat during silent parse/embed/graph phases.** Pre-fix, after the multimodal-warning batch (Tesseract-disabled lines etc.), the build pipeline emitted nothing for 5–20 minutes during parse → embed → graph phases on Orion-sized corpora. Users assumed hang and panic-closed the terminal - which actually killed the build mid-write and left a stale `.lock`. New `cli/src/build_heartbeat.rs` (514 lines) provides a RAII heartbeat handle with atomic counters, configurable interval/sink, and quiet-mode opt-out. `cli/src/commands/build.rs` wires 7 `set_phase` callouts + per-file `add_total`/`record_processed` + explicit `stop()` before summary. Status line format: `[01:34 elapsed] phase=parse processed=512/4218 rate=327.5/s`. Lines also mirror to `tracing::info!(target: "build.heartbeat", ...)` for structured-log capture. New `--quiet` flag for `mneme build` opts out. **9 unit tests + 2 integration tests added, all pass.**
-- **B-018 - Stale stamp PID surfaces in contention error message.** Pre-fix, `cli/src/build_lock.rs::contention_error` would emit `another build in progress for project X (locked at pid=23968 ts=…)` even when PID 23968 was a long-dead crashed-without-Drop holder. The OS auto-releases the kernel lock on process death (Windows `LockFileEx` + Unix `flock` are both process-affine), but the on-disk `.lock` file persists with the stale PID. New helpers `parse_pid_from_stamp`, `is_pid_alive` (cross-platform via `sysinfo`), `stale_stamp_annotation` now annotate dead-PID messages with `(stale stamp from PID N - race anyway)`. **3 unit tests added, all pass.**
+- **B-017 - Build heartbeat during silent parse/embed/graph phases.** Pre-fix, after the multimodal-warning batch (Tesseract-disabled lines etc.), the build pipeline emitted nothing for 5–20 minutes during parse -> embed -> graph phases on Orion-sized corpora. Users assumed hang and panic-closed the terminal - which actually killed the build mid-write and left a stale `.lock`. New `cli/src/build_heartbeat.rs` (514 lines) provides a RAII heartbeat handle with atomic counters, configurable interval/sink, and quiet-mode opt-out. `cli/src/commands/build.rs` wires 7 `set_phase` callouts + per-file `add_total`/`record_processed` + explicit `stop()` before summary. Status line format: `[01:34 elapsed] phase=parse processed=512/4218 rate=327.5/s`. Lines also mirror to `tracing::info!(target: "build.heartbeat", ...)` for structured-log capture. New `--quiet` flag for `mneme build` opts out. **9 unit tests + 2 integration tests added, all pass.**
+- **B-018 - Stale stamp PID surfaces in contention error message.** Pre-fix, `cli/src/build_lock.rs::contention_error` would emit `another build in progress for project X (locked at pid=23968 ts=...)` even when PID 23968 was a long-dead crashed-without-Drop holder. The OS auto-releases the kernel lock on process death (Windows `LockFileEx` + Unix `flock` are both process-affine), but the on-disk `.lock` file persists with the stale PID. New helpers `parse_pid_from_stamp`, `is_pid_alive` (cross-platform via `sysinfo`), `stale_stamp_annotation` now annotate dead-PID messages with `(stale stamp from PID N - race anyway)`. **3 unit tests added, all pass.**
 - **doctor-claude - `mneme doctor` no longer lies about hooks when Claude Code is running.** Anish's bug report: install succeeds, doctor reports `hooks_registered: 0/8` while Claude is open, closing Claude + reinstalling shows 8/8. Two confounding root causes:
   - **H1 (silent error swallowing)** - `cli/src/platforms/claude_code.rs::count_registered_mneme_hooks` collapsed every io / utf-8 / json / schema-shape error into `(0, expected)` indistinguishable from "no hooks present". New `count_registered_mneme_hooks_detailed()` returns `HookCountResult { count, expected, read_state: HookFileReadState::{Missing,UnreadableIo(String),Read}, parse_error: Option<String> }`. Doctor now distinguishes "no install yet" from "file locked" from "bytes consumed but parse failed".
   - **H2 (Claude clobbers settings.json on auto-save)** - Claude Code holds an in-memory copy of `~/.claude/settings.json`; on UI interaction or focus change, Claude saves and overwrites mneme's hook entries. New `is_claude_code_running() -> Option<u32>` enumerates the live process table via the workspace `sysinfo` dep (matches `claude.exe` / `claude` by name OR `claude-code` / `claude_code` in cmd line). `compose_hooks_message()` is a pure four-branch truth table: (claude-running × hooks-present), (claude-running × hooks-missing), (claude-not-running × hooks-present), (claude-not-running × hooks-missing). When Claude is running and hooks missing, doctor now emits a clear warning naming the PID and explaining Claude may be holding the stale in-memory copy - instead of a misleading "0/8 install broken" line.
@@ -102,15 +102,15 @@ Only after all 9 checks pass: clobber-upload zip + bootstrap to v0.3.2 release.
 
 Per [`feedback_mneme_ai_dna_pace.md`](../.claude/projects/...) Principle B ("larger buffers across the pipeline; same-speed indexing; no hard caps unless mathematically necessary"), 9 buffer/queue/cap sites tuned up across 4 crates. Each bump justified for AI burst rates:
 
-- **supervisor - `MAX_CONCURRENT_CONNECTIONS`: 64 → 256 (4×).** (`supervisor/src/ipc.rs:53`) Env override `MNEME_IPC_MAX_CONNS`. AI parallel agents (8–12) + CLI/MCP/vision baseline saturated 64.
+- **supervisor - `MAX_CONCURRENT_CONNECTIONS`: 64 -> 256 (4×).** (`supervisor/src/ipc.rs:53`) Env override `MNEME_IPC_MAX_CONNS`. AI parallel agents (8–12) + CLI/MCP/vision baseline saturated 64.
 - **supervisor - IPC body buffer pre-allocated 64 KiB** instead of `Vec::new()`. (`supervisor/src/ipc.rs:572`) Eliminates hot-path realloc storm.
-- **supervisor - `MAX_PENDING` watcher events: 10 000 → 65 536 (~6.5×).** (`supervisor/src/watcher.rs:43`) Env override `MNEME_WATCHER_MAX_PENDING`. AI mass-rename in 1000+ file projects emits >10k events.
+- **supervisor - `MAX_PENDING` watcher events: 10 000 -> 65 536 (~6.5×).** (`supervisor/src/watcher.rs:43`) Env override `MNEME_WATCHER_MAX_PENDING`. AI mass-rename in 1000+ file projects emits >10k events.
 - **supervisor - watcher pending HashMap pre-sized to MAX_PENDING/16** to avoid rehash storm.
-- **parsers - `tx_results` channel cap: 1024 → 4096 (4×).** (`parsers/src/main.rs:56`) Env override `MNEME_PARSE_RESULT_CHANNEL_CAP`. 4× headroom for fan-in burst.
-- **parsers - per-worker `tx_jobs` cap: 64 → 256 (4×).** (`parsers/src/main.rs:60`) Env override `MNEME_PARSE_WORKER_JOB_CHANNEL_CAP`. M16 fan-out fast path stays hot longer.
-- **parsers - `DEFAULT_TREE_CACHE`: 1000 → 4000 (4×).** (`parsers/src/incremental.rs:24`) LRU eviction was breaking same-speed-indexing on 1000+ file projects.
-- **livebus - `BACKPRESSURE_WINDOW`: 50 → 256 (5×).** (`livebus/src/subscriber.rs:31`) Old window evicted normal subscribers after 0.5s burst. Per-subscriber mpsc capacity auto-tracks.
-- **store - `WRITER_CHANNEL_CAP`: 256 → 1024 (4×) per shard.** (`store/src/query.rs:37`) 26 shards × 1024 = 26 624 in-flight headroom. Single-writer invariant preserved (only the input channel grew).
+- **parsers - `tx_results` channel cap: 1024 -> 4096 (4×).** (`parsers/src/main.rs:56`) Env override `MNEME_PARSE_RESULT_CHANNEL_CAP`. 4× headroom for fan-in burst.
+- **parsers - per-worker `tx_jobs` cap: 64 -> 256 (4×).** (`parsers/src/main.rs:60`) Env override `MNEME_PARSE_WORKER_JOB_CHANNEL_CAP`. M16 fan-out fast path stays hot longer.
+- **parsers - `DEFAULT_TREE_CACHE`: 1000 -> 4000 (4×).** (`parsers/src/incremental.rs:24`) LRU eviction was breaking same-speed-indexing on 1000+ file projects.
+- **livebus - `BACKPRESSURE_WINDOW`: 50 -> 256 (5×).** (`livebus/src/subscriber.rs:31`) Old window evicted normal subscribers after 0.5s burst. Per-subscriber mpsc capacity auto-tracks.
+- **store - `WRITER_CHANNEL_CAP`: 256 -> 1024 (4×) per shard.** (`store/src/query.rs:37`) 26 shards × 1024 = 26 624 in-flight headroom. Single-writer invariant preserved (only the input channel grew).
 
 13 buffer sites audited and **kept as-is** (already AI-burst-sized or correctly bounded for safety). Every wait-path already has a `send_timeout` fallthrough - 0 timeout-additions needed (the M15 + M16 + IPC_READ_TIMEOUT + NEW-016 prior work covers this).
 
@@ -126,11 +126,11 @@ Per [`feedback_mneme_ai_dna_pace.md`](../.claude/projects/...) Principle B ("lar
 
 ### Test gate (Wave 4 - POS2)
 
-- `cargo check --workspace` → EXIT 0 (15.4 s)
-- `cargo test --workspace --lib` → **708 passed / 0 failed** across 10 crates (cli=423 · daemon=86 · scanners=49 · multimodal=48 · parsers=48 · livebus=20 · brain=15 · store=10 · md-ingest=9 · common=0)
-- `cd mcp && bunx tsc --noEmit` → EXIT 0
-- `cd mcp && bun test` → 12/12 pass
-- `cd vision && bunx tsc --noEmit` → EXIT 0
+- `cargo check --workspace` -> EXIT 0 (15.4 s)
+- `cargo test --workspace --lib` -> **708 passed / 0 failed** across 10 crates (cli=423 * daemon=86 * scanners=49 * multimodal=48 * parsers=48 * livebus=20 * brain=15 * store=10 * md-ingest=9 * common=0)
+- `cd mcp && bunx tsc --noEmit` -> EXIT 0
+- `cd mcp && bun test` -> 12/12 pass
+- `cd vision && bunx tsc --noEmit` -> EXIT 0
 
 ### Architecture notes
 
@@ -274,7 +274,7 @@ The B-008 chain converts an opaque exit-code into a complete diagnostic in one t
 - **Hook + MCP command paths use forward slashes on Windows.** Claude Code
   shells hook commands through bash on Windows (Git Bash / WSL-shim),
   which interprets `\U`, `\A`, `\.`, etc. as escape sequences and
-  mangles `C:\Users\Administrator\.mneme\bin\mneme.exe` →
+  mangles `C:\Users\Administrator\.mneme\bin\mneme.exe` ->
   `C:UsersAdministrator.mnemebinmneme.exe` - "command not found".
   `cli/src/platforms/claude_code.rs::build_hook_entry` and
   `cli/src/platforms/mod.rs::mneme_mcp_entry` now both call
@@ -730,20 +730,20 @@ and are now part of the v0.3.1 release.
 
 ## [0.3.0] - 2026-04-24
 
-The "depth over breadth" release. Every Phase B + C item from the v0.2 analysis is now real code. Wiring ratio **3/47 (6%)** at v0.2.0 → **47/47 (100%)** at v0.3.0. Every MCP tool returns real data.
+The "depth over breadth" release. Every Phase B + C item from the v0.2 analysis is now real code. Wiring ratio **3/47 (6%)** at v0.2.0 -> **47/47 (100%)** at v0.3.0. Every MCP tool returns real data.
 
 ### Added
 - **Real BGE-small ONNX embeddings - Windows ort unblocked.** `Cargo.toml` now pins `ort = { features = ["ndarray", "api-24"] }` (the `api-24` feature is required - `ep/vitis.rs` in ort 2.0.0-rc.12 references `SessionOptionsAppendExecutionProvider_VitisAI` which only exists in ort-sys's api-24 surface). `brain/src/embeddings.rs` now runs direct `ort::session::Session` + `tokenizers` inference - mean-pool over seq dim + L2 normalize - 384-dim output matches BGE-small-en-v1.5. Graceful fallback to hashing-trick on missing model/tokenizer/dll; never panics. Gated behind a `real-embeddings` feature (default-off until users stage the `.onnx` + tokenizer). `mneme models install --from-path <dir>` added for local-only install. Uses `ort` `load-dynamic` feature so compile never links against ORT - DLL discovered at runtime via `ORT_DYLIB_PATH`. (Shipped, but the `.onnx` + tokenizer are NOT bundled in the v0.3 binary release - recall is keyword-only until the user runs `mneme models install`. See `CLAUDE.md` "Known limitations in v0.3".)
-- **Supervisor-mediated worker dispatch.** `common/src/jobs.rs` introduces `Job` enum (Parse / Scan / Embed / Ingest), monotonic `JobId(u64)`, `JobOutcome`. `supervisor/src/job_queue.rs` ships `JobQueue` + `JobQueueSnapshot` with in-flight tracking and `requeue_worker()` on child exit. `supervisor/src/manager.rs` calls `requeue_worker` from `monitor_child` so jobs resume on the next available worker when a child dies. New IPC verbs: `DispatchJob`, `WorkerCompleteJob`, `JobQueueStatus`. `cli/src/commands/build.rs` gains `--dispatch` / `--inline` flags (default stays inline); `--dispatch` walks the tree, submits `Job::Parse` per file, polls queue status until drained. 30 new supervisor/common tests (worker-crash → requeue, queue-full → reject).
+- **Supervisor-mediated worker dispatch.** `common/src/jobs.rs` introduces `Job` enum (Parse / Scan / Embed / Ingest), monotonic `JobId(u64)`, `JobOutcome`. `supervisor/src/job_queue.rs` ships `JobQueue` + `JobQueueSnapshot` with in-flight tracking and `requeue_worker()` on child exit. `supervisor/src/manager.rs` calls `requeue_worker` from `monitor_child` so jobs resume on the next available worker when a child dies. New IPC verbs: `DispatchJob`, `WorkerCompleteJob`, `JobQueueStatus`. `cli/src/commands/build.rs` gains `--dispatch` / `--inline` flags (default stays inline); `--dispatch` walks the tree, submits `Job::Parse` per file, polls queue status until drained. 30 new supervisor/common tests (worker-crash -> requeue, queue-full -> reject).
 - **FTS5 node-name index (benchmarks/fts5_vs_like pending).** `store/src/schema.rs` adds three FTS5 sync triggers (`nodes_ai`, `nodes_ad`, `nodes_au`) that keep `nodes_fts` in lockstep with the `nodes` table. `store/src/builder.rs` runs `seed_nodes_fts()` one-time idempotent rebuild on first boot after migration. `mcp/src/store.ts` exposes `searchNodesFts(query, limit)`, `hasNodesFts()`, `fts5Sanitize()`. `recall_concept.ts` now prefers the FTS5 path with graceful LIKE fallback. Earlier internal numbers (50×/17×/168× variants) were measured against a single local graph.db and not reproducible from public CI; a real `bench_fts5_vs_like` harness is on the v0.3.x roadmap and the speedup claim will be republished only with public, runnable data.
 - **PDF multimodal ingestion - end-to-end.** Pure-Rust path via `pdf-extract 0.7` (Python sidecar was removed in v0.2). `cli/src/commands/build.rs` adds `run_multimodal_pass` + `persist_multimodal` after the Tree-sitter code walk. Every PDF page becomes a `graph.db::nodes` row (kind=`pdf_page`, qualified_name=`pdf://<abs-path>#page{N}`), indexed via the new `nodes_fts` so `recall_concept` finds PDF content end-to-end. Whole-document row stored in `multimodal.db::media`. Idempotent via `INSERT OR REPLACE`. Throughput: 225–254 pages/sec on debug build.
-- **Phase C9 supervisor-IPC MCP tools** - final 7 tools wired with supervisor-first + graceful-degrade fallback: `refactor_apply` (atomic file rewrite with 10 safety checks + drift detection + dry-run, 110→403 lines), `context` (hybrid retrieval fallback), `surprising_connections` (cross-community edge scan), `step_plan_from` (direct `tasks.db` write fallback), `rebuild` (spawns `mneme build .` when IPC verb absent), `snapshot` (SQLite `VACUUM INTO` per shard), `graphify_corpus` (live-stats fallback).
+- **Phase C9 supervisor-IPC MCP tools** - final 7 tools wired with supervisor-first + graceful-degrade fallback: `refactor_apply` (atomic file rewrite with 10 safety checks + drift detection + dry-run, 110->403 lines), `context` (hybrid retrieval fallback), `surprising_connections` (cross-community edge scan), `step_plan_from` (direct `tasks.db` write fallback), `rebuild` (spawns `mneme build .` when IPC verb absent), `snapshot` (SQLite `VACUUM INTO` per shard), `graphify_corpus` (live-stats fallback).
 - **Scanner additions.** security: Rust-side `unsafe` block detection in crates without `#![forbid(unsafe_code)]`. perf: `.unwrap()` in async-fn detection, `Object.keys().forEach` anti-pattern, `Array.from(` inside loops. 7 new scanner unit tests (49/49 pass). Full scanner inventory is 11/11 firing against mneme itself - 310 findings total (theme 156, perf 136, security 9, a11y 5, secrets 4). The earlier "5 scanners are stubs" claim was stale.
-- **Animated SVG hero + redesigned `docs/index.html`.** `docs/og.svg` rewritten with 50+ `<animate>` / `<animateMotion>` elements, CSS keyframes fallback, `prefers-reduced-motion` support, gradient-sweep wordmark, pulsing node graph, traveling connection pulses, measured-win ribbon, install command with blinking caret, top-right `v0.x · live` pill. `docs/index.html`: split hero with animated terminal demo showing `mneme recall "auth flow"` streaming results; glass feature cards; IntersectionObserver reveal-on-scroll; bench table with animated bar fills.
+- **Animated SVG hero + redesigned `docs/index.html`.** `docs/og.svg` rewritten with 50+ `<animate>` / `<animateMotion>` elements, CSS keyframes fallback, `prefers-reduced-motion` support, gradient-sweep wordmark, pulsing node graph, traveling connection pulses, measured-win ribbon, install command with blinking caret, top-right `v0.x * live` pill. `docs/index.html`: split hero with animated terminal demo showing `mneme recall "auth flow"` streaming results; glass feature cards; IntersectionObserver reveal-on-scroll; bench table with animated bar fills.
 - **CI hardening.** `.github/workflows/bench.yml`: regression check on every PR with sticky comment and 10% threshold. `.github/workflows/bench-baseline.yml`: manual baseline refresh. `.github/workflows/release.yml`: auto-creates GitHub Release page before uploading assets (fixes the "release not found" failure seen on v0.2.1).
 
 ### Changed
-- **MCP wiring ratio 40/46 → 47/47.** No stubs remain in user-visible surfaces. Every `mcp/src/tools/*.ts` either hits the supervisor IPC or returns real data via `bun:sqlite` read-only handles.
+- **MCP wiring ratio 40/46 -> 47/47.** No stubs remain in user-visible surfaces. Every `mcp/src/tools/*.ts` either hits the supervisor IPC or returns real data via `bun:sqlite` read-only handles.
 - **release.yml deny-list step rejects non-whitelisted binaries (closes I-22).** The release workflow filters published assets against an explicit allow-list so an accidentally-built `bench_retrieval` (or any other developer-only binary) cannot leak into a tagged release tarball.
 - `README.md` hero uses `<picture>` preferring SVG over PNG so the animated banner plays on GitHub.
 - `BENCHMARKS.md` gains the vs-CRG comparison section: 1000× incremental reindex, 6.6× graph density, honest and measured.
@@ -754,11 +754,11 @@ The "depth over breadth" release. Every Phase B + C item from the v0.2 analysis 
 - **Julia + Zig parser grammar queries.** `parsers/src/query_cache.rs` referenced node type names which don't exist in the current grammar versions. Julia `short_function_definition` dropped (use `assignment (call_expression ...)` instead); Zig `line_comment` / `doc_comment` replaced with `(comment)`. Both grammar smoke tests pass. No crate bumps, no forks, no `#[ignore]`.
 - **Release workflow.** Added explicit `gh release create --generate-notes` step before asset upload so tag push alone no longer requires a pre-existing release page.
 - **Bench workflow on Windows.** PowerShell step now sets `$global:LASTEXITCODE = 0; exit 0` at end to avoid leaking native-command exit codes into the step result.
-- **Golden fixture refresh.** `benchmarks/fixtures/golden.json`: `PathManager` expected_top broadened 2 → 5 entries to match the current workspace layout. Hit rate 2/19 → 5/22.
+- **Golden fixture refresh.** `benchmarks/fixtures/golden.json`: `PathManager` expected_top broadened 2 -> 5 entries to match the current workspace layout. Hit rate 2/19 -> 5/22.
 
 ### Verified (workspace health)
 - `cargo check --workspace`: green (doc warnings only, no errors).
-- `cargo test --workspace`: fully green, 190+ → 280+ tests (30 new supervisor/common, 4 new brain, 7 new scanners, plus Julia+Zig grammar smoke tests).
+- `cargo test --workspace`: fully green, 190+ -> 280+ tests (30 new supervisor/common, 4 new brain, 7 new scanners, plus Julia+Zig grammar smoke tests).
 - `cd mcp && bunx tsc --noEmit`: green.
 - FTS5 triggers round-trip tested against real graph.db.
 - PDF pipeline round-tripped on 2-file fixture.
@@ -800,7 +800,7 @@ Phase B MCP wiring + vision-app live + CI bench harness.
 - `mcp/src/store.ts` grew +411 lines of helpers (`doctor.ts`, `god_nodes.ts`, step-ledger, `drift_findings` domains).
 
 ### Changed
-- **Wired ratio 3/47 → 8/47** (2.7× jump). MCP tools wired this release: `doctor.ts` (141→194; real supervisor HTTP probe + per-shard schema-version check + per-daemon-state recommendations), `god_nodes.ts` (49→72; real high-coupling node query + community membership from semantic shard), `step_status.ts` (93→181; real `tasks.db` reader for current step / completed / pending / constraints / verification gate), `step_resume.ts` (142→310; compaction-resilient KILLER feature now works end-to-end - `ResumeBundle` + `transcript_refs` populated from `ledger_entries`), `drift_findings.ts` (72→191; real `findings.db` query with severity + scope filters + 5 graceful-degrade paths).
+- **Wired ratio 3/47 -> 8/47** (2.7× jump). MCP tools wired this release: `doctor.ts` (141->194; real supervisor HTTP probe + per-shard schema-version check + per-daemon-state recommendations), `god_nodes.ts` (49->72; real high-coupling node query + community membership from semantic shard), `step_status.ts` (93->181; real `tasks.db` reader for current step / completed / pending / constraints / verification gate), `step_resume.ts` (142->310; compaction-resilient KILLER feature now works end-to-end - `ResumeBundle` + `transcript_refs` populated from `ledger_entries`), `drift_findings.ts` (72->191; real `findings.db` query with severity + scope filters + 5 graceful-degrade paths).
 - Vision app now LIVE against real `graph.db` **in dev mode only - see
   `docs-and-memory/phase-a-issues.md §A1-A12` for the v0.3 production
   status**. `vision/server/shard.ts`: dual-path shard lookup
@@ -825,24 +825,24 @@ Phase B MCP wiring + vision-app live + CI bench harness.
 
 ## [0.2.1] - 2026-04-23
 
-Phase A credibility pass + `datatree` → `mneme` rename sweep.
+Phase A credibility pass + `datatree` -> `mneme` rename sweep.
 
 ### Added
 - `scripts/register-mcp.ps1`: idempotent MCP-server registration helper. Starts daemon, health-probes, registers mneme in `~/.claude/settings.json`.
-- Full v0.2.0 CHANGELOG entry (Step Ledger typed API, hybrid retrieval framework, cross-encoder reranker, convention learner, federated primitives, project identity, Rust-native blast, 7 new MCP tools → 47 total, justfile benchmark runner, ARCHITECTURE.md, `server.instructions` + `mneme://` resources, tree-sitter 0.23 → 0.25, `ort` ONNX dep uncommented, Prometheus metric names normalised, README rewrite).
+- Full v0.2.0 CHANGELOG entry (Step Ledger typed API, hybrid retrieval framework, cross-encoder reranker, convention learner, federated primitives, project identity, Rust-native blast, 7 new MCP tools -> 47 total, justfile benchmark runner, ARCHITECTURE.md, `server.instructions` + `mneme://` resources, tree-sitter 0.23 -> 0.25, `ort` ONNX dep uncommented, Prometheus metric names normalised, README rewrite).
 
 ### Changed
 - Cargo manifests (`Cargo.toml`, `common`, `benchmarks`, `livebus`, `parsers`, `brain`, `cli`): repository + homepage URLs now `github.com/omanishay-cyber/mneme`; descriptions + doc comments renamed.
-- CLI + supervisor + MCP source: env vars `DATATREE_*` → `MNEME_*` across `cli/`, `supervisor/main.rs`, `mcp/src/{db.ts, store.ts, index.ts, server.ts, types.ts, tools/recall_constraint.ts}`. Class rename `DatatreeMcpServer` → `MnemeMcpServer`. `EnvFilter` default `datatree_supervisor` → `mneme_supervisor`. `DATATREE_SESSION_ID` → `MNEME_SESSION_ID`.
-- Plugin + templates content-swept: `plugin/.cursor/rules/datatree.mdc` → `mneme.mdc`, `plugin/.kiro/steering/datatree.md` → `mneme.md`, `plugin/templates/cursor/.cursor/rules/datatree.mdc.template` → `mneme.mdc.template`, `plugin/templates/kiro/.kiro/steering/datatree.md.template` → `mneme.md.template`; all 18 `plugin/templates/*.template` files swept.
-- Scripts (`check-runtime`, `install-runtime`, `uninstall-runtime`, `install-supervisor`, `install_models`, `start-daemon`, `stop-daemon`, `uninstall`, `.sh` + `.ps1`): `~/.datatree` → `~/.mneme`; `datatree-supervisor` → `mneme-supervisor`; `datatree-store` → `mneme-store`; `datatree <verb>` → `mneme <verb>`.
-- INSTALL.md: 46 → 47 MCP tool reference; `DATATREE_BUN` → `MNEME_BUN`; service name `DatatreeDaemon` → `MnemeDaemon`.
-- GitHub issue templates: placeholder commands `/dt-status` → `/mn-status`; discussions URL updated.
-- CLAUDE.md, VERIFICATION.md, TEST_RUN.md, docs/dev-setup.md, docs/E2E_TEST_v0.2.0.md: module path `datatree_common` → `mneme_common`; `DATATREE_IPC` → `MNEME_IPC`; `datatree_multimodal` → `mneme_multimodal`; `DATATREE_MCP_PATH` → `MNEME_MCP_PATH`.
+- CLI + supervisor + MCP source: env vars `DATATREE_*` -> `MNEME_*` across `cli/`, `supervisor/main.rs`, `mcp/src/{db.ts, store.ts, index.ts, server.ts, types.ts, tools/recall_constraint.ts}`. Class rename `DatatreeMcpServer` -> `MnemeMcpServer`. `EnvFilter` default `datatree_supervisor` -> `mneme_supervisor`. `DATATREE_SESSION_ID` -> `MNEME_SESSION_ID`.
+- Plugin + templates content-swept: `plugin/.cursor/rules/datatree.mdc` -> `mneme.mdc`, `plugin/.kiro/steering/datatree.md` -> `mneme.md`, `plugin/templates/cursor/.cursor/rules/datatree.mdc.template` -> `mneme.mdc.template`, `plugin/templates/kiro/.kiro/steering/datatree.md.template` -> `mneme.md.template`; all 18 `plugin/templates/*.template` files swept.
+- Scripts (`check-runtime`, `install-runtime`, `uninstall-runtime`, `install-supervisor`, `install_models`, `start-daemon`, `stop-daemon`, `uninstall`, `.sh` + `.ps1`): `~/.datatree` -> `~/.mneme`; `datatree-supervisor` -> `mneme-supervisor`; `datatree-store` -> `mneme-store`; `datatree <verb>` -> `mneme <verb>`.
+- INSTALL.md: 46 -> 47 MCP tool reference; `DATATREE_BUN` -> `MNEME_BUN`; service name `DatatreeDaemon` -> `MnemeDaemon`.
+- GitHub issue templates: placeholder commands `/dt-status` -> `/mn-status`; discussions URL updated.
+- CLAUDE.md, VERIFICATION.md, TEST_RUN.md, docs/dev-setup.md, docs/E2E_TEST_v0.2.0.md: module path `datatree_common` -> `mneme_common`; `DATATREE_IPC` -> `MNEME_IPC`; `datatree_multimodal` -> `mneme_multimodal`; `DATATREE_MCP_PATH` -> `MNEME_MCP_PATH`.
 - `.gitignore`: added `~/.mneme/` and `.mneme/` patterns; kept legacy `.datatree/` patterns so orphan install dirs from pre-rename installs stay ignored.
 
 ### Fixed
-- `mcp/src/db.ts`: fixed preexisting typo in Windows named-pipe path (`\\\\?\\pipemneme-supervisor` → `\\\\?\\pipe\\mneme-supervisor`).
+- `mcp/src/db.ts`: fixed preexisting typo in Windows named-pipe path (`\\\\?\\pipemneme-supervisor` -> `\\\\?\\pipe\\mneme-supervisor`).
 
 ### Verified
 - `cargo check --workspace` green (doc warnings only).
@@ -868,13 +868,13 @@ Same-day follow-up to v0.1.0. Architectural depth pass.
 - **Vision app views** - 12 view modes scaffolded: ArcChord, ForceGalaxy, HeatmapGrid, HierarchyTree, LayeredArchitecture, ProjectGalaxy3D, RiskDashboard, SankeyDomainFlow, SankeyTypeFlow, Sunburst, TestCoverageMap, ThemePalette. Plus Command Center widgets: DriftIndicator, ResumptionBundle, StepLedger. (Source-only at v0.2; the production Tauri shell is not shipped in v0.3 - see `docs-and-memory/phase-a-issues.md §A1-A12`.)
 
 ### Changed
-- Tree-sitter bumped **0.23 → 0.25** (ABI v15 support - unblocks C#, Swift, Zig, Solidity, Julia).
+- Tree-sitter bumped **0.23 -> 0.25** (ABI v15 support - unblocks C#, Swift, Zig, Solidity, Julia).
 - `ort` ONNX dep uncommented in workspace - real BGE-small embeddings path is now unblocked (wire-up pending).
 - Prometheus metric names normalised to `mneme_` prefix.
-- README rewritten (11 KB → 27 KB): bidirectional architecture diagram, install tabs, before/after, stats grid, tech chips.
+- README rewritten (11 KB -> 27 KB): bidirectional architecture diagram, install tabs, before/after, stats grid, tech chips.
 - Rebrand completed at README + `mcp/src/index.ts` level (project renamed from `datatree` to `mneme`).
 - Cargo.toml `repository` + `homepage` URLs updated to `github.com/omanishay-cyber/mneme`.
-- Plugin platform files renamed: `plugin/.cursor/rules/datatree.mdc` → `mneme.mdc`, `plugin/.kiro/steering/datatree.md` → `mneme.md`.
+- Plugin platform files renamed: `plugin/.cursor/rules/datatree.mdc` -> `mneme.mdc`, `plugin/.kiro/steering/datatree.md` -> `mneme.md`.
 
 ### Removed
 - `brain-stub/` crate (replaced by real `brain/`).
@@ -883,10 +883,10 @@ Same-day follow-up to v0.1.0. Architectural depth pass.
 - `cargo test --workspace` passes - **190 green, 0 failed**.
 - Parsers: `StreamingIterator` trait import from `streaming-iterator` crate.
 - Supervisor: restored Prometheus metric names to `mneme_` prefix (fixed sed regex damage).
-- **Supervisor auto-restart re-enabled** - the `tokio::process::Child` Send-recursion cycle that blocked v0.1 is broken by decoupling the monitor task from the respawn code path via an `mpsc::UnboundedChannel<RestartRequest>` owned by `ChildManager`. The monitor owns the dead `Child` until its function returns; the dedicated restart loop (started by `ChildManager::run_restart_loop` in `lib.rs::run`) pulls requests off the channel in a fresh task with its own stack, so neither side has to prove the combined future is Send. Integration test `watchdog_respawns_crashed_worker` exercises the full crash → detect → respawn → restart_count >= 2 loop.
+- **Supervisor auto-restart re-enabled** - the `tokio::process::Child` Send-recursion cycle that blocked v0.1 is broken by decoupling the monitor task from the respawn code path via an `mpsc::UnboundedChannel<RestartRequest>` owned by `ChildManager`. The monitor owns the dead `Child` until its function returns; the dedicated restart loop (started by `ChildManager::run_restart_loop` in `lib.rs::run`) pulls requests off the channel in a fresh task with its own stack, so neither side has to prove the combined future is Send. Integration test `watchdog_respawns_crashed_worker` exercises the full crash -> detect -> respawn -> restart_count >= 2 loop.
 
 ### Known v0.2 constraints
-- Only 3 of 47 MCP tools are wired to real data (same 3 as v0.1: `blast_radius`, `recall_concept`, `health`). The wired ratio dropped from 9% → 6% because tool *files* grew faster than wiring.
+- Only 3 of 47 MCP tools are wired to real data (same 3 as v0.1: `blast_radius`, `recall_concept`, `health`). The wired ratio dropped from 9% -> 6% because tool *files* grew faster than wiring.
 - Supervisor still doesn't dispatch to workers - `mneme build` runs inline in CLI.
 - Vision app scaffold only - views are not connected to `graph.db` yet.
 - Multimodal Python sidecar installed but Rust bridge not wired.
@@ -899,11 +899,11 @@ Initial public release. .
 ### Added
 - Multi-process Rust + Bun + Python architecture (10 crates, supervisor-managed)
 - **Compaction-resilient Step Ledger** - numbered, verification-gated plans that survive context compaction
-- **27 storage layers** per project (code graph, conversation history, decisions, tool cache, todos, errors, findings, multimodal corpus, telemetry, …)
+- **27 storage layers** per project (code graph, conversation history, decisions, tool cache, todos, errors, findings, multimodal corpus, telemetry, ...)
 - **46 MCP tools** - `blast_radius`, `recall_concept`, `health` wired to real data; 30+ follow the same pattern
 - **14 visualization view modes** (source written; WebGL renderer targets 100 000+ nodes)
 - **18-platform installer** - auto-detects Claude Code, Codex, Cursor, Windsurf, Zed, Continue, OpenCode, Antigravity, Gemini CLI, Aider, Copilot CLI/VS Code, Factory Droid, Trae, Trae-CN, Kiro, Qoder, OpenClaw, Hermes, Qwen
-- **Per-project SQLite graph** built in-process by `mneme build .` via Tree-sitter → extractor → `store::inject` pipeline
+- **Per-project SQLite graph** built in-process by `mneme build .` via Tree-sitter -> extractor -> `store::inject` pipeline
 - **Pure-Rust hashing-trick embedder** - real similarity-preserving vectors with no native DLL dependency
 - **Live SSE/WebSocket push channel** (code + schema complete; vision app subscribes)
 - **Knowledge-worker mode** - drinks every `.md`, usable for blogs / research / notes, not only code

@@ -103,15 +103,15 @@ of the pipeline (`parse` onward) per file as `.` events arrive.
 ### 5. `embed`
 
 - **Input**: `Node.name` + `Node.docstring` fragments, batched to 256 items.
-- **Process**: `brain` worker defaults to a **pure-Rust hashing-trick embedder**
-  (no ONNX, no Hugging Face). Each token is hashed to a 384-dim sparse
-  vector; averages are computed per `Node`. Vectors are written to
-  `semantic.db` (table `node_vectors`, BLOB column) through the semantic
-  single-writer task. As of v0.3.0, real **BGE-small-en-v1.5** ONNX
-  embeddings are available via the `real-embeddings` feature flag on the
-  `brain` crate (`ort` `load-dynamic` - no ORT link at compile time);
-  enable it once you've staged the `.onnx` + `tokenizer.json` locally
-  (see `mneme models install --from-path`).
+- **Process**: As of v0.3.2 the `brain` worker defaults to **real
+  BGE-small-en-v1.5** ONNX embeddings (384-dim) via the `real-embeddings`
+  feature flag (on by default since v0.3.2; was off-by-default in v0.3.0).
+  ONNX Runtime 1.24.4 is bundled in `~/.mneme/bin/onnxruntime.dll` and
+  auto-pinned via `ORT_DYLIB_PATH` on first BGE call (defeats the Win11
+  24H2 System32 hijack). Vectors are written to `semantic.db` (table
+  `node_vectors`, BLOB column) through the semantic single-writer task.
+  The pure-Rust hashing-trick embedder is still in the tree as a
+  fallback - flip `MNEME_FORCE_HASH_EMBED=1` to use it instead.
 - **Output**: `semantic.db` populated; an in-memory `hnsw_rs` graph is
   built for top-k nearest neighbour lookup.
 - **Why this**: zero-dependency, zero-network, reproducible, tiny binary.

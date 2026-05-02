@@ -1,6 +1,6 @@
 # mneme-vision
 
-The mneme **vision app** — 14-view live graph + Command Center. Two
+The mneme **vision app** - 14-view live graph + Command Center. Two
 processes run side by side:
 
 | Process | Default port | Script | Purpose |
@@ -24,8 +24,8 @@ bun run dev:full
 #   - bun server.ts on :7777 (the API)
 
 # Or run them in two separate terminals:
-#   Terminal 1 → bun run dev
-#   Terminal 2 → bun run serve
+#   Terminal 1 -> bun run dev
+#   Terminal 2 -> bun run serve
 ```
 
 Visit `http://localhost:5173` once both are up.
@@ -34,9 +34,9 @@ Visit `http://localhost:5173` once both are up.
 
 | Script | What it does |
 |---|---|
-| `bun run dev`        | Vite dev server only (UI without live data — useful for pure CSS work) |
+| `bun run dev`        | Vite dev server only (UI without live data - useful for pure CSS work) |
 | `bun run dev:full`   | UI **and** API together via `concurrently` |
-| `bun run serve`      | API only (`server.ts` — reads the per-project SQLite shards) |
+| `bun run serve`      | API only (`server.ts` - reads the per-project SQLite shards) |
 | `bun run build`      | Production build of the SPA into `dist/` |
 | `bun run preview`    | Serve the production build locally |
 | `bun run typecheck`  | `tsc --noEmit` against `src/`, `server.ts`, `vite.config.ts` |
@@ -50,10 +50,10 @@ Visit `http://localhost:5173` once both are up.
 The API server reads project shards from the user's local
 `PathManager` root:
 
-- `~/.mneme/projects/<project-id>/graph.db`     — nodes + edges
-- `~/.mneme/projects/<project-id>/history.db`   — conversation log
-- `~/.mneme/projects/<project-id>/findings.db`  — drift findings
-- `~/.mneme/projects/<project-id>/wiki.db`      — generated wiki pages
+- `~/.mneme/projects/<project-id>/graph.db`     - nodes + edges
+- `~/.mneme/projects/<project-id>/history.db`   - conversation log
+- `~/.mneme/projects/<project-id>/findings.db`  - drift findings
+- `~/.mneme/projects/<project-id>/wiki.db`      - generated wiki pages
 - ... and ~22 more shards (see `common/src/layer.rs`)
 
 Older installs that pre-date the rename may have data under
@@ -80,7 +80,7 @@ invariant intact.
 ## Development tips
 
 - The **typecheck** script enforces strict TS and `noUncheckedIndexedAccess`.
-  Run it before any PR — `bun run typecheck` should produce zero output.
+  Run it before any PR - `bun run typecheck` should produce zero output.
 - The Bun API server hot-reloads on `server.ts` save (Bun built-in).
 - The Vite SPA hot-reloads on any `src/**/*.{ts,tsx,css}` save.
 - For Tauri development, see `tauri/README.md` (or
@@ -88,7 +88,7 @@ invariant intact.
 
 ## Related docs
 
-- [`../README.md`](../README.md) — top-level Mneme overview
-- [`../ARCHITECTURE.md`](../ARCHITECTURE.md) — system architecture
-- [`../docs/dev-setup.md`](../docs/dev-setup.md) — full dev setup
-- [`tauri/`](./tauri/) — desktop wrapper
+- [`../README.md`](../README.md) - top-level Mneme overview
+- [`../ARCHITECTURE.md`](../ARCHITECTURE.md) - system architecture
+- [`../docs/dev-setup.md`](../docs/dev-setup.md) - full dev setup
+- [`tauri/`](./tauri/) - desktop wrapper

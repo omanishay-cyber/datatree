@@ -1,7 +1,7 @@
-# Mneme bundled models — runtime requirements
+# Mneme bundled models - runtime requirements
 
 This directory houses the model files that `mneme models install --from-path`
-copies into `~/.mneme/models/`. The bundle is **flat** — every recognised
+copies into `~/.mneme/models/`. The bundle is **flat** - every recognised
 file lives at the top level; nested subdirectories are not walked.
 
 ## Recognised file types
@@ -36,20 +36,24 @@ entry per registered file:
 
 `mneme doctor` reads this manifest and renders the per-kind health box.
 
-## ONNX Runtime — required for the BGE embedder
+## ONNX Runtime - required for the BGE embedder
 
 The BGE-Small-En-v1.5 ONNX model needs the **ONNX Runtime** native
 shared library at runtime:
 
 | OS      | Library                  | Where mneme looks                                     |
 |---------|--------------------------|--------------------------------------------------------|
-| Windows | `onnxruntime.dll`        | Anywhere on `PATH`, or `%ORT_DYLIB_PATH%`              |
-| Linux   | `libonnxruntime.so`      | Anywhere on `LD_LIBRARY_PATH`, or `$ORT_DYLIB_PATH`    |
-| macOS   | `libonnxruntime.dylib`   | Anywhere on `DYLD_LIBRARY_PATH`, or `$ORT_DYLIB_PATH`  |
+| Windows | `onnxruntime.dll`        | `~/.mneme/bin/onnxruntime.dll` (auto-pinned via `ORT_DYLIB_PATH` on first BGE call); falls back to `PATH` |
+| Linux   | `libonnxruntime.so`      | `~/.mneme/bin/libonnxruntime.so` (auto-pinned); falls back to `LD_LIBRARY_PATH` |
+| macOS   | `libonnxruntime.dylib`   | `~/.mneme/bin/libonnxruntime.dylib` (auto-pinned); falls back to `DYLD_LIBRARY_PATH` |
 
-**Mneme does NOT bundle this DLL** — Microsoft's redistribution licence
-covers it but the file is ~12 MB and changes per ONNX runtime release,
-so we keep it out of the main archive.
+**As of v0.3.2 mneme DOES bundle this DLL** in `~/.mneme/bin/`.
+ONNX Runtime 1.24.4 (matches the `ort 2.0.0-rc.12` API-24 ABI) is
+included in the release zip. On first BGE call the `brain` crate
+auto-pins `ORT_DYLIB_PATH` to the bundled file so the in-tree version
+always wins over any stale Win11 24H2 System32 copy. The manual
+install steps below are kept for source builds and air-gapped users
+who don't run the bootstrap.
 
 ### Manual install (Windows)
 
@@ -99,18 +103,26 @@ extract the shared library into `~/.mneme/bin/`.
 ## Build-time requirement: `--features real-embeddings`
 
 The BGE embedder is feature-gated in the `brain` crate so a fresh
-checkout compiles without the C++ toolchain:
+checkout compiles without the C++ toolchain. **As of v0.3.2 the
+shipped binaries always have `real-embeddings` on**, and the bootstrap
+installer auto-stages the ONNX Runtime 1.24.4 DLL alongside the model
+files - so end users do nothing.
+
+For source builds:
 
 ```bash
-# Default build — hashing-trick fallback (works, lower recall):
+# Default workspace build (since v0.3.2): real-embeddings on by default
 cargo build -p mneme-cli --release
 
-# With real BGE embeddings:
-cargo build -p mneme-cli --release --features brain/real-embeddings
-```
+# Force the pure-Rust hashing-trick fallback at runtime (no rebuild
+# needed - flip this env var and recall keeps working):
+$env:MNEME_FORCE_HASH_EMBED = "1"
+mneme build .
 
-The shipped `final.zip` binaries are built with `real-embeddings` on,
-so end users only need the ONNX Runtime DLL, not a rebuild.
+# Drop the real-embeddings feature entirely (rare; use only when ORT
+# system dep is unavailable):
+cargo build -p mneme-cli --release --no-default-features
+```
 
 ## What gets registered
 

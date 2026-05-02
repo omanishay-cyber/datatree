@@ -7,19 +7,19 @@ no daemon, no network, no API keys, no telemetry.
 
 ## What we measure
 
-1. **Indexing throughput** — wall-clock time + counts (files, nodes,
+1. **Indexing throughput** - wall-clock time + counts (files, nodes,
    edges) for a full ingest of a project.
-2. **First-build cold vs warm** — cold pass (no shard on disk) and warm
+2. **First-build cold vs warm** - cold pass (no shard on disk) and warm
    pass (shard present, file mtimes unchanged).
-3. **Incremental inject** — p50 and p95 wall-clock for a single-file
+3. **Incremental inject** - p50 and p95 wall-clock for a single-file
    inject pass against the store's writer task. 100 files sampled.
-4. **Retrieval latency** — per-query time for `blast_radius`,
+4. **Retrieval latency** - per-query time for `blast_radius`,
    `recall_file`, and `find_references`.
-5. **Token reduction** — tokens_reduced_ratio = cold_total_tokens /
+5. **Token reduction** - tokens_reduced_ratio = cold_total_tokens /
    mneme_total_tokens across 10 generic queries. Mean + p50 + p95.
-6. **Precision\@5 / precision\@10** — integer count of expected files
+6. **Precision\@5 / precision\@10** - integer count of expected files
    present in the returned top-N, summed across the golden set.
-7. **Graph scaling** — bytes per node and bytes per edge in `graph.db`.
+7. **Graph scaling** - bytes per node and bytes per edge in `graph.db`.
 
 ## Subcommands
 
@@ -49,7 +49,7 @@ repo,query,mneme_top1,mneme_tokens,mneme_ms,cold_top1,cold_tokens,cold_ms,precis
 
 `bench-all` appends `META:...` rows after the per-query rows to carry
 the aggregated metrics. The meta rows use the normal columns as a
-compact key-value carrier — the CSV header is uniform, so a single
+compact key-value carrier - the CSV header is uniform, so a single
 `pandas.read_csv` works end-to-end.
 
 | `query` | Encoding |
@@ -91,9 +91,9 @@ independently.
 
 ## Fixtures
 
-- `fixtures/golden.json` — 10 curated queries with expected top-5 file
+- `fixtures/golden.json` - 10 curated queries with expected top-5 file
   substrings. Flat array schema, consumed by `compare` and `bench-recall`.
-- `fixtures/integration-mneme-self.json` — Mneme self-benchmark set,
+- `fixtures/integration-mneme-self.json` - Mneme self-benchmark set,
   `{queries:[{q, expect_top_k}]}` schema. The bench binary accepts
   both forms transparently.
 
@@ -118,9 +118,9 @@ incremental_p50_ms,incremental_p95_ms,bytes_per_node,bytes_per_edge
 
 Every bench is deterministic up to OS-level scheduling jitter. The
 underlying measurements are:
-- Wall-clock `Instant::now()` — so repeated runs vary with scheduler.
-- `graph.db` size read via `std::fs::metadata` — exact, fully reproducible.
-- Node + edge counts via `SELECT COUNT(*)` — exact, reproducible.
+- Wall-clock `Instant::now()` - so repeated runs vary with scheduler.
+- `graph.db` size read via `std::fs::metadata` - exact, fully reproducible.
+- Node + edge counts via `SELECT COUNT(*)` - exact, reproducible.
 
 Token counts use the 4-bytes-per-token rule of thumb (`file_size / 4`),
 applied identically to mneme and cold baselines for apples-to-apples.
@@ -130,7 +130,7 @@ applied identically to mneme and cold baselines for apples-to-apples.
 Measured on the Mneme repo itself (`github.com/omanishay-cyber/mneme`,
 `main` branch at the commit this BENCHMARKS.md was last updated).
 
-Hardware profile for the figures below: **TBD — numbers recorded by the
+Hardware profile for the figures below: **TBD - numbers recorded by the
 next `just bench-all .` run on the maintainer's box** (currently pending
 toolchain availability in the CI bench environment). The weekly workflow
 writes authoritative Ubuntu-latest numbers to
@@ -163,7 +163,7 @@ live table. The harness prints it locally via `just bench-compare .`.
 
 The authoritative numbers land in
 `.github/workflows/bench-weekly.yml` artifacts; a recent row is copied
-back into this file after each run. No "target" numbers appear here —
+back into this file after each run. No "target" numbers appear here -
 only measured numbers, or `TBD` until the next run.
 
 ## Changelog
