@@ -1279,6 +1279,75 @@
       <strong>The shape of it:</strong> mneme is the heaviest tool in the space - a multi-process Rust supervisor that runs between your AI sessions, survives compaction at the architecture level, enforces your rules in real time, and gives every AI tool you use the same memory. The others are lighter and easier to install but stop short of the persistent-memory + drift + 48-tool MCP surface.
     </p>
 
+    <h3 class="cmp-h3" style="margin-top:48px;">Live head-to-head benchmark (2026-05-02)</h3>
+    <p class="lead" style="margin-bottom: 12px;">We pointed Claude Code 2.1.119 at a real Electron + React + TypeScript codebase (~12K LOC, 82 source files) on a Windows 11 AWS instance and asked the same 5 questions through each MCP, isolated via <code>--strict-mcp-config</code>. Same model, same prompt, same project. Score is auto-counted against a hand-curated ground-truth of ~67 known auth symbols across 12 files (0-10 scale).</p>
+
+    <div class="cmp-wrap">
+      <table class="bench-table">
+        <thead>
+          <tr>
+            <th>Query</th>
+            <th>mneme v0.3.2</th>
+            <th>tree-sitter v0.7.0</th>
+            <th>CRG v2.3.2</th>
+            <th>graphify v0.3.0</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Q1</strong> Find all auth functions (~67 symbols)</td>
+            <td>62 s · 1,543 t · $0.07 · <strong>0/10</strong> (shard not found)</td>
+            <td>115 s · 4,668 t · $0.22 · <strong>8/10</strong></td>
+            <td>(timeout 480 s)</td>
+            <td>(timeout 240 s)</td>
+          </tr>
+          <tr>
+            <td><strong>Q2</strong> Blast radius of <code>src/utils/auth.ts</code></td>
+            <td>28 s · 710 t · $0.06 · <strong>0/10</strong></td>
+            <td>131 s · 4,918 t · $0.17 · <strong>9/10</strong></td>
+            <td>(timeout 180 s)</td>
+            <td>(skipped)</td>
+          </tr>
+          <tr>
+            <td><strong>Q3</strong> Login call graph from <code>LoginPage</code></td>
+            <td>61 s · 1,658 t · $0.10 · <strong>0/10</strong></td>
+            <td>277 s · 8,623 t · $0.59 · <strong>9/10</strong></td>
+            <td>(timeout 180 s)</td>
+            <td>(skipped)</td>
+          </tr>
+          <tr>
+            <td><strong>Q4</strong> Design patterns used in this project</td>
+            <td>67 s · 1,511 t · $0.11 · <strong>0/10</strong></td>
+            <td>443 s · 11,469 t · $0.74 · <strong>8/10</strong></td>
+            <td>(skipped)</td>
+            <td>(skipped)</td>
+          </tr>
+          <tr>
+            <td><strong>Q5</strong> Security issues in auth</td>
+            <td>104 s · 2,501 t · $0.15 · <strong>0/10</strong></td>
+            <td>220 s · 8,508 t · $0.49 · <strong>9/10</strong></td>
+            <td>(skipped)</td>
+            <td>(skipped)</td>
+          </tr>
+          <tr style="background: var(--bg-2); font-weight: 600;">
+            <td>Totals (measured)</td>
+            <td>322 s · 7,923 t · $0.49 · <strong>0/10 avg</strong></td>
+            <td>1,186 s · 38,186 t · $2.21 · <strong>8.6/10 avg</strong></td>
+            <td>3× timeout, 2× skipped</td>
+            <td>1× timeout, 4× skipped</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="lead" style="font-size:0.92rem; margin-top: 20px;">
+      <strong>The honest verdict:</strong> tree-sitter delivered detailed answers across all 5 queries (slow + expensive but precise; caught a real <code>password === '12345'</code> legacy-employee bug + an unconditional <code>passwordValid = true</code> browser-mode fallback). Mneme's MCP server hit a CLI/MCP project-resolution mismatch on Windows in v0.3.2 (the CLI built the shard at one project-hash while the MCP looked it up at another - same data, couldn't find each other; filed as <strong>B-023</strong> for v0.3.3). The mneme CLI itself, run from the same cwd, returned 5 hits for <code>hashPassword</code> with file:line citations - so the underlying graph data was correct, the bug is purely in the MCP's project-resolution lookup. CRG and graphify both consistently hit per-query timeouts (480 s on Q1, 180 s on Q2-Q3) - their MCP servers connected fine and the CLIs returned populated graphs from disk, but Claude never received output from any tool call. We don't have enough data to say whether this is a Claude Code 2.1.119 issue, an MCP-protocol-version mismatch, or a Windows-specific stdio quirk in those tools.
+    </p>
+
+    <p class="lead" style="font-size:0.88rem; color: var(--muted);">
+      Raw envelopes for all 35 measured cells, ground-truth markers, runner scripts, and per-MCP configs are committed at <a href="https://github.com/omanishay-cyber/mneme/tree/main/docs/benchmarks/mcp-bench-2026-05-02">docs/benchmarks/mcp-bench-2026-05-02</a> for full reproducibility. Bench file: 38 files including <code>aggregate-results.ps1</code> + <code>final-table.ps1</code> + <code>ground-truth.md</code>.
+    </p>
+
     <details class="for-engineers">
       <summary>For engineers - the technical numbers behind these claims</summary>
       <div class="for-engineers-body">
