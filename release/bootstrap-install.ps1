@@ -30,7 +30,17 @@
 #
 # Apache-2.0. (c) 2026 Anish Trivedi & Kruti Trivedi.
 
-[CmdletBinding()]
+# NOTE: NO [CmdletBinding()] attribute on this script. The standard
+# install path is `iex (irm <url>)`, which feeds the script body to
+# Invoke-Expression as a STRING. Invoke-Expression rejects any
+# top-level [CmdletBinding()] / [Parameter()] / similar attributes
+# with "Unexpected attribute 'CmdletBinding'." A bare `param()` IS
+# accepted by iex (verified: PS 5.1 + PS 7+).
+#
+# To pass flags via the iex one-liner, wrap in scriptblock::Create:
+#   & ([scriptblock]::Create((irm <url>))) -NoMultimodal -NoModels
+# Or set MNEME_VERSION env var before iex:
+#   $env:MNEME_VERSION = 'v0.3.2'; iex (irm <url>)
 param(
     [string]$Version = $(if ($env:MNEME_VERSION) { $env:MNEME_VERSION } else { 'v0.3.2' }),
     [switch]$NoToolchain,
