@@ -628,7 +628,7 @@ This project is **Apache-2.0** licensed (see [LICENSE](LICENSE)). In plain Engli
 
 [Apache-2.0](LICENSE) - permissive open-source. Commercial use, redistribution, and hosted derivatives all permitted.
 
-Copyright © 2026 **Anish Trivedi**.
+Copyright © 2026 **Anish Trivedi & Kruti Trivedi**.
 
 ---
 
@@ -650,7 +650,7 @@ Copyright © 2026 **Anish Trivedi**.
 <br/>
 
 <sub>
-  Built with obsessive care by <a href="https://github.com/omanishay-cyber"><strong>Anish Trivedi</strong></a>.<br/>
+  Built with obsessive care by <a href="https://github.com/omanishay-cyber"><strong>Anish Trivedi & Kruti Trivedi</strong></a>.<br/>
   Because the hardest problem in AI coding is remembering, not generating.
 </sub>
 
