@@ -1065,18 +1065,17 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     );
     println!("  nodes:        {node_total}");
     println!("  edges:        {edge_total}");
-    // K14: the 4,122 pages/sec figure is misleading when we're really
-    // doing dimensions-only on images and metadata-only on PDFs.
-    // Append the qualifier unless the multimodal crate was compiled
-    // with the `tesseract` feature (which actually performs OCR).
-    // `multimodal::OCR_ENABLED` is `cfg!(feature = "tesseract")`
-    // forwarded from the multimodal-bridge crate so a future
-    // `cargo build --features multimodal/tesseract` drops the
-    // qualifier automatically — no separate CLI flag to maintain.
-    let ocr_qualifier = if multimodal::OCR_ENABLED {
+    // K14 + Bug B-1+ (2026-05-02): the 4,122 pages/sec figure is
+    // misleading when we're really doing dimensions-only on images
+    // and metadata-only on PDFs. Use the runtime check
+    // (`multimodal::ocr_runtime_available()`) instead of the bare
+    // compile-time `OCR_ENABLED` constant — that way users who
+    // installed Tesseract via winget see the qualifier go away even
+    // though their binary wasn't compiled with `--features tesseract`.
+    let ocr_qualifier = if multimodal::ocr_runtime_available() {
         ""
     } else {
-        " — dimensions only, OCR disabled"
+        " — dimensions only, OCR disabled (install via `winget install UB-Mannheim.TesseractOCR` then re-run)"
     };
     println!(
         "  resolved:     {} / {} import edges (bare={}, unresolved={}, ms={})",

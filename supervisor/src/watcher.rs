@@ -372,7 +372,7 @@ async fn reindex_one(
         // rot — every recall query returns stale data with no warning.
         // Surface failures via tracing::warn so they show up in logs.
         for qn in &qnames {
-            if let Err(e) = store
+            let _resp_e = store
                 .inject
                 .delete(
                     project_id,
@@ -385,17 +385,18 @@ async fn reindex_one(
                         ..InjectOptions::default()
                     },
                 )
-                .await
-            {
+                .await;
+            if !_resp_e.success {
+                let _err_msg = _resp_e.error.as_ref().map(|e| e.message.as_str()).unwrap_or("unknown");
                 tracing::warn!(
-                    error = %e,
+                    error = %_err_msg,
                     qualified_name = %qn,
                     "watcher: failed to delete edges for symbol; graph may drift"
                 );
             }
         }
         // Finally the nodes themselves.
-        if let Err(e) = store
+        let _resp_n = store
             .inject
             .delete(
                 project_id,
@@ -408,10 +409,11 @@ async fn reindex_one(
                     ..InjectOptions::default()
                 },
             )
-            .await
-        {
+            .await;
+        if !_resp_n.success {
+            let _err_msg = _resp_n.error.as_ref().map(|e| e.message.as_str()).unwrap_or("unknown");
             tracing::warn!(
-                error = %e,
+                error = %_err_msg,
                 path = %path_str,
                 "watcher: failed to delete nodes for file; graph may drift"
             );
@@ -485,7 +487,7 @@ async fn reindex_one(
         serde_json::Value::Number((byte_count as i64).into()),
     ];
     // Bug G-1 (2026-05-01): surface failed file-row inserts.
-    if let Err(e) = store
+    let _resp_f = store
         .inject
         .insert(
             project_id,
@@ -498,9 +500,10 @@ async fn reindex_one(
                 ..InjectOptions::default()
             },
         )
-        .await
-    {
-        tracing::warn!(error = %e, path = %path_str, "watcher: failed to upsert files row; graph may drift");
+        .await;
+    if !_resp_f.success {
+        let _err_msg = _resp_f.error.as_ref().map(|e| e.message.as_str()).unwrap_or("unknown");
+        tracing::warn!(error = %_err_msg, path = %path_str, "watcher: failed to upsert files row; graph may drift");
     }
 
     // I4: filter Comment nodes from the writer-visible graph. See
@@ -538,7 +541,7 @@ async fn reindex_one(
         .collect();
     // Bug G-1 (2026-05-01): surface failed edge wipes.
     for qn in &old_qnames {
-        if let Err(e) = store
+        let _resp = store
             .inject
             .delete(
                 project_id,
@@ -551,10 +554,11 @@ async fn reindex_one(
                     ..InjectOptions::default()
                 },
             )
-            .await
-        {
-            tracing::warn!(error = %e, qualified_name = %qn, "watcher: failed to wipe old edges before re-insert; duplicates may accumulate");
-        }
+            .await;
+            if !_resp.success {
+                let _err_msg = _resp.error.as_ref().map(|e| e.message.as_str()).unwrap_or("unknown");
+                tracing::warn!(error = %_err_msg, qualified_name = %qn, "watcher: failed to wipe old edges before re-insert; duplicates may accumulate");
+            }
     }
 
     // Upsert nodes + edges.
@@ -580,7 +584,7 @@ async fn reindex_one(
             ),
         ];
         // Bug G-1 (2026-05-01): surface failed node upserts.
-        if let Err(e) = store
+        let _resp = store
             .inject
             .insert(
                 project_id,
@@ -593,10 +597,11 @@ async fn reindex_one(
                     ..InjectOptions::default()
                 },
             )
-            .await
-        {
-            tracing::warn!(error = %e, qualified_name = %node.id, "watcher: failed to upsert node; graph may drift");
-        }
+            .await;
+            if !_resp.success {
+                let _err_msg = _resp.error.as_ref().map(|e| e.message.as_str()).unwrap_or("unknown");
+                tracing::warn!(error = %_err_msg, qualified_name = %node.id, "watcher: failed to upsert node; graph may drift");
+            }
     }
     for edge in &graph.edges {
         let sql = "INSERT INTO edges(kind,source_qualified,target_qualified,confidence,confidence_score,source_extractor,extra,updated_at) \
@@ -618,7 +623,7 @@ async fn reindex_one(
             ),
         ];
         // Bug G-1 (2026-05-01): surface failed edge inserts.
-        if let Err(e) = store
+        let _resp = store
             .inject
             .insert(
                 project_id,
@@ -631,10 +636,11 @@ async fn reindex_one(
                     ..InjectOptions::default()
                 },
             )
-            .await
-        {
-            tracing::warn!(error = %e, edge_kind = ?edge.kind, "watcher: failed to insert edge; graph may drift");
-        }
+            .await;
+            if !_resp.success {
+                let _err_msg = _resp.error.as_ref().map(|e| e.message.as_str()).unwrap_or("unknown");
+                tracing::warn!(error = %_err_msg, edge_kind = ?edge.kind, "watcher: failed to insert edge; graph may drift");
+            }
     }
 
     let latency_ms = started.elapsed().as_millis() as u64;

@@ -53,7 +53,7 @@ pub use watcher::{run_watcher, WatcherStats, WatcherStatsHandle, DEFAULT_DEBOUNC
 
 use std::sync::Arc;
 use tokio::sync::Notify;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// Top-level supervisor result alias.
 pub type Result<T> = std::result::Result<T, SupervisorError>;
@@ -457,7 +457,10 @@ pub async fn run(config: SupervisorConfig) -> Result<()> {
     // shutdown. We now log JoinError + panic-payload so a task that
     // crashed mid-flight is visible in supervisor.log instead of
     // disappearing into "supervisor stopped cleanly".
-    fn log_join(name: &str, res: Result<(), tokio::task::JoinError>) {
+    // Use std::result::Result explicitly because this crate's prelude
+    // defines `Result<T> = std::result::Result<T, SupervisorError>` —
+    // a single-arg alias that doesn't fit a tokio JoinError second arg.
+    fn log_join(name: &str, res: std::result::Result<(), tokio::task::JoinError>) {
         match res {
             Ok(()) => {}
             Err(e) if e.is_cancelled() => {

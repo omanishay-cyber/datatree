@@ -214,7 +214,10 @@ impl DefaultInject {
             // Previously `let _ =` swallowed errors, which left audit
             // trail gaps invisible. `mneme history` then showed
             // unexplained gaps with no path to the cause.
-            if let Err(e) = self.query.write(Write {
+            // NOTE: query.write() returns `Response<WriteSummary>` (not
+            // Result), so check `.success` and read `.error` instead of
+            // pattern-matching Err.
+            let resp = self.query.write(Write {
                 project: project.clone(),
                 layer: DbLayer::Audit,
                 sql: "INSERT INTO audit_log(actor, action, layer, target, prev_value_hash, new_value_hash)
@@ -225,15 +228,18 @@ impl DefaultInject {
                     serde_json::Value::String(opts.idempotency_key.clone().unwrap_or_default()),
                     serde_json::Value::String(new_hash),
                 ],
-            }).await {
-                tracing::warn!(error = %e, action = %action, layer = ?layer, "audit_log inject write failed; audit trail will have a gap");
+            }).await;
+            if !resp.success {
+                let msg = resp.error.as_ref().map(|e| e.message.as_str()).unwrap_or("unknown");
+                tracing::warn!(error = %msg, action = %action, layer = ?layer, "audit_log inject write failed; audit trail will have a gap");
             }
         }
 
         // Idempotency record
-        // Bug G-4 (2026-05-01): same as above — surface failures.
+        // Bug G-4 (2026-05-01): same as above — surface failures via
+        // Response.success / Response.error (not Result).
         if let Some(key) = &opts.idempotency_key {
-            if let Err(e) = self
+            let resp = self
                 .query
                 .write(Write {
                     project: project.clone(),
@@ -248,9 +254,10 @@ impl DefaultInject {
                         serde_json::Value::String("done".into()),
                     ],
                 })
-                .await
-            {
-                tracing::warn!(error = %e, key = %key, "audit_log idempotency write failed; replay safety degraded");
+                .await;
+            if !resp.success {
+                let msg = resp.error.as_ref().map(|e| e.message.as_str()).unwrap_or("unknown");
+                tracing::warn!(error = %msg, key = %key, "audit_log idempotency write failed; replay safety degraded");
             }
         }
 

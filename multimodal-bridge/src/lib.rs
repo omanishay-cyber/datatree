@@ -45,4 +45,30 @@ pub const VERSION: &str = concat!("mneme-multimodal@", env!("CARGO_PKG_VERSION")
 /// qualify the misleading `pages/sec` figure (audit fix K14): without
 /// OCR a 4,000 pages/sec rate is dimensions-only, not real OCR
 /// throughput.
+///
+/// **Bug B-1+ (2026-05-02): prefer [`ocr_runtime_available()`] in
+/// new code.** As of v0.3.3 the multimodal worker also tries a
+/// runtime shellout to `tesseract.exe` when the compile-time feature
+/// is OFF — see `image::locate_tesseract_exe`. So `OCR_ENABLED` is
+/// strictly weaker than reality: it's `true` only for FFI-built
+/// binaries, but OCR ALSO runs when this is `false` if the user has
+/// `tesseract` on PATH or at `C:\Program Files\Tesseract-OCR\`.
 pub const OCR_ENABLED: bool = cfg!(feature = "tesseract");
+
+/// Bug B-1+ (2026-05-02): runtime check for OCR availability.
+///
+/// Returns `true` when EITHER:
+///   - the binary was compiled with `--features tesseract` (FFI), OR
+///   - `tesseract.exe` is reachable at runtime (PATH probe + the
+///     fixed UB-Mannheim Windows install path).
+///
+/// CLI consumers (`mneme build` summary) should use this instead of
+/// the bare [`OCR_ENABLED`] constant so the user-facing summary
+/// reflects what mneme will ACTUALLY do, not what it was compiled
+/// with. Cheap (~10ms cold, cached). Safe to call from sync code.
+pub fn ocr_runtime_available() -> bool {
+    if OCR_ENABLED {
+        return true;
+    }
+    crate::image::locate_tesseract_exe().is_some()
+}

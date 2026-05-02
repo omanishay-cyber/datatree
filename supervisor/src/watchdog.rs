@@ -145,7 +145,7 @@ impl Watchdog {
         sys.refresh_processes_specifics(
             ProcessesToUpdate::Some(&pid_refs),
             true,
-            ProcessRefreshKind::nothing(),
+            ProcessRefreshKind::new(),
         );
 
         for (name, pid) in &running {

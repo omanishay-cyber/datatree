@@ -158,34 +158,32 @@ impl ImageExtractor {
     /// faster in-process FFI.
     #[cfg(not(feature = "tesseract"))]
     fn run_ocr(&self, path: &Path, doc: &mut ExtractedDoc) -> ExtractResult<()> {
-        use std::process::Command;
-
         let lang: &str = self.language.as_deref().unwrap_or("eng");
         let path_str = path.to_str().ok_or_else(|| {
             ExtractError::Other(format!("non-utf8 image path {}", path.display()))
         })?;
 
-        // First probe: is `tesseract` on PATH at all? Use `--version`
-        // because it's cheap and exits 0 quickly. If this fails we
-        // fall back to the historical "dimensions only" warning so
-        // builds stay green even on machines without OCR.
-        let probe = Command::new("tesseract").arg("--version").output();
-        let probe_ok = match &probe {
-            Ok(out) => out.status.success(),
-            Err(_) => false,
-        };
-        if !probe_ok {
+        // Bug B-1+ (2026-05-02): probe for `tesseract` in TWO places to
+        // tolerate stale PATH (winget installs add C:\Program Files\
+        // Tesseract-OCR\ but the running shell may not have refreshed
+        // PATH yet — common after `install.ps1 -WithMultimodal`):
+        //   1. `tesseract` on PATH (POSIX + refreshed Windows shells)
+        //   2. The fixed UB-Mannheim Windows install path
+        // If neither resolves, log a clear "install via winget"
+        // message and return Ok (caller still gets dimensions).
+        let tesseract_exe = locate_tesseract_exe();
+        let Some(exe) = tesseract_exe else {
             warn!(
                 path = %path.display(),
-                "tesseract not on PATH; image OCR skipped (dimensions only). Install via `winget install UB-Mannheim.TesseractOCR` (Windows), `brew install tesseract` (macOS), or `apt-get install tesseract-ocr` (Linux)."
+                "tesseract not found on PATH or at C:\\Program Files\\Tesseract-OCR\\ — image OCR skipped (dimensions only). Install via `winget install UB-Mannheim.TesseractOCR` (Windows), `brew install tesseract` (macOS), or `apt-get install tesseract-ocr` (Linux). After winget install on Windows, open a NEW terminal so PATH refreshes."
             );
             return Ok(());
-        }
+        };
 
         // Real run: `tesseract <image> stdout -l <lang>` writes the
         // OCR text to stdout. We swallow stderr (which tesseract uses
         // for progress) and parse stdout as UTF-8.
-        let output = match Command::new("tesseract")
+        let output = match std::process::Command::new(&exe)
             .arg(path_str)
             .arg("stdout")
             .arg("-l")
@@ -218,6 +216,44 @@ impl ImageExtractor {
         }
         Ok(())
     }
+}
+
+/// Bug B-1+ (2026-05-02): locate the tesseract executable.
+///
+/// Resolution order:
+///   1. `tesseract` (or `tesseract.exe`) on PATH — works on POSIX
+///      and on Windows shells that have refreshed their environment
+///      after a winget install.
+///   2. `C:\Program Files\Tesseract-OCR\tesseract.exe` — the
+///      canonical UB-Mannheim install path. Works even when the
+///      shell that spawned us hasn't picked up the PATH change yet
+///      (the common case immediately after `install.ps1 -WithMultimodal`).
+///   3. `C:\Program Files (x86)\Tesseract-OCR\tesseract.exe` — older
+///      32-bit install path, kept for completeness.
+///
+/// Returns `None` if no tesseract binary can be located. Public so
+/// `OCR_RUNTIME_AVAILABLE` (lib.rs) can reuse the same check.
+pub fn locate_tesseract_exe() -> Option<std::path::PathBuf> {
+    // 1. PATH probe via `--version`.
+    if let Ok(out) = std::process::Command::new("tesseract").arg("--version").output() {
+        if out.status.success() {
+            return Some(std::path::PathBuf::from("tesseract"));
+        }
+    }
+    // 2 + 3. Windows fixed install paths.
+    #[cfg(windows)]
+    {
+        for candidate in [
+            "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+            "C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe",
+        ] {
+            let p = std::path::PathBuf::from(candidate);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
