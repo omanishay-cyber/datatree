@@ -313,15 +313,61 @@ pub async fn run(args: UninstallArgs) -> CliResult<()> {
                 // typically clears ~99% of the install (everything except
                 // bin/, which holds the running mneme.exe). The detached
                 // cmd fallback for bin/ is unreliable on Windows
-                // (verified: VM 192.168.1.193 — bin/ survived even
+                // (verified: VM 192.168.1.193 -- bin/ survived even
                 // after 30s wait). Tell the user the truth.
+                //
+                // Bug B-024+ (2026-05-02): rename-out-of-the-way fallback.
+                // Windows allows RENAME of a locked file even when DELETE
+                // would fail. So before the residue notice, walk bin/ and
+                // rename every .exe/.dll to *.pending_delete. The locked
+                // process keeps running off its in-memory image, the
+                // canonical paths are now FREE, and a future re-install
+                // can drop fresh binaries without conflict. The
+                // *.pending_delete files get cleaned by:
+                //   1. The next install's `clean-stale: wiped bin/` step
+                //   2. The user's `Remove-Item -Recurse -Force ~/.mneme`
+                //   3. (manually after reboot when locks release)
+                #[cfg(windows)]
+                {
+                    let mneme_root = common::paths::PathManager::default_root();
+                    let bin_dir = mneme_root.root().join("bin");
+                    if bin_dir.exists() {
+                        if let Ok(read) = std::fs::read_dir(&bin_dir) {
+                            for entry in read.flatten() {
+                                let path = entry.path();
+                                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                                if ext == "exe" || ext == "dll" {
+                                    let mut pending = path.clone();
+                                    let new_name = format!(
+                                        "{}.pending_delete",
+                                        path.file_name().and_then(|s| s.to_str()).unwrap_or("file")
+                                    );
+                                    pending.set_file_name(new_name);
+                                    // best-effort: locked files may
+                                    // refuse rename in rare cases (e.g.,
+                                    // antivirus holds an open handle).
+                                    let _ = std::fs::rename(&path, &pending);
+                                }
+                            }
+                        }
+                        // After renames, try to remove the directory.
+                        // Will succeed if bin/ is now empty, fail
+                        // gracefully (.pending_delete files survive)
+                        // otherwise.
+                        let _ = std::fs::remove_dir_all(&bin_dir);
+                    }
+                }
+
                 let bin_residue = std::path::Path::new(&{
                     let r = common::paths::PathManager::default_root();
                     r.root().join("bin")
                 })
                 .exists();
                 if bin_residue {
-                    println!("⚠ ~/.mneme/bin/ still contains the running mneme.exe (Windows self-deletion limitation).");
+                    println!("WARN: ~/.mneme/bin/ still contains the running mneme.exe (Windows self-deletion limitation).");
+                    println!(
+                        "  Renamed to *.pending_delete to free the canonical path for re-installs."
+                    );
                     println!(
                         "  After this process exits, run:  Remove-Item -Recurse -Force ~/.mneme"
                     );
