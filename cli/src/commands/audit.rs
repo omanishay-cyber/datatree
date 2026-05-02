@@ -273,13 +273,8 @@ pub(crate) async fn run_direct_subprocess_with_registry(
     // stream, not at the end. Pass severity_floor so flushed batches
     // are pre-filtered (matches the legacy bulk-write semantics).
     let line_budget = audit_line_budget();
-    let stream_outcome = stream_scanner_output(
-        &mut child,
-        line_budget,
-        writer.as_mut(),
-        severity_floor,
-    )
-    .await?;
+    let stream_outcome =
+        stream_scanner_output(&mut child, line_budget, writer.as_mut(), severity_floor).await?;
 
     let StreamOutcome {
         findings,

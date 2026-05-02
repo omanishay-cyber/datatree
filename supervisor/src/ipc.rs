@@ -950,9 +950,7 @@ async fn dispatch(
                         "audit dispatched: {queued} Job::Scan items queued for scanner-worker pool"
                     );
                     ControlResponse::Ok {
-                        message: Some(format!(
-                            "audit dispatched: {queued} files queued"
-                        )),
+                        message: Some(format!("audit dispatched: {queued} files queued")),
                     }
                 }
                 Err(e) => ControlResponse::Error { message: e },
@@ -1445,10 +1443,7 @@ async fn enqueue_audit(
     for entry in walker {
         scanned += 1;
         if scanned > SCAN_CAP {
-            warn!(
-                scanned,
-                "audit enumeration cap hit; stopping early"
-            );
+            warn!(scanned, "audit enumeration cap hit; stopping early");
             break;
         }
         let entry = match entry {
@@ -1545,15 +1540,63 @@ fn is_scannable_extension_for_audit(path: &Path) -> bool {
     };
     matches!(
         ext.as_str(),
-        "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs"
-        | "html" | "htm" | "css" | "scss" | "sass" | "less"
-        | "rs" | "go" | "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hh"
-        | "java" | "kt" | "kts" | "scala"
-        | "py" | "rb" | "lua" | "sh" | "bash" | "zsh" | "fish" | "ps1"
-        | "json" | "yaml" | "yml" | "toml" | "ini"
-        | "md" | "markdown" | "mdx" | "rst" | "txt"
-        | "swift" | "dart" | "ex" | "exs" | "elm" | "vue" | "svelte" | "astro"
-        | "sol" | "zig" | "cs" | "fs" | "fsx" | "vb" | "php"
+        "ts" | "tsx"
+            | "js"
+            | "jsx"
+            | "mjs"
+            | "cjs"
+            | "html"
+            | "htm"
+            | "css"
+            | "scss"
+            | "sass"
+            | "less"
+            | "rs"
+            | "go"
+            | "c"
+            | "h"
+            | "cpp"
+            | "cc"
+            | "cxx"
+            | "hpp"
+            | "hh"
+            | "java"
+            | "kt"
+            | "kts"
+            | "scala"
+            | "py"
+            | "rb"
+            | "lua"
+            | "sh"
+            | "bash"
+            | "zsh"
+            | "fish"
+            | "ps1"
+            | "json"
+            | "yaml"
+            | "yml"
+            | "toml"
+            | "ini"
+            | "md"
+            | "markdown"
+            | "mdx"
+            | "rst"
+            | "txt"
+            | "swift"
+            | "dart"
+            | "ex"
+            | "exs"
+            | "elm"
+            | "vue"
+            | "svelte"
+            | "astro"
+            | "sol"
+            | "zig"
+            | "cs"
+            | "fs"
+            | "fsx"
+            | "vb"
+            | "php"
     )
 }
 

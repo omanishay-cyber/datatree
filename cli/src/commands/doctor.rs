@@ -1060,10 +1060,7 @@ fn format_probe_failure(reason: &str, exit: Option<i32>, stderr: &[u8]) -> Strin
             &text
         };
         // Then bound by last 20 lines.
-        let lines: Vec<&str> = trimmed
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .collect();
+        let lines: Vec<&str> = trimmed.lines().filter(|l| !l.trim().is_empty()).collect();
         let take = lines.len().min(20);
         let tail_lines = &lines[lines.len() - take..];
         let joined = tail_lines.join(" | ");
@@ -1618,10 +1615,7 @@ pub fn render_toolchain_box(probes: &[ToolProbe]) -> bool {
     // mirrors the value-rendering path at the top of this function:
     //   (None, _) => format!("MISSING — {}", probe.entry.issue_id)
     // so a row marked ✓ in the box can never have a hint printed below.
-    let missing: Vec<&ToolProbe> = probes
-        .iter()
-        .filter(|p| p.found_at.is_none())
-        .collect();
+    let missing: Vec<&ToolProbe> = probes.iter().filter(|p| p.found_at.is_none()).collect();
     if !missing.is_empty() {
         println!();
         println!("install hints for missing tools:");
@@ -2107,10 +2101,7 @@ mod tests {
     #[test]
     fn format_probe_failure_includes_exit_code_when_nonzero() {
         let out = format_probe_failure("timed out after 10s", Some(7), &[]);
-        assert!(
-            out.contains("(exit=7)"),
-            "expected '(exit=7)' in: {out}"
-        );
+        assert!(out.contains("(exit=7)"), "expected '(exit=7)' in: {out}");
         assert!(out.contains("timed out after 10s"));
     }
 
@@ -2149,7 +2140,10 @@ mod tests {
         let out = format_probe_failure("boom", Some(1), stderr.as_bytes());
         // First 10 lines should be dropped.
         assert!(!out.contains("L1 |"), "L1 should have been trimmed: {out}");
-        assert!(!out.contains("L10 |"), "L10 should have been trimmed: {out}");
+        assert!(
+            !out.contains("L10 |"),
+            "L10 should have been trimmed: {out}"
+        );
         // L11 through L30 should be present.
         assert!(out.contains("L11"), "L11 should remain: {out}");
         assert!(out.contains("L30"), "L30 should remain: {out}");
