@@ -67,7 +67,12 @@ async fn main() -> std::io::Result<()> {
     tracing::info!(workers = worker_count, "scan-worker pool starting");
 
     let registry = Arc::new(ScannerRegistry::new(RegistryConfig::default()));
-    let (jobs_tx, jobs_rx) = mpsc::channel::<ScanJob>(CHANNEL_CAP);
+    // B11.7 (v0.3.2): channel carries `ScanJobWithShard` so workers can
+    // persist findings directly to per-project findings.db when running
+    // under the supervisor-dispatched audit fan-out path. Legacy stdin
+    // dispatch with no shard_root drops through to the batched stdout
+    // pipe (which the supervisor's `monitor_child` only logs).
+    let (jobs_tx, jobs_rx) = mpsc::channel::<ScanJobWithShard>(CHANNEL_CAP);
     let (results_tx, results_rx) = mpsc::channel::<ScanResult>(CHANNEL_CAP);
     let (batches_tx, mut batches_rx) = mpsc::channel::<FindingsBatch>(CHANNEL_CAP);
 
@@ -92,14 +97,26 @@ async fn main() -> std::io::Result<()> {
             // forever — and the watchdog won't restart it (no worker
             // emits heartbeats per audit finding 1.1).
             const PER_FILE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+            // B12 (v0.3.2): per-worker findings writer cache, keyed by
+            // shard_root. Opened lazily on first job for each shard;
+            // dropped on worker exit (Drop closes the connection).
+            // SQLite WAL mode amortises the per-batch fsync; one writer
+            // per shard preserves the per-shard single-writer invariant
+            // even when multiple worker processes are active (each
+            // worker = separate process, separate fd).
+            let mut shard_writers: std::collections::HashMap<
+                std::path::PathBuf,
+                mneme_scanners::FindingsWriter,
+            > = std::collections::HashMap::new();
             // Each worker pops jobs from a shared mutex-protected receiver
             // (single channel, multiple consumers).
             loop {
-                let job = {
+                let with_shard = {
                     let mut guard = jobs.lock().await;
                     guard.recv().await
                 };
-                let Some(job) = job else { break };
+                let Some(with_shard) = with_shard else { break };
+                let ScanJobWithShard { job, shard_root } = with_shard;
                 let job_path_for_log = job.file_path.clone();
                 let job_id = job.job_id;
                 let worker_clone = worker.clone();
@@ -137,6 +154,51 @@ async fn main() -> std::io::Result<()> {
                         }
                     }
                 };
+                // B12 + B11.7 (v0.3.2): if the supervisor passed a
+                // shard_root, persist findings DIRECTLY to that shard's
+                // findings.db. This is the data-loss fix for the
+                // supervisor-dispatch path — the batched stdout pipe
+                // path (`results.send(...)` below) is not consumed by
+                // the supervisor today, so without this direct write
+                // the findings would be lost. We persist BEFORE sending
+                // to the results channel so a panic / kill never
+                // discards work.
+                if !res.findings.is_empty() {
+                    if let Some(shard) = shard_root.as_ref() {
+                        let db_path = shard.join("findings.db");
+                        let writer = if shard_writers.contains_key(shard) {
+                            shard_writers.get_mut(shard)
+                        } else {
+                            match mneme_scanners::FindingsWriter::open(&db_path) {
+                                Ok(w) => {
+                                    shard_writers.insert(shard.clone(), w);
+                                    shard_writers.get_mut(shard)
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        worker_id = id,
+                                        shard = %shard.display(),
+                                        error = %e,
+                                        "could not open findings.db for direct persist; \
+                                         findings will only flow via the batched stdout pipe"
+                                    );
+                                    None
+                                }
+                            }
+                        };
+                        if let Some(w) = writer {
+                            if let Err(e) = w.write_findings(&res.findings) {
+                                tracing::warn!(
+                                    worker_id = id,
+                                    shard = %shard.display(),
+                                    error = %e,
+                                    findings = res.findings.len(),
+                                    "direct findings.db write failed; continuing"
+                                );
+                            }
+                        }
+                    }
+                }
                 // Tap: best-effort IPC telemetry push. A full channel
                 // just drops the tap — the primary batcher path still
                 // completes.
@@ -267,12 +329,37 @@ struct StdinJob {
     ast_id: Option<u64>,
     #[serde(default)]
     scanner_filter: Vec<String>,
+    /// B11.7 (v0.3.2, D:\Mneme Dome cycle, 2026-05-02): per-project shard
+    /// root the supervisor's `Job::Scan` carries. When present (i.e. the
+    /// worker was dispatched from `enqueue_audit`), the worker resolves
+    /// the per-shard `findings.db` and streams findings directly to it
+    /// via `FindingsWriter` after processing each file. This is what makes
+    /// supervisor-dispatched audit fan-out actually persist results
+    /// without going through the batched stdout pipe (which the
+    /// supervisor's `monitor_child` only captures as log noise).
+    ///
+    /// Backward-compat: the legacy CLI-spawned subprocess path does NOT
+    /// set `shard_root` (it streams findings to its own stdout pipe and
+    /// the CLI persists them via B12). `#[serde(default)]` keeps that
+    /// shape parsing cleanly.
+    #[serde(default)]
+    shard_root: Option<String>,
+}
+
+/// B11.7 (v0.3.2): wrapper that pairs a `ScanJob` with its optional
+/// `shard_root`. The pool worker uses the shard_root to drive direct
+/// findings.db persistence (B12 streaming guarantee) when running under
+/// the supervisor-dispatched path. Legacy stdin-pipe path leaves
+/// shard_root None and falls through to the old batched stdout pipe.
+struct ScanJobWithShard {
+    job: ScanJob,
+    shard_root: Option<std::path::PathBuf>,
 }
 
 /// Forward one already-buffered stdin line to the worker pool. Skips
 /// blanks and logs (but does not crash) on bad JSON. Shared by the
 /// pre-fed `first_line` step and the loop body.
-async fn handle_stdin_line(line: &str, jobs_tx: &mpsc::Sender<ScanJob>) {
+async fn handle_stdin_line(line: &str, jobs_tx: &mpsc::Sender<ScanJobWithShard>) {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return;
@@ -286,7 +373,11 @@ async fn handle_stdin_line(line: &str, jobs_tx: &mpsc::Sender<ScanJob>) {
                 scanner_filter: stdin_job.scanner_filter,
                 job_id: stdin_job.job_id,
             };
-            let _ = jobs_tx.send(job).await;
+            let with_shard = ScanJobWithShard {
+                job,
+                shard_root: stdin_job.shard_root.map(std::path::PathBuf::from),
+            };
+            let _ = jobs_tx.send(with_shard).await;
         }
         Err(e) => {
             tracing::warn!(error = %e, line = %line, "bad scan job json");

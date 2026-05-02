@@ -692,16 +692,25 @@ fn encode_for_worker(
             .to_string())
         }
         Job::Scan {
-            file_path, ast_id, ..
+            file_path,
+            ast_id,
+            shard_root,
         } => {
             let content = std::fs::read_to_string(file_path)
                 .map_err(|e| format!("read {}: {e}", file_path.display()))?;
+            // B11.7 (v0.3.2): pass shard_root through so the scanner
+            // worker can persist findings DIRECTLY to the per-project
+            // findings.db (B12 streaming guarantee). Without it the
+            // worker would only emit findings via the batched stdout
+            // pipe, which the supervisor's `monitor_child` doesn't
+            // consume — every finding would be lost.
             Ok(serde_json::json!({
                 "job_id": id.0,
                 "file_path": file_path,
                 "content": content,
                 "ast_id": ast_id,
                 "scanner_filter": [],
+                "shard_root": shard_root,
             })
             .to_string())
         }

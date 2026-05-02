@@ -35,17 +35,13 @@ use crate::ipc::{IpcRequest, IpcResponse};
 use common::{ids::ProjectId, layer::DbLayer, paths::PathManager};
 use scanners::{Finding, FindingsWriter, Severity};
 
-/// Wall-clock cap for the entire `run_direct_subprocess` body — including
-/// spawn, stdin write, stdout streaming, and child reap. If the scanners
-/// worker hasn't finished by this deadline we kill it and return a graceful
-/// `Ok(())` with a `tracing::warn!`. Override via `MNEME_AUDIT_TIMEOUT_SEC`.
-///
-/// Background: B-001 (EC2 2026-04-27 19:00) — `mneme build` hung for ~50min
-/// because `reader.next_line().await` in the streaming loop has no timeout.
-/// Without an outer wall-clock the `mneme-scanners` subprocess can sit on
-/// its own internal hang (e.g. its own IPC dependency) forever and the CLI
-/// never returns. This budget bounds the entire pass.
-pub(crate) const AUDIT_SUBPROCESS_BUDGET: Duration = Duration::from_secs(300);
+// B11.8 (v0.3.2, D:\Mneme Dome cycle, 2026-05-02): the outer wall-clock
+// (`AUDIT_SUBPROCESS_BUDGET` / `MNEME_AUDIT_TIMEOUT_SEC`, 300 s) was
+// removed. It killed slow-but-working scans on large projects (POS PC:
+// 30 min single-threaded scan got SIGKILLed at 5 min, losing 37,423
+// partial findings). The per-line read budget below is now the SOLE
+// hang guard — see `LINE_READ_BUDGET`. Combined with the streaming
+// findings writer (B12) any kill still leaves persisted rows intact.
 
 /// Bug M9 (D-window class): canonical Windows process-creation flags
 /// for the `mneme-scanners` subprocess spawned by
@@ -64,27 +60,35 @@ pub(crate) fn windows_audit_subprocess_flags() -> u32 {
 }
 
 /// Per-stdout-line read cap. If the scanners worker writes nothing for
-/// this long we treat that iteration as hung, log a warning, and let the
-/// outer wall-clock decide whether to kill the child. Override via
-/// `MNEME_AUDIT_LINE_TIMEOUT_SEC`. The line budget is intentionally far
-/// shorter than the outer budget so we get periodic "still waiting"
-/// telemetry on a hung child instead of one silent multi-minute stall.
+/// this long we treat that iteration as a real hang, log a warning, and
+/// kill the child. Override via `MNEME_AUDIT_LINE_TIMEOUT_SEC`.
+///
+/// B11.8 (v0.3.2): this is now the SOLE hang guard for the audit
+/// subprocess. The scanner subprocess emits a `_progress` heartbeat
+/// every 25 files / 5 s (B-019), so any silence > 30 s is a real wedge.
 pub(crate) const LINE_READ_BUDGET: Duration = Duration::from_secs(30);
 
-/// Read `MNEME_AUDIT_TIMEOUT_SEC` (positive integer seconds) or fall back
-/// to [`AUDIT_SUBPROCESS_BUDGET`]. Zero or unparseable values fall back —
-/// we never disable the timeout entirely, since "no timeout" is the bug
-/// we're fixing.
-fn audit_outer_budget() -> Duration {
-    parse_env_secs_or("MNEME_AUDIT_TIMEOUT_SEC", AUDIT_SUBPROCESS_BUDGET)
-}
-
 /// Read `MNEME_AUDIT_LINE_TIMEOUT_SEC` (positive integer seconds) or fall
-/// back to [`LINE_READ_BUDGET`]. Same zero-rejection rule as the outer
-/// budget — we never want a fully-disabled per-line cap.
+/// back to [`LINE_READ_BUDGET`]. Zero / junk values fall back — we never
+/// want a fully-disabled per-line cap (would deadlock on a wedged child).
 fn audit_line_budget() -> Duration {
     parse_env_secs_or("MNEME_AUDIT_LINE_TIMEOUT_SEC", LINE_READ_BUDGET)
 }
+
+/// B12 (v0.3.2, D:\Mneme Dome cycle, 2026-05-02): incremental flush cap
+/// for the streaming finding writer. The CLI accumulates findings in a
+/// small buffer and flushes whenever the buffer fills OR a periodic
+/// timer fires — whichever comes first. This is the data-loss fix:
+/// before B12, the CLI accumulated EVERY finding from the entire scan
+/// in memory and bulk-inserted at end-of-stream; if the subprocess died
+/// (timeout, panic, kill) all findings were lost. POS PC hit this:
+/// 37,423 partial findings → 0 persisted on a wall-clock kill.
+const FINDINGS_FLUSH_BUFFER: usize = 100;
+
+/// B12: time-based flush cadence. Even if the buffer never fills (e.g.
+/// long stretch of zero-finding files), we flush every 5 s so a kill
+/// at any time leaves at most 5 s of work unpersisted.
+const FINDINGS_FLUSH_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Helper: parse an env var as a positive integer count of seconds, return
 /// the fallback on absent / unparseable / zero. We reject zero on purpose
@@ -135,6 +139,9 @@ pub async fn run(args: AuditArgs, socket_override: Option<PathBuf>) -> CliResult
     let ipc_attempt = client
         .request(IpcRequest::Audit {
             scope: scope.to_string(),
+            // B11.7 (v0.3.2): pass project so the supervisor can fan
+            // out per-file `Job::Scan` to the scanner-worker pool.
+            project: Some(project.clone()),
         })
         .await;
 
@@ -241,32 +248,60 @@ pub(crate) async fn run_direct_subprocess_with_registry(
         drop(child.stdin.take());
     }
 
-    // Stream stdout under a per-line + outer wall-clock budget. The
-    // timeout-aware helper kills the child on outer-budget expiry so we
-    // never leak a hung scanners subprocess. See [`stream_scanner_output`]
-    // for the full timeout semantics. Anomaly #2 of Wave 3 (B-001 follow-up).
-    let outer_budget = audit_outer_budget();
+    // B12 (v0.3.2): open the per-project findings.db NOW, before we read
+    // a single line of stdout, so the streaming loop can flush findings
+    // incrementally. Pre-B12 the CLI accumulated every finding into a
+    // Vec<Finding> and bulk-inserted at end-of-stream; if the subprocess
+    // died (panic, kill, timeout) all findings were lost. POS PC hit
+    // this — 37,423 partial findings → 0 persisted on a wall-clock kill.
+    let project_id = ProjectId::from_path(project)
+        .map_err(|e| CliError::Other(format!("cannot hash project path: {e}")))?;
+    let paths = PathManager::default_root();
+    let findings_db = paths.shard_db(&project_id, DbLayer::Findings);
+    let mut writer = match FindingsWriter::open(&findings_db) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            warn!(error = %e, db = %findings_db.display(),
+                "findings.db open failed (continuing with print-only — findings will not persist)");
+            None
+        }
+    };
+
+    // Stream stdout under a per-line read budget. B11.8 (v0.3.2) removed
+    // the outer wall-clock — `line_budget` is now the SOLE hang guard.
+    // B12: pass the writer in so per-finding flushes happen during the
+    // stream, not at the end. Pass severity_floor so flushed batches
+    // are pre-filtered (matches the legacy bulk-write semantics).
     let line_budget = audit_line_budget();
-    let stream_outcome = stream_scanner_output(&mut child, outer_budget, line_budget).await?;
+    let stream_outcome = stream_scanner_output(
+        &mut child,
+        line_budget,
+        writer.as_mut(),
+        severity_floor,
+    )
+    .await?;
 
     let StreamOutcome {
         findings,
         summary,
         subprocess_error,
         timed_out,
+        persisted,
     } = stream_outcome;
 
-    // If the outer wall-clock fired we've already killed the child and
-    // drained whatever stderr we could grab. Surface a graceful Ok with a
-    // warning — the build can still complete its other passes, and the
-    // user gets a clear log line about WHY findings.db is empty.
+    // If the per-line hang guard fired we've already killed the child and
+    // drained stderr. Surface a graceful Ok with a warning — the build can
+    // still complete its other passes, and the user gets a clear log line
+    // about WHY findings.db only has partial rows.
     if timed_out {
+        // B12: persisted is non-zero even on timeout because we streamed
+        // findings to the DB throughout the scan, not just at end. This
+        // is the data-loss fix.
         warn!(
-            outer_budget_secs = outer_budget.as_secs(),
             line_budget_secs = line_budget.as_secs(),
-            partial_findings = findings.len(),
-            "mneme-scanners subprocess hit wall-clock timeout; killed and continuing \
-             (set MNEME_AUDIT_TIMEOUT_SEC / MNEME_AUDIT_LINE_TIMEOUT_SEC to override)"
+            findings_persisted = persisted,
+            "mneme-scanners subprocess hit per-line read timeout; killed and continuing \
+             (set MNEME_AUDIT_LINE_TIMEOUT_SEC to override; partial findings ARE persisted via B12 streaming)"
         );
         // Best-effort unregister: the child has been killed so Drop won't
         // double-taskkill a still-running process, but a missed unregister
@@ -326,32 +361,11 @@ pub(crate) async fn run_direct_subprocess_with_registry(
         return Err(CliError::Other(format!("orchestrator error: {err}")));
     }
 
-    // Apply the severity floor before persistence so the user's own
-    // findings.db is uncluttered with stuff they explicitly filtered out.
-    let kept: Vec<Finding> = findings
-        .into_iter()
-        .filter(|f| severity_rank(f.severity) <= severity_rank(severity_floor))
-        .collect();
-
-    // Persist into the per-project findings shard. The path layout
-    // matches what the supervised path writes to.
-    let project_id = ProjectId::from_path(project)
-        .map_err(|e| CliError::Other(format!("cannot hash project path: {e}")))?;
-    let paths = PathManager::default_root();
-    let findings_db = paths.shard_db(&project_id, DbLayer::Findings);
-    let inserted = match FindingsWriter::open(&findings_db) {
-        Ok(mut w) => match w.write_findings(&kept) {
-            Ok(n) => n,
-            Err(e) => {
-                warn!(error = %e, "could not persist findings to findings.db (continuing with print-only)");
-                0
-            }
-        },
-        Err(e) => {
-            warn!(error = %e, db = %findings_db.display(), "findings.db open failed (continuing with print-only)");
-            0
-        }
-    };
+    // B12: severity-floor was applied during streaming, so `findings`
+    // already matches `kept` (the streaming writer pre-filtered). We
+    // rebind for the print_summary call.
+    let kept = findings;
+    let inserted = persisted;
 
     print_summary(&kept, summary.as_ref(), inserted, &findings_db);
 
@@ -370,37 +384,49 @@ pub(crate) async fn run_direct_subprocess_with_registry(
     Ok(())
 }
 
-/// Outcome of streaming the scanner subprocess's stdout under a
-/// per-line + outer wall-clock budget. Carries whatever findings /
-/// summary / error markers we managed to parse before EOF, plus a
-/// `timed_out` flag the caller uses to decide whether to graceful-degrade
-/// (return Ok with a warn) or proceed to `child.wait()` for the exit
-/// status.
+/// Outcome of streaming the scanner subprocess's stdout under a per-line
+/// read budget. Carries whatever findings / summary / error markers we
+/// managed to parse before EOF, plus a `timed_out` flag the caller uses
+/// to decide whether to graceful-degrade (return Ok with a warn) or
+/// proceed to `child.wait()` for the exit status.
+///
+/// B12 (v0.3.2): `persisted` tracks the running total of findings flushed
+/// to findings.db during streaming. Non-zero even when `timed_out=true`
+/// — that's the data-loss fix.
 #[derive(Debug, Default)]
 struct StreamOutcome {
     findings: Vec<Finding>,
     summary: Option<DoneSummary>,
     subprocess_error: Option<String>,
-    /// True iff the outer wall-clock fired and we killed the child. Means
-    /// findings/summary may be partial. Caller should NOT propagate the
-    /// child's exit status when this is set — we already taskkilled it.
+    /// True iff the per-line read budget fired and we killed the child.
+    /// Means findings/summary may be partial. Caller should NOT propagate
+    /// the child's exit status when this is set — we already taskkilled it.
+    /// B11.8 (v0.3.2): only the per-line budget can set this now.
     timed_out: bool,
+    /// B12: number of findings flushed to findings.db during streaming.
+    persisted: usize,
 }
 
-/// Stream stdout from a spawned `mneme-scanners` child under two layered
-/// timeouts:
+/// Stream stdout from a spawned `mneme-scanners` child under a per-line
+/// read budget AND incrementally flush findings to findings.db.
 ///
-/// 1. **Per-line read budget** (`line_budget`): each `reader.next_line()`
-///    awaits for at most this long. A line-timeout is NOT fatal — we log
-///    a warning, then loop back to the outer-budget check. The line
-///    budget gives us periodic telemetry on a slow-but-working child
-///    (e.g. one walking a huge tree of files) without ever blocking
-///    indefinitely on a single read.
+/// Per-line read budget (`line_budget`): each `reader.next_line()` awaits
+/// for at most this long. A line-timeout IS fatal — we kill the child,
+/// drain stderr, set `timed_out = true`, and return Ok so the caller can
+/// graceful-degrade. Pre-B11.8 a line-timeout was non-fatal and the outer
+/// wall-clock owned the kill decision; that decision lost work on
+/// slow-but-working scans (POS PC: 30 min single-threaded, killed at
+/// 5 min, 37k findings dropped). The scanner subprocess emits a
+/// `_progress` heartbeat every 25 files / 5 s (B-019), so any silence
+/// longer than `line_budget` (default 30 s) is a true wedge.
 ///
-/// 2. **Outer wall-clock budget** (`outer_budget`): if total elapsed time
-///    in this function exceeds this we kill the child via `Child::kill()`,
-///    drain stderr best-effort for diagnostics, and set `timed_out = true`
-///    so the caller can log + return `Ok(())`.
+/// Streaming writer (`writer`): when `Some`, every batch of findings is
+/// flushed to disk after `FINDINGS_FLUSH_BUFFER` rows OR every
+/// `FINDINGS_FLUSH_INTERVAL`, whichever comes first. This is the B12
+/// data-loss fix — pre-B12 the CLI bulk-inserted at end-of-stream and
+/// any kill / panic / EOF-error lost everything. Findings are
+/// pre-filtered against `severity_floor` before flushing so the on-disk
+/// shard matches the legacy bulk-write semantics.
 ///
 /// Cleanup invariant: when this function returns with `timed_out = true`,
 /// the child has been killed and reaped — the caller does NOT need to
@@ -409,8 +435,9 @@ struct StreamOutcome {
 /// `child.wait()` to collect the exit status.
 async fn stream_scanner_output(
     child: &mut TokioChild,
-    outer_budget: Duration,
     line_budget: Duration,
+    mut writer: Option<&mut FindingsWriter>,
+    severity_floor: Severity,
 ) -> CliResult<StreamOutcome> {
     let stdout = child
         .stdout
@@ -419,27 +446,37 @@ async fn stream_scanner_output(
     let mut reader = BufReader::new(stdout).lines();
 
     let mut outcome = StreamOutcome::default();
-    let started = Instant::now();
-    let mut line_timeouts = 0usize;
+    let mut buffer: Vec<Finding> = Vec::with_capacity(FINDINGS_FLUSH_BUFFER);
+    let mut last_flush = Instant::now();
 
     loop {
-        let elapsed = started.elapsed();
-        if elapsed >= outer_budget {
-            // Outer wall-clock fired between iterations.
-            outcome.timed_out = true;
-            break;
-        }
-        // Use the smaller of line_budget and remaining outer budget so a
-        // very long line_budget doesn't outlive the outer cap. This is
-        // load-bearing: if line_budget=30s and outer_budget=5s, we'd
-        // otherwise wait the full 30s on a hung child before noticing the
-        // outer expired.
-        let remaining_outer = outer_budget.saturating_sub(elapsed);
-        let per_line = line_budget.min(remaining_outer);
-        match tokio::time::timeout(per_line, reader.next_line()).await {
+        match tokio::time::timeout(line_budget, reader.next_line()).await {
             // Normal line read.
             Ok(Ok(Some(line))) => {
+                let prev_len = outcome.findings.len();
                 process_scanner_line(&line, &mut outcome);
+                // B12: any newly-pushed findings are also pushed to the
+                // flush buffer (post-severity-filter). The outcome.findings
+                // accumulator stays in sync so callers / tests still see
+                // every parsed finding; the buffer only carries kept rows.
+                if outcome.findings.len() > prev_len {
+                    for f in &outcome.findings[prev_len..] {
+                        if severity_rank(f.severity) <= severity_rank(severity_floor) {
+                            buffer.push(f.clone());
+                        }
+                    }
+                    if buffer.len() >= FINDINGS_FLUSH_BUFFER {
+                        flush_findings(writer.as_deref_mut(), &mut buffer, &mut outcome.persisted);
+                        last_flush = Instant::now();
+                    }
+                }
+                // B12: time-based flush even when buffer is small. Files
+                // with no findings produce no buffer growth, but a kill
+                // could still arrive — flush every 5 s.
+                if last_flush.elapsed() >= FINDINGS_FLUSH_INTERVAL && !buffer.is_empty() {
+                    flush_findings(writer.as_deref_mut(), &mut buffer, &mut outcome.persisted);
+                    last_flush = Instant::now();
+                }
             }
             // EOF — child closed stdout cleanly.
             Ok(Ok(None)) => break,
@@ -450,20 +487,28 @@ async fn stream_scanner_output(
                 debug!(error = %e, "scanner stdout read error; ending stream");
                 break;
             }
-            // Per-line timeout. NOT fatal — we loop back and check the
-            // outer wall-clock at the top of the next iteration.
+            // Per-line timeout. B11.8 (v0.3.2): this is now FATAL — kill
+            // the child, drain stderr, return Ok with timed_out=true.
+            // Pre-B11.8 this was non-fatal and the outer wall-clock was
+            // the kill trigger; that path killed slow-but-working scans.
             Err(_) => {
-                line_timeouts += 1;
                 warn!(
-                    line_timeouts,
                     line_budget_secs = line_budget.as_secs(),
-                    elapsed_secs = elapsed.as_secs(),
-                    "mneme-scanners produced no output for line budget; \
-                     continuing to wait against outer wall-clock"
+                    findings_persisted = outcome.persisted,
+                    "mneme-scanners produced no output for the per-line budget; \
+                     killing child (set MNEME_AUDIT_LINE_TIMEOUT_SEC to override)"
                 );
-                // Loop back; the top of the loop re-checks outer_budget.
+                outcome.timed_out = true;
+                break;
             }
         }
+    }
+
+    // B12: final flush — drain whatever is still buffered. On a clean EOF
+    // this is the tail of the scan; on a timeout it is the last fragment
+    // before we killed the child. Either way, persist before returning.
+    if !buffer.is_empty() {
+        flush_findings(writer.as_deref_mut(), &mut buffer, &mut outcome.persisted);
     }
 
     if outcome.timed_out {
@@ -485,7 +530,7 @@ async fn stream_scanner_output(
         }
         // Drain stderr best-effort for diagnostics. The child is dead so
         // the pipe will EOF quickly; we still cap the read with a short
-        // timeout so we never undo the outer-budget guarantee.
+        // timeout so we never undo the line-budget guarantee.
         if let Some(stderr) = child.stderr.take() {
             let mut buf = Vec::with_capacity(2048);
             let mut bufreader = BufReader::new(stderr);
@@ -550,6 +595,41 @@ fn process_scanner_line(line: &str, outcome: &mut StreamOutcome) {
             debug!(error = %e, line = %trimmed, "skipping malformed finding line");
         }
     }
+}
+
+/// B12 (v0.3.2): drain `buffer` into the persistent findings.db writer,
+/// crediting `*persisted` with the number of rows successfully written.
+/// `buffer` is always cleared on return — even on writer errors — so the
+/// caller's flush schedule (size + time triggers) cannot get into a state
+/// where the buffer never drains. A None writer (open() failed earlier)
+/// is treated as a no-op drain.
+///
+/// Errors are logged at warn! and swallowed. Pre-B12 the bulk-write at
+/// end-of-stream was best-effort with a warn-and-continue path, so this
+/// preserves the same contract while moving the writes into the streaming
+/// loop.
+fn flush_findings(
+    writer: Option<&mut FindingsWriter>,
+    buffer: &mut Vec<Finding>,
+    persisted: &mut usize,
+) {
+    if buffer.is_empty() {
+        return;
+    }
+    if let Some(w) = writer {
+        match w.write_findings(buffer) {
+            Ok(n) => *persisted += n,
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    batch_size = buffer.len(),
+                    persisted_so_far = *persisted,
+                    "streaming flush failed; dropping batch and continuing"
+                );
+            }
+        }
+    }
+    buffer.clear();
 }
 
 /// Return the last `max` characters of `s` (best-effort UTF-8 boundary).
@@ -856,16 +936,17 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Wave 3 anomaly #2: wall-clock + per-line timeouts on the scanner
-    // subprocess streaming loop. Without these the EC2-2026-04-27 bug
-    // recurs — `mneme build` hangs ~50min when `mneme-scanners` itself
-    // hangs, because `reader.next_line().await` in the original loop has
-    // no timeout. The three tests below cover the three states of the
-    // outer/per-line budget interaction:
+    // B11.7/B11.8/B12 (v0.3.2 D:\Mneme Dome cycle, 2026-05-02): the
+    // per-line read budget is now the SOLE hang guard for the scanner
+    // subprocess streaming loop (B11.8 removed the outer wall-clock
+    // because it killed slow-but-working scans on large projects, losing
+    // 37k partial findings on POS PC). The two tests below cover the
+    // remaining states of the budget interaction:
     //
-    //   1. Outer fires → child killed, graceful Ok outcome.
-    //   2. Per-line fires repeatedly while outer ticks, then outer kills.
-    //   3. Child exits fast → no timeout fires, outcome carries clean EOF.
+    //   1. Per-line fires → child killed immediately, graceful Ok outcome
+    //      with timed_out=true (this is the new fatal-on-line-timeout
+    //      contract; pre-B11.8 it was non-fatal).
+    //   2. Child exits fast → no timeout fires, outcome carries clean EOF.
     // ------------------------------------------------------------------
 
     /// Spawn a hung child that produces no stdout for the lifetime of the
@@ -915,42 +996,43 @@ mod tests {
             .expect("spawn fast-exit child")
     }
 
-    /// B-001 follow-up: the outer wall-clock kills a hung scanners child
-    /// and `stream_scanner_output` returns a graceful `Ok` with
-    /// `timed_out = true`. Caller can then surface a `tracing::warn!` and
-    /// continue the build instead of hanging for ~50 minutes the way EC2
-    /// 2026-04-27 19:00 demonstrated.
+    /// B11.8 (v0.3.2): the per-line read budget is now the SOLE hang
+    /// guard, and a line-timeout is FATAL — `stream_scanner_output`
+    /// kills the hung child and returns a graceful `Ok` with
+    /// `timed_out = true`. Caller can then surface a `tracing::warn!`
+    /// and continue the build instead of hanging for ~50 minutes the
+    /// way EC2 2026-04-27 19:00 demonstrated. Pre-B11.8 this contract
+    /// was owned by an outer wall-clock; that path killed slow-but-
+    /// working scans on large projects (POS PC) so we removed it.
     #[tokio::test]
     async fn audit_subprocess_timeout_kills_hung_child() {
-        // Spawn a child that would sleep for 30s. Set the outer budget
-        // tight (300ms) so the test runs fast; the line budget is still
-        // tighter (100ms) so we exercise the "line timeout, then check
-        // outer" branch on the way to the kill.
+        // Spawn a child that would sleep for 30s. Set the line budget
+        // very tight (200ms) so the test runs fast — the line-timeout
+        // alone is now what kills the child.
         let mut child = spawn_hung_child(30);
         let pid = child.id().expect("child must report pid before exit");
-        let outer = Duration::from_millis(300);
-        let line = Duration::from_millis(100);
+        let line = Duration::from_millis(200);
 
         let test_started = Instant::now();
-        let outcome = stream_scanner_output(&mut child, outer, line)
+        let outcome = stream_scanner_output(&mut child, line, None, Severity::Info)
             .await
             .expect("stream_scanner_output must return Ok even on timeout");
         let elapsed = test_started.elapsed();
 
         assert!(
             outcome.timed_out,
-            "outcome.timed_out must be set on outer wall-clock expiry"
+            "outcome.timed_out must be set when the per-line budget fires"
         );
         assert!(
             outcome.findings.is_empty(),
             "no stdout was produced; findings must be empty"
         );
-        // Outer + 5s kill+drain slack — should comfortably finish under
-        // 320s, in practice <2s. We allow generous slack to absorb any
+        // line + 5s kill+drain slack — should comfortably finish under
+        // 30s, in practice <2s. We allow generous slack to absorb any
         // PowerShell startup tax on cold Windows boxes.
         assert!(
-            elapsed < Duration::from_secs(320),
-            "stream_scanner_output must return within 320s of outer budget; took {elapsed:?}"
+            elapsed < Duration::from_secs(30),
+            "stream_scanner_output must return well under 30s on line timeout; took {elapsed:?}"
         );
 
         // The child must be reaped by the time we returned. `try_wait`
@@ -973,64 +1055,18 @@ mod tests {
         );
     }
 
-    /// Per-line read budget fires repeatedly when the child writes
-    /// nothing. The line-timeout is NOT fatal on its own — it just logs
-    /// a warning and loops back to the outer-budget check. This test
-    /// uses a line budget tight enough that we KNOW multiple line-
-    /// timeouts must occur before the outer fires.
-    #[tokio::test]
-    async fn audit_line_read_timeout_advances_when_no_output() {
-        let mut child = spawn_hung_child(30);
-        // outer = 500ms, line = 50ms: at least ~9 line-timeouts must
-        // fire before outer expires. We can't observe the exact count
-        // from outside the function (the warn! goes to tracing, not the
-        // outcome), but we CAN verify the function did NOT bail early
-        // on the first line-timeout (which would happen if line-timeout
-        // were treated as fatal) AND eventually returned timed_out.
-        let outer = Duration::from_millis(500);
-        let line = Duration::from_millis(50);
-
-        let test_started = Instant::now();
-        let outcome = stream_scanner_output(&mut child, outer, line)
-            .await
-            .expect("stream_scanner_output must return Ok even with repeated line timeouts");
-        let elapsed = test_started.elapsed();
-
-        assert!(
-            outcome.timed_out,
-            "timed_out must be set after outer budget expiry"
-        );
-        // Floor: function must have waited at least the outer budget,
-        // proving line-timeout did NOT short-circuit the loop early.
-        // Slack 50ms below outer for the first iteration's start cost.
-        assert!(
-            elapsed >= Duration::from_millis(450),
-            "function returned in {elapsed:?}; expected at least ~outer (500ms) — \
-             likely treating line-timeout as fatal"
-        );
-        // Ceiling: total elapsed must be reasonable, not stuck on a
-        // single hung read.
-        assert!(
-            elapsed < Duration::from_secs(15),
-            "function took {elapsed:?}; outer wall-clock failed to clamp the read loop"
-        );
-        // Best-effort cleanup so we don't leak test children.
-        let _ = child.try_wait();
-    }
-
-    /// Sanity: when the child completes well within the budgets, no
+    /// Sanity: when the child completes well within the line budget, no
     /// timeout fires and the outcome carries `timed_out = false`. This
-    /// guards against an over-zealous timeout that would treat every
+    /// guards against an over-zealous line budget that would treat every
     /// audit as "hung" even when the worker behaves correctly.
     #[tokio::test]
     async fn audit_subprocess_completes_normally_when_fast() {
         let mut child = spawn_fast_exit_child();
-        // Generous budgets so the cmd / sh startup easily finishes
-        // before either fires. 5s outer, 5s line.
-        let outer = Duration::from_secs(5);
+        // Generous line budget so cmd / sh startup easily finishes
+        // before it fires.
         let line = Duration::from_secs(5);
 
-        let outcome = stream_scanner_output(&mut child, outer, line)
+        let outcome = stream_scanner_output(&mut child, line, None, Severity::Info)
             .await
             .expect("stream_scanner_output must return Ok on a clean fast exit");
 
@@ -1048,6 +1084,10 @@ mod tests {
             outcome.subprocess_error.is_none(),
             "no _error line was produced"
         );
+        assert_eq!(
+            outcome.persisted, 0,
+            "no findings were emitted, so persisted must be 0"
+        );
 
         // Reap so we don't leak.
         let _ = child.wait().await;
@@ -1055,9 +1095,9 @@ mod tests {
 
     /// `parse_env_secs_or` accepts positive integers and rejects 0 and
     /// junk. The zero-rejection is load-bearing: a zero would make the
-    /// outer/line timeout fire instantly on every audit, breaking
-    /// every build for any user who set the env var to "disable" the
-    /// timeout. We force them onto the default instead.
+    /// line timeout fire instantly on every audit, breaking every build
+    /// for any user who set the env var to "disable" the timeout. We
+    /// force them onto the default instead.
     #[test]
     fn audit_env_overrides_reject_zero_and_junk() {
         let fb = Duration::from_secs(42);
@@ -1154,6 +1194,57 @@ mod tests {
             flags & CREATE_NO_WINDOW,
             CREATE_NO_WINDOW,
             "audit scanners-worker spawn must set CREATE_NO_WINDOW (0x08000000); got {flags:#010x}"
+        );
+    }
+
+    /// B12 (v0.3.2): `flush_findings` writes the buffered findings to
+    /// the FindingsWriter, increments the `persisted` counter, and
+    /// CLEARS the buffer — even on writer error — so the streaming
+    /// caller's flush schedule (size + time triggers) cannot get into
+    /// a state where the buffer never drains. This is the data-loss
+    /// fix's invariant.
+    #[test]
+    fn flush_findings_writes_and_clears_buffer() {
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("findings.db");
+        let mut writer = FindingsWriter::open(&path).unwrap();
+        let mut buffer = vec![
+            mk_finding("theme.hardcoded-hex", Severity::Warning, "a.tsx"),
+            mk_finding("security.eval", Severity::Critical, "b.ts"),
+            mk_finding("a11y.alt", Severity::Error, "c.tsx"),
+        ];
+        let mut persisted = 0usize;
+
+        flush_findings(Some(&mut writer), &mut buffer, &mut persisted);
+
+        assert_eq!(persisted, 3, "all 3 findings must be persisted");
+        assert!(buffer.is_empty(), "buffer must be cleared after flush");
+
+        // Second flush of the cleared buffer is a no-op.
+        flush_findings(Some(&mut writer), &mut buffer, &mut persisted);
+        assert_eq!(persisted, 3, "no-op flush must not change persisted");
+
+        // Verify rows actually landed in the DB.
+        let count = writer.open_findings_count().unwrap();
+        assert_eq!(count, 3);
+    }
+
+    /// B12: a None writer (open() failed earlier) must not panic; it
+    /// drains the buffer silently and leaves `persisted` unchanged.
+    /// This preserves the legacy "warn-and-continue" contract.
+    #[test]
+    fn flush_findings_no_writer_drains_silently() {
+        let mut buffer = vec![mk_finding("theme.x", Severity::Info, "a.ts")];
+        let mut persisted = 0usize;
+
+        flush_findings(None, &mut buffer, &mut persisted);
+
+        assert_eq!(persisted, 0, "None writer leaves persisted at zero");
+        assert!(
+            buffer.is_empty(),
+            "buffer must be cleared even when the writer is None"
         );
     }
 }

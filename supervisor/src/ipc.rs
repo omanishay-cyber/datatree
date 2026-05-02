@@ -211,12 +211,23 @@ pub enum ControlCommand {
     // — they share the wire via `tag = "command", rename_all =
     // "snake_case"`. Do NOT add behaviour here; the supervisor-side
     // implementation lands later in the roadmap.
-    /// (B2.2) Run all configured scanners. CLI mirror — supervisor
-    /// stub today; the CLI's `mneme audit` direct-subprocess path is
-    /// authoritative.
+    /// Run all configured scanners. The supervisor enumerates scannable
+    /// files under `project` (or CWD when `project` is None) and submits
+    /// one `Job::Scan` per file to the scanner-worker pool — see B11.7
+    /// in the v0.3.2 D:\Mneme Dome cycle. The CLI's `mneme audit`
+    /// direct-subprocess path remains as a fallback when the supervisor
+    /// is unreachable (or returns Error).
     Audit {
-        /// Scanner scope: `theme | security | a11y | perf | types | all`.
+        /// Scanner scope: `full` (every scannable file) or `diff`. Today
+        /// the supervisor only implements `full` — `diff` falls back to
+        /// the standalone subprocess path.
         scope: String,
+        /// B11.7 (v0.3.2): the project root the supervisor should
+        /// enumerate. `#[serde(default)]` keeps wire-compat with older
+        /// CLIs that send only `scope`; in that case the supervisor
+        /// returns an Error and the CLI takes the fallback path.
+        #[serde(default)]
+        project: Option<std::path::PathBuf>,
     },
     /// (B2.2) Current drift findings. CLI mirror — supervisor stub.
     Drift {
@@ -890,10 +901,63 @@ async fn dispatch(
         //
         // Bindings prefixed with `_` to silence unused warnings while
         // preserving wire-shape documentation.
-        ControlCommand::Audit { scope: _scope } => ControlResponse::Error {
-            message: "audit not yet implemented in supervisor; CLI fallback is authoritative"
-                .into(),
-        },
+        // B11.7 (v0.3.2): supervisor-mediated audit fan-out. Enumerate
+        // scannable files under `project` and submit one `Job::Scan`
+        // per file. The router task drains the queue and dispatches
+        // round-robin to the scanner-worker pool. Each worker
+        // persists findings DIRECTLY to the per-project findings.db
+        // via the shard_root threaded through `encode_for_worker`.
+        // Returns the count of jobs queued so the CLI can poll
+        // `JobQueueStatus` for completion.
+        //
+        // Falls back to `ControlResponse::Error` when:
+        //   - `project` is None (older CLI that didn't set the field —
+        //     the CLI's standalone subprocess path is authoritative)
+        //   - scope is not "full" (today only "full" is implemented;
+        //     "diff" falls back to the standalone subprocess for the
+        //     mtime-based file filter)
+        //   - the job queue isn't attached
+        //   - file enumeration fails (e.g. project path doesn't exist)
+        ControlCommand::Audit { scope, project } => {
+            let Some(project_path) = project else {
+                return ControlResponse::Error {
+                    message: "audit dispatch requires `project` field; \
+                              older CLIs without this field fall back to standalone subprocess"
+                        .into(),
+                };
+            };
+            if scope != "full" {
+                return ControlResponse::Error {
+                    message: format!(
+                        "supervisor audit dispatch only supports scope=full today; \
+                         got {scope:?} — falling back to standalone subprocess"
+                    ),
+                };
+            }
+            let queue = match manager.job_queue().await {
+                Some(q) => q,
+                None => {
+                    return ControlResponse::Error {
+                        message: "supervisor job queue is not attached".into(),
+                    };
+                }
+            };
+            match enqueue_audit(&project_path, &queue).await {
+                Ok(queued) => {
+                    info!(
+                        project = %project_path.display(),
+                        queued,
+                        "audit dispatched: {queued} Job::Scan items queued for scanner-worker pool"
+                    );
+                    ControlResponse::Ok {
+                        message: Some(format!(
+                            "audit dispatched: {queued} files queued"
+                        )),
+                    }
+                }
+                Err(e) => ControlResponse::Error { message: e },
+            }
+        }
         ControlCommand::Drift {
             severity: _severity,
         } => ControlResponse::Error {
@@ -1312,6 +1376,185 @@ async fn enqueue_corpus(
         "graphify_corpus enumeration complete"
     );
     Ok(queued)
+}
+
+/// B11.7 (v0.3.2, D:\Mneme Dome cycle, 2026-05-02): enumerate every
+/// scannable file under `project_id` and submit one `Job::Scan` per
+/// file. Returns the count of jobs queued.
+///
+/// This is the supervisor-side audit fan-out. The router task (`run_router`
+/// in lib.rs) drains the queue and dispatches to the `scanner-worker-*`
+/// pool round-robin via `dispatch_to_pool`. Each worker processes its
+/// share of files, with findings persisted DIRECTLY to the per-project
+/// `findings.db` (via the shard_root field that `encode_for_worker`
+/// threads into the StdinJob — see B11.7 patch).
+///
+/// Expected speedup on POS PC (6 scanner-workers): audit phase 30 min →
+/// ~5 min. The standalone subprocess path (audit::run_direct_subprocess)
+/// remains as a fallback when the supervisor is unreachable.
+///
+/// File enumeration mirrors `mneme_scanners::main::run_orchestrator_mode`
+/// — same hard-ignore list, same .mnemeignore/.gitignore handling, same
+/// extension allowlist. The `scope` parameter is reserved (today only
+/// `"full"` is supported via this path; "diff" still goes via the
+/// standalone subprocess for consistency with the legacy mtime filter).
+async fn enqueue_audit(
+    project_id: &Path,
+    queue: &Arc<crate::job_queue::JobQueue>,
+) -> Result<usize, String> {
+    use common::jobs::Job;
+    use walkdir::WalkDir;
+
+    let root = match dunce::canonicalize(project_id) {
+        Ok(p) => p,
+        Err(_) => project_id.to_path_buf(),
+    };
+
+    // Resolve the project's shard root via the same hashing the rest of
+    // the supervisor uses for read-side queries. Mirrors the path
+    // resolution in `query_runner::resolve_graph_db` and
+    // `enqueue_corpus`.
+    let shard_root = {
+        use common::ids::ProjectId;
+        use common::paths::PathManager;
+        let id = match ProjectId::from_path(&root) {
+            Ok(id) => id,
+            Err(e) => {
+                return Err(format!("cannot hash project path {}: {e}", root.display()));
+            }
+        };
+        PathManager::default_root().project_root(&id)
+    };
+
+    // Make sure the shard directory exists so the worker's
+    // `FindingsWriter::open(shard_root.join("findings.db"))` succeeds
+    // on first write. Cheap; idempotent.
+    if let Err(e) = std::fs::create_dir_all(&shard_root) {
+        return Err(format!(
+            "cannot create shard root {}: {e}",
+            shard_root.display()
+        ));
+    }
+
+    let mut queued = 0usize;
+    let mut scanned = 0usize;
+    const SCAN_CAP: usize = 200_000;
+    let walker = WalkDir::new(&root)
+        .into_iter()
+        .filter_entry(|e| !is_hard_ignored_for_audit(e.path()));
+    for entry in walker {
+        scanned += 1;
+        if scanned > SCAN_CAP {
+            warn!(
+                scanned,
+                "audit enumeration cap hit; stopping early"
+            );
+            break;
+        }
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if !is_scannable_extension_for_audit(entry.path()) {
+            continue;
+        }
+        let job = Job::Scan {
+            file_path: entry.path().to_path_buf(),
+            ast_id: None,
+            shard_root: shard_root.clone(),
+        };
+        match queue.submit(job, None) {
+            Ok(_) => queued += 1,
+            Err(e) => {
+                debug!(error = %e, "audit: queue submit dropped (queue full?)");
+            }
+        }
+    }
+    info!(
+        project = %root.display(),
+        queued,
+        "audit enumeration complete"
+    );
+    Ok(queued)
+}
+
+/// B11.7: hard-coded ignore list for the supervisor's audit fan-out.
+/// Mirrors `mneme_scanners::main::is_hard_ignored` so the supervisor-
+/// dispatched and standalone-subprocess paths visit the same set of
+/// files. Kept inline rather than depending on the scanners crate so
+/// the supervisor stays decoupled.
+fn is_hard_ignored_for_audit(path: &Path) -> bool {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    matches!(
+        name,
+        "target"
+            | "node_modules"
+            | ".git"
+            | ".hg"
+            | ".svn"
+            | "dist"
+            | "dist-electron"
+            | "release"
+            | "out"
+            | "build"
+            | "bin"
+            | "obj"
+            | ".next"
+            | ".nuxt"
+            | ".vite"
+            | ".parcel-cache"
+            | ".turbo"
+            | ".svelte-kit"
+            | ".astro"
+            | ".venv"
+            | "venv"
+            | "__pycache__"
+            | ".pytest_cache"
+            | ".mypy_cache"
+            | ".ruff_cache"
+            | ".tox"
+            | "site-packages"
+            | ".idea"
+            | ".vscode"
+            | ".vs"
+            | ".DS_Store"
+            | ".cache"
+            | ".yarn"
+            | ".pnpm-store"
+            | ".mneme"
+            | ".claude"
+            | "graphify-out"
+            | "coverage"
+            | ".nyc_output"
+            | ".gradle"
+            | ".rush"
+            | ".mneme-graphify"
+            | ".datatree"
+    )
+}
+
+/// B11.7: scannable-extension allowlist for the supervisor audit
+/// fan-out. Mirrors `mneme_scanners::main::is_scannable_extension`.
+fn is_scannable_extension_for_audit(path: &Path) -> bool {
+    let ext = match path.extension().and_then(|e| e.to_str()) {
+        Some(s) => s.to_ascii_lowercase(),
+        None => return false,
+    };
+    matches!(
+        ext.as_str(),
+        "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs"
+        | "html" | "htm" | "css" | "scss" | "sass" | "less"
+        | "rs" | "go" | "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hh"
+        | "java" | "kt" | "kts" | "scala"
+        | "py" | "rb" | "lua" | "sh" | "bash" | "zsh" | "fish" | "ps1"
+        | "json" | "yaml" | "yml" | "toml" | "ini"
+        | "md" | "markdown" | "mdx" | "rst" | "txt"
+        | "swift" | "dart" | "ex" | "exs" | "elm" | "vue" | "svelte" | "astro"
+        | "sol" | "zig" | "cs" | "fs" | "fsx" | "vb" | "php"
+    )
 }
 
 /// Read-side helpers for the three new supervisor-mediated queries.

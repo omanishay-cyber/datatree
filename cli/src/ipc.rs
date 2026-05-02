@@ -113,8 +113,13 @@ pub enum IpcRequest {
     },
     /// Run all configured scanners.
     Audit {
-        /// theme | security | a11y | perf | types | all.
+        /// `full` (every scannable file) or `diff` (mtime <24h).
         scope: String,
+        /// B11.7 (v0.3.2): the project root the supervisor enumerates
+        /// for fan-out dispatch. `#[serde(default)]` keeps wire-compat
+        /// with older daemons that didn't read this field.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project: Option<PathBuf>,
     },
     /// Step ledger op.
     Step {
@@ -933,6 +938,7 @@ mod tests {
         // (line 449) does NOT mask the no-autospawn fix.
         let req = IpcRequest::Audit {
             scope: "full".into(),
+            project: None,
         };
 
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1024,6 +1030,7 @@ mod tests {
 
         let req = IpcRequest::Audit {
             scope: "k-test-1".into(),
+            project: None,
         };
         let rt = tokio::runtime::Runtime::new().unwrap();
         let r1 = rt.block_on(client.request(req));
@@ -1050,6 +1057,7 @@ mod tests {
 
         let req = IpcRequest::Audit {
             scope: "k-test-2".into(),
+            project: None,
         };
         let r2 = rt.block_on(client.request(req));
         assert!(
