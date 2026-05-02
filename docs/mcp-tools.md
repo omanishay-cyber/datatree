@@ -1,8 +1,8 @@
 # mneme MCP tools reference
 
-47 tools (47/47 wired to real data as of v0.3.0), grouped by category. Every tool is callable from Claude Code, Codex, Cursor, or any MCP-aware AI client once `mneme install` has registered the MCP server.
+48 tools (48/48 wired to real data as of v0.3.2 — `file_intent` was added in the J7 phase after v0.3.0), grouped by category. Every tool is callable from Claude Code, Codex, Cursor, or any MCP-aware AI client once `mneme install` has registered the MCP server.
 
-> **v0.3.0 status:** 47 of 47 tools wired to real data. Every tool either hits supervisor IPC (with graceful-degrade fallback when the verb isn't present) or reads live sqlite via `bun:sqlite`. See [`BENCHMARKS.md`](../benchmarks/BENCHMARKS.md) for the measured harness.
+> **v0.3.2 status:** 48 of 48 tools wired to real data. Every tool either hits supervisor IPC (with graceful-degrade fallback when the verb isn't present) or reads live sqlite via `bun:sqlite`. See [`BENCHMARKS.md`](../benchmarks/BENCHMARKS.md) for the measured harness.
 
 ---
 

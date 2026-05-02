@@ -591,7 +591,19 @@ pub fn default_model_dir() -> PathBuf {
 /// opt-in.
 pub fn install_default_model() -> BrainResult<()> {
     let dir = default_model_dir();
-    std::fs::create_dir_all(&dir).ok();
+    // Bug G-5 (2026-05-01): propagate dir-create failures. Previously
+    // `.ok()` swallowed permission/disk-full errors, then the existence
+    // check below failed misleadingly with "model files not present"
+    // when the real cause was that the model dir couldn't be created.
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        return Err(BrainError::ModelMissing {
+            path: format!(
+                "could not create model dir {}: {} — check permissions / disk space",
+                dir.display(),
+                e
+            ),
+        });
+    }
 
     let onnx = dir.join("bge-small-en-v1.5.onnx");
     let tok = dir.join("tokenizer.json");
@@ -608,7 +620,19 @@ pub fn install_default_model() -> BrainResult<()> {
         });
     }
     let marker = dir.join(".installed");
-    std::fs::write(&marker, b"v0.2 bge-small-en-v1.5 validated\n").ok();
+    // Bug G-5 (2026-05-01): propagate marker-write failures. If the
+    // marker write silently failed, `mneme doctor` would later report
+    // "models not installed" while the install reported success — two
+    // contradictory signals to the user. Now we surface the failure.
+    if let Err(e) = std::fs::write(&marker, b"v0.2 bge-small-en-v1.5 validated\n") {
+        return Err(BrainError::ModelMissing {
+            path: format!(
+                "model files present but installed-marker write to {} failed: {} — doctor will report 'not installed'",
+                marker.display(),
+                e
+            ),
+        });
+    }
     Ok(())
 }
 

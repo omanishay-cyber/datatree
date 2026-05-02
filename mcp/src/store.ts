@@ -9,11 +9,24 @@
  * Writes still go through the supervisor over IPC (see db.ts).
  */
 
+import { spawn as cpSpawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, realpathSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
+import { errMsg } from "./errors.ts";
+
+// Bug TS-2 (2026-05-01): hoisted these imports out of inline `require()`
+// calls. The previous `require("node:fs")` inside function bodies worked
+// in Bun (which polyfills CJS-in-ESM) but would crash under strict Node
+// ESM. Top-level ESM imports are universal.
 
 const MNEME_HOME = join(homedir(), ".mneme");
 
@@ -27,11 +40,20 @@ const MNEME_HOME = join(homedir(), ".mneme");
  *   - on Windows: normalizes backslashes to forward slashes and lowercases
  *     so `C:\Users\X`, `c:/users/x`, and `C:/Users/X` all hash identically
  */
+// Bug TS-3 (2026-05-01): replace triple `as unknown as { native?: ... }`
+// cast with a typed interface. Same runtime behavior, but the type
+// system now sees the optional `native` field and any future change
+// in node:fs's signature gets caught at compile time.
+interface RealpathSyncWithNative {
+  native?: (s: string) => string;
+}
+
 export function projectIdForPath(absPath: string): string {
   let p = absPath;
   try {
     // realpathSync.native is faster on Windows when available.
-    p = (realpathSync as unknown as { native?: (s: string) => string }).native?.(p) ?? realpathSync(p);
+    const realpath = realpathSync as typeof realpathSync & RealpathSyncWithNative;
+    p = realpath.native?.(p) ?? realpath(p);
   } catch {
     // Path may not exist on disk yet — that's fine, fall through to
     // string-level normalization so we still get a stable id.
@@ -78,7 +100,6 @@ export function resolveShardRoot(cwdOverride?: string): string | null {
   const projectsDir = join(MNEME_HOME, "projects");
   if (existsSync(projectsDir)) {
     try {
-      const { readdirSync } = require("node:fs");
       const entries = readdirSync(projectsDir);
       if (entries.length === 1) return join(projectsDir, entries[0]);
     } catch {
@@ -1483,7 +1504,6 @@ export function listSnapshotsFs(cwdOverride?: string): Array<{
   const snapDir = join(root, "snapshots");
   if (!existsSync(snapDir)) return [];
   try {
-    const { readdirSync, statSync } = require("node:fs") as typeof import("node:fs");
     const entries = readdirSync(snapDir);
     const out: Array<{
       id: string;
@@ -1759,7 +1779,7 @@ export function shardSchemaVersions(
           error = "schema_version row missing";
         }
       } catch (err) {
-        error = (err as Error).message;
+        error = errMsg(err);
       }
       out.push({ layer: s.layer, version, error });
     } finally {
@@ -2965,11 +2985,6 @@ export function snapshotFsFallback(
 ): { snapshot_id: string; created_at: string; size_bytes: number } | null {
   const root = resolveShardRoot(cwdOverride);
   if (!root) return null;
-  const {
-    mkdirSync,
-    readdirSync,
-    statSync,
-  } = require("node:fs") as typeof import("node:fs");
   const now = new Date();
   const stamp = now.toISOString().replace(/[:.]/g, "-");
   const id = label ? `${stamp}_${label.replace(/[^a-zA-Z0-9_-]/g, "_")}` : stamp;
@@ -3153,8 +3168,7 @@ export function spawnRebuildChild(
   const args = ["build", "."];
   const cmd = `mneme ${args.join(" ")}`;
   try {
-    const cp = require("node:child_process") as typeof import("node:child_process");
-    const child = cp.spawn("mneme", args, {
+    const child = cpSpawn("mneme", args, {
       cwd,
       detached: true,
       stdio: "ignore",

@@ -48,7 +48,7 @@ export async function runPreTool(args: PreToolArgs): Promise<HookOutput> {
     }
   } catch (err) {
     console.error("[mneme-mcp] pre_tool failed:", err);
-    return { metadata: { hook: "PreToolUse", error: (err as Error).message } };
+    return { metadata: { hook: "PreToolUse", error: errMsg(err) } };
   }
 }
 

@@ -204,7 +204,16 @@ export class MnemeMcpServer {
     this.server = new Server(
       {
         name: "mneme",
-        version: "0.3.0",
+        // Bug TS-1 (2026-05-01): keep this in sync with `mcp/package.json`
+        // "version" field. The MCP SDK uses this in capability negotiation
+        // and clients cache tool schemas keyed by server version — drift
+        // here causes opaque "invalid arguments" errors after upgrades
+        // because the cached schema doesn't match what the server now
+        // exposes. TODO(v0.3.3): replace with
+        //   import pkg from "../package.json" with { type: "json" };
+        // once we verify `bun build --target=bun` inlines it correctly
+        // across all release targets.
+        version: "0.3.2",
       },
       {
         capabilities: {

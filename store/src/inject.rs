@@ -210,7 +210,11 @@ impl DefaultInject {
             )
             .to_hex()
             .to_string();
-            let _ = self.query.write(Write {
+            // Bug G-4 (2026-05-01): surface audit-log write failures.
+            // Previously `let _ =` swallowed errors, which left audit
+            // trail gaps invisible. `mneme history` then showed
+            // unexplained gaps with no path to the cause.
+            if let Err(e) = self.query.write(Write {
                 project: project.clone(),
                 layer: DbLayer::Audit,
                 sql: "INSERT INTO audit_log(actor, action, layer, target, prev_value_hash, new_value_hash)
@@ -221,12 +225,15 @@ impl DefaultInject {
                     serde_json::Value::String(opts.idempotency_key.clone().unwrap_or_default()),
                     serde_json::Value::String(new_hash),
                 ],
-            }).await;
+            }).await {
+                tracing::warn!(error = %e, action = %action, layer = ?layer, "audit_log inject write failed; audit trail will have a gap");
+            }
         }
 
         // Idempotency record
+        // Bug G-4 (2026-05-01): same as above — surface failures.
         if let Some(key) = &opts.idempotency_key {
-            let _ = self
+            if let Err(e) = self
                 .query
                 .write(Write {
                     project: project.clone(),
@@ -241,7 +248,10 @@ impl DefaultInject {
                         serde_json::Value::String("done".into()),
                     ],
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(error = %e, key = %key, "audit_log idempotency write failed; replay safety degraded");
+            }
         }
 
         // (live bus emit handled by caller via supervisor IPC; opts.emit_event is advisory)

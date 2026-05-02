@@ -27,6 +27,7 @@ import {
   type ToolDescriptor,
 } from "../types.ts";
 import { doctorShardSweep, shardSchemaVersions } from "../store.ts";
+import { errMsg } from "../errors.ts";
 
 interface Check {
   name: string;
@@ -99,7 +100,7 @@ async function probeSupervisorSla(): Promise<SupervisorProbe> {
       check: {
         name: "supervisor_sla",
         passed: false,
-        detail: `daemon not running — could not reach supervisor /health: ${(err as Error).message}`,
+        detail: `daemon not running — could not reach supervisor /health: ${errMsg(err)}`,
       },
       workers_green: false,
       reachable: false,

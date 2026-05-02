@@ -20,7 +20,7 @@ Thanks for the interest. Short rules, long explanation below.
 ## What we welcome
 
 - ⭐ **Bug reports** — reproducible > everything. Include OS, Rust version, Bun version, and the exact `mneme --verbose` output.
-- ⭐ **New MCP tools** — if you see a gap in the 47 tools, propose one. Pattern: add a new `.ts` file in `mcp/src/tools/`, add helper in `mcp/src/store.ts` if new DB query shape.
+- ⭐ **New MCP tools** — if you see a gap in the 48 tools, propose one. Pattern: add a new `.ts` file in `mcp/src/tools/`, add helper in `mcp/src/store.ts` if new DB query shape.
 - ⭐ **New scanners** — theme / security / a11y drift rules live in `scanners/src/scanners/*.rs`. Each scanner is one file, one regex ruleset, easy to add.
 - ⭐ **New Tree-sitter language grammars** — see `parsers/src/language.rs`. Add the crate dep to `parsers/Cargo.toml` behind a feature flag, register in `Language::ALL`, add queries to `query_cache.rs`.
 - ⭐ **Vision views** — the 14 view modes in `vision/src/views/` each follow a pattern. Add a 15th by copying one and adjusting the rendering.

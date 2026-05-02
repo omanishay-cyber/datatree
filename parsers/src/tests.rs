@@ -683,7 +683,11 @@ async fn k7_python_keeps_legacy_one_edge_per_statement() {
 
 #[tokio::test]
 async fn k7_rust_keeps_legacy_one_edge_per_use() {
-    // Rust `use X::{a, b, c}` still emits one edge — TODO follow-up.
+    // Rust `use X::{a, b, c}` still emits one edge — tracked in
+    // docs/REMAINING_WORK.md ("v0.3.2 audit-cycle deferrals" section)
+    // and is intentionally part of the per-grammar import-binding
+    // audit follow-up. Test pinned to current behavior so a regression
+    // in either direction (suddenly emitting 3 edges OR 0) breaks CI.
     let src = "use std::collections::{HashMap, HashSet};\n";
     assert_eq!(count_import_edges(Language::Rust, "k7.rs", src).await, 1);
 }

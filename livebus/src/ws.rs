@@ -104,8 +104,19 @@ async fn handle_socket(socket: WebSocket, mgr: SubscriberManager) {
                         }
                     }
                     None => {
-                        // Channel closed — manager evicted us.
-                        let _ = sink.send(Message::Close(None)).await;
+                        // Bug G-8 (2026-05-01): manager-initiated eviction.
+                        // The Close-frame send is intentionally best-effort
+                        // (`let _ =`): we're about to `break` regardless,
+                        // so a failed send (peer already gone) is fine.
+                        // Logged at debug so the eviction is still visible
+                        // in supervisor.log when verbose logging is on.
+                        if let Err(e) = sink.send(Message::Close(None)).await {
+                            debug!(
+                                subscriber = %sub_id,
+                                error = %e,
+                                "ws: failed to send Close frame on manager eviction (peer already gone)"
+                            );
+                        }
                         break;
                     }
                 }

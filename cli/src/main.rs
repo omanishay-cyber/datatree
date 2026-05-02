@@ -8,6 +8,10 @@
 //! ```text
 //! mneme install [--platform=<name>] [--dry-run] [--scope=...]
 //! mneme uninstall [--platform=<name>] [--scope=...]
+//! mneme register-mcp [--platform=<name>]
+//! mneme unregister-mcp [--platform=<name>]
+//! mneme rollback [--platform=<name>]
+//! mneme models <op>            # status | install | install-onnx-runtime
 //! mneme build [project_path]
 //! mneme update [project_path]
 //! mneme status
@@ -23,14 +27,24 @@
 //! mneme doctor
 //! mneme rebuild
 //! mneme step <op> [arg]
+//! mneme federated <op>
+//! mneme why <target>
 //! mneme inject  --prompt=... --session-id=... --cwd=...
 //! mneme session-prime --project=... --session-id=...
 //! mneme pre-tool   --tool=... --params=... --session-id=...
 //! mneme post-tool  --tool=... --result-file=... --session-id=...
 //! mneme turn-end   --session-id=... [--pre-compact|--subagent]
 //! mneme session-end --session-id=...
-//! mneme daemon <op>
+//! mneme daemon <op>            # start | stop | status | service-run
+//! mneme cache <op>             # du | clear
+//! mneme abort
+//! mneme mcp <op>               # stdio
 //! ```
+//!
+//! Bug DOC-5 (2026-05-01): list extended from the original 22 to the
+//! actual 33 subcommands (added: register-mcp, unregister-mcp, rollback,
+//! models, federated, why, cache, abort, mcp). The previous list was
+//! the v0.1 surface and never updated as the CLI grew.
 
 use clap::{Parser, Subcommand};
 use mneme_cli::commands;

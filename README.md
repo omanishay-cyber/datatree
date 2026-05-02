@@ -310,7 +310,7 @@ Every arrow is **bidirectional** — MCP is JSON-RPC (request/response), supervi
                     request │ ▲ response
                             ▼ │  (tool_result / error / resource)
   ┌────────────────────────────────────────────────────────────────────────┐
-  │   MCP SERVER (Bun TS) — 47 tools, hot-reload, zod-validated            │
+  │   MCP SERVER (Bun TS) — 48 tools, hot-reload, zod-validated            │
   │   Resolves request → fans out to workers → aggregates → replies        │
   └─────────────────────────▲──────────────────────────────────────────────┘
                             │        IPC — named pipe (Windows) / unix sock

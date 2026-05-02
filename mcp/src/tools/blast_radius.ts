@@ -18,6 +18,7 @@ import {
   type ToolDescriptor,
 } from "../types.ts";
 import { blastRadius } from "../store.ts";
+import { errMsg } from "../errors.ts";
 
 // ---------------------------------------------------------------------------
 // Extended schema (additive over BlastRadiusOutput).
@@ -164,7 +165,7 @@ export const tool: ToolDescriptor<
         target: input.target,
         affected_files: [],
         affected_symbols: [
-          `(mneme not yet built — run mneme build .\` first; ${(err as Error).message})`,
+          `(mneme not yet built — run mneme build .\` first; ${errMsg(err)})`,
         ],
         test_files: [],
         total_count: 0,

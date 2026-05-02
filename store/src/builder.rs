@@ -251,6 +251,22 @@ fn apply_pragmas(conn: &Connection) -> DtResult<()> {
         .map_err(DbError::from)?;
     conn.pragma_update(None, "mmap_size", 268435456_i64)
         .map_err(DbError::from)?; // 256MB
+
+    // Bug F-8 (2026-05-01): cap WAL auto-checkpoint at 200 pages
+    // (~800 KB) instead of the SQLite default of 1000 pages (~4 MB).
+    // On the build pipeline (1287 files → 13K+ nodes → 70K+ edges)
+    // the default lets WAL grow unbounded between checkpoints, then a
+    // single forced checkpoint stalls every writer for up to 30 s
+    // while it merges. Smaller checkpoint cadence trades a tiny per-
+    // write overhead for predictable latency: each stall is ~5–10 s
+    // worst-case instead of one giant 30 s freeze that looks like a
+    // hang to the user.
+    conn.pragma_update(None, "wal_autocheckpoint", 200_i64)
+        .map_err(DbError::from)?;
+    // Cap on-disk WAL size at 32 MB so a stuck reader can't let it
+    // balloon. Above this, SQLite truncates after each checkpoint.
+    conn.pragma_update(None, "journal_size_limit", 33_554_432_i64)
+        .map_err(DbError::from)?;
     Ok(())
 }
 

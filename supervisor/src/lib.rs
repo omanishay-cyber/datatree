@@ -203,24 +203,52 @@ pub async fn run(config: SupervisorConfig) -> Result<()> {
     // Also drop a true PID file at `~/.mneme/run/daemon.pid` so external
     // tooling (raw `mneme-daemon status`, init scripts, doctor checks) can
     // tell whether a supervisor is alive without having to round-trip IPC.
+    // Bug G-2 (2026-05-01): surface failed PID/pipe-discovery writes.
+    // The CLI relies on `~/.mneme/supervisor.pipe` for daemon discovery
+    // and on `~/.mneme/run/daemon.pid` for raw process-status checks.
+    // Previously these `let _ =` calls swallowed every failure mode
+    // (missing dir, permission denied, full disk) so the daemon would
+    // come up "successfully" but the CLI would hang at the IPC connect
+    // forever with no diagnostic. Now we log every failure at warn level
+    // so the supervisor.log makes the root cause visible.
     if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
         let mneme_root = std::path::Path::new(&home).join(".mneme");
 
         let disco = mneme_root.join("supervisor.pipe");
         if let Some(parent) = disco.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                warn!(error = %e, parent = %parent.display(), "failed to create discovery dir; CLI may not find daemon");
+            }
         }
-        let _ = std::fs::write(&disco, config.ipc_socket_path.to_string_lossy().as_bytes());
+        if let Err(e) = std::fs::write(&disco, config.ipc_socket_path.to_string_lossy().as_bytes())
+        {
+            warn!(
+                error = %e,
+                discovery = %disco.display(),
+                "failed to write supervisor.pipe discovery file; CLI auto-spawn or fresh CLI commands may fail to find this daemon"
+            );
+        }
 
         let run_dir = mneme_root.join("run");
-        let _ = std::fs::create_dir_all(&run_dir);
+        if let Err(e) = std::fs::create_dir_all(&run_dir) {
+            warn!(error = %e, run_dir = %run_dir.display(), "failed to create run dir; daemon.pid file write will fail next");
+        }
         let pid_file = run_dir.join("daemon.pid");
-        let _ = std::fs::write(&pid_file, std::process::id().to_string().as_bytes());
-        info!(
-            pid = std::process::id(),
-            pid_file = %pid_file.display(),
-            "wrote supervisor PID file"
-        );
+        if let Err(e) = std::fs::write(&pid_file, std::process::id().to_string().as_bytes()) {
+            warn!(
+                error = %e,
+                pid_file = %pid_file.display(),
+                "failed to write daemon.pid; external tooling (raw status checks, init scripts) won't see this daemon"
+            );
+        } else {
+            info!(
+                pid = std::process::id(),
+                pid_file = %pid_file.display(),
+                "wrote supervisor PID file"
+            );
+        }
+    } else {
+        warn!("could not resolve home dir (USERPROFILE/HOME unset); skipping discovery + PID file writes — CLI commands will not find this daemon");
     }
 
     let log_ring = Arc::new(LogRing::new(10_000));
@@ -421,26 +449,60 @@ pub async fn run(config: SupervisorConfig) -> Result<()> {
     if let Err(e) = ipc_handle.await {
         error!(error = %e, "ipc task join error");
     }
+    // Bug G-11 (2026-05-01): on shutdown, the previous code did
+    //     handle.abort();
+    //     let _ = handle.await;
+    // for each background task. The `let _` swallowed every join
+    // error including any panic that happened in the task before
+    // shutdown. We now log JoinError + panic-payload so a task that
+    // crashed mid-flight is visible in supervisor.log instead of
+    // disappearing into "supervisor stopped cleanly".
+    fn log_join(name: &str, res: Result<(), tokio::task::JoinError>) {
+        match res {
+            Ok(()) => {}
+            Err(e) if e.is_cancelled() => {
+                // Expected — we just `abort()`ed it.
+            }
+            Err(e) => {
+                error!(task = %name, error = %e, "background task join error on shutdown (panic before abort?)");
+            }
+        }
+    }
     router_handle.abort();
-    let _ = router_handle.await;
+    log_join("router", router_handle.await);
     rss_handle.abort();
-    let _ = rss_handle.await;
+    log_join("rss_refresher", rss_handle.await);
     recovery_handle.abort();
-    let _ = recovery_handle.await;
+    log_join("crash_recovery_logger", recovery_handle.await);
     bus_bridge_handle.abort();
-    let _ = bus_bridge_handle.await;
+    log_join("livebus_bridge", bus_bridge_handle.await);
     if let Some(h) = restart_handle {
         h.abort();
-        let _ = h.await;
+        log_join("restart_loop", h.await);
     }
 
     // Best-effort cleanup of the discovery + PID files. Stale entries are
     // harmless on the next boot (the PID-scoped pipe name is regenerated)
     // but we remove them so external tooling sees an honest "down" state.
+    // Bug G-11 (2026-05-01): cleanup of stale discovery + PID file.
+    // Failures here are TRULY best-effort (the next boot will
+    // overwrite them anyway), but we still log them at debug so a
+    // sysadmin troubleshooting "stale supervisor.pipe survives
+    // restarts" has a paper trail.
     if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
         let mneme_root = std::path::Path::new(&home).join(".mneme");
-        let _ = std::fs::remove_file(mneme_root.join("supervisor.pipe"));
-        let _ = std::fs::remove_file(mneme_root.join("run").join("daemon.pid"));
+        let pipe_path = mneme_root.join("supervisor.pipe");
+        if let Err(e) = std::fs::remove_file(&pipe_path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::debug!(error = %e, path = %pipe_path.display(), "failed to remove stale supervisor.pipe on shutdown (next boot will overwrite)");
+            }
+        }
+        let pid_path = mneme_root.join("run").join("daemon.pid");
+        if let Err(e) = std::fs::remove_file(&pid_path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::debug!(error = %e, path = %pid_path.display(), "failed to remove stale daemon.pid on shutdown (next boot will overwrite)");
+            }
+        }
     }
 
     info!("supervisor stopped cleanly");

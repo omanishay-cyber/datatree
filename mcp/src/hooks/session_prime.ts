@@ -46,7 +46,7 @@ export async function runSessionPrime(args: SessionPrimeArgs): Promise<HookOutpu
     console.error("[mneme-mcp] session_prime failed:", err);
     return {
       additional_context: "",
-      metadata: { hook: "SessionStart", error: (err as Error).message },
+      metadata: { hook: "SessionStart", error: errMsg(err) },
     };
   }
 }

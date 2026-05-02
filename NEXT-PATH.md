@@ -202,10 +202,10 @@ Copy-Item "$env:USERPROFILE\creds-backup.json" "$env:USERPROFILE\.claude\.creden
 iwr -useb https://raw.githubusercontent.com/omanishay-cyber/mneme/main/scripts/install.ps1 | iex
 
 # Stress matrix:
-#   28 CLI subcommands tested (mneme --help → enumerate → invoke each)
-#   47 MCP tools tested (claude mcp list → for each → invoke via /mn-X)
+#   33 CLI subcommands tested (mneme --help → enumerate → invoke each)
+#   48 MCP tools tested (claude mcp list → for each → invoke via /mn-X)
 #   17 slash commands tested
-#   6 hooks fired (UserPromptSubmit, SessionStart, PreToolUse, PostToolUse, Stop, SessionEnd)
+#   8 hooks fired (UserPromptSubmit, SessionStart, PreToolUse, PostToolUse, Stop, SessionEnd, PreCompact, SubagentStop)
 #   26 skills loaded
 #   6 agents dispatched in parallel
 #   24h leak soak (Phase D idle-after-load — per feedback_leak_is_the_leak.md "leak is the leak")

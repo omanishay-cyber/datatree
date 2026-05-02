@@ -25,7 +25,14 @@ use tokio::sync::mpsc;
 /// Upper bound on a fallback `send_timeout` when every worker channel
 /// is full. Exposed at `pub(crate)` so the inline test fixture can
 /// drive it without re-declaring the magic number.
-pub const SEND_TIMEOUT_SECS: u64 = 60;
+///
+/// Bug F-7 (2026-05-01): reduced from 60s to 15s. With 60s, a parser
+/// pool stuck behind one wedged worker would freeze the dispatcher
+/// for 60 seconds per file. On a 1000-file project with one bad
+/// worker that's 1000 * 60s = ~17 hours of apparent freeze. 15s is
+/// short enough to surface a real wedge fast and long enough to
+/// absorb a normal slow file (a 5MB minified .js can take ~3-5s).
+pub const SEND_TIMEOUT_SECS: u64 = 15;
 
 /// Outcome of a dispatch attempt.
 #[derive(Debug)]

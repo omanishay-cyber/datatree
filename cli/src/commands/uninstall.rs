@@ -799,14 +799,21 @@ fn purge_mneme_state() {
         // waiting on this process anyway.
         //
         // Sequence (all detached so the parent can exit immediately):
-        //   1. timeout 10s    — wait for parent to release mneme.exe lock
+        //   1. ping -n 11     — wait ~10s for parent to release mneme.exe lock.
+        //                       NOTE: must be `ping`, NOT `timeout /t`.
+        //                       `timeout.exe` refuses to run when stdin is
+        //                       redirected (Stdio::null below), exits instantly
+        //                       with "ERROR: Input redirection is not supported"
+        //                       to stderr. That made rmdir race the still-alive
+        //                       parent and silently fail (Bug C-1, 2026-05-01).
+        //                       `ping` does not need a console handle.
         //   2. rmdir /s /q    — actual delete attempt
         //   3. powershell …   — write LIE-4 status marker + delete helper
         //
         // `&` (cmd's sequential separator) ensures the marker write
         // runs even if rmdir partially fails — that's the whole point.
         let cmd_str = format!(
-            "timeout /t 10 /nobreak >nul & rmdir /s /q \"{}\" & powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{}\"",
+            "ping -n 11 127.0.0.1 >nul & rmdir /s /q \"{}\" & powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{}\"",
             mneme_dir.display(),
             helper_script.display(),
         );

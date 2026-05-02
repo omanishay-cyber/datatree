@@ -34,12 +34,19 @@ import type {
 } from "../src/api/graph";
 import type { GraphNode, GraphEdge } from "../src/api";
 
-// Project shards historically lived in ~/.mneme/projects; the rebrand to
-// datatree moved them to ~/.datatree/projects. We search both so an older
-// shard still resolves if a new one hasn't been built yet.
+// Bug VIS-5 (2026-05-01): historical fallback ordering had .datatree
+// FIRST, .mneme second. The "datatree → mneme" naming reverted (the
+// canonical install root has been ~/.mneme since v0.3.0), but this
+// list was never updated. The result was that on machines with both
+// directories present (older datatree leftover + current mneme),
+// vision/server/shard.ts would serve STALE shards from .datatree
+// while the daemon wrote fresh shards to .mneme. The Rust PathManager
+// only knows .mneme so the two halves diverged invisibly. Now .mneme
+// is checked first; .datatree remains as legacy fallback for users
+// who never migrated.
 const SHARD_HOMES: readonly string[] = [
-  join(homedir(), ".datatree"),
   join(homedir(), ".mneme"),
+  join(homedir(), ".datatree"),
 ];
 
 function projectIdForPath(absPath: string): string {

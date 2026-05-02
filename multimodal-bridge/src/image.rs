@@ -136,12 +136,86 @@ impl ImageExtractor {
         Ok(())
     }
 
+    /// Bug B-1 (2026-05-01): runtime fallback to the system `tesseract`
+    /// CLI when the compile-time `tesseract` C-FFI feature is OFF.
+    ///
+    /// The release pipeline historically built every multimodal binary
+    /// without `--features tesseract` (cargo workspace builds do NOT
+    /// activate optional features on members), so `OCR_ENABLED` was
+    /// always false on shipped binaries even though the installer
+    /// winget-installed `UB-Mannheim.TesseractOCR` and put
+    /// `tesseract.exe` on PATH. The C-FFI crate links libtesseract at
+    /// compile time — having `tesseract.exe` at runtime is irrelevant
+    /// to it. So 100% of installs shipped OCR-disabled.
+    ///
+    /// This fallback shells out to whatever `tesseract` is on PATH:
+    ///     `tesseract <image> stdout -l <lang>`
+    /// reads stdout as the OCR text, and stuffs it into `doc.text`.
+    /// No build-time deps, no C++ toolchain required, works anywhere
+    /// the user has run `winget install UB-Mannheim.TesseractOCR` (or
+    /// equivalent on macOS/Linux). The compile-time `tesseract`
+    /// feature path is preserved above for power users who want the
+    /// faster in-process FFI.
     #[cfg(not(feature = "tesseract"))]
-    fn run_ocr(&self, path: &Path, _doc: &mut ExtractedDoc) -> ExtractResult<()> {
-        warn!(
-            path = %path.display(),
-            "tesseract feature disabled; image OCR skipped (dimensions only)"
-        );
+    fn run_ocr(&self, path: &Path, doc: &mut ExtractedDoc) -> ExtractResult<()> {
+        use std::process::Command;
+
+        let lang: &str = self.language.as_deref().unwrap_or("eng");
+        let path_str = path.to_str().ok_or_else(|| {
+            ExtractError::Other(format!("non-utf8 image path {}", path.display()))
+        })?;
+
+        // First probe: is `tesseract` on PATH at all? Use `--version`
+        // because it's cheap and exits 0 quickly. If this fails we
+        // fall back to the historical "dimensions only" warning so
+        // builds stay green even on machines without OCR.
+        let probe = Command::new("tesseract").arg("--version").output();
+        let probe_ok = match &probe {
+            Ok(out) => out.status.success(),
+            Err(_) => false,
+        };
+        if !probe_ok {
+            warn!(
+                path = %path.display(),
+                "tesseract not on PATH; image OCR skipped (dimensions only). Install via `winget install UB-Mannheim.TesseractOCR` (Windows), `brew install tesseract` (macOS), or `apt-get install tesseract-ocr` (Linux)."
+            );
+            return Ok(());
+        }
+
+        // Real run: `tesseract <image> stdout -l <lang>` writes the
+        // OCR text to stdout. We swallow stderr (which tesseract uses
+        // for progress) and parse stdout as UTF-8.
+        let output = match Command::new("tesseract")
+            .arg(path_str)
+            .arg("stdout")
+            .arg("-l")
+            .arg(lang)
+            .output()
+        {
+            Ok(o) => o,
+            Err(e) => {
+                return Err(ExtractError::Parse {
+                    path: path.to_path_buf(),
+                    reason: format!("tesseract spawn failed: {e}"),
+                });
+            }
+        };
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(ExtractError::Parse {
+                path: path.to_path_buf(),
+                reason: format!("tesseract exit {:?}: {}", output.status.code(), stderr.trim()),
+            });
+        }
+        let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        doc.text = text;
+        if !doc.text.is_empty() {
+            doc.pages.push(crate::types::PageText {
+                index: 1,
+                heading: None,
+                text: doc.text.clone(),
+            });
+        }
         Ok(())
     }
 }

@@ -181,7 +181,7 @@ hand-written spec, then reviewed and tuned.
 
 | Workspace | Purpose | Owner |
 |---|---|---|
-| `mcp/` | Bun + TypeScript MCP server. 47 tools in `mcp/src/tools/`. Validates every tool I/O with `zod`. Reads shards direct via `bun:sqlite` (fastest SQLite binding in any runtime). Writes go over IPC to the store worker. Hot-reloadable: tools are side-effect-free modules. | agent-generated |
+| `mcp/` | Bun + TypeScript MCP server. 48 tools in `mcp/src/tools/`. Validates every tool I/O with `zod`. Reads shards direct via `bun:sqlite` (fastest SQLite binding in any runtime). Writes go over IPC to the store worker. Hot-reloadable: tools are side-effect-free modules. | agent-generated |
 | `vision/` | Tauri + React + WebGL desktop app. 14 views (Force Galaxy, Hierarchy Tree, Sunburst, Treemap, Sankey x2, Arc/Chord, Timeline, HeatmapGrid, Layered Architecture, Project Galaxy 3D, Test Coverage Map, Risk Dashboard, Theme Palette) + a Command Center (Step Ledger, Drift Indicator, Resumption Bundle). | agent-generated |
 | `workers/multimodal/` | Python 3.10 sidecar. PyMuPDF for PDF, Tesseract for OCR, faster-whisper for speech-to-text, python-docx and openpyxl for Office formats. Strict `Extractor` interface; every extractor is forbidden to hit the network. | agent-generated |
 | `plugin/` | Claude Code plugin manifest + templates for 18 AI tools (Claude Code, Codex, Cursor, Windsurf, Zed, Continue, OpenCode, Antigravity, Gemini CLI, Aider, Copilot, Factory Droid, Trae, Kiro, Qoder, OpenClaw, Hermes, Qwen Code). Marker-based idempotent injection. | agent-generated |

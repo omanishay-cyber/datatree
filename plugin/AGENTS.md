@@ -8,7 +8,7 @@
 
 This project has the **mneme** local daemon installed. Mneme exposes:
 - 30+ MCP tools (recall, code graph, drift, step ledger, time machine, health)
-- 6 hooks (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd)
+- 8 hooks (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd, PreCompact, SubagentStop)
 - 14 view modes for the live code graph
 - Compaction-resilient Step Ledger
 

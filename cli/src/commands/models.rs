@@ -18,7 +18,9 @@
 
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::error::CliError;
@@ -294,6 +296,16 @@ fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) ->
                 println!("mneme: model installed");
             }
             Err(e) => {
+                // Bug G-9 (2026-05-01): previously this eprintln'd the
+                // failure and fell through to `Ok(())` at the end of
+                // the function. The bootstrap installer (which checks
+                // `$LASTEXITCODE`) would see exit 0 and report SUCCESS
+                // even though the model never installed. The user got
+                // "smart embeddings active" in install output, then
+                // every recall query silently used the hashing-trick
+                // fallback. Returning Err here propagates to a non-
+                // zero exit so the bootstrap halts (Bug G-6 part B
+                // makes that halt FATAL).
                 eprintln!("mneme: install failed: {e}");
                 eprintln!("        · the embedder will run in fallback (hashing-trick) mode");
                 eprintln!("        · retry: mneme models install --force");
@@ -302,6 +314,9 @@ fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) ->
                      tokenizer.json into {} and re-run with --from-path",
                     root.display()
                 );
+                return Err(CliError::Other(format!(
+                    "fastembed model install failed: {e}"
+                )));
             }
         }
     }
@@ -432,6 +447,26 @@ pub fn classify_model_file(name: &str) -> Option<ModelKind> {
     None
 }
 
+/// Returns `Some((stem, part_index))` if `name` matches the split-model
+/// part pattern `<stem>.partNN` where NN is one or more ASCII digits.
+/// Examples:
+///   `phi-3-mini-4k.gguf.part00` → `("phi-3-mini-4k.gguf", 0)`
+///   `qwen-coder-0.5b.gguf.part1` → `("qwen-coder-0.5b.gguf", 1)`
+/// Bug D-1c, 2026-05-01.
+pub fn parse_split_part(name: &str) -> Option<(&str, u32)> {
+    let (stem, suffix) = name.rsplit_once('.')?;
+    let suffix_lower = suffix.to_ascii_lowercase();
+    if !suffix_lower.starts_with("part") || suffix_lower.len() <= 4 {
+        return None;
+    }
+    let digits = &suffix_lower[4..];
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let idx: u32 = digits.parse().ok()?;
+    Some((stem, idx))
+}
+
 /// Walk `src_dir` for every classifiable model file, copy each into
 /// `root`, and persist a `manifest.json` listing what was registered.
 /// Returns the number of files registered.
@@ -449,6 +484,117 @@ pub fn install_from_path_to_root(src_dir: &Path, root: &Path) -> CliResult<usize
 
     let mut entries: Vec<ManifestEntry> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
+
+    // ------------------------------------------------------------------
+    // Bug D-1c (2026-05-01): native split-part merge
+    //
+    // Large GGUF models exceed GitHub's 2 GB per-release-asset cap, so
+    // they ship as `<stem>.partNN` halves (e.g., phi-3-mini-4k.gguf.part00,
+    // .part01) and historically were merged on-disk by an external
+    // PowerShell script (`merge-phi3-parts.ps1`). That script:
+    //   - was never committed to source         (Bug D-1a),
+    //   - was called with the wrong parameter   (Bug D-1b),
+    //   - and when its merge silently failed,   (Bug D-1c)
+    //     `install_from_path_to_root` swallowed the parts as
+    //     "unrecognised file(s)".
+    // Result: 2.28 GB of phi-3 parts dropped on every fresh install.
+    //
+    // Fix: pre-scan `src_dir` for *.partNN files, group by stem,
+    // verify the part sequence is contiguous from 0, and concatenate
+    // them directly into `root`. The merged stem then gets a regular
+    // manifest entry. The PowerShell script becomes vestigial.
+    // ------------------------------------------------------------------
+    let mut part_groups: BTreeMap<String, BTreeMap<u32, PathBuf>> = BTreeMap::new();
+    let pre_scan = fs::read_dir(src_dir).map_err(|e| {
+        CliError::Other(format!("read --from-path {}: {e}", src_dir.display()))
+    })?;
+    for dirent in pre_scan {
+        let dirent = match dirent {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        if !dirent.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let name = match dirent.file_name().into_string() {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if let Some((stem, idx)) = parse_split_part(&name) {
+            part_groups
+                .entry(stem.to_string())
+                .or_default()
+                .insert(idx, dirent.path());
+        }
+    }
+
+    // Filenames already consumed via merge — main loop must skip them.
+    let mut consumed_parts: HashSet<String> = HashSet::new();
+    // Stems we successfully merged — main loop must skip a same-named
+    // source file too (in case both halves AND a merged copy exist).
+    let mut merged_stems: HashSet<String> = HashSet::new();
+
+    for (stem, parts) in &part_groups {
+        let part_count = parts.len();
+        if part_count < 2 {
+            eprintln!(
+                "mneme: '{}' has only {} part(s); expected ≥2. Skipping (re-download to repair).",
+                stem, part_count
+            );
+            continue;
+        }
+        let max_idx = *parts.keys().max().unwrap_or(&0);
+        let expected_count = (max_idx as usize) + 1;
+        if part_count != expected_count {
+            let have: Vec<u32> = parts.keys().copied().collect();
+            eprintln!(
+                "mneme: '{}' part sequence has gaps (have {:?}, expected 0..={}). Skipping.",
+                stem, have, max_idx
+            );
+            continue;
+        }
+
+        let dst = root.join(stem);
+        let mut writer = fs::File::create(&dst)
+            .map_err(|e| CliError::Other(format!("merge: create {}: {e}", dst.display())))?;
+        for (_idx, part_path) in parts {
+            let mut reader = fs::File::open(part_path).map_err(|e| {
+                CliError::Other(format!("merge: open part {}: {e}", part_path.display()))
+            })?;
+            std::io::copy(&mut reader, &mut writer).map_err(|e| {
+                CliError::Other(format!(
+                    "merge: copy part {} -> {}: {e}",
+                    part_path.display(),
+                    dst.display()
+                ))
+            })?;
+            if let Some(part_name) = part_path.file_name().and_then(|n| n.to_str()) {
+                consumed_parts.insert(part_name.to_string());
+            }
+        }
+        writer.flush().ok();
+        drop(writer);
+
+        let merged_size = dst.metadata().map(|m| m.len()).unwrap_or(0);
+        eprintln!(
+            "mneme: merged {} parts → {} ({} bytes)",
+            part_count,
+            dst.display(),
+            merged_size
+        );
+        merged_stems.insert(stem.clone());
+        if let Some(kind) = classify_model_file(stem) {
+            entries.push(ManifestEntry {
+                name: stem.clone(),
+                kind,
+                size: merged_size,
+                path: stem.clone(),
+            });
+        }
+    }
+    // ------------------------------------------------------------------
+    // End D-1c merge block.
+    // ------------------------------------------------------------------
 
     let read = fs::read_dir(src_dir)
         .map_err(|e| CliError::Other(format!("read --from-path {}: {e}", src_dir.display())))?;
@@ -474,6 +620,13 @@ pub fn install_from_path_to_root(src_dir: &Path, root: &Path) -> CliResult<usize
                 continue;
             }
         };
+
+        // D-1c: skip files we've already merged (or whose merged copy
+        // we just produced — avoids double-registering).
+        if consumed_parts.contains(&name) || merged_stems.contains(&name) {
+            continue;
+        }
+
         let kind = match classify_model_file(&name) {
             Some(k) => k,
             None => {

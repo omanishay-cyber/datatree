@@ -32,6 +32,13 @@ use tracing::{debug, error, info, warn};
 /// (or use a long-but-finite value such as 24h to opt out in practice).
 pub const HEARTBEAT_DEADLINE: Duration = Duration::from_secs(30);
 
+/// Bug F-9 (2026-05-01): how often to run the process-aliveness pass
+/// (`pid_alive_pass`). 30 s is a reasonable cadence — fast enough to
+/// detect a dead worker before a long build accumulates dispatched-
+/// but-orphaned jobs, slow enough that the sysinfo refresh isn't
+/// hammering the OS process table.
+pub const PID_ALIVE_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+
 /// Watchdog that supervises the [`ChildManager`].
 pub struct Watchdog {
     manager: Arc<ChildManager>,
@@ -52,13 +59,16 @@ impl Watchdog {
         info!(
             self_test_interval_s = self.self_test_interval.as_secs(),
             heartbeat_deadline_s = HEARTBEAT_DEADLINE.as_secs(),
+            pid_check_interval_s = PID_ALIVE_CHECK_INTERVAL.as_secs(),
             "watchdog started"
         );
         let mut heartbeat_tick = tokio::time::interval(Duration::from_secs(1));
         let mut self_test_tick = tokio::time::interval(self.self_test_interval);
+        let mut pid_check_tick = tokio::time::interval(PID_ALIVE_CHECK_INTERVAL);
         // First tick fires immediately for both — skip it.
         heartbeat_tick.tick().await;
         self_test_tick.tick().await;
+        pid_check_tick.tick().await;
 
         loop {
             tokio::select! {
@@ -76,8 +86,81 @@ impl Watchdog {
                         warn!(error = %e, "self-test pass error");
                     }
                 }
+                _ = pid_check_tick.tick() => {
+                    if let Err(e) = self.pid_alive_pass().await {
+                        warn!(error = %e, "pid-alive pass error");
+                    }
+                }
             }
         }
+    }
+
+    /// Bug F-9 (2026-05-01): process-aliveness fallback for the
+    /// watchdog. The deeper bug is that no worker currently emits
+    /// `ControlCommand::Heartbeat` (so `heartbeat_deadline` defaults to
+    /// `None` everywhere — see S-PHASE NEW-055). Wiring real heartbeat
+    /// emission across all 8 worker binaries is a v0.3.3 refactor.
+    /// Until then this pass uses the OS process table (sysinfo) to
+    /// detect a more limited but still actionable failure mode: a
+    /// worker that is marked `Running` in our handle map but whose PID
+    /// is no longer a live OS process. That happens when:
+    ///   - a worker panics in a spawned tokio task and `process::exit`
+    ///     is never called (the OS reaps the PID but our monitor task
+    ///     hasn't observed exit yet, e.g., during high system load),
+    ///   - a worker is killed externally (Task Manager, antivirus),
+    ///   - a worker faults with a Windows access violation.
+    /// In each case the build hangs forever waiting on jobs that will
+    /// never complete because the worker is dead but `Running`. This
+    /// pass logs an error and triggers a restart via `kill_child`
+    /// (which the monitor + restart loop pick up).
+    async fn pid_alive_pass(&self) -> Result<(), SupervisorError> {
+        use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+
+        let names = self.manager.child_names().await;
+        // Collect (name, pid) pairs for Running children.
+        let mut running: Vec<(String, u32)> = Vec::with_capacity(names.len());
+        for name in &names {
+            let handle = match self.manager.handle_for(name).await {
+                Some(h) => h,
+                None => continue,
+            };
+            let (status, pid_opt) = {
+                let h = handle.lock().await;
+                (h.status, h.pid)
+            };
+            if status != ChildStatus::Running {
+                continue;
+            }
+            if let Some(pid) = pid_opt {
+                running.push((name.clone(), pid));
+            }
+        }
+        if running.is_empty() {
+            return Ok(());
+        }
+
+        // One sysinfo refresh per pass — much cheaper than per-PID.
+        let pid_refs: Vec<Pid> = running.iter().map(|(_, p)| Pid::from_u32(*p)).collect();
+        let mut sys = System::new();
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&pid_refs),
+            true,
+            ProcessRefreshKind::nothing(),
+        );
+
+        for (name, pid) in &running {
+            if sys.process(Pid::from_u32(*pid)).is_none() {
+                error!(
+                    child = %name,
+                    pid = %pid,
+                    "PID gone but child still marked Running — process died silently; force-killing handle so monitor + restart loop can recover"
+                );
+                if let Err(e) = self.manager.kill_child(name).await {
+                    warn!(child = %name, error = %e, "kill_child after dead-PID detection failed");
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn heartbeat_pass(&self) -> Result<(), SupervisorError> {

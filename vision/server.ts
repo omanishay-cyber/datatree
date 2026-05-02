@@ -67,11 +67,28 @@ function jsonResponse(payload: unknown, status = 200): Response {
 
 function corsHeaders(): HeadersInit {
   // Local-only; we still set CORS so the Tauri webview can load resources.
+  //
+  // Bug VIS-4 (2026-05-01): the previous origin lacked a port
+  // (`http://127.0.0.1`) which doesn't strictly match the actual
+  // origin browsers send (`http://127.0.0.1:7782` for this dev
+  // server, `http://127.0.0.1:7777` for daemon-served). Use `*` for
+  // local-only traffic — we never expose this server outside loopback.
   return {
-    "access-control-allow-origin": "http://127.0.0.1",
+    "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, POST, OPTIONS",
     "access-control-allow-headers": "content-type",
   };
+}
+
+// Bug VIS-9 (2026-05-01): cache headers for /assets/*. Vite emits
+// hash-stamped filenames so any change in content => new filename =>
+// safe to cache for a year. The index.html itself stays no-cache so
+// SPA route changes are picked up immediately.
+function staticCacheHeaders(pathname: string): Record<string, string> {
+  if (pathname.startsWith("/assets/")) {
+    return { "cache-control": "public, max-age=31536000, immutable" };
+  }
+  return { "cache-control": "no-cache" };
 }
 
 function safeStaticPath(rawPath: string): string | null {
@@ -85,11 +102,13 @@ function safeStaticPath(rawPath: string): string | null {
 async function serveStatic(pathname: string): Promise<Response> {
   const target = safeStaticPath(pathname);
   if (!target) return new Response("forbidden", { status: 403 });
+  const headers = staticCacheHeaders(pathname);
   const f = file(target);
-  if (await f.exists()) return new Response(f);
-  // SPA fallback — every non-asset URL returns the index.
+  if (await f.exists()) return new Response(f, { headers });
+  // SPA fallback — every non-asset URL returns the index (no-cache).
   const index = file(join(DIST_DIR, "index.html"));
-  if (await index.exists()) return new Response(index);
+  if (await index.exists())
+    return new Response(index, { headers: { "cache-control": "no-cache" } });
   return new Response("not built — run `vite build`", { status: 404 });
 }
 

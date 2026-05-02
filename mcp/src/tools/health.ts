@@ -96,17 +96,33 @@ async function fetchHttpExtras(): Promise<HttpHealthExtra | null> {
       signal: AbortSignal.timeout(1500),
     });
     if (!res.ok) return null;
+    // Bug IPC-10 (2026-05-01): the Rust DiskUsage struct in
+    // supervisor/src/health.rs only exposes `total_bytes`,
+    // `free_bytes`, and `used_percent` — there is NO `used_bytes`
+    // field. The previous TS code preferred `used_bytes` (always
+    // undefined → fell through), then used `free_bytes` interpreted
+    // as "used MB" — semantically backwards (showed FREE space and
+    // labelled it USED). The correct path: prefer the top-level
+    // `disk_usage_mb` scalar (Rust already computes
+    // total - free for us), then fall back to (total - free) / 1M
+    // computed here, then 0.
     const h = (await res.json()) as {
       supervisor_uptime_s?: number;
       cache_hit_rate?: number;
-      disk?: { used_percent?: number; free_bytes?: number; used_bytes?: number };
+      disk_usage_mb?: number;
+      disk?: { used_percent?: number; free_bytes?: number; total_bytes?: number };
     };
-    const diskMb =
-      h.disk && typeof h.disk.used_bytes === "number"
-        ? Math.floor(h.disk.used_bytes / (1024 * 1024))
-        : h.disk && typeof h.disk.free_bytes === "number"
-        ? Math.floor(h.disk.free_bytes / (1024 * 1024))
-        : 0;
+    let diskMb = 0;
+    if (typeof h.disk_usage_mb === "number") {
+      diskMb = h.disk_usage_mb;
+    } else if (
+      h.disk &&
+      typeof h.disk.total_bytes === "number" &&
+      typeof h.disk.free_bytes === "number"
+    ) {
+      const usedBytes = Math.max(0, h.disk.total_bytes - h.disk.free_bytes);
+      diskMb = Math.floor(usedBytes / (1024 * 1024));
+    }
     return {
       cache_hit_rate: typeof h.cache_hit_rate === "number" ? h.cache_hit_rate : 0,
       disk_usage_mb: diskMb,

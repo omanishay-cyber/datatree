@@ -121,17 +121,33 @@ mod windows_impl {
             Err(_) => return,
         };
 
-        rt.block_on(async {
-            // Run the supervisor; ignore returned errors here — they are logged
-            // inside `run`.
-            let _ = crate::run(cfg).await;
-        });
+        // Bug G-3 (2026-05-01): capture the supervisor's return value
+        // and report it to the SCM. Previously this was
+        //     let _ = crate::run(cfg).await;
+        // … with `exit_code: ServiceExitCode::Win32(0)` hardcoded
+        // unconditionally below. That meant a crashed supervisor
+        // showed up in `services.msc` as "Stopped — success" and
+        // every CLI command silently hung at the IPC connect because
+        // nothing was actually listening. Now, on Err we set the
+        // exit_code to a service-specific non-zero so SCM, Event
+        // Viewer, and `sc query MnemeDaemon` all reflect reality.
+        let run_result = rt.block_on(async { crate::run(cfg).await });
+        let exit_code = match &run_result {
+            Ok(()) => ServiceExitCode::Win32(0),
+            Err(e) => {
+                tracing::error!(error = %e, "supervisor run() returned error inside Windows service wrapper");
+                // 1u32 is a generic "service-specific failure" marker —
+                // the real diagnostic is in the supervisor.log written
+                // before this point.
+                ServiceExitCode::ServiceSpecific(1)
+            }
+        };
 
         let _ = status_handle.set_service_status(ServiceStatus {
             service_type: SERVICE_TYPE,
             current_state: ServiceState::Stopped,
             controls_accepted: ServiceControlAccept::empty(),
-            exit_code: ServiceExitCode::Win32(0),
+            exit_code,
             checkpoint: 0,
             wait_hint: Duration::default(),
             process_id: None,

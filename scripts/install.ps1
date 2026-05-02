@@ -496,9 +496,18 @@ if ($BunExe) {
         $bunVerStr = if ($bunProbePost.Success) { ([string]$bunProbePost.Output).Trim() } else { '?' }
         Write-OK ("bun $bunVerStr installed at $BunExe")
     } catch {
-        Write-Warn ("Bun install failed: {0}" -f $_.Exception.Message)
-        Write-Warn "mneme CLI will still work, but MCP tools in Claude Code will not"
-        Write-Warn "Manual install later: https://bun.sh/install"
+        # Bug G-13 (2026-05-01): Bun is the runtime for the MCP server.
+        # Without it, every MCP tool registered with Claude Code fails
+        # to start. Previously we Write-Warn'd and continued, exiting
+        # with code 0 — the user got an "install complete" message and
+        # then "mneme: disconnected" forever in Claude Code. Failing
+        # loud here stops the install at the right step so the user can
+        # see and act.
+        Write-Fail ("Bun install failed: {0}" -f $_.Exception.Message)
+        Write-Fail "Bun is REQUIRED for the mneme MCP server (Claude Code integration)."
+        Write-Fail "Manual install: https://bun.sh/install"
+        Write-Fail "Then re-run install.ps1."
+        exit 1
     }
 }
 

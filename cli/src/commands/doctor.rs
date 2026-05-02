@@ -1824,9 +1824,16 @@ pub fn check_build_toolchain() -> Vec<DoctorRow> {
     }
 
     // Roll the four signals into one summary verdict so users see PASS /
-    // FAIL at a glance. After the vswhere upgrade above, link_ok / cl_ok
+    // WARN at a glance. After the vswhere upgrade above, link_ok / cl_ok
     // reflect filesystem reality — not just PATH visibility — so this
     // verdict matches what `cargo build` would actually be able to do.
+    //
+    // FAIL → WARN (Bug REL-5/D-2, 2026-05-01): MSVC is only required to
+    // BUILD mneme from source. Binary-installer users never need it. The
+    // prior FAIL severity destroyed user trust on healthy installs. Keep
+    // the same probe rigor, but report at the right severity for the
+    // common case (binary user). Devs hacking on the codebase still see
+    // the missing-tools rows above; the summary now correctly says WARN.
     let any_compiler = link_ok || cl_ok;
     let toolchain_ok = any_compiler && (vc_tools_install.is_some() || sdk_lib.is_some());
     rows.push(DoctorRow::new(
@@ -1834,7 +1841,7 @@ pub fn check_build_toolchain() -> Vec<DoctorRow> {
         if toolchain_ok {
             "PASS — MSVC build toolchain available".to_string()
         } else {
-            format!("FAIL — {MSVC_INSTALL_HINT}")
+            format!("WARN — only needed for building from source ({MSVC_INSTALL_HINT})")
         },
     ));
 

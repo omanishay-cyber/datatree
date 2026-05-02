@@ -20,41 +20,119 @@ import {
 import { shardDbPath, singleStep } from "../store.ts";
 import { query as dbQuery } from "../db.ts";
 
+/**
+ * Bug TS-6 (2026-05-01): pick the right shell for the OS.
+ * `sh -c` was the original implementation but `sh` is NOT on stock
+ * Windows (you'd need Git Bash or WSL). Step Ledger verification —
+ * the "killer feature" — was therefore broken on the primary
+ * deployment platform (Windows). Now we use `cmd /c` on Windows and
+ * `sh -c` on Unix.
+ */
+function pickShell(): { exe: string; flag: string } {
+  if (process.platform === "win32") {
+    return { exe: "cmd.exe", flag: "/c" };
+  }
+  return { exe: "sh", flag: "-c" };
+}
+
+/**
+ * Bug SEC-1 (2026-05-01): defense-in-depth check for obviously
+ * dangerous acceptance commands. The supervisor IPC path
+ * (`step.verify` over IPC) is still the preferred execution route —
+ * runLocal is a fallback when supervisor is unavailable. Even so,
+ * since `cmd` originates from the tasks shard (which is
+ * filesystem-writable by anyone with FS access to ~/.mneme), we
+ * reject the most lethal patterns outright. This is NOT a sandbox —
+ * it's a tripwire to catch obvious shell injection / destructive
+ * commands before they execute.
+ */
+function rejectDangerousCommand(cmd: string): string | null {
+  const trimmed = cmd.trim();
+  if (trimmed.length === 0) {
+    return "empty acceptance command";
+  }
+  if (trimmed.length > 4096) {
+    return `acceptance command too long (${trimmed.length} > 4096 chars)`;
+  }
+  // Hard-deny destructive patterns. We deliberately do NOT try to
+  // build a complete sandbox here — these patterns just catch the
+  // obvious "tasks.db got pwned" cases. Real defense lives at the FS
+  // permission layer on ~/.mneme.
+  const denyPatterns: RegExp[] = [
+    /\brm\s+-[a-z]*r[a-z]*f?\s+\/\s*$/i, // rm -rf /
+    /\brm\s+-[a-z]*r[a-z]*f?\s+~/i, //       rm -rf ~
+    /\bmkfs\b/i, //                          mkfs (format disk)
+    /\bdd\s+if=.+of=\/dev/i, //              dd of=/dev/...
+    /:\(\)\{\s*:\|/, //                      fork bomb
+    /\bshutdown\s+/i, //                     shutdown
+    /\bformat\s+[a-z]:/i, //                 format C:
+  ];
+  for (const re of denyPatterns) {
+    if (re.test(trimmed)) {
+      return `acceptance command matches deny-list pattern (${re.source})`;
+    }
+  }
+  return null;
+}
+
 function runLocal(cmd: string): Promise<{
   passed: boolean;
   proof: string;
   exit_code: number;
 }> {
-  // Bun provides a spawnSync; we fall back to Node's child_process when the
-  // global isn't available (keeps the type-checker happy under plain Node).
+  // Defense-in-depth: deny-list lethal patterns before spawning.
+  const reject = rejectDangerousCommand(cmd);
+  if (reject) {
+    return Promise.resolve({
+      passed: false,
+      proof: `step_verify rejected: ${reject}`,
+      exit_code: 126,
+    });
+  }
+  const { exe, flag } = pickShell();
+
+  // Bug TS-12 (2026-05-01): typed Bun globals via a proper interface
+  // instead of the prior triple `as unknown as` cast chain. Same
+  // runtime behavior, but the type system now sees the optional
+  // shape so a Bun signature change gets caught at compile.
+  interface BunSpawnSyncResult {
+    exitCode: number;
+    stdout: { toString(): string };
+    stderr: { toString(): string };
+  }
+  interface BunSpawnSyncOpts {
+    cmd: string[];
+    stdout: "pipe" | "ignore" | "inherit";
+    stderr: "pipe" | "ignore" | "inherit";
+  }
+  interface BunGlobal {
+    spawnSync?: (opts: BunSpawnSyncOpts) => BunSpawnSyncResult;
+  }
+  const bunGlobal = (globalThis as { Bun?: BunGlobal }).Bun;
+
+  // Bun provides a spawnSync; we fall back to Node's child_process when
+  // the global isn't available (keeps the type-checker happy under
+  // plain Node).
   return new Promise((resolve) => {
     try {
       // Prefer Bun.spawn if present.
-      const bunGlobal = (globalThis as { Bun?: unknown }).Bun;
-      if (bunGlobal && typeof bunGlobal === "object") {
-        const spawn = (bunGlobal as { spawnSync?: unknown }).spawnSync;
-        if (typeof spawn === "function") {
-          const res = (spawn as (args: unknown) => {
-            exitCode: number;
-            stdout: { toString(): string };
-            stderr: { toString(): string };
-          })({
-            cmd: ["sh", "-c", cmd],
-            stdout: "pipe",
-            stderr: "pipe",
-          });
-          const exit = res.exitCode;
-          const proof =
-            (res.stdout?.toString?.() ?? "") +
-            (res.stderr?.toString?.() ?? "");
-          resolve({ passed: exit === 0, proof, exit_code: exit });
-          return;
-        }
+      if (bunGlobal && typeof bunGlobal.spawnSync === "function") {
+        const res = bunGlobal.spawnSync({
+          cmd: [exe, flag, cmd],
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const exit = res.exitCode;
+        const proof =
+          (res.stdout?.toString?.() ?? "") +
+          (res.stderr?.toString?.() ?? "");
+        resolve({ passed: exit === 0, proof, exit_code: exit });
+        return;
       }
       // Node fallback.
       import("node:child_process")
         .then(({ spawnSync }) => {
-          const res = spawnSync("sh", ["-c", cmd], { encoding: "utf8" });
+          const res = spawnSync(exe, [flag, cmd], { encoding: "utf8" });
           const exit = res.status ?? 127;
           const proof = (res.stdout ?? "") + (res.stderr ?? "");
           resolve({ passed: exit === 0, proof, exit_code: exit });
@@ -62,14 +140,14 @@ function runLocal(cmd: string): Promise<{
         .catch((err: unknown) => {
           resolve({
             passed: false,
-            proof: `spawn failed: ${(err as Error).message}`,
+            proof: `spawn failed: ${err instanceof Error ? err.message : String(err)}`,
             exit_code: 127,
           });
         });
     } catch (err) {
       resolve({
         passed: false,
-        proof: `spawn error: ${(err as Error).message}`,
+        proof: `spawn error: ${err instanceof Error ? err.message : String(err)}`,
         exit_code: 127,
       });
     }

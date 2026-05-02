@@ -46,7 +46,7 @@ export async function runInject(args: InjectArgs): Promise<HookOutput> {
     console.error("[mneme-mcp] inject failed:", err);
     return {
       additional_context: "",
-      metadata: { hook: "UserPromptSubmit", error: (err as Error).message },
+      metadata: { hook: "UserPromptSubmit", error: errMsg(err) },
     };
   }
 }

@@ -61,8 +61,11 @@ jobs:
         run: cargo build --release --workspace --target ${{ matrix.target }}
 
       - name: Install MCP server deps
+        # Bug TS-4 (2026-05-01): --frozen-lockfile respects bun.lock so
+        # CI builds get deterministic deps. Without it, `^` ranges in
+        # package.json could pull a breaking minor on every CI run.
         working-directory: mcp
-        run: bun install --production
+        run: bun install --production --frozen-lockfile
 
       # F1 D1: build the Vision SPA fresh on every release. The pre-built
       # `vision/dist/` is committed for in-repo dev use, but on release we
@@ -158,6 +161,51 @@ jobs:
           cp LICENSE release-staging/
           cp README.md release-staging/
 
+          # Bug REL-4 (2026-05-01): scripts/ + release/ are now part of
+          # the release zip. Previously the release.yml zip omitted them
+          # entirely so users downloading from GitHub Releases got a zip
+          # with no installer — they had to manually invoke `mneme.exe`
+          # without any of the post-install wiring (Defender exclusions,
+          # Scheduled Task, MCP registration, hook setup). Without
+          # scripts/install.ps1 the bootstrap one-liner (which pulls the
+          # zip and then calls scripts/install.ps1) silently failed.
+          mkdir -p release-staging/scripts
+          mkdir -p release-staging/release
+          cp -R scripts/. release-staging/scripts/ 2>/dev/null || true
+          cp -R release/. release-staging/release/ 2>/dev/null || true
+          # VERSION marker so install.ps1 can detect the right tag.
+          echo "${GITHUB_REF#refs/tags/}" > release-staging/VERSION.txt 2>/dev/null || true
+
+          # Bug REL-7 (2026-05-01): bundle onnxruntime.dll for Windows
+          # so brain's BGE embeddings work without the user having to
+          # `mneme models install-onnx-runtime` themselves. Without
+          # this, brain silently falls back to the hashing-trick
+          # embedder and recall quality silently degrades on every
+          # CI-built install. Skipped on POSIX targets — the daemon
+          # there expects libonnxruntime via the system package
+          # manager (apt/brew install onnxruntime).
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            echo "Downloading onnxruntime DLL for Windows release bundle..."
+            ORT_VERSION="1.20.1"
+            ORT_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-win-x64-${ORT_VERSION}.zip"
+            curl -fsSL -o /tmp/ort.zip "$ORT_URL" || {
+              echo "warning: ORT download failed; skipping DLL bundle (BGE will fall back to hashing-trick)"
+              true
+            }
+            if [ -f /tmp/ort.zip ]; then
+              # PowerShell Expand-Archive is available on every Windows runner.
+              pwsh -Command "Expand-Archive -Path /tmp/ort.zip -DestinationPath /tmp/ort -Force"
+              # Find onnxruntime.dll inside the extracted tree (path varies by version).
+              ORT_DLL=$(find /tmp/ort -name onnxruntime.dll | head -1)
+              if [ -n "$ORT_DLL" ]; then
+                cp "$ORT_DLL" release-staging/bin/
+                echo "ok: bundled $(basename $ORT_DLL) ($(wc -c < "$ORT_DLL") bytes)"
+              else
+                echo "warning: onnxruntime.dll not found in extracted bundle"
+              fi
+            fi
+          fi
+
       - name: Package (zip — Windows)
         if: matrix.archive == 'zip'
         shell: pwsh
@@ -230,3 +278,26 @@ jobs:
             artifacts/**/*.tar.gz \
             --repo "${{ github.repository }}" \
             --clobber
+
+      # Bug REL-8 (2026-05-01): upload bootstrap-install.ps1 as a
+      # standalone release asset so the canonical one-liner
+      #   iex (irm https://github.com/.../releases/download/$tag/bootstrap-install.ps1)
+      # actually resolves to the version-matched bootstrap. Previously
+      # the script was committed to source but never uploaded — every
+      # iex one-liner had to be hand-uploaded after each release. The
+      # `bootstrap-install.ps1` here is the EXACT file from `release/`
+      # (source-controlled) at this tag, so caller and callee versions
+      # cannot drift.
+      - name: Upload bootstrap-install.ps1 standalone
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f release/bootstrap-install.ps1 ]; then
+            gh release upload "${{ steps.tag.outputs.value }}" \
+              release/bootstrap-install.ps1 \
+              --repo "${{ github.repository }}" \
+              --clobber
+            echo "ok: uploaded bootstrap-install.ps1"
+          else
+            echo "warning: release/bootstrap-install.ps1 missing — iex one-liner will 404"
+          fi

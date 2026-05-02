@@ -122,6 +122,13 @@ pub async fn run(args: TurnEndArgs, socket_override: Option<PathBuf>) -> CliResu
                 _ => "session_end",
             };
             let summary = format!("Turn boundary: {kind_label}");
+            // Bug G-12 (2026-05-01): hook errors used to only go to
+            // tracing — Claude Code never saw them because the hook
+            // contract is "always exit 0" and host harnesses discard
+            // hook stderr. We now ALSO emit a one-line structured JSON
+            // to stderr so any harness that captures hook stderr (or a
+            // human running the hook manually for diagnosis) can see
+            // the failure. Tracing copy preserved for supervisor.log.
             if let Err(e) = ctx
                 .write_ledger_entry(
                     &session_id_qualified,
@@ -132,12 +139,20 @@ pub async fn run(args: TurnEndArgs, socket_override: Option<PathBuf>) -> CliResu
                 .await
             {
                 warn!(error = %e, "tasks.ledger_entries insert failed (non-fatal)");
+                eprintln!(
+                    "{{\"hook\":\"turn_end\",\"error\":\"ledger_entries.insert\",\"detail\":\"{}\"}}",
+                    e.to_string().replace('"', "\\\"")
+                );
             }
             if let Err(e) = ctx
                 .write_turn(&session_id_qualified, kind_label, &summary)
                 .await
             {
                 warn!(error = %e, "history.turns (session-end) insert failed (non-fatal)");
+                eprintln!(
+                    "{{\"hook\":\"turn_end\",\"error\":\"history.turns.insert\",\"detail\":\"{}\"}}",
+                    e.to_string().replace('"', "\\\"")
+                );
             }
 
             // I1 batch 3 — agents.db::subagent_runs producer.

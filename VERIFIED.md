@@ -55,7 +55,7 @@ Pre-uninstall state (from initial probe):
 - mneme version on VM: `0.3.0` (pre-Wave-2)
 - daemon: NOT running, supervisor.pipe stale (`\\.\pipe\mneme-supervisor-4140`)
 - 0 mneme processes running
-- ~/.mneme/bin: 9 binaries dated 2026-04-24
+- ~/.mneme/bin: 9 shipped binaries (10 [[bin]] entries in workspace; bench_retrieval is benchmark-only and excluded from release zip), dated 2026-04-24
 - ~/.mneme/projects: 3 corpora
 - ~/.mneme/models: empty
 - ~/.claude/settings.json: NO hooks key
@@ -107,7 +107,7 @@ Acceptance criteria:
 
 (filled by orchestrator)
 
-### Phase 9 — Smoke 28 CLI subcommands + 47 MCP tools
+### Phase 9 — Smoke 33 CLI subcommands + 48 MCP tools
 
 CLI: --version, --help, doctor, status, daemon-status, cache-du, history, godnodes, blast, recall, audit, drift, step-status, why, snap, rebuild, update, rollback, register-mcp, uninstall (--help only).
 

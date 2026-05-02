@@ -2,7 +2,11 @@
 
 Parked items from the 2026-04-23 / 2026-04-24 revival sessions. Each entry: **what**, **why deferred**, **acceptance criteria**, **effort estimate**. Pick these up when revisiting.
 
-Last updated: 2026-04-24 (after v0.3.0 ship).
+Last updated: 2026-05-02 (after v0.3.2 + 52-fix audit cycle).
+
+> **Bug DOC-8 (2026-05-01):** updated header timestamp + appended a
+> v0.3.2 audit-deferral section at the bottom. The "Shipped in v0.3.0"
+> list below is still accurate as historical record.
 
 ---
 
@@ -98,5 +102,24 @@ Last updated: 2026-04-24 (after v0.3.0 ship).
 ---
 
 ## History
+- **2026-05-02** — v0.3.2 + 52-fix audit cycle (see `project_mneme_v3_dome_2026-04-30.md`). Re-running BENCHMARKS.md against v0.3.2 added to backlog.
 - **2026-04-24** — v0.3.0 ship. Items 1–5 and 7–8 from the previous list (BGE, supervisor dispatch, PDF ingestion, Julia+Zig grammars, MCP wiring, benchmark-vs-CRG, CI baseline) removed from Tier 1 and archived above. Renumbered remaining items.
 - **2026-04-23** — File created during v0.2.2 ship. Tier-2 parked items #9 (demo video) and #10 (domain + landing page) per user instruction ("you can park and we can do later on"). Tier-1 items listed for agent pickup in future sessions.
+
+## v0.3.2 audit-cycle deferrals (2026-05-02)
+
+These items were classified as deferred by the 12-agent audit (see
+`Desktop/temp/AUDIT_2026-05-01_MASTER.md`) and are intentionally out
+of scope for v0.3.2. Listed here so they don't get lost.
+
+- **F-1, F-3, F-4, F-5, F-6** — concurrency hazards. Mitigated/working today (parking_lot::Mutex behind spawn_blocking, snapshot 1s TTL, etc). Refactor to a clean `tokio::sync::Mutex` everywhere is multi-day work that risks regressions.
+- **F-10** — JoinHandles never polled until shutdown. Partial mitigation via `pid_alive_pass` (Bug F-9 fix). Real fix: poll all 8 handles + emit panic events to telemetry.
+- **IPC-1, IPC-3, IPC-4, IPC-5** — protocol unification + version handshake. Two parallel IPC protocols by design today; merging them touches every MCP tool that uses `_client.request()`. ~2-3 days.
+- **REL-9** — upgrade race kill-ladder vs respawning workers. Architectural; v0.4.0 candidate.
+- **VIS-1, VIS-2, REL-10** — Tauri broken (deferred per user "web only" decision).
+- **VIS-3** — dual-server port confusion (Bun 7782 vs daemon 7777). Cosmetic doc fix; partially addressed in v0.3.2 docs.
+- **XCT-2** — path resolution implemented 3× across Rust PathManager / Bun shard.ts / MCP store.ts. Refactor to a shared TypeScript module + Rust binding is v0.4.0.
+- **SEC-5** — latent SQL format-string in `shard_summary.rs:283`. Currently safe (no user input reaches), but should be parameterised for defense-in-depth.
+- **24× `#[allow(dead_code)]`** markers across 8 production crates. Wire-or-delete pass.
+- **Re-run benchmarks** against v0.3.2 corpus, update `BENCHMARKS.md` numbers.
+- **DOC-9** — `docs/mcp-tools.md` add an entry for the 48th tool `file_intent` (J7 phase added).

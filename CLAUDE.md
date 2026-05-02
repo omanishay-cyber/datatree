@@ -104,7 +104,7 @@ If you're modifying source code:
 | `multimodal-bridge/` | Rust shim for Python sidecar | hand-written |
 | `cli/` | `mneme` CLI (install/build/audit/recall/step/etc.) | agent-generated |
 | `workers/multimodal/` | Python sidecar (PDF/Whisper/OCR) | agent-generated |
-| `mcp/` | Bun TS MCP server (47 tools, 6 hooks) | agent-generated |
+| `mcp/` | Bun TS MCP server (48 tools, 8 hooks) | agent-generated |
 | `vision/` | Tauri + Bun TS app (14 views + Command Center) | agent-generated |
 | `plugin/` | plugin.json + templates + agents + skills + commands | agent-generated |
 | `scripts/` | Install scripts (POSIX + PowerShell), runtime deps | agent-generated |

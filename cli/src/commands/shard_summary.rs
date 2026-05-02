@@ -256,9 +256,31 @@ enum ShardProbe {
 /// Open `path` read-only and `SELECT COUNT(*) FROM <table>`. Returns
 /// [`ShardProbe::Missing`] when the file is absent and
 /// [`ShardProbe::TableMissing`] when the primary table doesn't exist.
+///
+/// Bug SEC-5 (2026-05-01): defense-in-depth identifier whitelist.
+/// `table` is currently always a hardcoded constant from `KNOWN_TABLES`
+/// below — there is no path from user input to here. But the
+/// `format!("... \"{}\" ...", table)` is still a SQL identifier
+/// interpolation, and a future caller adding a `--table=<arg>` flag
+/// could turn it into an injection vector. We now whitelist the table
+/// name against an ASCII-letter/digit/underscore charset so any future
+/// caller fails closed instead of inheriting the latent risk.
+fn is_safe_sql_ident(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 fn probe_table(db_path: &Path, table: &str) -> ShardProbe {
     if !db_path.exists() {
         return ShardProbe::Missing;
+    }
+    if !is_safe_sql_ident(table) {
+        // Either the caller passed a bad identifier or someone added a
+        // user-input path. Refuse to interpolate into a SQL string.
+        return ShardProbe::TableMissing;
     }
     let conn = match Connection::open_with_flags(
         db_path,
@@ -280,7 +302,8 @@ fn probe_table(db_path: &Path, table: &str) -> ShardProbe {
     if exists == 0 {
         return ShardProbe::TableMissing;
     }
-    let sql = format!("SELECT COUNT(*) FROM \"{}\"", table.replace('"', "\"\""));
+    // Identifier verified safe by `is_safe_sql_ident` above.
+    let sql = format!("SELECT COUNT(*) FROM \"{}\"", table);
     match conn.query_row(&sql, [], |row| row.get::<_, i64>(0)) {
         Ok(n) => ShardProbe::Rows(n),
         Err(_) => ShardProbe::TableMissing,

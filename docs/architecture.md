@@ -34,7 +34,7 @@ Separately:
 │ MCP server  │     │ Vision app   │    │ Multimodal sidecar    │
 │ (Bun TS)    │     │ (Bun TS +    │    │ (Python)              │
 │             │     │  Tauri)      │    │                       │
-│ 47 tools    │     │ 14 views     │    │ PDF / Whisper / OCR   │
+│ 48 tools    │     │ 14 views     │    │ PDF / Whisper / OCR   │
 │ JSON-RPC    │     │ WebGL        │    │ msgpack over stdio    │
 │ over stdio  │     │              │    │                       │
 └──────┬──────┘     └──────┬───────┘    └───────────┬───────────┘

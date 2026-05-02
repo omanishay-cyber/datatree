@@ -476,8 +476,18 @@ async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
 
 async fn build_snapshot(state: &AppState) -> Result<SlaSnapshot, SupervisorError> {
     // NEW-015: cached snapshot path. Burst-poll friendly.
+    //
+    // Bug SEC-4 (2026-05-01): recover from a poisoned mutex instead of
+    // panicking. The previous `.expect("sla cache poisoned")` would
+    // cascade a single panic into a full daemon crash because every
+    // /health request would re-poison and re-panic. The cache value is
+    // a plain `Option<(Instant, SlaSnapshot)>` — even after poison the
+    // last-known value is still safe to read.
     {
-        let cache = state.snapshot_cache.lock().expect("sla cache poisoned");
+        let cache = state
+            .snapshot_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if let Some((stamp, snap)) = cache.as_ref() {
             if stamp.elapsed() < SNAPSHOT_TTL {
                 return Ok(snap.clone());
@@ -560,7 +570,12 @@ async fn build_snapshot(state: &AppState) -> Result<SlaSnapshot, SupervisorError
         watcher,
     };
     {
-        let mut cache = state.snapshot_cache.lock().expect("sla cache poisoned");
+        // Bug SEC-4 (2026-05-01): recover from poisoned mutex instead
+        // of panic. Same rationale as in the read path above.
+        let mut cache = state
+            .snapshot_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         *cache = Some((Instant::now(), snap.clone()));
     }
     Ok(snap)

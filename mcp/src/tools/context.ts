@@ -23,6 +23,7 @@ import { z } from "zod";
 import type { ToolDescriptor } from "../types.ts";
 import { query as dbQuery } from "../db.ts";
 import { hybridRetrieveFallback } from "../store.ts";
+import { errMsg } from "../errors.ts";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -180,7 +181,7 @@ export const tool: ToolDescriptor<ContextInputT, ContextOutputT> = {
         formatted:
           `<mneme-context>\n` +
           `Task: ${input.task}\n` +
-          `(retrieval offline: ${(err as Error).message})\n` +
+          `(retrieval offline: ${errMsg(err)})\n` +
           `</mneme-context>`,
         note: "fallback:empty",
       };

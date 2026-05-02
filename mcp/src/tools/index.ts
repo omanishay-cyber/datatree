@@ -145,9 +145,23 @@ class ToolRegistry extends EventEmitter {
   private async loadFile(filename: string): Promise<void> {
     const fullPath = join(this.toolsDir, filename);
     try {
-      // Cache-bust by appending a query string to the import URL so Bun/Node
-      // re-evaluate the module body on every load.
-      const cacheBuster = `?v=${Date.now()}`;
+      // Bug TS-10 (2026-05-01): cache-bust by file mtime instead of
+      // Date.now(). The previous `?v=${Date.now()}` made every reload
+      // a unique URL, and Bun/Node both cache modules by URL with no
+      // eviction. Over a long-running MCP session that's hundreds of
+      // module-graph entries piling up at ~10-50 KB each. Using mtime
+      // means a given file version maps to a stable URL — no leak,
+      // and we still re-evaluate when the source actually changes.
+      let cacheBuster = "";
+      try {
+        const { statSync } = await import("node:fs");
+        const mtime = statSync(fullPath).mtimeMs;
+        cacheBuster = `?v=${Math.floor(mtime)}`;
+      } catch {
+        // If stat fails, fall back to the timestamp — a one-shot leak
+        // is fine for a load that's about to fail anyway.
+        cacheBuster = `?v=${Date.now()}`;
+      }
       const url = pathToFileURL(fullPath).toString() + cacheBuster;
       const mod: { tool?: ToolDescriptor } = await import(url);
       if (!mod.tool || !mod.tool.name) {

@@ -868,13 +868,39 @@ impl ChildManager {
                 .clone()
                 .ok_or_else(|| SupervisorError::Other(format!("child '{name}' has no stdin")))?
         };
+        // Bug F-2 (2026-05-01): bound the IPC write so a saturated
+        // worker stdin pipe (Windows pipe buffer = 64 KB) cannot hang
+        // the supervisor's router task forever. At ~1100+ files in a
+        // single `mneme build`, every worker's stdin buffer fills and
+        // every dispatch sits on `flush().await` with no recovery —
+        // the entire supervisor goes silent. 10 s is generous for a
+        // healthy worker (microseconds in practice) and short enough
+        // to surface a real wedge before the user thinks the build
+        // hung. On timeout we return an error; `dispatch_to_pool`
+        // treats that as "try the next worker", and the watchdog
+        // (Bug F-9) eventually forces a restart of the wedged worker.
+        const STDIN_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
         let mut stdin = stdin_arc.lock().await;
-        stdin.write_all(payload.as_bytes()).await?;
-        if !payload.ends_with('\n') {
-            stdin.write_all(b"\n").await?;
+        let payload_bytes = payload.as_bytes().to_vec();
+        let needs_newline = !payload.ends_with('\n');
+        let write_result: Result<Result<(), std::io::Error>, tokio::time::error::Elapsed> =
+            tokio::time::timeout(STDIN_WRITE_TIMEOUT, async {
+                stdin.write_all(&payload_bytes).await?;
+                if needs_newline {
+                    stdin.write_all(b"\n").await?;
+                }
+                stdin.flush().await?;
+                Ok(())
+            })
+            .await;
+        match write_result {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(SupervisorError::Io(e)),
+            Err(_elapsed) => Err(SupervisorError::Other(format!(
+                "child '{name}' stdin write timed out after {:?} (wedged worker?)",
+                STDIN_WRITE_TIMEOUT
+            ))),
         }
-        stdin.flush().await?;
-        Ok(())
     }
 
     /// Pick a worker matching `prefix` (e.g. `"parser-worker-"`) in round

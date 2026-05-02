@@ -24,6 +24,9 @@
 #   -NoMultimodal    skip Tesseract OCR + ImageMagick install
 #   -NoToolchain     skip toolchain auto-install (G1-G10)
 #   -KeepDownload    keep the temp download dir for inspection
+#   -SkipHashCheck   skip SHA-256 verification of downloaded assets
+#                    (Bug G-14 — only use for hand-cut beta zips that
+#                    aren't yet listed in $ExpectedHashes)
 #
 # Apache-2.0. (c) 2026 Anish Trivedi & Kruti Trivedi.
 
@@ -33,7 +36,8 @@ param(
     [switch]$NoToolchain,
     [switch]$NoMultimodal,
     [switch]$NoModels,
-    [switch]$KeepDownload
+    [switch]$KeepDownload,
+    [switch]$SkipHashCheck
 )
 
 $ErrorActionPreference = 'Stop'
@@ -61,6 +65,34 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
 
 $releaseBase = "https://github.com/omanishay-cyber/mneme/releases/download/$Version"
 
+# Bug G-14 / SEC-3 (2026-05-01): SHA-256 verification table.
+#
+# Without integrity checking, a CDN compromise or interrupted download
+# silently delivers garbage that the installer copies to disk and the
+# user runs. Each entry below pins one release artifact to its
+# canonical SHA-256. Files NOT in this table fall through to a "warn-
+# but-continue" path so we don't block on assets we don't yet pin
+# (e.g., new model files added between releases). Files IN this table
+# MUST match — mismatch is a hard fail.
+#
+# To regenerate a hash:
+#   Get-FileHash <file> -Algorithm SHA256 | Select-Object Hash
+# (uppercase hex, no separators)
+#
+# To skip verification entirely (for a hand-cut beta zip), pass
+# `-SkipHashCheck` to bootstrap-install.ps1.
+$ExpectedHashes = @{
+    # Mneme release artifacts — populate per-release before tagging.
+    # Example placeholders (NOT the real hashes for v0.3.2):
+    # 'mneme-v0.3.2-windows-x64.zip' = '0123456789ABCDEF...';
+    # 'bge-small-en-v1.5.onnx'        = '...';
+    # 'tokenizer.json'                = '...';
+    # 'qwen-embed-0.5b.gguf'          = '...';
+    # 'qwen-coder-0.5b.gguf'          = '...';
+    # 'phi-3-mini-4k.gguf.part00'     = '...';
+    # 'phi-3-mini-4k.gguf.part01'     = '...';
+}
+
 function Get-Asset {
     param(
         [string]$Name,
@@ -74,6 +106,28 @@ function Get-Asset {
             Invoke-WebRequest -Uri $url -OutFile $Dest -UseBasicParsing
             $sz = (Get-Item $Dest).Length
             if ($sz -lt 100) { throw "downloaded file too small ($sz bytes) — likely a 404 HTML page" }
+
+            # Bug G-14 / SEC-3 (2026-05-01): SHA-256 verification.
+            # If the file is in our pinned-hash table, compute its
+            # SHA-256 and compare. Mismatch = fail loud (the file
+            # could be tampered with or partially downloaded). If the
+            # file is NOT in the table, log a one-line WARN so it's
+            # visible in the install log without blocking new assets.
+            if (-not $SkipHashCheck) {
+                if ($ExpectedHashes.ContainsKey($Name)) {
+                    $expected = $ExpectedHashes[$Name].ToUpper()
+                    $actual = (Get-FileHash -Path $Dest -Algorithm SHA256).Hash.ToUpper()
+                    if ($actual -ne $expected) {
+                        # Remove the corrupt file so a retry doesn't trust the cached copy.
+                        Remove-Item -LiteralPath $Dest -Force -ErrorAction SilentlyContinue
+                        throw "SHA-256 mismatch for $Name`n  expected: $expected`n  actual:   $actual`n  (likely corrupt download or tampered file — refusing to install)"
+                    }
+                    OK "SHA-256 verified for $Name"
+                } else {
+                    WarnLine "no pinned SHA-256 for $Name (continuing without integrity check)"
+                }
+            }
+
             $mb = [math]::Round($sz / 1MB, 2)
             OK "downloaded $Name ($mb MB)"
             return
@@ -101,13 +155,24 @@ Get-Asset -Name $zipName -Dest $localZip
 Section "Stop existing mneme processes (if any)"
 $names = @('mneme', 'mneme-daemon', 'mneme-store', 'mneme-parsers', 'mneme-scanners',
            'mneme-brain', 'mneme-livebus', 'mneme-md-ingest', 'mneme-multimodal')
+# Bug G-7 (2026-05-01): the empty `catch { }` swallowed every
+# Stop-Process failure (Access denied, zombie, locked exe). The
+# subsequent extract step would then race the still-alive process
+# and produce corrupt files in ~/.mneme/bin. Now we surface failures.
 $killed = 0
+$failed = 0
 foreach ($n in $names) {
     Get-Process -Name $n -ErrorAction SilentlyContinue | ForEach-Object {
-        try { Stop-Process -Id $_.Id -Force; $killed += 1 } catch { }
+        try {
+            Stop-Process -Id $_.Id -Force
+            $killed += 1
+        } catch {
+            $failed += 1
+            WarnLine ("could not stop ${n} (PID $($_.Id)): $($_.Exception.Message) — extract may fail if exe is still locked")
+        }
     }
 }
-OK "stopped $killed process(es)"
+OK "stopped $killed process(es)$(if ($failed -gt 0) { "  ($failed failed)" })"
 
 # ---------------------------------------------------------------------------
 # Step 3: Extract zip into ~/.mneme
@@ -162,14 +227,21 @@ if ($NoModels) {
     # tagged with `Required`: a missing required asset aborts the model
     # install but doesn't fail the whole bootstrap (mneme runtime works
     # without models, just degraded).
+    #
+    # Bug D-1a/D-1b/D-1c (2026-05-01): `merge-phi3-parts.ps1` removed.
+    # Native part-merge now lives in `cli/src/commands/models.rs`
+    # (`parse_split_part` + the merge block in `install_from_path_to_root`).
+    # The PowerShell script was not in source control, was called with
+    # the wrong parameter name, and silently dropped 2.28 GB of phi-3
+    # parts on every install. Rust handles it now: download the parts,
+    # `mneme models install --from-path` concatenates them.
     $assets = @(
         @{ Name = 'bge-small-en-v1.5.onnx';   Required = $true  },
         @{ Name = 'tokenizer.json';            Required = $true  },
         @{ Name = 'qwen-embed-0.5b.gguf';      Required = $false },
         @{ Name = 'qwen-coder-0.5b.gguf';      Required = $false },
         @{ Name = 'phi-3-mini-4k.gguf.part00'; Required = $false },
-        @{ Name = 'phi-3-mini-4k.gguf.part01'; Required = $false },
-        @{ Name = 'merge-phi3-parts.ps1';      Required = $false }
+        @{ Name = 'phi-3-mini-4k.gguf.part01'; Required = $false }
     )
 
     $modelDownloads = 0
@@ -190,25 +262,20 @@ if ($NoModels) {
     }
     OK "downloaded $modelDownloads / $($assets.Count) model assets ($(($modelFailures | Measure-Object).Count) failed)"
 
-    # Merge phi-3 parts if both present + merge script downloaded
-    $mergeScript = Join-Path $modelsDir 'merge-phi3-parts.ps1'
-    $part00      = Join-Path $modelsDir 'phi-3-mini-4k.gguf.part00'
-    $part01      = Join-Path $modelsDir 'phi-3-mini-4k.gguf.part01'
-    if ((Test-Path $mergeScript) -and (Test-Path $part00) -and (Test-Path $part01)) {
-        Step "merging phi-3 parts via $mergeScript"
-        try {
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $mergeScript -PartsDir $modelsDir
-            if ($LASTEXITCODE -eq 0) {
-                OK "phi-3 parts merged"
-            } else {
-                WarnLine "phi-3 merge exited with code $LASTEXITCODE — continuing without phi-3"
-            }
-        } catch {
-            WarnLine "phi-3 merge threw: $_  (continuing)"
-        }
-    }
+    # NOTE: phi-3 parts are merged natively by `mneme models install
+    # --from-path` (the next step). No external PowerShell merge script
+    # is needed or invoked. See Bug D-1c fix in models.rs.
 
-    # Hand the directory to mneme — it handles validation + placement
+    # Hand the directory to mneme — it handles validation + placement.
+    #
+    # Bug G-6 part B (2026-05-01): non-zero exit from `mneme models
+    # install` is now FATAL. Previously this was a `WarnLine` + continue
+    # which let the bootstrap report SUCCESS even when models had been
+    # downloaded but never registered. Combined with the (now-fixed)
+    # phi-3 silent drop, the user could end up with 1.2 GB of model
+    # files on disk and zero of them registered, with a "DONE" message
+    # printed at the end. Models are the value-add — if registration
+    # fails, that's a real failure the user must see and act on.
     if ($modelDownloads -gt 0) {
         Step "mneme models install --from-path $modelsDir"
         try {
@@ -216,10 +283,10 @@ if ($NoModels) {
             if ($LASTEXITCODE -eq 0) {
                 OK "models installed under ~/.mneme/models"
             } else {
-                WarnLine "mneme models install exited with code $LASTEXITCODE"
+                throw "mneme models install exited with code $LASTEXITCODE — bootstrap aborted (models are required for smart recall)"
             }
         } catch {
-            WarnLine "mneme models install threw: $_"
+            throw "mneme models install threw: $_  — bootstrap aborted (models are required for smart recall)"
         }
     }
 }

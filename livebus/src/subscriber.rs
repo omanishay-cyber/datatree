@@ -185,18 +185,24 @@ impl SubscriberManager {
         }
     }
 
+    // Bug SEC-4 (2026-05-01): recover from poisoned RwLock instead of
+    // panicking. The previous `.expect("...poisoned")` would cascade a
+    // single panic into a permanent livebus outage — every subsequent
+    // `dispatch()` would re-poison and re-panic. The registry is just
+    // a `HashMap<String, Arc<Subscriber>>` with no torn-state hazard;
+    // recovering with `into_inner()` is safe.
     fn read_registry(&self) -> std::sync::RwLockReadGuard<'_, HashMap<String, Arc<Subscriber>>> {
         self.inner
             .subscribers
             .read()
-            .expect("livebus subscriber registry poisoned")
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     fn write_registry(&self) -> std::sync::RwLockWriteGuard<'_, HashMap<String, Arc<Subscriber>>> {
         self.inner
             .subscribers
             .write()
-            .expect("livebus subscriber registry poisoned")
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     /// Fan-out an event to every matching subscriber, evicting any that

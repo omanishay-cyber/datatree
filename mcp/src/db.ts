@@ -160,16 +160,64 @@ class IpcClient {
     return this.connectPromise;
   }
 
-  /** Length-prefix framed JSON: 4-byte big-endian length, then UTF-8 payload. */
+  /**
+   * Length-prefix framed JSON: 4-byte big-endian length, then UTF-8 payload.
+   *
+   * Bug TS-7 (2026-05-01): cap accumulated buffer at MAX_FRAME_BYTES.
+   * Without this, a buggy or malicious supervisor sending a multi-GB
+   * frame header would cause Buffer.concat to OOM the MCP server long
+   * before the length check fires. 64 MB is generous for any legitimate
+   * IPC response (the largest tool result we've ever seen is ~5 MB).
+   *
+   * Bug TS-9 (2026-05-01): the inner `JSON.parse(payload) as IpcResponse`
+   * is a pure type assertion with zero runtime check. If the Rust
+   * supervisor changes its response shape (adds/removes a field,
+   * changes a type), TS silently interprets garbage. We can't add a
+   * full Zod schema here without a circular import on the IpcResponse
+   * type, but we DO validate the minimum invariants the rest of the
+   * code path depends on (`id` is a string, response is an object) so
+   * a malformed payload is dropped loud instead of producing
+   * "Cannot read property of undefined" downstream.
+   */
+  private static readonly MAX_FRAME_BYTES = 64 * 1024 * 1024; // 64 MB
   private onData(chunk: Buffer): void {
+    if (this.buffer.length + chunk.length > IpcClient.MAX_FRAME_BYTES) {
+      console.error(
+        `[mneme-mcp] IPC frame would exceed ${IpcClient.MAX_FRAME_BYTES} bytes (have=${this.buffer.length} + chunk=${chunk.length}); resetting buffer + closing socket to prevent OOM`,
+      );
+      this.buffer = Buffer.alloc(0);
+      this.socket?.destroy();
+      return;
+    }
     this.buffer = Buffer.concat([this.buffer, chunk]);
     while (this.buffer.length >= 4) {
       const len = this.buffer.readUInt32BE(0);
+      if (len > IpcClient.MAX_FRAME_BYTES) {
+        console.error(
+          `[mneme-mcp] IPC frame header claims ${len} bytes (> ${IpcClient.MAX_FRAME_BYTES} cap); resetting buffer + closing socket`,
+        );
+        this.buffer = Buffer.alloc(0);
+        this.socket?.destroy();
+        return;
+      }
       if (this.buffer.length < 4 + len) return;
       const payload = this.buffer.subarray(4, 4 + len).toString("utf8");
       this.buffer = this.buffer.subarray(4 + len);
       try {
-        const msg = JSON.parse(payload) as IpcResponse;
+        const parsed = JSON.parse(payload) as unknown;
+        // Bug TS-9 minimal validation — see method docstring.
+        if (
+          !parsed ||
+          typeof parsed !== "object" ||
+          typeof (parsed as { id?: unknown }).id !== "string"
+        ) {
+          console.error(
+            "[mneme-mcp] IPC frame missing required `id` field — supervisor protocol drift?",
+            payload.slice(0, 200),
+          );
+          continue;
+        }
+        const msg = parsed as IpcResponse;
         const p = this.pending.get(msg.id);
         if (p) {
           clearTimeout(p.timeoutHandle);
@@ -426,15 +474,73 @@ export async function supervisorCommand<T extends { response: string }>(
       });
     }, timeoutMs);
 
+    // Bug TS-7 (2026-05-01): cap accumulated buffer to prevent OOM
+    // from malformed/oversized supervisor frames. See IpcClient.onData
+    // for the same protection on the long-lived multiplexed channel.
+    const MAX_FRAME_BYTES = 64 * 1024 * 1024;
     let buf = Buffer.alloc(0);
     sock.on("data", (chunk) => {
+      if (buf.length + chunk.length > MAX_FRAME_BYTES) {
+        clearTimeout(timer);
+        try {
+          sock.destroy();
+        } catch {
+          // ignore
+        }
+        finish(() =>
+          reject(
+            new Error(
+              `supervisor IPC frame would exceed ${MAX_FRAME_BYTES} bytes (have=${buf.length} + chunk=${chunk.length}); aborting to prevent OOM`,
+            ),
+          ),
+        );
+        return;
+      }
       buf = Buffer.concat([buf, chunk]);
       if (buf.length < 4) return;
       const len = buf.readUInt32BE(0);
+      if (len > MAX_FRAME_BYTES) {
+        clearTimeout(timer);
+        try {
+          sock.destroy();
+        } catch {
+          // ignore
+        }
+        finish(() =>
+          reject(
+            new Error(
+              `supervisor IPC frame header claims ${len} bytes (> ${MAX_FRAME_BYTES} cap); aborting`,
+            ),
+          ),
+        );
+        return;
+      }
       if (buf.length < 4 + len) return;
       const payload = buf.subarray(4, 4 + len).toString("utf8");
       try {
-        const parsed = JSON.parse(payload) as { response: string; message?: string };
+        // Bug TS-9 (2026-05-01): minimum runtime validation that the
+        // parsed payload looks like a `{response: string, ...}` shape
+        // before treating it as one. The supervisor's wire format is
+        // `{response: "snake_case", ...fields}` — anything else is
+        // protocol drift or a bug, and a type assertion alone would
+        // produce undefined-property crashes downstream.
+        const raw = JSON.parse(payload) as unknown;
+        if (
+          !raw ||
+          typeof raw !== "object" ||
+          typeof (raw as { response?: unknown }).response !== "string"
+        ) {
+          clearTimeout(timer);
+          finish(() =>
+            reject(
+              new Error(
+                `supervisor IPC reply missing required \`response\` field — protocol drift? payload (truncated): ${payload.slice(0, 200)}`,
+              ),
+            ),
+          );
+          return;
+        }
+        const parsed = raw as { response: string; message?: string };
         clearTimeout(timer);
         try {
           sock.end();
@@ -724,7 +830,23 @@ export class DbError extends Error {
 export type { Decision, Finding, Step };
 
 // Test hook: allow integration tests to swap in a mock client.
+//
+// Bug TS-8 (2026-05-01): this function used to be exported
+// unconditionally. A rogue import from production code (or a
+// compromised dependency that called `import('../db.ts')` and reached
+// for `_setClient`) could replace the IPC client at runtime and
+// bypass every IPC validation. Gate it behind NODE_ENV / BUN_ENV
+// `test` so production runtimes refuse the swap.
 export function _setClient(_mockClient: unknown): void {
+  const env =
+    (typeof process !== "undefined" ? process.env?.NODE_ENV : undefined) ??
+    (typeof process !== "undefined" ? process.env?.BUN_ENV : undefined) ??
+    "production";
+  if (env !== "test") {
+    throw new Error(
+      `_setClient is test-only and cannot be invoked in ${env} mode (set NODE_ENV=test or BUN_ENV=test)`,
+    );
+  }
   // The mock should implement IpcClient's `request` method shape.
   // We deliberately do not export the class; rebinding is for test code only.
   Object.assign(_client, _mockClient as object);

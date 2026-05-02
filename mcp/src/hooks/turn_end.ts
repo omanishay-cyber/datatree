@@ -104,6 +104,6 @@ export async function runTurnEnd(args: TurnEndArgs): Promise<HookOutput> {
     };
   } catch (err) {
     console.error("[mneme-mcp] turn_end failed:", err);
-    return { metadata: { hook: "Stop", error: (err as Error).message } };
+    return { metadata: { hook: "Stop", error: errMsg(err) } };
   }
 }

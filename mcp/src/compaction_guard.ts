@@ -22,6 +22,7 @@
  */
 
 import { query as dbQuery } from "./db.ts";
+import { errMsg } from "./errors.ts";
 import type { ConversationTurn, Step } from "./types.ts";
 
 // ---------------------------------------------------------------------------
@@ -236,7 +237,7 @@ export const defaultInjectionSink: InjectionSink = {
       .catch((err: unknown) => {
         console.error(
           "[mneme-mcp] failed to inject compaction snapshot:",
-          (err as Error).message,
+          errMsg(err),
         );
       });
   },

@@ -1,8 +1,15 @@
 # Mneme Benchmarks — Reproducible Results
 
-Run date: **2026-04-23**
+> **Bug DOC-7 (2026-05-01):** these numbers were measured on the
+> v0.2.0 codebase with `bench_retrieval` v0.2. The current codebase
+> is v0.3.2; a fresh re-run is parked under
+> `docs/REMAINING_WORK.md`. The results below remain a valid
+> baseline against which v0.3.2 retrieval quality + latency can be
+> compared.
+
+Run date: **2026-04-23** (historical — pre-v0.3.0)
 Git SHA: `164948ccee36f74ee303ec25d0d67565fae0d96c`
-Harness version: `bench_retrieval` v0.2 (`benchmarks` crate, workspace v0.2.0)
+Harness version: `bench_retrieval` v0.2 (`benchmarks` crate, workspace v0.2.0 at the time of this run; current workspace is v0.3.2)
 Raw results: [`benchmarks/results/2026-04-23.csv`](benchmarks/results/2026-04-23.csv) + [`benchmarks/results/2026-04-23.json`](benchmarks/results/2026-04-23.json)
 Baseline: none — this is the **first recorded local run** of the full `bench-all` suite against the mneme repository itself.
 

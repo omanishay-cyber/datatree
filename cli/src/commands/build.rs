@@ -1554,10 +1554,20 @@ async fn run_leiden_pass(
         return stats;
     }
 
-    let edges = match read_edges(&graph_db) {
-        Ok(e) => e,
-        Err(e) => {
+    // Bug A-1c (2026-05-01): wrap synchronous SQLite read in
+    // spawn_blocking. read_edges opens a rusqlite read-only connection
+    // and pulls every edge out — on a 70K-edge project this can take
+    // 1–10 s of pure synchronous I/O, during which the heartbeat task
+    // cannot tick on the current_thread runtime.
+    let graph_db_for_read = graph_db.clone();
+    let edges = match tokio::task::spawn_blocking(move || read_edges(&graph_db_for_read)).await {
+        Ok(Ok(e)) => e,
+        Ok(Err(e)) => {
             warn!(error = %e, "leiden: failed to read graph.db edges; skipping");
+            return stats;
+        }
+        Err(e) => {
+            warn!(error = %e, "leiden: spawn_blocking join failed reading edges; skipping");
             return stats;
         }
     };
@@ -1593,11 +1603,28 @@ async fn run_leiden_pass(
     // The runner itself is deterministic: a fixed seed (42) inside
     // LeidenConfig::default() ensures repeated runs produce identical
     // partitions, which makes diffs over time meaningful.
+    //
+    // Bug A-1a (2026-05-01): wrap in `spawn_blocking`. The CLI uses
+    // `#[tokio::main(flavor = "current_thread")]` (cli/src/main.rs).
+    // ClusterRunner::run is purely synchronous CPU work — over a 70K-edge
+    // graph with up to 16 outer iterations it can monopolize the only
+    // tokio thread for minutes. While that thread is busy, the
+    // `Heartbeat` task (also spawned on this runtime) cannot tick, so
+    // the build appears frozen with zero progress output even though
+    // it is actively making progress. spawn_blocking moves the work to
+    // tokio's blocking pool, freeing the main thread to drive the
+    // heartbeat (and any other awaited tasks).
     let runner = ClusterRunner::new(ClusterRunnerConfig::default());
-    let communities = match runner.run(&brain_edges) {
-        Ok(c) => c,
-        Err(e) => {
+    let leiden_join =
+        tokio::task::spawn_blocking(move || runner.run(&brain_edges)).await;
+    let communities = match leiden_join {
+        Ok(Ok(c)) => c,
+        Ok(Err(e)) => {
             warn!(error = %e, "leiden run failed; semantic.db will stay empty");
+            return stats;
+        }
+        Err(e) => {
+            warn!(error = %e, "leiden spawn_blocking join failed; semantic.db will stay empty");
             return stats;
         }
     };
@@ -1800,10 +1827,20 @@ async fn run_embedding_pass(
         return stats;
     }
 
-    let rows = match read_embeddable_nodes(&graph_db) {
-        Ok(v) => v,
-        Err(e) => {
+    // Bug A-1c (2026-05-01): wrap synchronous SQLite read in
+    // spawn_blocking. read_embeddable_nodes pulls every embeddable row
+    // (potentially 13 K+ on a real project) over a sync rusqlite
+    // connection — without spawn_blocking the heartbeat freezes
+    // during this read on the current_thread runtime.
+    let graph_db_for_read = graph_db.clone();
+    let rows = match tokio::task::spawn_blocking(move || read_embeddable_nodes(&graph_db_for_read)).await {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => {
             warn!(error = %e, "embeddings: failed to read graph.db nodes; skipping");
+            return stats;
+        }
+        Err(e) => {
+            warn!(error = %e, "embeddings: spawn_blocking join failed reading nodes; skipping");
             return stats;
         }
     };
@@ -1812,15 +1849,30 @@ async fn run_embedding_pass(
         return stats;
     }
 
-    let embedder = match Embedder::from_default_path() {
-        Ok(e) => e,
-        Err(e) => {
+    // Bug A-1b (2026-05-01): wrap Embedder construction in
+    // spawn_blocking. Loading the 126 MB BGE ONNX model (or the GGUF
+    // embedder) is purely synchronous I/O + memory mapping that can
+    // take seconds on cold cache. On the current_thread runtime that
+    // would freeze the heartbeat across the whole load.
+    let embedder = match tokio::task::spawn_blocking(Embedder::from_default_path).await {
+        Ok(Ok(e)) => e,
+        Ok(Err(e)) => {
             warn!(error = %e, "embeddings: Embedder::from_default_path failed; skipping pass");
+            return stats;
+        }
+        Err(e) => {
+            warn!(error = %e, "embeddings: spawn_blocking join failed loading embedder; skipping pass");
             return stats;
         }
     };
     let model_name = embedder.backend_name().to_string();
     stats.backend = model_name.clone();
+
+    // Wrap in Arc so each per-chunk spawn_blocking call can hold a
+    // shared reference. Embedder uses a parking_lot::Mutex internally
+    // for its inference backend; that lock serialises calls correctly
+    // across threads.
+    let embedder = std::sync::Arc::new(embedder);
 
     // Filter to rows with meaningful text. We materialise the (i64,
     // String) pairs because the embed_batch borrow needs &str refs that
@@ -1843,11 +1895,28 @@ async fn run_embedding_pass(
 
     const BATCH: usize = 64;
     for chunk in with_text.chunks(BATCH) {
-        let texts: Vec<&str> = chunk.iter().map(|(_, t)| t.as_str()).collect();
-        let vectors = match embedder.embed_batch(&texts) {
-            Ok(v) => v,
-            Err(e) => {
+        // Bug A-1b: each embed_batch call goes to the blocking pool.
+        // BGE inference for a 64-text batch takes ~50-200ms — without
+        // spawn_blocking that monopolises the only tokio thread for
+        // hundreds of consecutive batches and the heartbeat never ticks.
+        // Clone the texts into owned Strings so the closure can take
+        // ownership and not borrow `chunk` across the await point.
+        let texts_owned: Vec<String> = chunk.iter().map(|(_, t)| t.clone()).collect();
+        let embedder_clone = std::sync::Arc::clone(&embedder);
+        let embed_join = tokio::task::spawn_blocking(move || {
+            let texts_refs: Vec<&str> = texts_owned.iter().map(|s| s.as_str()).collect();
+            embedder_clone.embed_batch(&texts_refs)
+        })
+        .await;
+        let vectors = match embed_join {
+            Ok(Ok(v)) => v,
+            Ok(Err(e)) => {
                 warn!(error = %e, "embeddings: embed_batch failed; chunk counted as failures");
+                stats.failures += chunk.len();
+                continue;
+            }
+            Err(e) => {
+                warn!(error = %e, "embeddings: spawn_blocking join failed; chunk counted as failures");
                 stats.failures += chunk.len();
                 continue;
             }

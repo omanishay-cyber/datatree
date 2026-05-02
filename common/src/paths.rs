@@ -73,8 +73,24 @@ impl PathManager {
     /// Prefer [`PathManager::try_default_root`] when you want to surface
     /// a structured error in a user-facing CLI flow.
     pub fn default_root() -> Self {
-        let root = Self::resolve_default_root().unwrap_or_else(|_| PathBuf::from(".mneme"));
-        PathManager { root }
+        // Bug VIS-13 (2026-05-01): refuse to fall back to relative
+        // `./mneme`. Previously, if `MNEME_HOME` was unset AND
+        // `dirs::home_dir()` returned None AND the OS-default lookup
+        // failed (extreme edge case: headless service, stripped
+        // sandbox), we'd land at `PathBuf::from(".mneme")` — a
+        // RELATIVE path inside whatever the daemon's cwd happens to
+        // be. That's undefined behavior: shards land in random
+        // places, upgrade detection breaks, two daemons started from
+        // different cwds see different state. Panic with an
+        // actionable message instead.
+        match Self::resolve_default_root() {
+            Ok(root) => PathManager { root },
+            Err(e) => panic!(
+                "fatal: could not resolve a usable mneme root: {e}. \
+                 Set MNEME_HOME to an absolute path \
+                 (e.g. C:\\mneme on Windows or /var/lib/mneme on Unix) and retry."
+            ),
+        }
     }
 
     /// Fallible variant of [`PathManager::default_root`]. Returns a

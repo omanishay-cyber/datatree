@@ -55,6 +55,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import type { ToolDescriptor } from "../types.ts";
+import { errMsg } from "../errors.ts";
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -364,7 +365,7 @@ function loadSkills(): ParsedSkill[] {
       try {
         text = readFileSync(file, "utf-8");
       } catch (err) {
-        console.warn(`[mneme-mcp suggest_skill] read failed: ${file}: ${(err as Error).message}`);
+        console.warn(`[mneme-mcp suggest_skill] read failed: ${file}: ${errMsg(err)}`);
         continue;
       }
       const frontmatter = sliceFrontmatter(text);
@@ -373,7 +374,7 @@ function loadSkills(): ParsedSkill[] {
       try {
         parsed = parseTinyYaml(frontmatter);
       } catch (err) {
-        console.warn(`[mneme-mcp suggest_skill] frontmatter parse failed: ${file}: ${(err as Error).message}`);
+        console.warn(`[mneme-mcp suggest_skill] frontmatter parse failed: ${file}: ${errMsg(err)}`);
         continue;
       }
       const name =
@@ -566,7 +567,7 @@ export const tool: ToolDescriptor<SuggestSkillInputT, SuggestSkillOutputT> = {
       // Never throw — return an empty result so the hook/inline call
       // never becomes an MCP error.
       console.warn(
-        `[mneme-mcp suggest_skill] handler failed: ${(err as Error).message}`,
+        `[mneme-mcp suggest_skill] handler failed: ${errMsg(err)}`,
       );
       return {
         suggestions: [],

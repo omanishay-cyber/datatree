@@ -313,8 +313,9 @@ impl Extractor {
             // file at link time. Other languages keep the legacy single
             // edge — fixing them properly requires per-grammar audits
             // (Python `from X import a, b, c`, Rust `use X::{a, b}`,
-            // Java single-binding semantics, etc.) which are scoped as
-            // follow-up TODOs in the issues registry.
+            // Java single-binding semantics, etc.) which are tracked in
+            // `docs/REMAINING_WORK.md` under "v0.3.2 audit-cycle
+            // deferrals" rather than as inline TODOs (Bug DOC-9 cleanup).
             let bindings = match self.language {
                 Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx => {
                     collect_js_import_bindings(outer, bytes)
