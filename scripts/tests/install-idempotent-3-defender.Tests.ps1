@@ -1,7 +1,7 @@
 # Pester tests for install.ps1 Idempotent-3 (Defender exclusion pre-check).
 #
 # Written locally; designed to RUN ON EC2 where Pester 5.x is installed.
-# On POS2 (no Pester pinned) these serve as the spec.
+# On the local AWS test instance (no Pester pinned) these serve as the spec.
 #
 # Run on EC2:
 #   Invoke-Pester -Path scripts\tests\install-idempotent-3-defender.Tests.ps1

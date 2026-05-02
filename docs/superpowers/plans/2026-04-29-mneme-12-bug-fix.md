@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **IRON RULE:** every task uses tree-sitter MCP for structural code queries (project name `mneme-final`) AND superpowers skills for process discipline. No work without both.
 
-**Goal:** Close every bug surfaced by the 2026-04-29 install postmortem on Anish's POS machine, so the next install passes REAL-1 (interactive Claude Code on EC2) without manual workarounds, hook auto-spawn loops, or visible console-window storms.
+**Goal:** Close every bug surfaced by the 2026-04-29 install postmortem on our high-end AWS test instance, so the next install passes REAL-1 (interactive Claude Code on EC2) without manual workarounds, hook auto-spawn loops, or visible console-window storms.
 
-**Architecture:** 12 bug-fix branches (one per bug A–L), each TDD'd with a failing test before implementation, then merged into `main` of the local git repo at `C:\Users\POS2\Desktop\MNEME HOME\mneme final 2026-04-29\source`. After all 12 land: cargo test workspace gate, release build, package final.zip (no version bump per `feedback_mneme_dont_bump_version_unless_shipping.md` — stays 0.3.2), REAL-1 + REAL-2 on EC2.
+**Architecture:** 12 bug-fix branches (one per bug A–L), each TDD'd with a failing test before implementation, then merged into `main` of the local git repo at `C:\Users\<USER>\Desktop\MNEME HOME\mneme final 2026-04-29\source`. After all 12 land: cargo test workspace gate, release build, package final.zip (no version bump per `feedback_mneme_dont_bump_version_unless_shipping.md` — stays 0.3.2), REAL-1 + REAL-2 on EC2.
 
 **Tech Stack:** Rust 1.95 workspace (12 crates) + Bun 1.3 TS MCP + Tauri vision + PowerShell install scripts + tree-sitter MCP + superpowers skills.
 

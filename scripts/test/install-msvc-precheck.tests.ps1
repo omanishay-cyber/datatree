@@ -18,7 +18,7 @@
 #
 # Plan reference: docs/superpowers/plans/2026-04-29-mneme-12-bug-fix.md task F.
 #
-# WILL RUN ON EC2 — Pester 3.4.0 is also available on POS2.
+# WILL RUN ON EC2 — Pester 3.4.0 is also available on the local AWS test instance.
 
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SourceRoot  = Resolve-Path (Join-Path $ScriptDir '..\..')

@@ -1,7 +1,7 @@
 # Pester tests for install.ps1 Idempotent-2 (Bun cache spare-others heuristic).
 #
 # Written locally; designed to RUN ON EC2 where Pester 5.x is installed
-# and a real Bun cache may be present. On POS2 (no Pester pinned) these
+# and a real Bun cache may be present. On the local AWS test instance (no Pester pinned) these
 # serve as the spec.
 #
 # Run on EC2:
