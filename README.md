@@ -159,14 +159,16 @@ All four MCPs were registered via `claude mcp add`, and `claude mcp list` confir
 
 Each cell shows `wall-time s · output tokens · cost USD · relevance score (0-10)`. Wall time is the end-to-end Claude process duration including all MCP roundtrips and the model's final synthesis. Cost is from `total_cost_usd` in the Claude JSON envelope. Relevance is auto-scored by counting ground-truth markers (a hand-curated list of ~67 known auth symbols across 12 files).
 
-| Query | mneme | tree-sitter | CRG | graphify |
+> **2026-05-02 update — fair re-bench pending.** The bench below caught a real mneme bug (B-023): the MCP server's `projectIdForPath` lower-cased + slash-normalized Windows paths while the Rust CLI's `ProjectId::from_path` preserved native case + backslashes. Same project → different hashes → MCP looked up a shard that didn't exist while the CLI's shard sat right there. **Fixed in commit `f4c7dd1`** (MCP now matches CLI byte-for-byte). The pre-fix mneme numbers were `0/5 shard not found` across the board because of this single mismatch — not the underlying graph engine, which the CLI itself proved worked (5 hits with file:line citations for the same query, run from same cwd). A re-bench against the fixed MCP will land in the next v0.3.2 hotfix re-upload.
+
+| Query | mneme (re-bench pending B-023 fix) | tree-sitter | CRG | graphify |
 |---|---|---|---|---|
-| Q1 - Find all auth functions (~67 symbols) | 62 s · 1,543 t · $0.07 · **0**/10 (shard not found) | 115 s · 4,668 t · $0.22 · **8**/10 | (timeout 480 s) | (timeout 240 s) |
-| Q2 - Blast radius of `src/utils/auth.ts` (~14 consumers) | 28 s · 710 t · $0.06 · **0**/10 (shard not found) | 131 s · 4,918 t · $0.17 · **9**/10 | (timeout 180 s) | (not measured)* |
-| Q3 - Login call graph from `LoginPage` | 61 s · 1,658 t · $0.10 · **0**/10 (shard not found) | 277 s · 8,623 t · $0.59 · **9**/10 | (timeout 180 s) | (not measured)* |
-| Q4 - Design patterns | 67 s · 1,511 t · $0.11 · **0**/10 (shard not found) | 443 s · 11,469 t · $0.74 · **8**/10 | (not measured)* | (not measured)* |
-| Q5 - Security issues in auth | 104 s · 2,501 t · $0.15 · **0**/10 (shard not found) | 220 s · 8,508 t · $0.49 · **9**/10 | (not measured)* | (not measured)* |
-| **Totals (measured)** | 322 s · 7,923 t · $0.49 · **0**/10 avg | 1,186 s · 38,186 t · $2.21 · **8.6**/10 avg | 3x timeout, 2x skipped | 1x timeout, 4x skipped |
+| Q1 - Find all auth functions (~67 symbols) | re-bench pending | 115 s · 4,668 t · $0.22 · **8**/10 | (timeout 480 s) | (timeout 240 s) |
+| Q2 - Blast radius of `src/utils/auth.ts` (~14 consumers) | re-bench pending | 131 s · 4,918 t · $0.17 · **9**/10 | (timeout 180 s) | (not measured)* |
+| Q3 - Login call graph from `LoginPage` | re-bench pending | 277 s · 8,623 t · $0.59 · **9**/10 | (timeout 180 s) | (not measured)* |
+| Q4 - Design patterns | re-bench pending | 443 s · 11,469 t · $0.74 · **8**/10 | (not measured)* | (not measured)* |
+| Q5 - Security issues in auth | re-bench pending | 220 s · 8,508 t · $0.49 · **9**/10 | (not measured)* | (not measured)* |
+| **Totals (measured)** | _re-bench pending_ | 1,186 s · 38,186 t · $2.21 · **8.6**/10 avg | 3x timeout, 2x skipped | 1x timeout, 4x skipped |
 
 \* After 3 consecutive 480 s + 180 s timeouts on CRG and 1x 240 s timeout on graphify with no partial response captured, we stopped further attempts to keep total bench wall-time bounded. The pattern was uniform - both servers connect and respond to `tools/list` but Claude never receives output from any tool call within the timeout.
 

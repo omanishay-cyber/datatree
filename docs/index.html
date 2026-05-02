@@ -1282,6 +1282,10 @@
     <h3 class="cmp-h3" style="margin-top:48px;">Live head-to-head benchmark (2026-05-02)</h3>
     <p class="lead" style="margin-bottom: 12px;">We pointed Claude Code 2.1.119 at a real Electron + React + TypeScript codebase (~12K LOC, 82 source files) on a Windows 11 AWS instance and asked the same 5 questions through each MCP, isolated via <code>--strict-mcp-config</code>. Same model, same prompt, same project. Score is auto-counted against a hand-curated ground-truth of ~67 known auth symbols across 12 files (0-10 scale).</p>
 
+    <p class="lead" style="margin-bottom: 14px; padding: 12px 16px; background: var(--bg-2); border-left: 3px solid var(--accent-green); border-radius: 6px; font-size:0.92rem;">
+      <strong>Update 2026-05-02:</strong> the bench caught a real mneme bug (B-023) — MCP's <code>projectIdForPath</code> lower-cased + slash-normalized Windows paths while the Rust CLI preserved native case + backslashes. Same project hashed to different ids; MCP returned <code>shard not found</code> on every tool call while the CLI's shard sat right there. <strong>Fixed in commit <code>f4c7dd1</code></strong> (MCP now matches CLI byte-for-byte). Pre-fix mneme cells below show <em>re-bench pending</em>; the underlying graph engine was correct (CLI from same cwd returned 5 hits with file:line citations for the same query) — the bug was purely the MCP-side lookup. Fair re-bench will land with the next v0.3.2 hotfix re-upload.
+    </p>
+
     <div class="cmp-wrap">
       <table class="bench-table">
         <thead>
@@ -1296,42 +1300,42 @@
         <tbody>
           <tr>
             <td><strong>Q1</strong> Find all auth functions (~67 symbols)</td>
-            <td>62 s · 1,543 t · $0.07 · <strong>0/10</strong> (shard not found)</td>
+            <td><em>re-bench pending</em></td>
             <td>115 s · 4,668 t · $0.22 · <strong>8/10</strong></td>
             <td>(timeout 480 s)</td>
             <td>(timeout 240 s)</td>
           </tr>
           <tr>
             <td><strong>Q2</strong> Blast radius of <code>src/utils/auth.ts</code></td>
-            <td>28 s · 710 t · $0.06 · <strong>0/10</strong></td>
+            <td><em>re-bench pending</em></td>
             <td>131 s · 4,918 t · $0.17 · <strong>9/10</strong></td>
             <td>(timeout 180 s)</td>
             <td>(skipped)</td>
           </tr>
           <tr>
             <td><strong>Q3</strong> Login call graph from <code>LoginPage</code></td>
-            <td>61 s · 1,658 t · $0.10 · <strong>0/10</strong></td>
+            <td><em>re-bench pending</em></td>
             <td>277 s · 8,623 t · $0.59 · <strong>9/10</strong></td>
             <td>(timeout 180 s)</td>
             <td>(skipped)</td>
           </tr>
           <tr>
             <td><strong>Q4</strong> Design patterns used in this project</td>
-            <td>67 s · 1,511 t · $0.11 · <strong>0/10</strong></td>
+            <td><em>re-bench pending</em></td>
             <td>443 s · 11,469 t · $0.74 · <strong>8/10</strong></td>
             <td>(skipped)</td>
             <td>(skipped)</td>
           </tr>
           <tr>
             <td><strong>Q5</strong> Security issues in auth</td>
-            <td>104 s · 2,501 t · $0.15 · <strong>0/10</strong></td>
+            <td><em>re-bench pending</em></td>
             <td>220 s · 8,508 t · $0.49 · <strong>9/10</strong></td>
             <td>(skipped)</td>
             <td>(skipped)</td>
           </tr>
           <tr style="background: var(--bg-2); font-weight: 600;">
             <td>Totals (measured)</td>
-            <td>322 s · 7,923 t · $0.49 · <strong>0/10 avg</strong></td>
+            <td><em>re-bench pending</em></td>
             <td>1,186 s · 38,186 t · $2.21 · <strong>8.6/10 avg</strong></td>
             <td>3× timeout, 2× skipped</td>
             <td>1× timeout, 4× skipped</td>
