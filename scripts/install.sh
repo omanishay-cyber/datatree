@@ -1,7 +1,15 @@
 #!/usr/bin/env sh
-# mneme - one-line installer for macOS / Linux (v0.3.1+)
+# mneme - INNER installer for macOS / Linux (v0.3.1+)
 #
-# Usage:
+# THIS IS THE INNER INSTALLER. For a one-command end-user install,
+# use the bootstrap entry points in `release/` instead:
+#   macOS:  curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-mac.sh   | bash
+#   Linux:  curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh | bash
+# Those wrappers handle download + extract + daemon registration, then
+# invoke this script with --skip-download to wire MCP / hooks / PATH.
+#
+# Direct usage (advanced -- assumes ~/.mneme is already populated, or
+# you're running from inside an extracted tarball):
 #   curl -fsSL https://raw.githubusercontent.com/omanishay-cyber/mneme/main/scripts/install.sh | sh
 #
 # Flags (POSIX-sh argument parsing):
