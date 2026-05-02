@@ -28,23 +28,23 @@ Mneme keeps what Claude learned about your project - survives context wipes, doe
 </div>
 
 ```powershell
-# Windows · one command · no admin · auto-detects x64 / ARM64
+# Windows * one command * no admin * auto-detects x64 / ARM64
 iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)
 ```
 
 ```bash
-# macOS · one command · auto-detects Intel / Apple Silicon
+# macOS * one command * auto-detects Intel / Apple Silicon
 curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-mac.sh | bash
 ```
 
 ```bash
-# Linux · one command · auto-detects x64 / ARM64
+# Linux * one command * auto-detects x64 / ARM64
 curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh | bash
 ```
 
 > One command per OS - the script auto-detects your architecture and downloads the right binary archive. Restart Claude after install. Verify with `mneme doctor` and `claude mcp list`.
 >
-> **Requirements:** 64-bit OS (x64 or ARM64) · CPU with AVX2 / BMI2 / FMA (Intel Haswell 2013+ or AMD Excavator 2015+ - almost every PC sold since 2013 qualifies) · 5 GB free disk · no admin needed. 32-bit Windows is not supported (Bun runtime requirement).
+> **Requirements:** 64-bit OS (x64 or ARM64) * CPU with AVX2 / BMI2 / FMA (Intel Haswell 2013+ or AMD Excavator 2015+ - almost every PC sold since 2013 qualifies) * 5 GB free disk * no admin needed. 32-bit Windows is not supported (Bun runtime requirement).
 
 <!-- ==================================================================== -->
 <!--   Nav                                                                  -->
@@ -53,12 +53,12 @@ curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/ins
 <p>
   <strong>
     <a href="#-quick-start">Quick start</a>
-    &nbsp;·&nbsp; <a href="#-what-it-does">What it does</a>
-    &nbsp;·&nbsp; <a href="#-the-killer-feature">Killer feature</a>
-    &nbsp;·&nbsp; <a href="#-benchmarks">Benchmarks</a>
-    &nbsp;·&nbsp; <a href="#-19-supported-platforms">Platforms</a>
-    &nbsp;·&nbsp; <a href="ARCHITECTURE.md">Architecture</a>
-    &nbsp;·&nbsp; <a href="docs/">Docs</a>
+    &nbsp;*&nbsp; <a href="#-what-it-does">What it does</a>
+    &nbsp;*&nbsp; <a href="#-the-killer-feature">Killer feature</a>
+    &nbsp;*&nbsp; <a href="#-benchmarks">Benchmarks</a>
+    &nbsp;*&nbsp; <a href="#-19-supported-platforms">Platforms</a>
+    &nbsp;*&nbsp; <a href="ARCHITECTURE.md">Architecture</a>
+    &nbsp;*&nbsp; <a href="docs/">Docs</a>
   </strong>
 </p>
 
@@ -71,9 +71,9 @@ curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/ins
 
 ## Feature matrix vs Code Review Graph and Graphify
 
-Honest head-to-head against the two closest projects in the AI-code-context space —
+Honest head-to-head against the two closest projects in the AI-code-context space -
 [Code Review Graph (CRG)](https://github.com/tirth8205/code-review-graph) and
-[Graphify](https://github.com/tirth8205/graphify) — plus
+[Graphify](https://github.com/tirth8205/graphify) - plus
 [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) for the parsing layer
 context. Wins and losses both. Last refreshed 2026-05-02 against current public
 repos.
@@ -84,51 +84,51 @@ repos.
 | **Compaction recovery (Step Ledger)** | ✅ numbered, verification-gated, SQLite-persisted; Claude resumes the EXACT step after `/compact` | ❌ | ❌ | n/a |
 | **Persistent memory across AI sessions** | ✅ history.db + agents.db + tool_cache.db + livestate.db; works across model providers | ⚠️ memory_loop_store (Markdown nodes, single project) | ❌ | n/a |
 | **MCP tools (live, all wired to real data)** | ✅ **48** | 24 | n/a (not an MCP server) | n/a |
-| **Built-in scanners** | ✅ **11** (theme · security · perf · a11y · drift · ipc · md-drift · secrets · refactor · architecture · types) | 1 (review-oriented) | ❌ | ❌ |
+| **Built-in scanners** | ✅ **11** (theme * security * perf * a11y * drift * ipc * md-drift * secrets * refactor * architecture * types) | 1 (review-oriented) | ❌ | ❌ |
 | **Tree-sitter grammars** | ✅ 27 (18 Tier-1 + 8 Tier-2 + extensible) | 23 | 5-ish (per-input) | 200+ (community) |
 | **Drift detector enforcing CLAUDE.md rules live** | ✅ 11 scanners incl. drift + md-drift + secrets | partial (lint-style) | ❌ | ❌ |
-| **Storage layers (SQLite shards)** | ✅ **22 sharded DBs** + global meta.db (graph · semantic · git · deps · tests · multimodal · wiki · architecture · federated · history · tasks · agents · tool_cache · livestate · errors · perf · refactors · contracts · insights · telemetry · corpus · audit · memory · findings) | 1 | 1-2 JSON + HTML | n/a |
+| **Storage layers (SQLite shards)** | ✅ **22 sharded DBs** + global meta.db (graph * semantic * git * deps * tests * multimodal * wiki * architecture * federated * history * tasks * agents * tool_cache * livestate * errors * perf * refactors * contracts * insights * telemetry * corpus * audit * memory * findings) | 1 | 1-2 JSON + HTML | n/a |
 | **Real local embeddings** | ✅ BGE-small-en-v1.5 (384-dim, ONNX, ORT 1.24.4, Cloudflare-hosted via HF) + Qwen 2.5 Coder/Embed 0.5B + Phi-3-mini-4k local LLMs (3.4 GB total, all GGUF) | ❌ | partial (sentence-transformers, network-pullable) | n/a |
 | **Visualization surface** | ✅ **14 WebGL views** + Command Center (Tauri SvelteKit app, served from daemon at `:7777`) | 1 (D3 force graph) | 1 (static HTML) | n/a |
 | **Multi-process Rust supervisor (watchdog + WAL + restart + health)** | ✅ HTTP `/health` on `:7777`, per-worker uptime + restart count + dropped count, ProcessRefreshKind PID-liveness via sysinfo | ❌ (single-process Python) | ❌ (single-process Python) | n/a |
 | **Multimodal (PDF / image / OCR)** | ✅ multimodal-bridge crate, Tesseract OCR runtime fallback (B-1 fix), 187 pages/sec on a 1100-file project | ❌ | partial (text only by default) | n/a |
 | **Live push updates (SSE + WebSocket)** | ✅ livebus worker, multi-agent pubsub | ❌ | ❌ | n/a |
-| **100% local, zero unsolicited network** | ✅ enforced across Rust / TS / Python sidecar — only opt-in network is `mneme models install --from-url` | ✅ | ⚠️ model downloads + Whisper prompts | ✅ |
+| **100% local, zero unsolicited network** | ✅ enforced across Rust / TS / Python sidecar - only opt-in network is `mneme models install --from-url` | ✅ | ⚠️ model downloads + Whisper prompts | ✅ |
 | **AI tool integration (out of the box)** | ✅ **19+** (Claude Code, Codex, Cursor, Windsurf, Zed, VS Code, Gemini, Qwen, Qoder, plus more via standard MCP) | 2 (Claude Code, VS Code ext) | 1 (manual integration) | dozens of editors via library |
-| **Cross-OS install** | ✅ Win x64 (live) · macOS Intel + Apple Silicon (live) · Linux x64 (live) · Win arm64 / Linux arm64 (CI building) | ✅ pip is OS-agnostic | ✅ pip is OS-agnostic | bindings per language |
+| **Cross-OS install** | ✅ Win x64 (live) * macOS Intel + Apple Silicon (live) * Linux x64 (live) * Win arm64 / Linux arm64 (CI building) | ✅ pip is OS-agnostic | ✅ pip is OS-agnostic | bindings per language |
 | **HF Hub model mirror (~5× faster than GitHub Releases)** | ✅ huggingface.co/aaditya4u/mneme-models | n/a (no models) | n/a | n/a |
 | **Audit pipeline streams findings (no data loss on timeout)** | ✅ per-file flush, supervisor fan-out across 6 scanner-workers (~5× faster on multi-core) | ❌ | ❌ | n/a |
 | **License** | ✅ **Apache-2.0** | MIT | MIT | MIT |
-| **CPU baseline (perf)** | x86-64-v3 (Haswell 2013+, AVX2 + BMI2 + FMA — 2-4× faster than baseline x86-64) | generic Python | generic Python | configurable per binding |
+| **CPU baseline (perf)** | x86-64-v3 (Haswell 2013+, AVX2 + BMI2 + FMA - 2-4× faster than baseline x86-64) | generic Python | generic Python | configurable per binding |
 | **Restart-survival (daemon respawn on crash)** | ✅ supervisor watchdog with heartbeat deadline + restart count + dropped count | n/a | n/a | n/a |
 | **Federated cross-project pattern matching** | ✅ federated.db + 326 fingerprints per project, cross-shard `mneme_federated_similar` MCP tool | ❌ | ❌ | ❌ |
-| **8 Claude Code hooks integrated** | ✅ UserPromptSubmit · PreToolUse · PostToolUse · PreCompact · SubagentStop · SessionEnd + 2 more — persistent-memory pipeline live across compactions | ❌ | ❌ | n/a |
+| **8 Claude Code hooks integrated** | ✅ UserPromptSubmit * PreToolUse * PostToolUse * PreCompact * SubagentStop * SessionEnd + 2 more - persistent-memory pipeline live across compactions | ❌ | ❌ | n/a |
 | - | - | - | - | - |
 | **Things mneme doesn't have YET (CRG / Graphify do)** | | | | |
 | **Graph diff (commit-to-commit)** | ❌ planned v0.4 (Tier 1.5.A; wraps existing snapshot tool) | ✅ `graph diff` | ❌ | ❌ |
 | **Smart question generation from topology** | ❌ planned v0.4 (Tier 1.5.B) | ✅ auto-generated review prompts | ❌ | ❌ |
 | **Portable graph exports (GraphML / Obsidian / Cypher / SVG)** | ❌ planned v0.4 (Tier 1.5.C; ~30 min each) | ✅ multiple formats | partial (GraphML) | n/a |
-| **Seed concept memory (user-registered architectural keywords)** | partial — `recall_concept` exists, persistence layer planned v0.4 (Tier 1.5.D) | ❌ | ✅ seed nodes | ❌ |
+| **Seed concept memory (user-registered architectural keywords)** | partial - `recall_concept` exists, persistence layer planned v0.4 (Tier 1.5.D) | ❌ | ✅ seed nodes | ❌ |
 | **Multilingual Whisper for non-English audio** | ❌ planned v0.5 (Tier 1.5.E; multimodal-bridge currently OCR-only) | n/a | ✅ specialised locale prompts | n/a |
-| **One-shot `pip install`** | ❌ planned v0.4 (Tier 1.5.H — Python wrapper around bootstrap, ~2-3h) | ✅ `pip install crg` | ✅ `pip install graphify` | ✅ multiple bindings |
+| **One-shot `pip install`** | ❌ planned v0.4 (Tier 1.5.H - Python wrapper around bootstrap, ~2-3h) | ✅ `pip install crg` | ✅ `pip install graphify` | ✅ multiple bindings |
 | **VS Code / JetBrains / Cursor extensions** | ❌ planned v0.6 (Tier 2 #11) | ✅ first-class VS Code | ❌ | ✅ pervasive editor support |
 | **Hosted browser demo / playground** | ❌ planned v0.5.5 (Tier 1.5.G) | ✅ | ✅ | ✅ web playground |
 | **Standalone library / SDK (Rust + Python + JS bindings)** | ❌ planned v0.4.5 (Tier 1.5.F) | n/a | n/a | ✅ flagship |
 
-> **Note**: rows marked "planned vX.Y" reference [`docs/ROADMAP.md`](ROADMAP.md) and the v0.4 vision document — every gap has an explicit ship target.
+> **Note**: rows marked "planned vX.Y" reference [`docs/ROADMAP.md`](ROADMAP.md) and the v0.4 vision document - every gap has an explicit ship target.
 
 ### Why Mneme
 
 **Code Review Graph** is a polished review-focused graph with a clean VS Code
 extension. **Graphify** is a universal knowledge-graph builder for code +
-multimodal content. **Tree-sitter** is a parser library, not a competitor —
+multimodal content. **Tree-sitter** is a parser library, not a competitor -
 mneme uses it under the hood.
 
 Mneme is the heavier, more architectural tool: a **persistent daemon** that
 runs between sessions, **survives compaction** at the architecture level (not
 the prompt level), enforces your `CLAUDE.md` rules in real time, federates
 patterns across all your projects, and gives every AI tool you use the same
-memory. 22 workers, 11 scanners, 48 MCP tools, 14 WebGL views — built once,
+memory. 22 workers, 11 scanners, 48 MCP tools, 14 WebGL views - built once,
 runs everywhere, never forgets.
 
 If you want a **one-command install for a single project review session**, use
@@ -137,7 +137,7 @@ Graphify. If you want **an AI superbrain that lives on your machine for years
 and never forgets across N projects + N AI tools**, use Mneme.
 
 The DeepSeek-flagged gaps above (graph diff, exports, smart questions, seed
-concepts, pip install, VS Code extension) are explicitly on the v0.4 roadmap —
+concepts, pip install, VS Code extension) are explicitly on the v0.4 roadmap -
 see `docs/ROADMAP.md` and the v0.4 vision document for ship dates.
 
 
@@ -176,7 +176,7 @@ Then, in any project:
 
 ```bash
 mneme daemon start                 # spin up the supervisor (1 store + N parsers + N/2 scanners + 1 md-ingest + 1 brain + 1 livebus = ~16 workers on an 8-core machine, 7777/health)
-mneme build .                      # index the project → ~/.mneme/projects/<sha>/
+mneme build .                      # index the project -> ~/.mneme/projects/<sha>/
 mneme recall "where is auth?"      # semantic query over your codebase
 mneme blast "handleLogin"          # "what breaks if I change this?"
 mneme doctor                       # verify everything's wired (prints all 48 MCP tools live)
@@ -257,19 +257,19 @@ Visual context? `CHS` - AI reads the latest screenshot in your Pictures folder.
 │  step 1  ✓ initial plan            │    │                                    │
 │  step 2  ✓ schema additions        │    │  <mneme-resume>                    │
 │  step 3  ✓ migration written       │    │    original goal: "refactor auth"  │
-│  …                                  │    │    completed: 50 steps + proofs   │
+│  ...                                  │    │    completed: 50 steps + proofs   │
 │  step 49 ✓ backfill finished       │    │    YOU ARE HERE: step 51           │
 │  step 50 ✓ acceptance check pass   │    │    next: 49 steps remain           │
 │                                     │    │    constraints: no hardcoded keys │
 │  💥 context hits the wall           │    │  </mneme-resume>                   │
-│                                     │    │  step 51  → (resumes cleanly)     │
+│                                     │    │  step 51  -> (resumes cleanly)     │
 └─────────────────────────────────────┘    └────────────────────────────────────┘
 ```
 
 The **Step Ledger** is a numbered, verification-gated plan that lives in SQLite. Every step records its acceptance check. When compaction wipes Claude's working memory, the next turn auto-injects a ~5 K-token resumption bundle containing:
 
 - 🎯 The verbatim original goal (as you first typed it)
-- 🗂️ The goal stack (main task → subtask → sub-subtask)
+- 🗂️ The goal stack (main task -> subtask -> sub-subtask)
 - ✅ Completed steps + their proof artefacts
 - 📍 Current step + where Claude left off
 - 🔜 Remaining steps with acceptance checks
@@ -337,21 +337,21 @@ Every arrow is **bidirectional** - MCP is JSON-RPC (request/response), superviso
 
 ```
   ┌────────────────────────────────────────────────────────────────────────┐
-  │  Claude Code · Codex · Cursor · Windsurf · Zed · Gemini · 12 more…    │
+  │  Claude Code * Codex * Cursor * Windsurf * Zed * Gemini * 12 more...    │
   └─────────────────────────▲──────────────────────────────────────────────┘
                             │        MCP - JSON-RPC over stdio
                     request │ ▲ response
                             ▼ │  (tool_result / error / resource)
   ┌────────────────────────────────────────────────────────────────────────┐
   │   MCP SERVER (Bun TS) - 48 tools, hot-reload, zod-validated            │
-  │   Resolves request → fans out to workers → aggregates → replies        │
+  │   Resolves request -> fans out to workers -> aggregates -> replies        │
   └─────────────────────────▲──────────────────────────────────────────────┘
                             │        IPC - named pipe (Windows) / unix sock
                     request │ ▲ response
                             ▼ │  (typed IpcResponse with payload + metrics)
   ┌────────────────────────────────────────────────────────────────────────┐
   │                      SUPERVISOR (Rust, daemon)                         │
-  │     watchdog · restart loop · health /7777 · per-worker SLA counters   │
+  │     watchdog * restart loop * health /7777 * per-worker SLA counters   │
   │     Routes calls to the right worker pool, returns response to MCP     │
   └────▲──────────▲──────────▲──────────▲──────────▲────────────────────────┘
        │          │          │          │          │
@@ -362,13 +362,13 @@ Every arrow is **bidirectional** - MCP is JSON-RPC (request/response), superviso
    │ 22 DB│  │ 27     │  │ 11     │  │BGE +  │  │SSE/WS  │         │ MULTIMODAL   │
    │ shrds│  │ langs  │  │audits  │  │Leiden │  │pubsub  │         │ in-process   │
    └──▲───┘  └────────┘  └────────┘  └───────┘  └────▲───┘         │ in mneme CLI │
-      │                                                │           │ (PDF · IMG · │
-  R/W │                                            push│           │  Whisper ·   │
+      │                                                │           │ (PDF * IMG * │
+  R/W │                                            push│           │  Whisper *   │
       ▼                                                ▼           │  ffmpeg)     │
    ~/.mneme/projects/<sha>/                     Vision app         └──────▲───────┘
-     graph.db · history.db · semantic.db ·     (Tauri + React)            │ writes
-     findings.db · tasks.db · memory.db ·      14 live views      media.db (store)
-     wiki.db · architecture.db · multimodal.db localhost:7777
+     graph.db * history.db * semantic.db *     (Tauri + React)            │ writes
+     findings.db * tasks.db * memory.db *      14 live views      media.db (store)
+     wiki.db * architecture.db * multimodal.db localhost:7777
 ```
 
 **One concrete round-trip - `blast_radius("handleLogin")`:**
@@ -394,11 +394,11 @@ Total hops: 2 network-free IPCs + 1 in-process SQL read + 1 in-process embedding
 
 > **For engineers:** the technical numbers behind the plain-English claims above are at [BENCHMARKS.md](benchmarks/BENCHMARKS.md). Distributions: token reduction = 1.338× mean / 1.519× p50 / 3.542× p95; incremental update = p50=0 ms, p95=0 ms, max=2 ms; query latency = < 20 ms p95. CSVs in [`bench-history.csv`](bench-history.csv).
 
-**Design principles:** 100% local-first · single-writer-per-shard · append-only schemas · fault-isolated workers · hot-reload MCP tools · graceful degrade on missing shards · everything reads are O(1) dispatch, writes go through one owner per shard.
+**Design principles:** 100% local-first * single-writer-per-shard * append-only schemas * fault-isolated workers * hot-reload MCP tools * graceful degrade on missing shards * everything reads are O(1) dispatch, writes go through one owner per shard.
 
-Full architecture deep-dive → [`ARCHITECTURE.md`](ARCHITECTURE.md) · Per-module notes → [`docs/architecture.md`](docs/architecture.md)
+Full architecture deep-dive -> [`ARCHITECTURE.md`](ARCHITECTURE.md) * Per-module notes -> [`docs/architecture.md`](docs/architecture.md)
 
-## 🧭 v0.3.2 Status — what's shipped, what's partial, what's deferred
+## 🧭 v0.3.2 Status - what's shipped, what's partial, what's deferred
 
 Honest inventory as of the v0.3.2 hotfix (2026-05-02). Most surfaces flipped from "partial" to "✅ shipped" in this release.
 
@@ -407,7 +407,7 @@ Honest inventory as of the v0.3.2 hotfix (2026-05-02). Most surfaces flipped fro
 | `mneme view` (Tauri vision app) | ✅ shipped, all 14 views live | F1 D2-D4 wired 17/17 daemon JSON endpoints; frontend `API_BASE` resolves in both browser fallback (`http://127.0.0.1:7777/`) and Tauri shell. 14/14 view components in `vision/src/views/*.tsx` render real shard data. Standalone `mneme-vision.exe` packaging slated for v0.4. |
 | **BGE-small-en-v1.5 embeddings (real semantic recall)** | ✅ **ON by default in v0.3.2** | ONNX Runtime 1.24.4 bundled + auto-pinned via `ORT_DYLIB_PATH` (defeats Win11 24H2 System32 hijack). Models auto-download from HF Hub mirror (~5x faster than GitHub Releases). Verified end-to-end on real hardware: 3,422 nodes embedded, 0 failures, `backend=bge-small-en-v1.5`. |
 | **Tesseract OCR (image text)** | ✅ **runtime shellout in v0.3.2 (B-1 fix)** | install.ps1 auto-installs `UB-Mannheim.TesseractOCR` via winget. multimodal-bridge probes both `PATH` and `C:\Program Files\Tesseract-OCR\tesseract.exe` at runtime. Falls back gracefully (logs + skips) if not present. Works without rebuilding the binary. |
-| **Plugin slash commands `/mn-build`, `/mn-recall`, etc.** | ✅ **auto-registered in v0.3.2 (B1.5)** | install.ps1 step 7 symlinks `~/.mneme/plugin/` to `~/.claude/plugins/mneme/` (falls back to recursive copy if symlink perms denied). Restart Claude Code → `/mn-` autocompletes the full command set. |
+| **Plugin slash commands `/mn-build`, `/mn-recall`, etc.** | ✅ **auto-registered in v0.3.2 (B1.5)** | install.ps1 step 7 symlinks `~/.mneme/plugin/` to `~/.claude/plugins/mneme/` (falls back to recursive copy if symlink perms denied). Restart Claude Code -> `/mn-` autocompletes the full command set. |
 | **MCP node_modules pre-installed (no manual `bun install`)** | ✅ **fixed in v0.3.2 (B1)** | install.ps1 step 5b runs `bun install --frozen-lockfile` after extract. stage-release-zip.ps1 also fail-loud refuses to ship a zip with empty mcp/node_modules (B2 validation gate). |
 | **Audit pipeline streams findings (no data loss on timeout)** | ✅ **fixed in v0.3.2 (B12)** | mneme-scanners writes findings to findings.db every 100 rows or 5s. Even if the subprocess gets killed mid-scan, all persisted findings survive. |
 | **Audit fan-out across scanner-workers** | ✅ **shipped in v0.3.2 (B11.7)** | Supervisor dispatches Job::Scan per file across the 6-worker scanner pool. Was single-process subprocess before. ~5x faster on 6-core POS hardware. |
@@ -415,14 +415,14 @@ Honest inventory as of the v0.3.2 hotfix (2026-05-02). Most surfaces flipped fro
 | **`--rebuild` flag on `mneme build`** | ✅ shipped in v0.3.2 (B11.5) | Wipes `build-state.json` checkpoint + forces `--full` re-parse. Use when you want zero state carryover. |
 | **8 Claude Code hooks default-on** | ✅ shipped in v0.3.2 (K1) | `mneme install` writes 8 hook entries under `~/.claude/settings.json::hooks` by default. Pass `--no-hooks` to skip. Hooks read STDIN JSON and exit 0 on internal error so a mneme bug can never block tool calls. |
 | **Per-worker `rss_mb` on Windows** | ✅ resolved in v0.3.2 (C1) | Supervisor SLA snapshot reports real `rss_mb` via `GetProcessMemoryInfo`. |
-| **Multi-arch + cross-OS install** | ✅ Win x64 (live) · macOS Intel + Apple Silicon (live) · Linux x64 (live) · Win arm64 / Linux arm64 (CI building) in v0.3.2 | 3 install commands (one per OS), each auto-detects arch via `$env:PROCESSOR_ARCHITECTURE` (Win) or `uname -m` (POSIX). Refuses 32-bit Windows (Bun runtime requires x64+). |
+| **Multi-arch + cross-OS install** | ✅ Win x64 (live) * macOS Intel + Apple Silicon (live) * Linux x64 (live) * Win arm64 / Linux arm64 (CI building) in v0.3.2 | 3 install commands (one per OS), each auto-detects arch via `$env:PROCESSOR_ARCHITECTURE` (Win) or `uname -m` (POSIX). Refuses 32-bit Windows (Bun runtime requires x64+). |
 | WebSocket livebus relay (`/ws`) | ⚠️ dev-only, partial | `livebus/` crate + SSE/WebSocket schema compile. SSE works in dev when Bun server + Tauri are co-located. Production daemon does not yet host the `/ws` endpoint. v0.4 work. |
-| Voice navigation (`/api/voice`) | ⚠️ stub | Endpoint returns `{enabled: false, phase: "stub"}`. v0.6 (per Tier 1 #1 — Ambient Context Fabric). |
+| Voice navigation (`/api/voice`) | ⚠️ stub | Endpoint returns `{enabled: false, phase: "stub"}`. v0.6 (per Tier 1 #1 - Ambient Context Fabric). |
 | Multilingual Whisper (non-English audio transcription) | ❌ planned v0.5 (Tier 1.5.E) | multimodal-bridge currently OCR-only. whisper-rs / whisper.cpp integration on roadmap. |
 | Graph diff (commit-to-commit) | ❌ planned v0.4 (Tier 1.5.A) | Wraps existing snapshot tool with delta compute. CRG ships this. |
 | Smart question generation | ❌ planned v0.4 (Tier 1.5.B) | Auto-generated review prompts from graph topology. CRG ships this. |
 | Portable graph exports (GraphML / Obsidian / Cypher / SVG) | ❌ planned v0.4 (Tier 1.5.C) | New MCP tool `graph_export(format)`. ~30 min each, 5 formats. |
-| Seed concept memory (user-defined keyword tracking) | partial → planned v0.4 (Tier 1.5.D) | `recall_concept` exists; persistence layer for user-registered seeds is the missing piece. |
+| Seed concept memory (user-defined keyword tracking) | partial -> planned v0.4 (Tier 1.5.D) | `recall_concept` exists; persistence layer for user-registered seeds is the missing piece. |
 | One-shot `pip install mneme` | ❌ planned v0.4 (Tier 1.5.H) | Python wrapper around bootstrap, ~2-3h. Cosmetic for Python audience. |
 | VS Code / JetBrains / Cursor extensions | ❌ planned v0.6 (Tier 2 #11) | Live graph views + in-editor blast-radius highlights. |
 
@@ -467,18 +467,20 @@ Each script:
 3. Installs Bun if missing, runs `bun install --frozen-lockfile` for the MCP server
 4. Pulls 5 model files from the [Hugging Face Hub mirror](https://huggingface.co/aaditya4u/mneme-models) (`bge-small-en-v1.5.onnx`, `tokenizer.json`, `qwen-embed-0.5b.gguf`, `qwen-coder-0.5b.gguf`, and `phi-3-mini-4k.gguf` as a single 2.23 GB file). GitHub Releases is the automatic fallback if HF is unreachable - phi-3 falls back to two parts (`.part00` + `.part01`) there because GitHub caps individual release assets at 2 GB; the bootstrap concatenates them client-side before install.
 5. Adds Defender exclusions for `~/.mneme` and `~/.claude` (best-effort if not elevated)
-6. Registers the MCP server + Claude Code plugin commands (`/mn-build`, `/mn-recall`, `/mn-why`, …) + 8 hook entries
+6. Registers the MCP server + Claude Code plugin commands (`/mn-build`, `/mn-recall`, `/mn-why`, ...) + 8 hook entries
 7. Starts the daemon in the background and runs `mneme doctor` for a green-light verdict
 
-> **OCR caveat (v0.3.x).** The `mneme-multimodal` binary published with
-> `mneme install` runs **without** the `tesseract` feature compiled in,
-> so image OCR is opt-in only. When a `.png` / `.jpg` / `.tiff` is
-> indexed, the ImageExtractor records dimensions and EXIF only - no
-> OCR text. To enable OCR, build from source with
-> `cargo build -p mneme-multimodal --features tesseract` after
-> installing libtesseract + leptonica system packages. Whisper (audio
-> transcription) and ffmpeg (video) are similarly opt-in. v0.4 may
-> ship a fat build with Tesseract bundled; tracked in issues.md I-20.
+> **OCR in v0.3.2 (B-1 fix).** Image OCR is **on by default at runtime**:
+> `install.ps1` auto-installs `UB-Mannheim.TesseractOCR` via winget on
+> Windows (and the equivalent system package on macOS/Linux), and
+> `multimodal-bridge/src/image.rs::locate_tesseract_exe` shells out to
+> the bundled `tesseract` binary at indexing time. No rebuild needed.
+> When a `.png` / `.jpg` / `.tiff` is indexed and Tesseract is missing,
+> the ImageExtractor records dimensions + EXIF only and logs a single
+> "tesseract-missing" line - never crashes. Whisper (audio
+> transcription) and ffmpeg (video) remain compile-time opt-in features
+> on the `mneme-multimodal` crate; v0.5 plans the same runtime-shellout
+> treatment for them.
 
 ### Option 2 - From source
 
@@ -513,7 +515,7 @@ The hotfix sweeps 22+ bugs caught during real-world store-PC POS production inst
 **Install reliability**
 
 - `bun install --frozen-lockfile` now runs after extract - fixes the silent "MCP server crashed on startup" failure that hit users whose `mcp/node_modules` was missing `zod` / `@modelcontextprotocol/sdk`.
-- Plugin slash commands (`/mn-build`, `/mn-recall`, `/mn-why`, `/mn-resume`, …) now register with Claude Code on install.
+- Plugin slash commands (`/mn-build`, `/mn-recall`, `/mn-why`, `/mn-resume`, ...) now register with Claude Code on install.
 - Stage validation refuses to ship broken zips - a missing `mcp/node_modules/zod/package.json` aborts the build instead of producing a zip that crashes on first use.
 
 **Audit data integrity**
@@ -532,7 +534,7 @@ The hotfix sweeps 22+ bugs caught during real-world store-PC POS production inst
 - Heartbeat phase label updates correctly when audit starts - no more stale `phase=embed processed=8003/8003` for 13 minutes while audit was actually running.
 - `mneme build --rebuild` flag for forced clean rebuild without manual shard delete.
 - `doctor` MCP probe now echoes the child's stderr on failure (no more opaque "child closed stdout before response arrived").
-- All Unicode arrows (`→`) and middots (`·`) in user-facing console output replaced with ASCII (`->`, `*`) - fixes the `ΓåÆ` / `┬╖` mojibake on Windows console default code page.
+- All Unicode arrows (`->`) and middots (`*`) in user-facing console output replaced with ASCII (`->`, `*`) - fixes the `ΓåÆ` / `┬╖` mojibake on Windows console default code page.
 - Orphan-cleanup `Test-Path` guard - no more 41 spurious "could not remove orphan" warnings on upgrade installs.
 - PowerShell progress chatter (`Writing web request / Writing request stream`) silenced inside model downloads.
 
@@ -577,7 +579,7 @@ Full per-bug detail in [`CHANGELOG.md`](CHANGELOG.md).
 
 Full reference: [`docs/mcp-tools.md`](docs/mcp-tools.md).
 
-## 🧠 20 Expert Skills + 4 Workflow Codewords (v0.3.1+)
+## 🧠 20 Expert Skills + 4 Workflow Codewords (v0.3.2)
 
 Mneme ships 19 **fireworks skills** + a **codewords skill** that give Claude instant expertise on
 whatever you're doing - and four single-word verbs that switch how Claude engages:
@@ -593,9 +595,9 @@ whatever you're doing - and four single-word verbs that switch how Claude engage
 
 **Fireworks skills (auto-dispatched by keyword):**
 
-`architect` · `charts` · `config` · `debug` · `design` · `devops` · `estimation` ·
-`flutter` · `patterns` · `performance` · `react` · `refactor` · `research` · `review` ·
-`security` · `taskmaster` · `test` · `vscode` · `workflow`
+`architect` * `charts` * `config` * `debug` * `design` * `devops` * `estimation` *
+`flutter` * `patterns` * `performance` * `react` * `refactor` * `research` * `review` *
+`security` * `taskmaster` * `test` * `vscode` * `workflow`
 
 Each skill is a full package - `SKILL.md` (trigger rules + protocol) plus a `references/`
 folder of deep how-to docs. Skills are keyword-gated: a Rust task never fires the React skill.
@@ -666,11 +668,11 @@ Copyright © 2026 **Anish Trivedi**.
 ## 💬 Contact
 
 - **GitHub Issues** - bug reports, feature requests, commercial licensing inquiries
-  → [github.com/omanishay-cyber/mneme/issues](https://github.com/omanishay-cyber/mneme/issues)
+  -> [github.com/omanishay-cyber/mneme/issues](https://github.com/omanishay-cyber/mneme/issues)
 - **GitHub Discussions** - architecture questions, use cases, "is this a good idea?"
-  → [github.com/omanishay-cyber/mneme/discussions](https://github.com/omanishay-cyber/mneme/discussions)
+  -> [github.com/omanishay-cyber/mneme/discussions](https://github.com/omanishay-cyber/mneme/discussions)
 - **Security advisories** - private vulnerability reports
-  → [github.com/omanishay-cyber/mneme/security/advisories/new](https://github.com/omanishay-cyber/mneme/security/advisories/new)
+  -> [github.com/omanishay-cyber/mneme/security/advisories/new](https://github.com/omanishay-cyber/mneme/security/advisories/new)
 
 ---
 

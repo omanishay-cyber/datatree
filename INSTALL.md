@@ -11,7 +11,7 @@ Each script auto-detects your architecture (x64 / ARM64), downloads the matching
 ### Windows (x64 / ARM64)
 
 ```powershell
-# PowerShell · no admin needed · auto-detects PROCESSOR_ARCHITECTURE
+# PowerShell * no admin needed * auto-detects PROCESSOR_ARCHITECTURE
 iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)
 ```
 
@@ -65,7 +65,7 @@ Either path - the installer:
 7. Pulls 5 model files from the [Hugging Face Hub mirror](https://huggingface.co/aaditya4u/mneme-models) (`bge-small-en-v1.5.onnx` + `tokenizer.json` + `qwen-embed-0.5b.gguf` + `qwen-coder-0.5b.gguf` + `phi-3-mini-4k.gguf` as a single 2.23 GB file - no part-merge anymore), with GitHub Releases as automatic fallback
 8. Starts the mneme daemon in the background
 9. Registers the mneme MCP server with Claude Code: writes the `mcpServers.mneme` entry to `~/.claude.json` AND, by default (K1 fix in v0.3.2), writes the 8 mneme hook entries under `~/.claude/settings.json::hooks` so the persistent-memory pipeline (history.db, tasks.db, tool_cache.db, livestate.db) actually fills. Pass `--no-hooks` / `--skip-hooks` to opt out. Hook bodies are crash-safe: every hook binary reads STDIN JSON and exits 0 on any internal error, so a mneme bug can never block your tool calls.
-10. Registers the mneme **plugin slash commands** (`/mn-build`, `/mn-recall`, `/mn-why`, `/mn-resume`, `/mn-blast`, `/mn-doctor`, …) with Claude Code so they show up in autocomplete (B1.5 hotfix 2026-05-02)
+10. Registers the mneme **plugin slash commands** (`/mn-build`, `/mn-recall`, `/mn-why`, `/mn-resume`, `/mn-blast`, `/mn-doctor`, ...) with Claude Code so they show up in autocomplete (B1.5 hotfix 2026-05-02)
 11. Verifies post-install: every required binary present, daemon responding, MCP probe green
 
 **To verify it worked:**
@@ -100,7 +100,7 @@ If any of these print sensible output, you're set.
 
 ---
 
-## Cache management (NEW in v0.3.0 - basic ops, ship-blocker)
+## Cache management (since v0.3.0)
 
 The `~/.mneme/projects/<id>/` shards grow with each indexed project. To reclaim space:
 
@@ -161,9 +161,9 @@ must be on PATH:
 
 | Prerequisite | Why required | Install |
 |---|---|---|
-| **Bun 1.3+** | `tauri.conf.json` declares `"beforeDevCommand": "bun server.ts"` - `tauri dev` invokes Bun to start the dev API server. Production builds also need Bun to run `vite build`. | Windows: `irm bun.sh/install.ps1 \| iex` · macOS/Linux: `curl -fsSL https://bun.sh/install \| bash` |
+| **Bun 1.3+** | `tauri.conf.json` declares `"beforeDevCommand": "bun server.ts"` - `tauri dev` invokes Bun to start the dev API server. Production builds also need Bun to run `vite build`. | Windows: `irm bun.sh/install.ps1 \| iex` * macOS/Linux: `curl -fsSL https://bun.sh/install \| bash` |
 | **Rust 1.78+ + cargo** | Tauri shell compiles with `cargo build --release` inside `vision/tauri/` | Standard `rustup` install |
-| **Platform Tauri deps** | Windows: WebView2 (preinstalled on Win 11) + MSVC Build Tools · macOS: Xcode CLT · Linux: `webkit2gtk-4.1`, `libsoup-3.0`, `libgtk-3` | Per-platform - see [tauri.app/start/prerequisites](https://tauri.app/start/prerequisites/) |
+| **Platform Tauri deps** | Windows: WebView2 (preinstalled on Win 11) + MSVC Build Tools * macOS: Xcode CLT * Linux: `webkit2gtk-4.1`, `libsoup-3.0`, `libgtk-3` | Per-platform - see [tauri.app/start/prerequisites](https://tauri.app/start/prerequisites/) |
 
 Without Bun on PATH, `tauri dev` fails cryptically (the `beforeDevCommand`
 errors before Tauri reports a useful diagnostic). Production `tauri build`
@@ -270,8 +270,8 @@ Mirrors the canonical table in [`CLAUDE.md`](CLAUDE.md) §"Known limitations in 
 | WebSocket livebus relay (`/ws`) | dev-only, partial | `livebus/` crate compiles + SSE/WebSocket schema defined, but production daemon does not host the `/ws` endpoint. Used only in dev when both Bun server and Tauri are local. |
 | Voice navigation (`/api/voice`) | stub | Endpoint returns `{enabled: false, phase: "stub"}`. No voice recognition wired. |
 | Per-worker `rss_mb` on Windows | resolved (C1 in v0.3.2) | Supervisor SLA snapshot now reports real `rss_mb` values on Windows via `GetProcessMemoryInfo`. Previously always `0`. |
-| Tesseract OCR (image text) | opt-in, off by default | Shipped `mneme-multimodal` binary built without `tesseract` feature. Indexed images record dimensions + EXIF only. To enable: `cargo build -p mneme-multimodal --features tesseract` after installing libtesseract + leptonica. Tracked as I-20. |
-| Real BGE-small ONNX embeddings | opt-in via `mneme models install` | Default install runs pure-Rust hashing-trick embedder (works, lower recall). Real embeddings require `mneme models install --from-path <dir>` because `.onnx` + tokenizer aren't bundled. |
+| Tesseract OCR (image text) | **on by default at runtime in v0.3.2 (B-1 fix)** | install.ps1 auto-installs `UB-Mannheim.TesseractOCR` via winget on Windows (and the OS package on macOS/Linux). multimodal-bridge probes both `PATH` and `C:\Program Files\Tesseract-OCR\tesseract.exe` at runtime and shells out. No rebuild needed. Falls back gracefully (logs + skips) if Tesseract isn't found. Whisper / ffmpeg remain compile-time opt-in - planned for v0.5. |
+| Real BGE-small ONNX embeddings | **on by default in v0.3.2** | The bootstrap pulls 5 model files (~3.4 GB) from the HF Hub mirror at install time. ONNX Runtime 1.24.4 is bundled in `~/.mneme/bin/onnxruntime.dll`; `brain` auto-pins `ORT_DYLIB_PATH` to it on first BGE call (defeats Win11 24H2 System32 hijack). Set `MNEME_FORCE_HASH_EMBED=1` to bypass BGE if you need the pure-Rust hashing-trick fallback for any reason. |
 | Claude Code hooks | default-on (K1 fix in v0.3.2) | `mneme install` now writes the 8 hook entries under `~/.claude/settings.json::hooks` by default. Without hooks the persistent-memory pipeline (history.db, tasks.db, tool_cache.db, livestate.db) stays empty. To skip, pass `--no-hooks` / `--skip-hooks`. Every hook binary reads STDIN JSON and exits 0 on internal error - a mneme bug can never block the user's tool calls. |
 
 For the full list of what shipped, see `docs-and-memory/V0.3.0-WHATS-IN.md`. For phase-A categorisation of remaining issues, see `docs-and-memory/phase-a-issues.md`.
@@ -298,7 +298,7 @@ mneme uninstall --all --purge-state
 - Run `mneme doctor` to see what's missing
 - Verify `mneme.exe` is on PATH (`where mneme` in PowerShell)
 - Verify `~/.claude.json` has `mcpServers.mneme.command` pointing at `mneme.exe` (or full path)
-- The v0.3.0 installer writes the absolute path via `which::which("mneme")` (closes I-1 from VMware audit)
+- The installer (since v0.3.0) writes the absolute path via `which::which("mneme")` (closes I-1 from VMware audit)
 
 **Install fails with "FATAL: N mneme process(es) still running":**
 - Close any open VS Code with mneme MCP active, or any other Claude session

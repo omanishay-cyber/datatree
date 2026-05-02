@@ -34,7 +34,7 @@ Thanks for the interest. Short rules, long explanation below.
 - Breaking changes to the 22-layer schema
 - Changes to the Step Ledger or Command Center behaviour
 - Changes to the license or governance
-- Swapping runtime deps (Bun → Node, candle → ort, etc.)
+- Swapping runtime deps (Bun -> Node, candle -> ort, etc.)
 - Anything touching the install flow
 
 ## Local development

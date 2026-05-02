@@ -46,6 +46,10 @@ Detailed engineering backlog lives in [`docs/dev/v0.4-backlog.md`](docs/dev/v0.4
   flags - see `docs-and-memory/phase-a-issues.md` and ROADMAP I-20).
   Supervised multi-process architecture.
 - Known critical install bugs - see CHANGELOG entry for v0.3.1.
+- Note: as of v0.3.2 the tool count is **48** and image OCR ships
+  on-by-default via runtime shellout (B-1 fix); BGE-small ONNX
+  embeddings are also on-by-default (auto-pulled from the HF Hub
+  mirror). The opt-in language above is historical for v0.3.0.
 - Known v0.3 limitations (vision app, voice nav stub, livebus prod gap,
   Windows `rss_mb`): see `docs-and-memory/phase-a-issues.md` and the
   "Known limitations in v0.3" section in `CLAUDE.md`.

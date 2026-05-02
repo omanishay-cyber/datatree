@@ -129,9 +129,9 @@ Add a "v0.3 Known Limitations" section to README.md that mirrors `CLAUDE.md`'s. 
 
 ### B3.1 - J2 git-history-derived intent heuristics
 git.db is now populated. Mine it:
-- File last touched > 1 year + low churn → `intent='frozen'`, `source='git'`, `confidence=0.6`
-- File with high TODO/FIXME density + recent churn → `intent='deferred'`, `source='git'`, `confidence=0.5`
-- Commit message contains `verbatim` / `do not touch` → `intent='frozen'`, confidence=0.8
+- File last touched > 1 year + low churn -> `intent='frozen'`, `source='git'`, `confidence=0.6`
+- File with high TODO/FIXME density + recent churn -> `intent='deferred'`, `source='git'`, `confidence=0.5`
+- Commit message contains `verbatim` / `do not touch` -> `intent='frozen'`, confidence=0.8
 
 Pass: new `run_git_intent_pass` after `run_intent_pass` in `cli/src/commands/build.rs`. Only writes when `file_intent` row doesn't already exist (annotation-source has priority).
 
@@ -149,7 +149,7 @@ At `<project_root>/intent.config.json`:
 Pass: parse + apply globs to file paths. Source: `convention`, confidence 0.9.
 
 ### B3.3 - J5 LLM-inferred intent fallback
-Depends on K4 (local LLM installed). For files with no annotation/git/convention signal, prompt local LLM with file head + last 10 commit messages → classify. Cache per file_hash.
+Depends on K4 (local LLM installed). For files with no annotation/git/convention signal, prompt local LLM with file head + last 10 commit messages -> classify. Cache per file_hash.
 
 ### B3.4 - J6 INTENT.md per-directory annotations
 Parse `INTENT.md` files in any directory, format:
@@ -167,7 +167,7 @@ Already partially in: `intent: N files annotated (annotations=N, inferred=N)`. E
 ## Phase B4 - Operational hardening
 
 ### B4.1 - K10 chaos tests
-Test scenarios: worker crash mid-build (verify supervisor restart), shard corruption (verify recovery), disk fill (verify graceful abort), concurrent `mneme build .` x2 on same project (verify lock), daemon kill via Task Manager (verify next invocation reattaches), build interrupt with Ctrl+C (verify resumes from checkpoint), upgrade 0.2 → 0.3 schema migration.
+Test scenarios: worker crash mid-build (verify supervisor restart), shard corruption (verify recovery), disk fill (verify graceful abort), concurrent `mneme build .` x2 on same project (verify lock), daemon kill via Task Manager (verify next invocation reattaches), build interrupt with Ctrl+C (verify resumes from checkpoint), upgrade 0.2 -> 0.3 schema migration.
 
 ### B4.2 - F2 WebSocket /ws livebus relay
 Add `axum::extract::ws` route in `supervisor/src/api_graph.rs` (or new `supervisor/src/ws.rs`). Forward to livebus worker IPC. Closes `phase-a-issues §F2`.
@@ -202,8 +202,8 @@ Copy-Item "$env:USERPROFILE\creds-backup.json" "$env:USERPROFILE\.claude\.creden
 iwr -useb https://raw.githubusercontent.com/omanishay-cyber/mneme/main/scripts/install.ps1 | iex
 
 # Stress matrix:
-#   33 CLI subcommands tested (mneme --help → enumerate → invoke each)
-#   48 MCP tools tested (claude mcp list → for each → invoke via /mn-X)
+#   33 CLI subcommands tested (mneme --help -> enumerate -> invoke each)
+#   48 MCP tools tested (claude mcp list -> for each -> invoke via /mn-X)
 #   17 slash commands tested
 #   8 hooks fired (UserPromptSubmit, SessionStart, PreToolUse, PostToolUse, Stop, SessionEnd, PreCompact, SubagentStop)
 #   26 skills loaded
@@ -243,7 +243,7 @@ K18 + K19 code is in but the `--all --purge-state` flag wasn't tested end-to-end
 B1.1 F1 vision data layer        ← biggest user-visible
 B1.2 I1 batch 2 (5 more shards)  ← biggest "is mneme alive?" signal
 B1.3 C-section telemetry redo    ← lost work, redo
-B1.4 J9 capture→recall integration ← unlocks mneme as memory-layer
+B1.4 J9 capture->recall integration ← unlocks mneme as memory-layer
 ─── new bundle iteration ───
 B2.x polish
 B3.x intent layer expansion
