@@ -2,7 +2,7 @@
 
 > **For agentic workers:** This plan is the source of truth for tonight's work. Update status inline as work progresses.
 
-**Goal:** Deliver `C:\Users\Anish\Desktop\mneme final.zip` — a complete, fully-working Mneme package (source + release binaries + models + docs) with zero open Wave 2 bugs, verified end-to-end on the VMware VM.
+**Goal:** Deliver `mneme final.zip` — a complete, fully-working Mneme package (source + release binaries + models + docs) with zero open Wave 2 bugs, verified end-to-end on the VMware VM.
 
 **Architecture (testing protocol — per user instruction):**
 
@@ -164,7 +164,7 @@ Both touch `cli/src/ipc.rs` + `cli/src/commands/build.rs` so handle together to 
     - `INSTALL.md` — installation instructions
     - `CHANGELOG.md` — including [Unreleased] entries for Wave 2 fixes
     - `VERIFIED.md` — test results from Phase D
-- [ ] E.2 Place at `C:\Users\Anish\Desktop\mneme final.zip`
+- [ ] E.2 Place at `$env:USERPROFILE\Desktop\mneme final.zip`
 - [ ] E.3 Append CHANGELOG entries with file:line citations and verification evidence
 - [ ] E.4 Update `MEMORY.md` and `project_mneme_rebuild.md` with final state
 

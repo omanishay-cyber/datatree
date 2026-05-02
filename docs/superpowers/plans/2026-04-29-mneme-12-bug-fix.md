@@ -216,7 +216,7 @@ if (-not (Get-Command sqlite3 -ErrorAction SilentlyContinue)) {
 
 ## Task H — `drop_standalone_uninstaller` reliability + integration test
 
-**Bug:** Postmortem §6 — file did not exist after install on POS. Code at `cli/src/commands/install.rs:574` is wired but the function may have failed silently (line 244 `warn!(error = %e, ...)` swallows).
+**Bug:** Postmortem §6 — file did not exist after install on the AWS test fleet. Code at `cli/src/commands/install.rs:574` is wired but the function may have failed silently (line 244 `warn!(error = %e, ...)` swallows).
 
 **Files:**
 - Modify: `cli/src/commands/install.rs::drop_standalone_uninstaller` — fail loud (return error to caller), confirm `include_str!("../../../scripts/uninstall.ps1")` resolves at compile time, write to `~/.mneme/uninstall.ps1` with verified bytes.
@@ -350,7 +350,7 @@ if (-not (Get-Command sqlite3 -ErrorAction SilentlyContinue)) {
 - [ ] **R1.4** Restore credentials.
 - [ ] **R1.5** Upload final.zip + install.ps1.
 - [ ] **R1.6** Run install fresh per START-HERE.md verbatim — count visible console windows = 0.
-- [ ] **R1.7** Drive `claude --print --model claude-haiku-4-5` with Anish-proxy prompts.
+- [ ] **R1.7** Drive `claude --print --model claude-haiku-4-5` with maintainer-proxy prompts.
 - [ ] **R1.8** Assert: 0 visible windows, single mneme-daemon PID across 30 min, 22 workers steady, 48/48 MCP tools, 8/8 hooks, history.db.turns + tasks.db.ledger_entries + tool_cache.db.tool_calls all > 0.
 
 ## Phase REAL-2 (per `feedback_mneme_stress_test_protocol.md`)

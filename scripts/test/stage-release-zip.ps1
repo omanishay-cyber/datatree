@@ -17,12 +17,12 @@
 #   uninstall.ps1             - same K19 standalone, dropped at zip root for visibility
 #   VERSION.txt               - "0.3.2" + git commit if present
 #
-# Author: Anish Trivedi.
+# Authors: Anish Trivedi & Kruti Trivedi.
 # Apache-2.0.
 
 [CmdletBinding()]
 param(
-    [string]$SourceRoot = "C:\Users\Anish\Desktop\New folder (2)\source",
+    [string]$SourceRoot = "$env:USERPROFILE\Desktop\mneme-source",
     [string]$Version = "0.3.2",
     [string]$OutZip = "$env:USERPROFILE\Desktop\mneme-v0.3.2-windows-x64.zip",
     [string]$StageDir = "$env:USERPROFILE\Desktop\mneme-stage",
@@ -162,7 +162,7 @@ $stageMcp = Join-Path $StageDir "mcp"
 
 # B2 (2026-05-02): pre-stage validation gate. If source mcp/node_modules/
 # is missing zod or @modelcontextprotocol/sdk, the staged zip will ship
-# broken (POS install 2026-05-02 hit ENOENT for zod). Run bun install
+# broken (AWS install test 2026-05-02 hit ENOENT for zod). Run bun install
 # --frozen-lockfile to repopulate, then HARD-FAIL if the deps still
 # aren't there. Belt + suspenders with B1 (install.ps1 also runs bun
 # install at install time on the user's machine).
@@ -179,7 +179,7 @@ if (-not (Test-Path $zodPkgJson) -or -not (Test-Path $sdkPkgJson)) {
     } finally { Pop-Location }
 }
 if (-not (Test-Path $zodPkgJson)) {
-    Fail "mcp/node_modules/zod/package.json STILL missing after bun install - refusing to stage broken zip (B2 / 2026-05-02 POS install bug)"
+    Fail "mcp/node_modules/zod/package.json STILL missing after bun install - refusing to stage broken zip (B2 / 2026-05-02 AWS install bug)"
 }
 if (-not (Test-Path $sdkPkgJson)) {
     Fail "mcp/node_modules/@modelcontextprotocol/sdk/package.json STILL missing after bun install - refusing to stage broken zip"

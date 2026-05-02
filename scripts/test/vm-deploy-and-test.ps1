@@ -12,7 +12,7 @@
 #
 # Captures all results into a JSON report at $ResultsPath.
 #
-# Author: Anish Trivedi (auto-orchestrator generated 2026-04-29).
+# Authors: Anish Trivedi & Kruti Trivedi (auto-orchestrator generated 2026-04-29).
 # Usage:
 #   pwsh -File scripts/test/vm-deploy-and-test.ps1
 #   pwsh -File scripts/test/vm-deploy-and-test.ps1 -SkipUpload   # iterate fast
@@ -24,7 +24,7 @@ param(
     [string]$VmUser = 'user',
     [string]$VmPassword = 'Mneme2026!',
     [string]$ZipPath = "$env:USERPROFILE\Desktop\mneme-v0.3.2-windows-x64.zip",
-    [string]$InstallScriptPath = "C:\Users\Anish\Desktop\New folder (2)\source\scripts\install.ps1",
+    [string]$InstallScriptPath = "$env:USERPROFILE\Desktop\mneme-source\scripts\install.ps1",
     [string]$ResultsPath = "$env:USERPROFILE\Desktop\vm-test-results-2026-04-29.json",
     [switch]$SkipUpload,
     [switch]$DryRun

@@ -18,7 +18,7 @@
 #   - Touch the user's Claude Code creds (~/.claude/.credentials.json)
 #   - Remove unrelated Claude Code config (only mneme-marked hook entries)
 #
-# Apache-2.0 (c) 2026 Anish Trivedi.
+# Apache-2.0 (c) 2026 Anish Trivedi & Kruti Trivedi.
 
 [CmdletBinding()]
 param(

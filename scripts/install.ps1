@@ -585,7 +585,7 @@ if ($GitExe) {
 
 # --- 1d. Dev-toolchain auto-install (G1-G10 from phase-a-issues.md) ---------
 #
-# G-fix (Anish 2026-04-26): "mneme should check, host pc has bun, rust,
+# G-fix (project directive 2026-04-26): "mneme should check, host pc has bun, rust,
 # sqlite, node, python, cargo all others installed or not and it should
 # pull installation and setup environment as i didnt have tauri yesterday
 # and went into issues."
@@ -1076,7 +1076,7 @@ if ($UsePreExtracted) {
     # run/, install-receipts/, meta.db). Without this step, files
     # present in v0.3.0 but absent in v0.3.2 (or vice versa) can stick
     # around and confuse the daemon -- exactly the "stale shit bugs us"
-    # symptom Anish flagged.
+    # symptom users flagged.
     $StaleCodeDirs = @('bin', 'mcp', 'scripts', 'plugin', 'static')
     $cleanedAny = $false
     foreach ($d in $StaleCodeDirs) {
@@ -1124,7 +1124,7 @@ if ($UsePreExtracted) {
                 # in the first place) don't trigger a "could not remove
                 # orphan" warning. The end-of-loop "removed N orphan(s)"
                 # summary line still prints — it's the per-file warnings
-                # that were noisy (41 fired on a typical POS upgrade).
+                # that were noisy (41 fired on a typical AWS upgrade).
                 if (Test-Path -LiteralPath $abs) {
                     try {
                         Remove-Item -LiteralPath $abs -Force -ErrorAction SilentlyContinue
@@ -1325,7 +1325,7 @@ if (-not ($UserPath.Split(';') -contains $BinDir)) {
 # Step 5b - Clear Bun's install cache to prevent stale-bytecode failures
 # ============================================================================
 #
-# Anish 2026-04-26: on EC2 we hit `SyntaxError: Export named '$ZodTuple'
+# Project finding 2026-04-26: on EC2 we hit `SyntaxError: Export named '$ZodTuple'
 # not found in module 'zod/v4/core/schemas.js'` even with a fresh
 # bun install + identical zod version + identical schemas.js SHA256.
 # Clearing `~/.bun/install/cache` and `%LOCALAPPDATA%/Bun/Cache` resolved
@@ -1446,7 +1446,7 @@ if (-not $NoBunCacheClear) {
     # B1 (2026-05-02): actually run `bun install --frozen-lockfile` in mcp/.
     # Without this the staged ~/.mneme/mcp/node_modules/ may be missing zod /
     # @modelcontextprotocol/sdk / ajv (B2 silently shipped an empty
-    # node_modules from POS install 2026-05-02). Bun starts MCP server and
+    # node_modules from AWS install test 2026-05-02). Bun starts MCP server and
     # immediately ENOENTs on the first import. The cache wipe above prevents
     # stale bytecode; this step ensures the deps actually exist on disk.
     Push-Location "$BinDir\..\mcp"

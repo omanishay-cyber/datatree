@@ -1,4 +1,4 @@
-# stage-final-zip.ps1 - assemble C:\Users\Anish\Desktop\mneme final.zip
+# stage-final-zip.ps1 - assemble $env:USERPROFILE\Desktop\mneme final.zip
 #
 # This is the Phase E final deliverable. Bundles:
 #   - source/                         (the full source tree, this bundle)
@@ -11,14 +11,14 @@
 #   - VERIFIED.md                     (test results from Phase D, written by VM orchestrator)
 #   - VERSION.txt                     (0.3.2 + build metadata)
 #
-# Output: C:\Users\Anish\Desktop\mneme final.zip
+# Output: $env:USERPROFILE\Desktop\mneme final.zip
 #
-# Author: Anish Trivedi.
+# Authors: Anish Trivedi & Kruti Trivedi.
 # ASCII-only - PowerShell 5.1 cp1252 safe.
 
 [CmdletBinding()]
 param(
-    [string]$SourceRoot = "C:\Users\Anish\Desktop\New folder (2)\source",
+    [string]$SourceRoot = "$env:USERPROFILE\Desktop\mneme-source",
     [string]$ReleaseZip = "$env:USERPROFILE\Desktop\mneme-v0.3.2-windows-x64.zip",
     [string]$VerifiedMd = "$env:USERPROFILE\Desktop\VERIFIED.md",
     [string]$VmResultsJson = "$env:USERPROFILE\Desktop\vm-test-results-2026-04-29.json",

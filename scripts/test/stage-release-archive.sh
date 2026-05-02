@@ -31,7 +31,7 @@
 #   --stage-dir <path>     Intermediate staging directory (default: ./mneme-stage)
 #   --force                Overwrite existing stage-dir / output without prompting
 #
-# Author: Anish Trivedi. Apache-2.0.
+# Authors: Anish Trivedi & Kruti Trivedi. Apache-2.0.
 
 set -euo pipefail
 
@@ -196,7 +196,7 @@ if [[ ! -f "$ZOD_PKG" ]] || [[ ! -f "$SDK_PKG" ]]; then
   bun install --frozen-lockfile
   popd > /dev/null
 fi
-[[ -f "$ZOD_PKG" ]] || fail "mcp/node_modules/zod/package.json STILL missing after bun install — refusing to stage broken archive (B2 / 2026-05-02 POS install bug)"
+[[ -f "$ZOD_PKG" ]] || fail "mcp/node_modules/zod/package.json STILL missing after bun install — refusing to stage broken archive (B2 / 2026-05-02 AWS install bug)"
 [[ -f "$SDK_PKG" ]] || fail "mcp/node_modules/@modelcontextprotocol/sdk/package.json STILL missing after bun install — refusing to stage broken archive"
 ok "mcp/node_modules has zod + @modelcontextprotocol/sdk"
 
