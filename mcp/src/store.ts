@@ -115,7 +115,8 @@ export function resolveShardRoot(cwdOverride?: string): string | null {
   if (existsSync(projectsDir)) {
     try {
       const entries = readdirSync(projectsDir);
-      if (entries.length === 1) return join(projectsDir, entries[0]);
+      const onlyEntry = entries[0];
+      if (entries.length === 1 && onlyEntry !== undefined) return join(projectsDir, onlyEntry);
     } catch {
       // ignore
     }

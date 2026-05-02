@@ -20,6 +20,7 @@
  */
 
 import { query as dbQuery, livebus } from "../db.ts";
+import { errMsg } from "../errors.ts";
 import type { Constraint, HookOutput } from "../types.ts";
 
 export interface PreToolArgs {

@@ -10,6 +10,7 @@
 
 import { buildSmartInject } from "../composer.ts";
 import { livebus } from "../db.ts";
+import { errMsg } from "../errors.ts";
 import type { HookOutput } from "../types.ts";
 
 export interface InjectArgs {

@@ -11,6 +11,7 @@
  */
 
 import { query as dbQuery, livebus } from "../db.ts";
+import { errMsg } from "../errors.ts";
 import type { HookOutput } from "../types.ts";
 import { processTurn } from "../transcript_watcher.ts";
 import {

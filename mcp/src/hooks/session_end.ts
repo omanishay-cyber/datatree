@@ -9,6 +9,7 @@
  */
 
 import { inject, lifecycle, livebus } from "../db.ts";
+import { errMsg } from "../errors.ts";
 import type { HookOutput } from "../types.ts";
 
 export interface SessionEndArgs {
