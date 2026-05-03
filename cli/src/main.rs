@@ -24,6 +24,7 @@
 //! mneme godnodes [--n=N]
 //! mneme drift [--severity=...]
 //! mneme history <query> [--since=...]
+//! mneme graph-diff <from> <to> [--format=json|table|markdown] [--files=...] [--node-type=...]
 //! mneme snap
 //! mneme doctor
 //! mneme rebuild
@@ -134,6 +135,12 @@ enum Command {
     Drift(commands::drift::DriftArgs),
     /// Search the conversation history.
     History(commands::history::HistoryArgs),
+    /// Show what changed between two graph snapshots: nodes added /
+    /// removed / modified / renamed, plus optional edge-level changes.
+    /// Snapshot identifiers accept labels, `HEAD`, `HEAD~N`, and
+    /// explicit `.db` paths.
+    #[command(name = "graph-diff")]
+    GraphDiff(commands::graph_diff::GraphDiffArgs),
     /// Take a manual snapshot of the active shard.
     Snap(commands::snap::SnapArgs),
     /// Self-test the running daemon and shards.
@@ -225,6 +232,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
         Command::Godnodes(args) => commands::godnodes::run(args, socket_override).await,
         Command::Drift(args) => commands::drift::run(args, socket_override).await,
         Command::History(args) => commands::history::run(args).await,
+        Command::GraphDiff(args) => commands::graph_diff::run(args).await,
         Command::Snap(args) => commands::snap::run(args, socket_override).await,
         Command::Doctor(args) => commands::doctor::run(args, socket_override).await,
         Command::Rebuild(args) => commands::rebuild::run(args, socket_override).await,

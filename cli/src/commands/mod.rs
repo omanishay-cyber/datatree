@@ -15,6 +15,7 @@ pub mod doctor;
 pub mod drift;
 pub mod federated;
 pub mod godnodes;
+pub mod graph_diff;
 pub mod graphify;
 pub mod history;
 pub mod inject;
