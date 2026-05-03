@@ -306,7 +306,7 @@ export function graphStats(cwdOverride?: string): {
  */
 export function blastRadius(
   target: string,
-  maxDepth: number = 2,
+  maxDepth: number = 1,
   cwdOverride?: string,
 ): {
   node: string;
@@ -3187,25 +3187,49 @@ export function surprisingPairsFallback(
   reasoning: string;
 }> {
   const edges = withShard<
-    Array<{ s: string; t: string; kind: string }>
+    Array<{ s: string; t: string; kind: string; sf: string | null; tf: string | null }>
   >(
     "graph",
     (db) =>
       db
         .prepare(
-          `SELECT source_qualified AS s, target_qualified AS t, kind
-             FROM edges
-            WHERE kind IN ('imports','references','calls')
+          // Bench gap (2026-05-02 v0.3.2 hotfix #3): also pull file_path
+          // for both endpoints so we can filter out vendored / archive /
+          // build-output noise BEFORE computing community membership.
+          // Without this filter, surprising_connections on a TS app
+          // surfaced Python report builders from `docs/archive/superdesign/`
+          // as "surprising" cross-community edges — pure noise.
+          `SELECT e.source_qualified AS s,
+                  e.target_qualified AS t,
+                  e.kind             AS kind,
+                  ns.file_path       AS sf,
+                  nt.file_path       AS tf
+             FROM edges e
+             LEFT JOIN nodes ns ON ns.qualified_name = e.source_qualified
+             LEFT JOIN nodes nt ON nt.qualified_name = e.target_qualified
+            WHERE e.kind IN ('imports','references','calls')
             LIMIT ?`,
         )
-        .all(limit * 6) as Array<{ s: string; t: string; kind: string }>,
+        .all(limit * 6) as Array<{
+          s: string;
+          t: string;
+          kind: string;
+          sf: string | null;
+          tf: string | null;
+        }>,
     [],
     cwdOverride,
   );
   if (edges.length === 0) return [];
 
+  const filtered = edges.filter(
+    (e) => !isIgnoredGraphPath(e.sf) && !isIgnoredGraphPath(e.tf)
+           && !isIgnoredGraphPath(e.s) && !isIgnoredGraphPath(e.t),
+  );
+  if (filtered.length === 0) return [];
+
   const names = new Set<string>();
-  for (const e of edges) {
+  for (const e of filtered) {
     names.add(e.s);
     names.add(e.t);
   }
@@ -3220,7 +3244,7 @@ export function surprisingPairsFallback(
     target_community: number;
     reasoning: string;
   }> = [];
-  for (const e of edges) {
+  for (const e of filtered) {
     const sc = comm[e.s];
     const tc = comm[e.t];
     if (sc === undefined || tc === undefined) continue;
@@ -3239,6 +3263,58 @@ export function surprisingPairsFallback(
     if (out.length >= limit) break;
   }
   return out;
+}
+
+/**
+ * Returns true if `p` (a file path or qualified_name embedding a file path)
+ * matches one of the standard "noise" segments — archived docs, vendored
+ * source, build outputs, dependency directories, or VCS metadata. These
+ * are filtered out of `surprising_connections` (and any other graph
+ * surfacing) so user-visible results don't get drowned in noise.
+ *
+ * Pattern set is intentionally conservative — we only filter segments
+ * that are universally recognised as machine-generated, vendored, or
+ * archived. Project-specific noise should be added to a real `.gitignore`
+ * (and respected by the scanner, which is a separate item).
+ */
+const IGNORED_PATH_SEGMENTS: ReadonlyArray<string> = [
+  "node_modules",
+  "vendor",
+  "target",
+  "dist",
+  "build",
+  ".cache",
+  ".git",
+  ".next",
+  ".turbo",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "coverage",
+  "out",
+];
+
+const IGNORED_PATH_PREFIXES: ReadonlyArray<string> = [
+  "docs/archive/",
+  "docs\\archive\\",
+];
+
+export function isIgnoredGraphPath(p: string | null | undefined): boolean {
+  if (!p) return false;
+  // Normalise both Windows and POSIX separators.
+  const norm = p.replace(/\\/g, "/").toLowerCase();
+  for (const pre of IGNORED_PATH_PREFIXES) {
+    const lower = pre.replace(/\\/g, "/").toLowerCase();
+    if (norm.includes(lower)) return true;
+  }
+  for (const seg of IGNORED_PATH_SEGMENTS) {
+    const lower = seg.toLowerCase();
+    // Match `/seg/` so `vendor` doesn't match `vendor-list.ts`.
+    if (norm.includes(`/${lower}/`)) return true;
+    // Also match a leading-segment hit (`node_modules/...`).
+    if (norm.startsWith(`${lower}/`)) return true;
+  }
+  return false;
 }
 
 /**

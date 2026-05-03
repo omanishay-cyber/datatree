@@ -37,7 +37,23 @@ export const FileIntentOutput = z.object({
   source: z.string(),
   confidence: z.number().min(0).max(1),
   annotated_at: z.string().nullable(),
+  // v0.3.2 hotfix: when no annotation exists, also surface
+  // `annotation_found: false` and a `hint` so the caller knows what's
+  // happening (silent "unknown" used to make Claude keep re-querying
+  // un-annotated files expecting useful results).
+  annotation_found: z.boolean().default(true),
+  hint: z.string().nullable().default(null),
 });
+
+const NO_ANNOTATION_HINT =
+  "no @mneme-intent: annotation found in this file. " +
+  "Add a JSDoc/comment near the top of the file like " +
+  "`// @mneme-intent: payment processing UI` " +
+  "(or `# @mneme-intent: ...` for Python/Ruby/shell, " +
+  "`/** @mneme-intent: ... */` for JSDoc, etc.) " +
+  "to make this file discoverable by intent-based recall and to " +
+  "let refactor planners respect freeze/stable/deferred markers. " +
+  "Re-run `mneme build` after adding the annotation.";
 
 export const tool: ToolDescriptor<
   ReturnType<typeof FileIntentInput.parse>,
@@ -45,7 +61,7 @@ export const tool: ToolDescriptor<
 > = {
   name: "file_intent",
   description:
-    "Get the per-file intent annotation (frozen / stable / deferred / experimental / drift / unknown). Use this BEFORE recommending refactors so you don't propose changes to files explicitly marked frozen-by-intent (verbatim formulas, locked-down API shapes, etc.). Annotations come from `@mneme-intent:` magic comments parsed at build time.",
+    "Get the per-file intent annotation (frozen / stable / deferred / experimental / drift / unknown). Use this BEFORE recommending refactors so you don't propose changes to files explicitly marked frozen-by-intent (verbatim formulas, locked-down API shapes, etc.). Annotations come from `@mneme-intent:` magic comments parsed at build time. When a file has NO annotation, the response sets `annotation_found: false` and a `hint` explaining how to add one — do not call repeatedly on un-annotated files expecting different results; either the file is annotated or it is not.",
   inputSchema: FileIntentInput,
   outputSchema: FileIntentOutput,
   category: "recall",
@@ -57,6 +73,10 @@ export const tool: ToolDescriptor<
         source: "missing-shard",
         confidence: 0,
         annotated_at: null,
+        annotation_found: false,
+        hint:
+          "memory shard is missing — run `mneme build` first so the " +
+          "intent annotations get persisted. " + NO_ANNOTATION_HINT,
       };
     }
     const result = withShard(
@@ -93,6 +113,8 @@ export const tool: ToolDescriptor<
         source: "no-record",
         confidence: 0,
         annotated_at: null,
+        annotation_found: false,
+        hint: NO_ANNOTATION_HINT,
       };
     }
     return {
@@ -101,6 +123,8 @@ export const tool: ToolDescriptor<
       source: result.source,
       confidence: result.confidence,
       annotated_at: result.annotated_at,
+      annotation_found: true,
+      hint: null,
     };
   },
 };

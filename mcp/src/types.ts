@@ -192,7 +192,11 @@ export const RecallConstraintOutput = z.object({
 
 export const BlastRadiusInput = z.object({
   target: z.string().min(1),
-  depth: z.number().int().positive().max(10).default(3),
+  // Default depth=1 to keep responses small enough for an LLM context.
+  // Power users opt into the deep walk via `depth: 5` (or larger) or
+  // by passing `deep: true` (which expands to `depth=5`).
+  depth: z.number().int().positive().max(10).default(1),
+  deep: z.boolean().default(false),
   include_tests: z.boolean().default(true),
 });
 

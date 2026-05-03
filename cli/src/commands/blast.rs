@@ -32,8 +32,15 @@ pub struct BlastArgs {
 
     /// Max traversal depth. 1 = direct dependents only. Clamped at
     /// parse-time to 1..=64 (REG-022 spirit: no unbounded fan-out).
-    #[arg(long, default_value_t = 2, value_parser = clap::value_parser!(u64).range(1..=64))]
+    /// Default of 1 keeps responses small; pass `--depth 5` or `--deep`
+    /// for transitive walks on highly-connected nodes.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u64).range(1..=64))]
     pub depth: u64,
+
+    /// Convenience flag: equivalent to `--depth 5`. Ignored if `--depth`
+    /// is also passed explicitly with a value > 1.
+    #[arg(long, default_value_t = false)]
+    pub deep: bool,
 
     /// Project root to query. Defaults to CWD.
     #[arg(long)]
@@ -53,7 +60,13 @@ pub async fn run(args: BlastArgs, socket_override: Option<PathBuf>) -> CliResult
     }
 
     let project_root = resolve_project_root(args.project.clone());
-    let depth = args.depth as usize;
+    // `--deep` expands to depth=5 only when `--depth` is at the default (1).
+    // An explicit `--depth N` with N > 1 wins over `--deep`.
+    let depth = if args.deep && args.depth == 1 {
+        5usize
+    } else {
+        args.depth as usize
+    };
 
     let client = make_client(socket_override);
     if client.is_running().await {
@@ -265,7 +278,8 @@ mod tests {
         // REG-006: blast must reject an empty/whitespace target up-front.
         let args = BlastArgs {
             target: "   ".to_string(),
-            depth: 2,
+            depth: 1,
+            deep: false,
             project: None,
         };
         let r = run(args, Some(PathBuf::from("/nope-mneme.sock"))).await;
@@ -286,11 +300,22 @@ mod tests {
 
     #[test]
     fn blast_args_parse_with_default_depth() {
-        // Target alone must parse; depth defaults to 2.
+        // Target alone must parse; depth defaults to 1 (direct neighbours
+        // only). Power users opt into deeper walks via --depth N or --deep.
         let h = Harness::try_parse_from(["x", "myFunc"]).unwrap();
         assert_eq!(h.args.target, "myFunc");
-        assert_eq!(h.args.depth, 2);
+        assert_eq!(h.args.depth, 1);
+        assert!(!h.args.deep);
         assert!(h.args.project.is_none());
+    }
+
+    #[test]
+    fn blast_args_parse_with_deep_flag() {
+        // --deep should set deep=true while leaving depth at the default 1
+        // — the run() function expands deep=true + depth=1 into depth=5.
+        let h = Harness::try_parse_from(["x", "myFunc", "--deep"]).unwrap();
+        assert_eq!(h.args.depth, 1);
+        assert!(h.args.deep);
     }
 
     #[test]

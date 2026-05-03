@@ -130,6 +130,56 @@ async fn extracts_typescript_functions() {
         fns
     );
     assert!(fns.iter().any(|n| n.name == "alpha"));
+    // v0.3.2 hotfix: arrow-function-bound consts must be named after the
+    // binding (`beta`), not silently captured as anonymous Function nodes.
+    assert!(
+        fns.iter().any(|n| n.name == "beta"),
+        "expected named Function `beta` from `const beta = (y) => ...`, \
+         got {:?}",
+        fns.iter().map(|n| &n.name).collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn extracts_react_fc_arrow_components() {
+    // v0.3.2 hotfix verification: React FCs declared as
+    //   `const Foo = () => <div/>`
+    //   `const Bar: React.FC = () => <div/>`
+    //   `const Baz: FC<Props> = (props) => <div/>`
+    //   `export const Qux = () => <div/>`
+    // must surface as named Function nodes — without this, find_references
+    // / recall on `Foo` returns 0 hits even though the component is the
+    // only declaration in the file (real-world bug from orion debug).
+    let pool = pool();
+    let inc = IncrementalParser::new(pool);
+    let src = r#"
+        import React, { FC } from 'react';
+        const Foo = () => <div/>;
+        const Bar: React.FC = () => <div/>;
+        const Baz: FC<Props> = (props) => <div/>;
+        export const Qux = () => <div/>;
+        Foo();
+    "#;
+    let tree = parse_once(&inc, "components.tsx", Language::Tsx, src).await;
+    let extractor = Extractor::new(Language::Tsx);
+    let g = extractor
+        .extract(&tree, src.as_bytes(), &PathBuf::from("components.tsx"))
+        .expect("extract");
+
+    let fns: Vec<_> = g
+        .nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Function)
+        .collect();
+    let named: Vec<&str> = fns.iter().map(|n| n.name.as_str()).collect();
+
+    for expected in ["Foo", "Bar", "Baz", "Qux"] {
+        assert!(
+            named.contains(&expected),
+            "expected React FC `{expected}` in extracted Function nodes, \
+             got {named:?}"
+        );
+    }
 }
 
 #[tokio::test]

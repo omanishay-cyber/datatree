@@ -129,11 +129,36 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
     match (lang, kind) {
         // ---------------- TypeScript / TSX ----------------------------------
         (Language::TypeScript | Language::Tsx, QueryKind::Functions) => {
+            // v0.3.2 hotfix: catch React FC / arrow-function-bound consts —
+            // `const Foo = () => ...`, `const Foo = function() {...}`,
+            // `const Foo: FC = () => ...`. Without these, find_references
+            // and recall on arrow-function components returns 0 hits.
+            //
+            // The standalone `(arrow_function) @function` capture STAYS so
+            // the existing call-edge anchoring (which keys on the
+            // arrow_function's start_byte via `enclosing_callable`) keeps
+            // working. The new variable_declarator + assignment_expression
+            // captures emit ADDITIONAL Function nodes named after the
+            // binding (`Foo`) at the declarator's start_byte, so name-based
+            // lookups (find_references, recall, blast on a name) resolve.
+            // Both nodes coexist with distinct stable_ids — no collision.
             r#"
             (function_declaration name: (identifier) @name) @function
             (method_definition name: (property_identifier) @name) @function
             (function_expression name: (identifier)? @name) @function
             (arrow_function) @function
+            (variable_declarator
+                name: (identifier) @name
+                value: (arrow_function)) @function
+            (variable_declarator
+                name: (identifier) @name
+                value: (function_expression)) @function
+            (assignment_expression
+                left: (identifier) @name
+                right: (arrow_function)) @function
+            (assignment_expression
+                left: (identifier) @name
+                right: (function_expression)) @function
             "#
         }
         (Language::TypeScript | Language::Tsx, QueryKind::Classes) => {
@@ -167,11 +192,28 @@ fn pattern_for(lang: Language, kind: QueryKind) -> &'static str {
 
         // ---------------- JavaScript / JSX ----------------------------------
         (Language::JavaScript | Language::Jsx, QueryKind::Functions) => {
+            // v0.3.2 hotfix: same React FC fix as TS/TSX — catch
+            // `const Foo = () => ...` and `const Foo = function() {...}`.
+            // See the TS branch above for the full rationale (standalone
+            // arrow_function capture STAYS for call-edge anchoring; the
+            // named variable_declarator captures are additive).
             r#"
             (function_declaration name: (identifier) @name) @function
             (method_definition name: (property_identifier) @name) @function
             (function_expression name: (identifier)? @name) @function
             (arrow_function) @function
+            (variable_declarator
+                name: (identifier) @name
+                value: (arrow_function)) @function
+            (variable_declarator
+                name: (identifier) @name
+                value: (function_expression)) @function
+            (assignment_expression
+                left: (identifier) @name
+                right: (arrow_function)) @function
+            (assignment_expression
+                left: (identifier) @name
+                right: (function_expression)) @function
             "#
         }
         (Language::JavaScript | Language::Jsx, QueryKind::Classes) => {

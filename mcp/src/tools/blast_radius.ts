@@ -98,13 +98,19 @@ export const tool: ToolDescriptor<
 > = {
   name: "blast_radius",
   description:
-    "Compute the blast radius of a change: every caller, dependent, and test affected. Pass either a file path or a fully-qualified function name. Returns a structured risk report (F7): direct + transitive consumers, affected tests, and a risk level (low/medium/high/critical). Use BEFORE Edit/Write on any file to know what else might break.",
+    "Compute the blast radius of a change: every direct caller, dependent, and test affected. Pass either a file path or a fully-qualified function name. Default `depth=1` (direct neighbours only) keeps responses small enough to read; pass `depth: 5` (or any value 1-10) or `deep: true` to walk transitively for highly-connected nodes. Returns a structured risk report: direct + transitive consumers, affected tests, and a risk level (low/medium/high/critical). Use BEFORE Edit/Write on any file to know what else might break.",
   inputSchema: BlastRadiusInput,
   outputSchema: BlastRadiusOutputExtended,
   category: "graph",
   async handler(input) {
     try {
-      const rows = blastRadius(input.target, input.depth ?? 2);
+      // Resolve depth. zod fills `input.depth` with the schema default (1)
+      // when the caller omits it, so we can't distinguish "explicit 1"
+      // from "implicit 1" — we treat them the same. If `deep: true` and
+      // depth is at the default, expand to 5; otherwise honour `input.depth`.
+      const requestedDepth =
+        input.deep && input.depth === 1 ? 5 : input.depth;
+      const rows = blastRadius(input.target, requestedDepth);
 
       const affected_files: string[] = [];
       const affected_symbols: string[] = [];
