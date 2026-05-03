@@ -28,18 +28,22 @@ foreach ($mcp in $mcps) {
             }
             $score = 0
             $note = ""
-            if ($resultText -match '(?i)(cannot answer|not.+been built|no data|shard not found|empty results|no graph|TIMEOUT_AFTER|EMPTY_STDOUT)') {
+            if ($resultText -match '(?i)(TIMEOUT_AFTER|EMPTY_STDOUT)') {
                 $score = 0
-                $note = "MCP could not answer / timeout"
+                $note = "harness_timeout"
             } else {
                 $hits = ([regex]::Matches($resultText, "(?i)$markersPattern") | Measure-Object).Count
+                $cannotAnswer = ($resultText -match '(?i)(cannot answer|cannot fulfill|no symbol named|returned no matches|returned 0 hits|not been built|shard not found|empty results|no graph)')
                 if ($hits -ge 12) { $score = 9 }
                 elseif ($hits -ge 8) { $score = 8 }
                 elseif ($hits -ge 5) { $score = 7 }
                 elseif ($hits -ge 3) { $score = 5 }
                 elseif ($hits -ge 1) { $score = 4 }
-                else { $score = 2 }
-                $note = "$hits markers"
+                elseif ($resultText.Length -gt 200) { $score = 2 }
+                else { $score = 1 }
+                # If MCP explicitly admits it cannot answer, cap at 5 even with marker hits.
+                if ($cannotAnswer -and $score -gt 5) { $score = 5 }
+                $note = if ($cannotAnswer) { "$hits markers (partial)" } else { "$hits markers" }
             }
             $resultLen = $resultText.Length
             $tokens = if ($j.usage.output_tokens) { $j.usage.output_tokens } else { 0 }

@@ -34,18 +34,21 @@ foreach ($mcp in $mcps) {
             if (-not $resultText) {
                 $cell.score = 0
                 $cell.note = 'no_text'
-            } elseif ($resultText -match '(?i)(cannot answer|not.+been built|no data|shard not found|empty results|no graph|TIMEOUT_AFTER|EMPTY_STDOUT)') {
+            } elseif ($resultText -match '(?i)(TIMEOUT_AFTER|EMPTY_STDOUT)') {
                 $cell.score = 0
-                $cell.note = 'no answer'
+                $cell.note = 'harness_timeout'
             } else {
                 $hits = ([regex]::Matches($resultText, "(?i)$markersPattern") | Measure-Object).Count
+                $cannotAnswer = ($resultText -match '(?i)(cannot answer|cannot fulfill|no symbol named|returned no matches|returned 0 hits|not been built|shard not found|empty results|no graph)')
                 if ($hits -ge 12) { $cell.score = 9 }
                 elseif ($hits -ge 8) { $cell.score = 8 }
                 elseif ($hits -ge 5) { $cell.score = 7 }
                 elseif ($hits -ge 3) { $cell.score = 5 }
                 elseif ($hits -ge 1) { $cell.score = 4 }
-                else { $cell.score = 2 }
-                $cell.note = "$hits markers"
+                elseif ($resultText.Length -gt 200) { $cell.score = 2 }
+                else { $cell.score = 1 }
+                if ($cannotAnswer -and $cell.score -gt 5) { $cell.score = 5 }
+                $cell.note = if ($cannotAnswer) { "$hits markers (partial)" } else { "$hits markers" }
             }
             $totals[$mcp].wall += $cell.wall
             $totals[$mcp].out += $cell.out

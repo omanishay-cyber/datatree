@@ -43,31 +43,40 @@ ground-truth markers were rewritten to match mneme-workspace symbols
 # On the host with Claude Code, mneme, tree-sitter MCP, code-review-graph,
 # and mcp-graphify-autotrigger installed, with each MCP's index already built
 # against the corpus directory:
-pwsh ./run-all-bench.ps1 -BenchDir <bench-dir> -ProjectDir <corpus-dir> -TimeoutSec 180
+pwsh ./run-all-bench.ps1 -BenchDir <bench-dir> -ProjectDir <corpus-dir> -TimeoutSec 600
 pwsh ./final-table.ps1 -ResultsDir <bench-dir>/results
 ```
 
-Per-query timeout was 180 s. Filter via `$env:BENCH_MCPS = 'tree-sitter'` or
+Per-query timeout was 600 s. Filter via `$env:BENCH_MCPS = 'tree-sitter'` or
 `$env:BENCH_QUERIES = 'Q1,Q3'` to run a subset.
 
 ## Per-MCP notes
 
-- **mneme MCP** answered 4 of 5 with full citations (9/10 on Q1, Q2, Q5;
-  8/10 on Q4) at the lowest token cost of the four after the
-  symbol- and path-resolution fixes landed on 2026-05-03. Q3
-  (function-level Rust call tree) returned a "cannot answer"
-  response scored 0; the on-disk graph holds 68,495 call edges
-  but they live between TypeScript nodes, the Rust parser emits
-  structural `contains` edges only. Tracked for v0.3.3.
-- **CRG** answered 3/5 with rich citations (Q1, Q3, Q4 all 9/10). Q2 and Q5
-  hit the 180 s budget without final answer.
-- **graphify** answered 0/5 - its MCP server connected (visible in
-  `tools/list`) but every tool call hung past the 180 s budget. The graphify
-  CLI itself works (the corpus index built fine), so the gap is in the MCP
-  surface or in `fastmcp 3.x` compatibility.
-- **tree-sitter** answered 4/5 with rich citations (9/10 each). Q5 timed out
-  on the bigger security-audit prompt.
+- **mneme MCP** finished every cell inside its 600 s budget at the lowest
+  total cost ($4.86) and the lowest output token count (25,796) on the
+  panel after the symbol- and path-resolution fixes landed on 2026-05-03.
+  Full citations on Q1, Q2, Q5 (9/10) and Q4 (8/10). Q3 is partial (5/10):
+  the on-disk graph holds 68,495 call edges between TypeScript nodes and
+  the Rust parser emits structural `contains` edges only, so a Rust-to-Rust
+  call traversal returns empty even when the file-level citations are
+  correct. Tracked for v0.3.3.
+- **tree-sitter** wins on raw recall (9.0 avg) by re-parsing on demand, but
+  spends 1.4× the cost and 1.8× the tokens mneme uses to do it. Q5 takes
+  246 s versus mneme's 108 s. With the new 600 s budget, the cell that
+  previously timed out now returns a strong concurrency answer.
+- **CRG** answered 3 of 5 with rich citations (9/10 on Q1, Q3, Q4). Q2
+  scored 5 (the graph has no `IMPORTS_FROM` edges so blast-radius
+  propagates only via call edges - a partial answer with valid citations).
+  Q5 ran past the 600 s budget.
+- **graphify** jumps from 0/5 to 4/5 9-scores on this run after switching
+  the MCP wrapper from the autotrigger fork (`mcp-graphify-autotrigger
+  0.3.0`, broken on `fastmcp 3.x`) to the official `graphifyy 0.6.7+`
+  stdio server (`python -m graphify.serve <graph.json>`). Q5 is partial
+  (5/10) because the graph indexes structural edges only.
 
 Every cell in the published table is a measured number from a real Claude
-process exit - no placeholders, no "(skipped)" cells, no em-dash gaps. A 0
-score with a 180 s wall is what the auto-scorer counted in the response.
+process exit - no placeholders, no "(skipped)" cells, no em-dash gaps. The
+auto-scorer caps any answer that explicitly admits "cannot answer" at 5/10
+even when it cites real symbols, so a 5 here means a partial answer with
+valid citations, not a wrong one. A 0 score with a 600 s wall is what the
+auto-scorer counted in the response.

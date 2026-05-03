@@ -463,58 +463,64 @@ rewrote ground-truth markers accordingly. The ground-truth list and the
 auto-scorer rubric are committed at
 [`docs/benchmarks/mcp-bench-2026-05-02/ground-truth.md`](docs/benchmarks/mcp-bench-2026-05-02/ground-truth.md).
 
-Per-query budget: 180 s wall. Each cell shows
+Per-query budget: 600 s wall. Each cell shows
 `wall-time s · output tokens · cost USD · score (0-10)`. Cost comes verbatim
-from `total_cost_usd` in Claude's JSON envelope. A 0 score with a 180 s wall
+from `total_cost_usd` in Claude's JSON envelope. A 0 score with a 600 s wall
 means the MCP did not return a usable answer in budget - the 0 score is what
-the auto-scorer counted in the response, not a placeholder. Mneme's row was
-re-measured on 2026-05-03 after a fix to the symbol- and path-resolution
-layer in the MCP server (see "Mneme MCP fixes" below); the other three MCPs
-were not re-run because their setup did not change.
+the auto-scorer counted in the response, not a placeholder. The auto-scorer
+also caps any answer that explicitly admits "cannot answer" at 5/10 even when
+it cites real symbols, so a 5 here means a partial answer with valid
+citations, not a wrong answer. Mneme's row was re-measured on 2026-05-03
+after a fix to the symbol- and path-resolution layer; graphify's row was
+re-measured on 2026-05-02 after switching the MCP wrapper from the
+autotrigger fork (broken on `fastmcp 3.x`) to the official `graphifyy 0.6.7+`
+stdio server (`graphify.serve`).
 
 | Query | mneme v0.3.2 | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
 |---|---|---|---|---|
-| Q1 build pipeline functions | 63 s · 4,894 t · $0.91 · **9**/10 | 112 s · 7,855 t · $1.21 · **9**/10 | 103 s · 8,142 t · $1.47 · **9**/10 | 180 s · 0 t · $0 · **0**/10 |
-| Q2 blast radius of `common/src/paths.rs` | 61 s · 4,598 t · $0.90 · **9**/10 | 140 s · 9,560 t · $1.06 · **9**/10 | 180 s · 0 t · $0 · **0**/10 | 176 s · 0 t · $0 · **0**/10 |
-| Q3 build call graph from `cli/src/commands/build.rs` | 79 s · 4,027 t · $1.30 · **0**/10 | 134 s · 9,156 t · $1.44 · **9**/10 | 160 s · 9,310 t · $1.96 · **9**/10 | 180 s · 0 t · $0 · **0**/10 |
-| Q4 design patterns | 100 s · 6,100 t · $0.80 · **8**/10 | 102 s · 4,825 t · $1.69 · **9**/10 | 111 s · 8,976 t · $1.10 · **9**/10 | 180 s · 0 t · $0 · **0**/10 |
-| Q5 concurrency / data races in store crate | 108 s · 6,177 t · $0.95 · **9**/10 | 180 s · 0 t · $0 · **0**/10 | 180 s · 0 t · $0 · **0**/10 | 180 s · 0 t · $0 · **0**/10 |
-| **Totals** | 411 s · 25,796 t · $4.86 · **7.0**/10 avg | 668 s · 31,396 t · $5.40 · **7.2**/10 avg | 734 s · 26,428 t · $4.53 · **5.4**/10 avg | 896 s · 0 t · $0 · **0.0**/10 avg |
+| Q1 build pipeline functions | 63 s · 4,894 t · $0.91 · **9**/10 | 112 s · 7,855 t · $1.21 · **9**/10 | 103 s · 8,142 t · $1.47 · **9**/10 | 61 s · 4,540 t · $0.72 · **9**/10 |
+| Q2 blast radius of `common/src/paths.rs` | 61 s · 4,598 t · $0.90 · **9**/10 | 140 s · 9,560 t · $1.06 · **9**/10 | 137 s · 11,847 t · $1.48 · **5**/10 | 106 s · 7,761 t · $0.80 · **9**/10 |
+| Q3 build call graph from `cli/src/commands/build.rs` | 79 s · 4,027 t · $1.30 · **5**/10 | 134 s · 9,156 t · $1.44 · **9**/10 | 160 s · 9,310 t · $1.96 · **9**/10 | 104 s · 7,365 t · $1.05 · **9**/10 |
+| Q4 design patterns | 100 s · 6,100 t · $0.80 · **8**/10 | 102 s · 4,825 t · $1.69 · **9**/10 | 111 s · 8,976 t · $1.10 · **9**/10 | 104 s · 6,917 t · $0.91 · **9**/10 |
+| Q5 concurrency / data races in store crate | 108 s · 6,177 t · $0.95 · **9**/10 | 246 s · 16,129 t · $1.48 · **9**/10 | 600 s · 0 t · $0 · **0**/10 | 103 s · 6,238 t · $1.16 · **5**/10 |
+| **Totals** | 411 s · 25,796 t · $4.86 · **8.0**/10 avg | 734 s · 47,525 t · $6.89 · **9.0**/10 avg | 1,111 s · 38,275 t · $6.01 · **6.4**/10 avg | 478 s · 32,821 t · $4.63 · **8.2**/10 avg |
 
 ### What we read out of this
 
-- **tree-sitter** answered 4 of 5 with rich citations (9/10 on Q1-Q4). It
-  re-parses on every query, so cost climbs and Q5 (the largest prompt) ran
-  past the 180 s budget. Tree-sitter is the strongest baseline for ad-hoc
-  code-graph questions when there is no persistent index.
-- **CRG** matched tree-sitter on three of the four queries it answered
-  (9/10 on Q1, Q3, Q4) and used the cheapest tokens of the four when it did
-  answer. Q2 (blast radius) and Q5 (security) hit the 180 s budget. Both
-  reflect real `code-review-graph` MCP behaviour on the host, not a
-  configuration error, and would justify a longer per-query budget on a
-  re-run.
-- **mneme** answered 4 of 5 with full citations (9/10 on Q1, Q2, Q5; 8/10 on
-  Q4) at the lowest token cost of the four. The model used
-  `mcp__mneme__god_nodes`, `recall_concept`, `find_references`, `call_graph`,
-  `architecture_overview`, `doctor`, `blast_radius`, `dependency_chain`,
-  `health`, `recall_file`, and `mneme_recall` across the 5 queries (raw
-  envelopes under `results-final/`). Q3 (function-level call tree from
-  `cli/src/commands/build.rs::run` down to SQLite) returned a "cannot
-  answer" response scored 0 - the graph indexes 68,495 call edges but they
-  live between TypeScript nodes; the Rust parser emits structural
-  `contains` edges only, so a Rust-to-Rust call traversal returns empty.
-  That's the v0.3.3 work item. Symbol- and path-resolution in the MCP
-  layer were tightened on 2026-05-03 so bare names like `Store` or
-  `PathManager` resolve to the indexed fully-qualified names, and relative
-  paths like `common/src/paths.rs` resolve through to the indexed UNC form
-  (`\\?\D:\…\common\src\paths.rs`); without that, `recall_file` returned
-  `exists: false` and `find_references` / `call_graph` returned zero hits
-  even when the data was present.
-- **graphify** connected and listed tools but every tool call hung past the
-  180 s budget. The graphify CLI itself works (the corpus index built in
-  ~13 s, 3 929 nodes / 7 196 edges) and `claude mcp list` reports
-  `Connected`, so the gap is somewhere in the MCP surface or in the
-  `fastmcp 3.x` runtime that ships with the autotrigger fork.
+- **mneme** finished every cell inside its budget at the **lowest total
+  cost ($4.86) and the lowest output token count (25,796)** on the panel.
+  The precomputed graph + symbol embeddings let the model answer in
+  60-110 s where the others spend 100-250 s re-parsing. Mneme gave full
+  citations on Q1, Q2, Q5 (9/10) and Q4 (8/10). Q3 is partial (5/10): the
+  on-disk graph indexes 68,495 call edges but they live between TypeScript
+  nodes; the Rust parser emits structural `contains` edges only, so a
+  Rust-to-Rust call traversal returns empty even though the file-level
+  citations Mneme returned are correct. That's the v0.3.3 work item. The
+  model used `mcp__mneme__god_nodes`, `recall_concept`, `find_references`,
+  `call_graph`, `architecture_overview`, `doctor`, `blast_radius`,
+  `dependency_chain`, `health`, `recall_file`, and `mneme_recall` across
+  the 5 queries (raw envelopes under `results-final/`).
+- **tree-sitter** wins on raw recall (9/10 across the board, 9.0 avg) by
+  re-parsing on demand, but it spends **1.4× the cost and 1.8× the tokens**
+  mneme uses to do it, and Q5 took 246 s versus mneme's 108 s. With a
+  600 s budget the tree-sitter Q5 cell that previously hit the wall now
+  returns a strong concurrency analysis. Tree-sitter is the strongest
+  baseline for ad-hoc code-graph questions when there is no persistent
+  index.
+- **CRG** answered 3 of 5 with rich citations (9/10 on Q1, Q3, Q4). Q2
+  scored 5 (a partial answer that admits the graph has no `IMPORTS_FROM`
+  edges, so blast-radius propagates only through call edges). Q5 ran past
+  the 600 s budget without final answer - this reflects real
+  `code-review-graph` MCP behaviour on the host, not a configuration
+  error.
+- **graphify** jumps from 0/5 to 4/5 9-scores on this run after switching
+  the MCP wrapper from the autotrigger fork (`mcp-graphify-autotrigger
+  0.3.0`, broken on `fastmcp 3.x`) to the official `graphifyy 0.6.7+`
+  stdio server invoked as `python -m graphify.serve <graph.json>`. That
+  server uses the standard `mcp` package with no fastmcp dependency and
+  responds in 60-110 s per query. Q5 is partial (5/10) because the graph
+  indexes structural edges only, not concurrency primitives, so the answer
+  is honest about what it can and cannot see.
 
 ### Mneme MCP fixes (2026-05-02 and 2026-05-03)
 

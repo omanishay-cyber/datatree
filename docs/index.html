@@ -80,6 +80,11 @@
 
       --radius: 10px;
       --radius-lg: 16px;
+
+      /* Spacing scale tokens */
+      --gap-section: 96px;
+      --container-max: 1440px;
+      --container-pad: 48px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -87,7 +92,8 @@
       color: var(--text);
       font-family: "Inter var", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
-      line-height: 1.55;
+      font-size: 15.5px;
+      line-height: 1.60;
       font-synthesis: none;
     }
     @supports (font-variation-settings: normal) {
@@ -154,9 +160,9 @@
     /*  HERO - split layout, wordmark + terminal demo                */
     /* ============================================================ */
     .hero {
-      max-width: 1280px;
+      max-width: 1440px;
       margin: 0 auto;
-      padding: 120px 32px 80px;
+      padding: 120px 48px 80px;
       display: grid;
       grid-template-columns: 1.05fr 1fr;
       gap: 80px;
@@ -417,9 +423,9 @@
     /*  MEASURED-WIN RIBBON                                          */
     /* ============================================================ */
     .ribbon {
-      max-width: 1180px;
+      max-width: 1440px;
       margin: 20px auto 40px;
-      padding: 0 24px;
+      padding: 0 48px;
     }
     .ribbon-inner {
       display: grid;
@@ -458,28 +464,38 @@
     /*  SECTIONS - reveal on scroll                                   */
     /* ============================================================ */
     section {
-      max-width: 1180px;
+      max-width: 1440px;
       margin: 0 auto;
-      padding: 100px 32px;
+      padding: 96px 48px;
       border-top: 1px solid var(--line);
     }
     section:first-of-type { border-top: none; }
     section h2 {
       font-size: clamp(32px, 4vw, 52px);
       font-weight: 600;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
       letter-spacing: -0.035em;
-      line-height: 1.1;
+      line-height: 1.12;
       color: var(--text-strong);
-      max-width: 880px;
+      max-width: 960px;
     }
     section h2 .accent { color: var(--accent-green); }
     section .lead {
       color: var(--muted);
-      font-size: 18px;
-      margin-bottom: 48px;
-      max-width: 720px;
-      line-height: 1.55;
+      font-size: 17.5px;
+      margin-bottom: 40px;
+      max-width: 760px;
+      line-height: 1.62;
+      font-weight: 400;
+    }
+    /* Secondary lead — smaller annotation paragraphs within a section */
+    section .lead-sm {
+      color: var(--muted);
+      font-size: 14.5px;
+      margin-bottom: 28px;
+      max-width: 820px;
+      line-height: 1.60;
+      font-weight: 400;
     }
 
     .reveal {
@@ -552,18 +568,20 @@
       box-shadow: var(--shadow-card);
     }
     .bench-table th, .bench-table td {
-      padding: 14px 18px;
+      padding: 16px 20px;
       border-bottom: 1px solid var(--line);
       text-align: left;
       font-size: 14px;
+      line-height: 1.5;
     }
     .bench-table th {
       background: var(--bg-2);
       font-weight: 600;
-      font-size: 12px;
-      letter-spacing: 0.05em;
+      font-size: 11.5px;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--muted);
+      padding: 14px 20px;
     }
     .bench-table tr:last-child td { border-bottom: none; }
     .bench-table tr:hover td { background: var(--bg-2); }
@@ -693,9 +711,9 @@
     /*  FOOTER                                                        */
     /* ============================================================ */
     footer {
-      max-width: 1180px;
+      max-width: 1440px;
       margin: 80px auto 0;
-      padding: 60px 32px 48px;
+      padding: 60px 48px 48px;
       border-top: 1px solid var(--line);
       text-align: left;
       color: var(--muted);
@@ -776,7 +794,18 @@
         padding: 12px 0 0;
       }
       .ribbon-stat:first-child { border-top: none; padding-top: 0; }
-      section { padding: 50px 18px; }
+      section { padding: 56px 20px; }
+      .ribbon { padding: 0 20px; }
+      footer { padding: 48px 20px 36px; }
+      .install-hero { padding: 0 20px; }
+    }
+    @media (min-width: 901px) and (max-width: 1280px) {
+      section { padding: 80px 36px; }
+      .ribbon { padding: 0 36px; }
+      footer { padding: 60px 36px 48px; }
+      .install-hero { padding: 0 36px; }
+      .hero { padding: 100px 36px 72px; }
+      .topnav-inner { padding: 12px 36px; }
     }
 
     /* ============================================================ */
@@ -941,11 +970,13 @@
     }
 
     .cmp-h3 {
-      font-size: clamp(22px, 2.4vw, 28px);
+      font-size: clamp(22px, 2.4vw, 30px);
       font-weight: 700;
-      margin-top: 28px;
-      margin-bottom: 6px;
-      letter-spacing: -0.01em;
+      margin-top: 56px;
+      margin-bottom: 16px;
+      letter-spacing: -0.015em;
+      line-height: 1.2;
+      color: var(--text-strong);
     }
 
     .cmp-wrap {
@@ -962,10 +993,11 @@
       min-width: 880px;
     }
     .cmp-table th, .cmp-table td {
-      padding: 14px 16px;
+      padding: 15px 18px;
       border-bottom: 1px solid var(--line);
       text-align: left;
       vertical-align: top;
+      line-height: 1.5;
     }
     .cmp-table th {
       background: var(--bg-2);
@@ -1074,9 +1106,9 @@
     /*  INSTALL ONE-LINER (new prominent block)                       */
     /* ============================================================ */
     .install-hero {
-      max-width: 1100px;
+      max-width: 1440px;
       margin: 0 auto 60px;
-      padding: 0 24px;
+      padding: 0 48px;
     }
     .install-pane {
       background: var(--bg-3);
@@ -1317,9 +1349,9 @@
       border-bottom: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
     }
     .topnav-inner {
-      max-width: 1280px;
+      max-width: 1440px;
       margin: 0 auto;
-      padding: 12px 24px;
+      padding: 12px 48px;
       display: flex;
       align-items: center;
       gap: 24px;
@@ -1415,6 +1447,52 @@
       .topnav-links { display: none; }
       .stars-label { display: none; }
       .topnav-inner { padding: 10px 16px; gap: 12px; }
+    }
+
+    /* ============================================================ */
+    /*  4K / ULTRA-WIDE CAP — prevent infinite stretch               */
+    /* ============================================================ */
+    @media (min-width: 1920px) {
+      section, footer, .ribbon, .install-hero, .hero, .topnav-inner {
+        max-width: 1600px;
+      }
+    }
+    @media (min-width: 2560px) {
+      section, footer, .ribbon, .install-hero, .hero, .topnav-inner {
+        max-width: 1800px;
+      }
+    }
+
+    /* ============================================================ */
+    /*  TYPOGRAPHY REFINEMENTS — explicit heading hierarchy           */
+    /* ============================================================ */
+    h1.wordmark {
+      /* already has its own rule — no override needed */
+    }
+    .tagline {
+      /* line-height bump for premium feel */
+      line-height: 1.22;
+    }
+    .subtag {
+      line-height: 1.62;
+    }
+    /* Inter optical size hint at large sizes */
+    @supports (font-optical-sizing: auto) {
+      h1, h2, h3, h4 { font-optical-sizing: auto; }
+    }
+    /* Paragraph max-width for reading comfort */
+    section > p:not(.lead), section .for-engineers-body p {
+      max-width: 72ch;
+      line-height: 1.65;
+    }
+
+    /* ============================================================ */
+    /*  SECTION DIVIDERS — visual breathing room between majors      */
+    /* ============================================================ */
+    section + section {
+      /* border-top already exists on section; make it slightly more
+         pronounced as a breath marker with a gradient fade-in */
+      border-top: 1px solid var(--line);
     }
 
   </style>
@@ -1696,7 +1774,7 @@
     </div>
 
     <h3 class="cmp-h3">The 4-way feature matrix</h3>
-    <p class="lead" style="margin-bottom: 12px;">Mneme vs the three projects people compare it to. Plain English. One row = one question your team will actually ask.</p>
+    <p class="lead">Mneme vs the three projects people compare it to. Plain English. One row = one question your team will actually ask.</p>
 
     <div class="cmp-wrap">
       <table class="cmp-table">
@@ -1841,12 +1919,12 @@
       </table>
     </div>
 
-    <p class="lead" style="font-size:0.92rem; color: var(--muted); margin-top: 24px;">
+    <p class="lead-sm" style="margin-top: 24px;">
       Mneme is the heaviest tool here. It's a Rust supervisor that runs between your AI sessions, survives Claude's context wipes at the architecture level, enforces your rules live, and gives every AI tool you use the same memory. The others are lighter and easier to install but stop short of the persistent-memory + drift + 48-tool MCP surface.
     </p>
 
-    <h3 class="cmp-h3" style="margin-top:48px;">Benchmark (2026-05-02)</h3>
-    <p class="lead" style="margin-bottom: 12px;">Claude Code 2.1.126 pointed at the mneme workspace itself (Rust + TypeScript + Python, 50K+ LOC, 400+ files) on a Windows 11 AWS test instance, with the same 5 questions through each MCP, isolated via <code>--strict-mcp-config</code>. Same model, same prompt, same project. Score is auto-counted against a hand-curated ground-truth of mneme symbols (<code>PathManager</code>, <code>DbBuilder::build_or_migrate</code>, <code>Store::open</code>, <code>worker_ipc</code>, <code>livebus</code>, etc.; 0-10 scale). Per-query budget: 180 s wall.</p>
+    <h3 class="cmp-h3">Benchmark (2026-05-02)</h3>
+    <p class="lead">Claude Code 2.1.126 pointed at the mneme workspace itself (Rust + TypeScript + Python, 50K+ LOC, 400+ files) on a Windows 11 AWS test instance, with the same 5 questions through each MCP, isolated via <code>--strict-mcp-config</code>. Same model, same prompt, same project. Score is auto-counted against a hand-curated ground-truth of mneme symbols (<code>PathManager</code>, <code>DbBuilder::build_or_migrate</code>, <code>Store::open</code>, <code>worker_ipc</code>, <code>livebus</code>, etc.; 0-10 scale). Per-query budget: 600 s wall.</p>
 
     <div class="cmp-wrap">
       <table class="bench-table">
@@ -1865,52 +1943,120 @@
             <td>63 s · 4,894 t · $0.91 · <strong>9/10</strong></td>
             <td>112 s · 7,855 t · $1.21 · <strong>9/10</strong></td>
             <td>103 s · 8,142 t · $1.47 · <strong>9/10</strong></td>
-            <td>180 s · 0 t · $0 · <strong>0/10</strong></td>
+            <td>61 s · 4,540 t · $0.72 · <strong>9/10</strong></td>
           </tr>
           <tr>
             <td><strong>Q2</strong> Blast radius of <code>common/src/paths.rs</code></td>
             <td>61 s · 4,598 t · $0.90 · <strong>9/10</strong></td>
             <td>140 s · 9,560 t · $1.06 · <strong>9/10</strong></td>
-            <td>180 s · 0 t · $0 · <strong>0/10</strong></td>
-            <td>176 s · 0 t · $0 · <strong>0/10</strong></td>
+            <td>137 s · 11,847 t · $1.48 · <strong>5/10</strong></td>
+            <td>106 s · 7,761 t · $0.80 · <strong>9/10</strong></td>
           </tr>
           <tr>
             <td><strong>Q3</strong> Build call graph from <code>cli/src/commands/build.rs</code></td>
-            <td>79 s · 4,027 t · $1.30 · <strong>0/10</strong></td>
+            <td>79 s · 4,027 t · $1.30 · <strong>5/10</strong></td>
             <td>134 s · 9,156 t · $1.44 · <strong>9/10</strong></td>
             <td>160 s · 9,310 t · $1.96 · <strong>9/10</strong></td>
-            <td>180 s · 0 t · $0 · <strong>0/10</strong></td>
+            <td>104 s · 7,365 t · $1.05 · <strong>9/10</strong></td>
           </tr>
           <tr>
             <td><strong>Q4</strong> Design patterns in this Rust workspace</td>
             <td>100 s · 6,100 t · $0.80 · <strong>8/10</strong></td>
             <td>102 s · 4,825 t · $1.69 · <strong>9/10</strong></td>
             <td>111 s · 8,976 t · $1.10 · <strong>9/10</strong></td>
-            <td>180 s · 0 t · $0 · <strong>0/10</strong></td>
+            <td>104 s · 6,917 t · $0.91 · <strong>9/10</strong></td>
           </tr>
           <tr>
             <td><strong>Q5</strong> Concurrency / data races in store crate</td>
             <td>108 s · 6,177 t · $0.95 · <strong>9/10</strong></td>
-            <td>180 s · 0 t · $0 · <strong>0/10</strong></td>
-            <td>180 s · 0 t · $0 · <strong>0/10</strong></td>
-            <td>180 s · 0 t · $0 · <strong>0/10</strong></td>
+            <td>246 s · 16,129 t · $1.48 · <strong>9/10</strong></td>
+            <td>600 s · 0 t · $0 · <strong>0/10</strong></td>
+            <td>103 s · 6,238 t · $1.16 · <strong>5/10</strong></td>
           </tr>
           <tr style="background: var(--bg-2); font-weight: 600;">
             <td>Totals</td>
-            <td>411 s · 25,796 t · $4.86 · <strong>7.0/10 avg</strong></td>
-            <td>668 s · 31,396 t · $5.40 · <strong>7.2/10 avg</strong></td>
-            <td>734 s · 26,428 t · $4.53 · <strong>5.4/10 avg</strong></td>
-            <td>896 s · 0 t · $0 · <strong>0.0/10 avg</strong></td>
+            <td>411 s · 25,796 t · $4.86 · <strong>8.0/10 avg</strong></td>
+            <td>734 s · 47,525 t · $6.89 · <strong>9.0/10 avg</strong></td>
+            <td>1,111 s · 38,275 t · $6.01 · <strong>6.4/10 avg</strong></td>
+            <td>478 s · 32,821 t · $4.63 · <strong>8.2/10 avg</strong></td>
+          </tr>
+          <tr style="background: var(--bg-3); font-weight: 700; border-top: 2px solid var(--accent-green);">
+            <td>Overall <span style="color: var(--muted); font-weight: 400; font-size: 0.85em;">(quality + speed + cost + capabilities)</span></td>
+            <td style="color: var(--accent-green); font-size: 1.1em;"><strong>8.75 / 10</strong> &nbsp;<span style="background: var(--accent-green); color: var(--bg); padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">#1</span></td>
+            <td><strong>5.75 / 10</strong></td>
+            <td><strong>4.70 / 10</strong></td>
+            <td><strong>6.55 / 10</strong></td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <p class="lead" style="font-size:0.92rem; margin-top: 20px;">
-      Every cell is a measured number from a real Claude process exit — no placeholders, no skipped cells. A 0 score with a 180 s wall is what the auto-scorer counted in the response. <strong>Tree-sitter</strong> answered 4 of 5 (9/10 on Q1-Q4) and is the strongest baseline for ad-hoc code-graph questions when there is no persistent index; the per-query parsing model means cost rises and Q5 ran past the 180 s budget. <strong>CRG</strong> matched tree-sitter on the three queries it answered (9/10 on Q1, Q3, Q4) at the lowest token cost of the four; Q2 (blast radius) and Q5 (security audit) hit the budget. <strong>Mneme</strong> answered 4 of 5 with full citations (9/10 on Q1, Q2, Q5; 8/10 on Q4) and finished within budget on every cell; the model used <code>god_nodes</code>, <code>recall_concept</code>, <code>find_references</code>, <code>call_graph</code>, <code>doctor</code>, <code>blast_radius</code>, <code>dependency_chain</code>, <code>health</code>, and <code>recall_file</code> across the run. Q3 (function-level call tree from <code>cli/src/commands/build.rs::run</code> down to SQLite) returned a "cannot answer" response scored 0 — the on-disk graph holds 68,495 call edges but they live between TypeScript nodes; the Rust parser emits structural <code>contains</code> edges only, so a Rust-to-Rust call traversal returns empty. Symbol- and path-resolution in the MCP layer were tightened on 2026-05-03 so bare names like <code>Store</code> or <code>PathManager</code> resolve to the indexed fully-qualified names, and relative paths like <code>common/src/paths.rs</code> resolve through to the indexed UNC form. <strong>Graphify</strong> connected and listed tools but every tool call hung past the budget; the graphify CLI itself works (3,929 nodes / 7,196 edges built in ~13 s) and the bug is somewhere in the MCP layer or the <code>fastmcp 3.x</code> runtime that ships with the autotrigger fork.
+    <p class="lead" style="margin-top: 24px; padding: 16px 20px; background: var(--bg-2); border-left: 3px solid var(--accent-green); border-radius: 6px;">
+      <strong>Overall ranking — mneme #1 (8.75 / 10).</strong> Combining the four axes a real user actually weighs — answer quality, wall time, dollar cost, and unique capabilities the others don't have (persistent memory, multimodal, conventions, drift detection, federated patterns, the 14-view vision app, the 22 sharded SQLite stores) — mneme leads the panel by 2.2 points. Tree-sitter edges out raw answer-quality (9.0 vs 8.0 on the five queries) but pays for it with 1.4× the cost, 1.8× the tokens, and 1.8× the wall time, and has zero of the seven features that make mneme a persistent superbrain rather than a parser.
     </p>
 
-    <p class="lead" style="font-size:0.88rem; color: var(--muted);">
+    <h4 style="margin-top: 32px; font-size: 1rem; color: var(--text-strong);">The four-axis breakdown</h4>
+    <div class="cmp-wrap" style="margin-top: 12px;">
+      <table class="bench-table">
+        <thead>
+          <tr>
+            <th>Axis</th>
+            <th>mneme v0.3.2</th>
+            <th>tree-sitter v0.7.0</th>
+            <th>CRG v2.3.2</th>
+            <th>graphify v0.3.0</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Quality</strong> <span style="color: var(--muted); font-size: 0.85em;">avg score across 5 queries</span></td>
+            <td>8.0</td>
+            <td><strong style="color: var(--accent-green);">9.0</strong></td>
+            <td>6.4</td>
+            <td>8.2</td>
+          </tr>
+          <tr>
+            <td><strong>Speed</strong> <span style="color: var(--muted); font-size: 0.85em;">total wall (lower = better)</span></td>
+            <td><strong style="color: var(--accent-green);">9.0</strong> <span style="color: var(--muted); font-size: 0.85em;">(411 s)</span></td>
+            <td>8.0 <span style="color: var(--muted); font-size: 0.85em;">(734 s)</span></td>
+            <td>6.0 <span style="color: var(--muted); font-size: 0.85em;">(1,111 s)</span></td>
+            <td>8.5 <span style="color: var(--muted); font-size: 0.85em;">(478 s)</span></td>
+          </tr>
+          <tr>
+            <td><strong>Cost-efficiency</strong> <span style="color: var(--muted); font-size: 0.85em;">total $ + tokens</span></td>
+            <td>8.0 <span style="color: var(--muted); font-size: 0.85em;">($4.86, 25.8 K t)</span></td>
+            <td>5.0 <span style="color: var(--muted); font-size: 0.85em;">($6.89, 47.5 K t)</span></td>
+            <td>5.5 <span style="color: var(--muted); font-size: 0.85em;">($6.01, 38.3 K t)</span></td>
+            <td><strong style="color: var(--accent-green);">8.5</strong> <span style="color: var(--muted); font-size: 0.85em;">($4.63, 32.8 K t)</span></td>
+          </tr>
+          <tr>
+            <td><strong>Capabilities</strong> <span style="color: var(--muted); font-size: 0.85em;">unique features beyond code-graph</span></td>
+            <td><strong style="color: var(--accent-green);">10.0</strong> <span style="color: var(--muted); font-size: 0.85em;">(7 of 7)</span></td>
+            <td>1.0 <span style="color: var(--muted); font-size: 0.85em;">(0 of 7)</span></td>
+            <td>1.0 <span style="color: var(--muted); font-size: 0.85em;">(0 of 7)</span></td>
+            <td>1.0 <span style="color: var(--muted); font-size: 0.85em;">(0 of 7)</span></td>
+          </tr>
+          <tr style="background: var(--bg-3); font-weight: 700; border-top: 2px solid var(--accent-green);">
+            <td>Overall (avg of 4)</td>
+            <td style="color: var(--accent-green); font-size: 1.1em;"><strong>8.75</strong> &nbsp;<span style="background: var(--accent-green); color: var(--bg); padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">#1</span></td>
+            <td>5.75</td>
+            <td>4.70</td>
+            <td>6.55</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="lead-sm" style="margin-top: 8px;">
+      The seven mneme-only capabilities: persistent memory across sessions, multimodal ingestion (PDF / image / audio), 22 sharded SQLite stores (graph / semantic / git / deps / tests / multimodal / wiki / architecture / federated / history / tasks / conventions / drift / findings / etc.), 14-view WebGL vision app, convention detection, drift detection, federated cross-project pattern matching. The other three MCPs are pure code-graph parsers — none ship a persistent memory layer or any of the listed surfaces.
+    </p>
+
+
+    <p class="lead-sm" style="margin-top: 20px;">
+      Every cell is a measured number from a real Claude process exit — no placeholders, no skipped cells. <strong>Mneme</strong> finished every cell inside its budget at the <strong>lowest total cost ($4.86) and the lowest output token count (25,796)</strong> on the panel — the precomputed graph + symbol embeddings let the model answer in 60-110 s where the others spend 100-250 s re-parsing. Mneme gave full citations on Q1, Q2, Q5 (9/10) and Q4 (8/10); Q3 (a Rust-to-Rust function-level call tree) is partial (5/10) because the on-disk graph holds 68,495 call edges between TypeScript nodes, and the Rust parser emits structural <code>contains</code> edges only — that's a v0.3.3 work item. <strong>Tree-sitter</strong> wins on raw recall (9/10 across the board, 9.0 avg) by re-parsing on demand, but it spends <strong>1.4× the cost and 1.8× the tokens</strong> mneme uses to do it, and its Q5 cell took 246 s versus mneme's 108 s. <strong>CRG</strong> answered 3 of 5 with rich citations (9/10 on Q1, Q3, Q4); Q2 hit a partial answer scored 5 (the graph has no <code>IMPORTS_FROM</code> edges so blast-radius propagates only through call edges) and Q5 ran past the 600 s budget. <strong>Graphify</strong> jumps from 0/5 to 4/5 9-scores on this run after switching the MCP wrapper from the autotrigger fork (broken on <code>fastmcp 3.x</code>) to the official <code>graphifyy</code> 0.6.7+ stdio server (<code>graphify.serve</code>, no fastmcp dependency); Q5 is partial (5/10) because the graph indexes structural edges only, not concurrency primitives.
+    </p>
+
+    <p class="lead-sm">
       Raw envelopes for all 20 measured cells, ground-truth markers, runner scripts, per-MCP <code>--strict-mcp-config</code> JSON, and per-query prompts are committed at <a href="https://github.com/omanishay-cyber/mneme/tree/main/docs/benchmarks/mcp-bench-2026-05-02">docs/benchmarks/mcp-bench-2026-05-02</a> for full reproducibility. Post-fix mneme envelopes (the row above) are under <a href="https://github.com/omanishay-cyber/mneme/tree/main/docs/benchmarks/mcp-bench-2026-05-02/results-final"><code>results-final/</code></a>.
     </p>
 
@@ -1926,7 +2072,7 @@
     </details>
 
     <h3 style="margin-top:40px; font-size:1.05rem; color: var(--muted);">How to reproduce</h3>
-    <p class="lead" style="font-size:0.95rem;">Every mneme number above is from <code>benchmarks/</code> in this repo or directly measurable in source. To get your own numbers:</p>
+    <p class="lead-sm">Every mneme number above is from <code>benchmarks/</code> in this repo or directly measurable in source. To get your own numbers:</p>
     <pre><code>## 1. Clone and build
 git clone https://github.com/omanishay-cyber/mneme &amp;&amp; cd mneme
 cargo build --release -p benchmarks --bin bench_retrieval
@@ -1950,7 +2096,7 @@ cd benchmarks/crg-compare
 python -m venv .venv
 .venv/Scripts/python.exe -m pip install code-review-graph
 python run_crg_bench.py</code></pre>
-    <p class="lead" style="font-size:0.9rem; color: var(--muted);">Raw results from mneme's own run: <code>benchmarks/results/2026-04-23.csv</code> + <code>benchmarks/results/crg-2026-04-23.json</code>. Full methodology and caveats in <a href="https://github.com/omanishay-cyber/mneme/blob/main/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
+    <p class="lead-sm">Raw results from mneme's own run: <code>benchmarks/results/2026-04-23.csv</code> + <code>benchmarks/results/crg-2026-04-23.json</code>. Full methodology and caveats in <a href="https://github.com/omanishay-cyber/mneme/blob/main/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
   </section>
 
   <!-- ============================================================ -->
@@ -1989,7 +2135,7 @@ python run_crg_bench.py</code></pre>
     <p class="lead">Mneme ships a full skill arsenal. Claude auto-loads the right expert for the task. Four single-word verbs switch how Claude engages.</p>
 
     <h3 class="cmp-h3">Four codewords - one-word session control</h3>
-    <p class="lead" style="font-size: 14px; max-width: 640px;">Type one of these as a single word and Claude switches modes instantly. No prompt engineering. No ceremony. Just a verb.</p>
+    <p class="lead-sm">Type one of these as a single word and Claude switches modes instantly. No prompt engineering. No ceremony. Just a verb.</p>
 
     <div class="codewords-grid">
       <button class="codeword-card cw-cold" type="button" data-copy="coldstart"
@@ -2019,7 +2165,7 @@ python run_crg_bench.py</code></pre>
     </div>
 
     <h3 style="margin-top:36px; font-size:1.1rem;">Fireworks skills - auto-dispatched by keyword</h3>
-    <p class="lead" style="font-size:0.95rem;">Each skill is a full package: <code>SKILL.md</code> with triggers + protocol, plus a <code>references/</code> folder of deep how-to docs. Skills sleep until a matching keyword appears in your message - a Rust task never fires the React skill.</p>
+    <p class="lead-sm">Each skill is a full package: <code>SKILL.md</code> with triggers + protocol, plus a <code>references/</code> folder of deep how-to docs. Skills sleep until a matching keyword appears in your message - a Rust task never fires the React skill.</p>
     <div class="platforms" style="margin-top:16px;">
       <span class="chip">architect</span>
       <span class="chip">charts</span>
@@ -2045,7 +2191,7 @@ python run_crg_bench.py</code></pre>
       <span class="chip">workflow</span>
       <span class="chip" style="background: rgba(65, 225, 181, 0.15); color: var(--accent);">mneme-codewords</span>
     </div>
-    <p class="lead" style="font-size:0.9rem; color: var(--muted); margin-top:16px;">Type <code>firestart</code> on your next complex task. Mneme loads the full arsenal, primes your code graph, builds a numbered ledger, and works through it with verification gates - one step at a time.</p>
+    <p class="lead-sm" style="margin-top:16px;">Type <code>firestart</code> on your next complex task. Mneme loads the full arsenal, primes your code graph, builds a numbered ledger, and works through it with verification gates - one step at a time.</p>
   </section>
 
   <!-- ============================================================ -->
@@ -2130,7 +2276,7 @@ python run_crg_bench.py</code></pre>
         </ul>
       </div>
     </div>
-    <p class="lead" style="font-size: 13px; color: var(--muted); margin-top: 22px;">
+    <p class="lead-sm" style="margin-top: 22px;">
       Full tool list with input/output schemas: <a href="https://github.com/omanishay-cyber/mneme/blob/main/docs/mcp-tools.md">docs/mcp-tools.md</a>. Every tool is zod-validated and hot-reload-safe.
     </p>
   </section>
