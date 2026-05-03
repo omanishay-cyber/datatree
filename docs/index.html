@@ -935,32 +935,82 @@
       letter-spacing: -0.01em;
       color: var(--text-strong);
     }
+    /* OS-aware tabbed install picker */
+    .install-tabs {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      background: var(--bg-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      margin-bottom: 14px;
+    }
+    .install-tab {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px;
+      border: 0; background: transparent;
+      font-size: 13px; font-weight: 600;
+      color: var(--muted);
+      border-radius: 7px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .install-tab:hover { color: var(--text-strong); }
+    .install-tab[aria-selected="true"] {
+      background: var(--bg-3);
+      color: var(--text-strong);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    }
+    .install-cmd-wrap { position: relative; }
     .install-cmd {
+      margin: 0;
       background: #0c0d10;
       border: 1px solid #20232a;
       border-radius: var(--radius);
-      padding: 16px 22px 16px 50px;
+      padding: 16px 60px 16px 22px;
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 13.5px;
       color: #41E1B5;
-      position: relative;
       overflow-x: auto;
       white-space: pre;
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
     }
-    .install-cmd::before {
-      content: ">";
+    .install-cmd .t-prompt { color: #f472b6; font-weight: 700; margin-right: 8px; }
+    .install-copy {
       position: absolute;
-      left: 18px;
-      top: 16px;
-      color: #f472b6;
-      font-weight: 700;
+      top: 10px; right: 10px;
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 9px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      color: #cbd5e1;
+      font-size: 11.5px; font-weight: 600;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     }
+    .install-copy:hover {
+      background: rgba(65,225,181,0.12);
+      border-color: rgba(65,225,181,0.35);
+      color: #41E1B5;
+    }
+    .install-copy.copied {
+      background: rgba(65,225,181,0.18);
+      border-color: rgba(65,225,181,0.6);
+      color: #41E1B5;
+    }
+    .install-copy.copied span::before { content: "✓ "; }
     .install-foot {
       margin-top: 16px;
       font-size: 13.5px;
       color: var(--muted);
       line-height: 1.65;
+    }
+    @media (max-width: 760px) {
+      .install-cmd { font-size: 11.5px; padding: 14px 50px 14px 16px; }
+      .install-tab { padding: 6px 10px; font-size: 12px; }
     }
 
     /* ============================================================ */
@@ -1052,8 +1102,6 @@
     /* responsive tweaks for new blocks */
     @media (max-width: 760px) {
       .speed-strip { grid-template-columns: 1fr; }
-      .install-cmd { font-size: 12px; }
-      .install-cmd::after { display: none; }
     }
 
     /* ============================================================ */
@@ -1302,13 +1350,65 @@
   <!-- ============================================================ -->
   <!--  INSTALL ONE-LINER (prominent, near top)                      -->
   <!-- ============================================================ -->
-  <div class="install-hero reveal">
+  <div class="install-hero reveal" id="install">
     <div class="install-pane">
       <div class="install-eyebrow">install * one command per OS * no admin needed * auto-detects arch</div>
-      <div class="install-title">One command per OS. No admin needed.</div>
-      <div class="install-cmd"><strong style="color:#41E1B5">windows (PowerShell):</strong><br/>iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)</div>
-      <div class="install-cmd" style="margin-top:8px"><strong style="color:#41E1B5">macOS (Intel + Apple Silicon):</strong><br/>curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-mac.sh | bash</div>
-      <div class="install-cmd" style="margin-top:8px"><strong style="color:#41E1B5">linux (x64 + ARM64):</strong><br/>curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh | bash</div>
+      <div class="install-title">Install in 30 seconds.</div>
+
+      <div class="install-tabs" role="tablist" aria-label="install command per operating system">
+        <button class="install-tab" type="button" role="tab" aria-selected="true" data-os="windows">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <path fill="currentColor" d="M0 2.5L6.5 1.5V7.5H0V2.5ZM7.5 1.4L16 0V7.5H7.5V1.4ZM0 8.5H6.5V14.5L0 13.5V8.5ZM7.5 8.5H16V16L7.5 14.5V8.5Z"/>
+          </svg>
+          Windows
+        </button>
+        <button class="install-tab" type="button" role="tab" aria-selected="false" data-os="macos">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <path fill="currentColor" d="M11.182.008C11.148-.03 9.923.023 8.857 1.18c-1.066 1.156-.902 2.482-.878 2.516.024.034 1.52.087 2.475-1.258.955-1.345.762-2.391.728-2.43Zm3.314 11.733c-.048-.096-2.325-1.234-2.113-3.422.212-2.189 1.675-2.789 1.698-2.854.023-.065-.597-.79-1.254-1.157a3.692 3.692 0 0 0-1.563-.434c-.108-.003-.483-.095-1.254.116-.508.139-1.653.589-1.968.607-.316.018-1.256-.522-2.267-.665-.647-.125-1.333.131-1.824.328-.49.196-1.422.754-2.074 2.237-.652 1.482-.311 3.83-.067 4.56.244.729.625 1.924 1.273 2.796.576.984 1.34 1.667 1.659 1.899.319.232 1.219.386 1.843.067.502-.308 1.408-.485 1.766-.472.357.013 1.061.154 1.782.539.571.197 1.111.115 1.652-.105.541-.221 1.324-1.059 2.238-2.758.347-.79.505-1.217.473-1.282Z"/>
+          </svg>
+          macOS
+        </button>
+        <button class="install-tab" type="button" role="tab" aria-selected="false" data-os="linux">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          Linux
+        </button>
+      </div>
+
+      <div class="install-panels">
+        <div class="install-cmd-wrap" role="tabpanel" data-os="windows" hidden>
+          <pre class="install-cmd"><code><span class="t-prompt">PS&gt;</span> iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)</code></pre>
+          <button class="install-copy" type="button" aria-label="Copy install command"
+                  data-copy="iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <span>Copy</span>
+          </button>
+        </div>
+        <div class="install-cmd-wrap" role="tabpanel" data-os="macos" hidden>
+          <pre class="install-cmd"><code><span class="t-prompt">$</span> curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-mac.sh | bash</code></pre>
+          <button class="install-copy" type="button" aria-label="Copy install command"
+                  data-copy="curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-mac.sh | bash">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <span>Copy</span>
+          </button>
+        </div>
+        <div class="install-cmd-wrap" role="tabpanel" data-os="linux" hidden>
+          <pre class="install-cmd"><code><span class="t-prompt">$</span> curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh | bash</code></pre>
+          <button class="install-copy" type="button" aria-label="Copy install command"
+                  data-copy="curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh | bash">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <span>Copy</span>
+          </button>
+        </div>
+      </div>
+
       <div class="install-foot">
         Downloads the v0.3.2 release, extracts to <code>~/.mneme</code>, pulls 5 model files (~3.4 GB) from the Hugging Face Hub mirror at <a href="https://huggingface.co/aaditya4u/mneme-models">aaditya4u/mneme-models</a> (GitHub Releases as fallback), registers the MCP server + 8 hooks + plugin slash commands with Claude Code.
         Restart Claude after install. Verify with <code>mneme doctor</code> and <code>claude mcp list</code>.<br/>
@@ -1927,6 +2027,61 @@ python run_crg_bench.py</code></pre>
         try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), n: n })); } catch (e) {}
       })
       .catch(function () { setAll('★'); });
+  })();
+
+  // OS-aware install picker + copy buttons
+  (function () {
+    const tabs = document.querySelectorAll('.install-tab');
+    const panels = document.querySelectorAll('.install-cmd-wrap');
+    if (!tabs.length || !panels.length) return;
+    const ua = (navigator.userAgent || '').toLowerCase();
+    const guessOs = ua.indexOf('win') !== -1 ? 'windows'
+                   : (ua.indexOf('mac') !== -1 || ua.indexOf('iphone') !== -1 || ua.indexOf('ipad') !== -1) ? 'macos'
+                   : 'linux';
+    const show = function (os) {
+      tabs.forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.os === os)); });
+      panels.forEach(function (p) { p.hidden = p.dataset.os !== os; });
+    };
+    show(guessOs);
+    tabs.forEach(function (t) {
+      t.addEventListener('click', function () { show(t.dataset.os); });
+    });
+
+    document.querySelectorAll('[data-copy]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const text = btn.dataset.copy;
+        const writeFallback = function () {
+          try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            return true;
+          } catch (e) { return false; }
+        };
+        const onSuccess = function () {
+          btn.classList.add('copied');
+          const span = btn.querySelector('span');
+          if (span) {
+            const orig = span.textContent;
+            span.textContent = 'Copied';
+            setTimeout(function () {
+              btn.classList.remove('copied');
+              span.textContent = orig;
+            }, 1500);
+          }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(onSuccess, function () { if (writeFallback()) onSuccess(); });
+        } else {
+          if (writeFallback()) onSuccess();
+        }
+      });
+    });
   })();
 </script>
 

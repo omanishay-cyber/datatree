@@ -13,6 +13,7 @@
 
 import type { GraphNode, GraphEdge } from "../api";
 import { API_BASE } from "../api";
+import { withProject } from "../projectSelection";
 
 /* -------------------------------------------------------------------------- */
 /*  Shared types                                                               */
@@ -252,7 +253,15 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   // Prepend API_BASE so URLs hit the daemon's HTTP origin when running
   // inside Tauri. In Bun-server dev mode API_BASE is empty so the
   // existing relative-URL behaviour is preserved.
-  const finalUrl = url.startsWith("http") ? url : API_BASE + url;
+  //
+  // Then thread the active project hash through `withProject()` so
+  // multi-shard installs can switch between projects via the header
+  // dropdown without a full reload. Backend handlers honour
+  // `?project=<hash>` and fall back to "first shard alphabetically"
+  // when the param is absent — preserving the legacy single-project
+  // contract.
+  const baseUrl = url.startsWith("http") ? url : API_BASE + url;
+  const finalUrl = withProject(baseUrl);
   const res = await fetch(finalUrl, { signal });
   if (!res.ok) throw new Error(`${finalUrl} -> HTTP ${res.status}`);
   return (await res.json()) as T;

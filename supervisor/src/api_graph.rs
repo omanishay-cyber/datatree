@@ -26,16 +26,30 @@
 //! consistent with the per-shard single-writer invariant in the store
 //! crate (CLAUDE.md §"Hard rules").
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use common::PathManager;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+/// Optional `?project=<hash>` query param threaded through every
+/// `/api/graph/*` handler. When set the handler resolves the shard at
+/// `<MNEME_HOME>/projects/<hash>/<layer>.db` directly. When absent
+/// behaviour falls back to "first project alphabetically" — preserves
+/// the legacy single-project contract for callers that don't yet pass
+/// the param (the old Bun dev server, raw curl probes, the v0.3.2 SPA
+/// before the picker landed).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ProjectQuery {
+    /// The hex SHA-256 of the project root the SPA wants to view.
+    /// `None` keeps the legacy "first shard alphabetically" behaviour.
+    pub project: Option<String>,
+}
 
 /// Shared application state for the `/api/graph/*` router.
 ///
@@ -170,37 +184,166 @@ async fn api_health(State(_state): State<ApiGraphState>) -> impl IntoResponse {
 }
 
 /// One discovered shard under `<MNEME_HOME>/projects/<id>/`.
+///
+/// Wire shape kept stable for legacy callers (`id`, `path`, `has_graph_db`
+/// are all the original fields) while the picker-oriented fields
+/// (`hash`, `display_name`, `canonical_path`, `indexed_files`, `nodes`,
+/// `edges`, `last_indexed_at`) are added alongside them. The frontend
+/// reads the new fields via `vision/src/api/projects.ts`; older callers
+/// that only know the original three keep working unchanged.
 #[derive(Debug, Clone, Serialize)]
 struct DiscoveredProject {
     /// Hex project id (the SHA-256 hash of the project root path).
+    /// Kept for back-compat; the picker uses the alias `hash`.
     id: String,
-    /// Absolute path to the project directory.
+    /// Alias for `id` exposed under the friendlier name the picker
+    /// stores in `?project=<hash>` and `localStorage`. Same value.
+    hash: String,
+    /// Absolute path to the project directory under
+    /// `<MNEME_HOME>/projects/`. Useful for diagnostics.
     path: PathBuf,
+    /// Human-readable name from `meta.db::projects.name`, falling back
+    /// to the hash itself when the row is missing.
+    display_name: String,
+    /// Original project root that was hashed to produce `id`. Read from
+    /// `meta.db::projects.root`; `None` when the meta-db row is missing.
+    canonical_path: Option<String>,
     /// `true` when `graph.db` exists in the project directory.
     has_graph_db: bool,
+    /// Count of `files` rows in `graph.db`. `0` when the shard is
+    /// missing or the table can't be read.
+    indexed_files: i64,
+    /// Count of `nodes` rows in `graph.db`.
+    nodes: i64,
+    /// Count of `edges` rows in `graph.db`.
+    edges: i64,
+    /// ISO-8601 timestamp from `meta.db::projects.last_indexed_at`,
+    /// falling back to the newest `*.db` mtime on disk when the
+    /// meta-db row hasn't been stamped yet (older builds).
+    last_indexed_at: Option<String>,
 }
 
 /// Response for `GET /api/projects`.
 #[derive(Debug, Clone, Serialize)]
 struct ProjectsResponse {
     /// All discovered project directories (whether or not they have a
-    /// graph.db). The frontend can pick the first one with
-    /// `has_graph_db == true` for "single-shard mode".
+    /// graph.db). The picker disables entries with `has_graph_db == false`
+    /// and surfaces them as "no shard" so the user sees the project
+    /// exists but isn't queryable yet.
     projects: Vec<DiscoveredProject>,
     /// Path that was scanned, for diagnostics.
     projects_root: PathBuf,
 }
 
+/// One row from `meta.db::projects`. Used to enrich the `/api/projects`
+/// response with human-readable names and canonical paths.
+struct MetaProjectRow {
+    name: String,
+    root: String,
+    last_indexed_at: Option<String>,
+}
+
+/// Read every row from `meta.db::projects` into a hash-keyed map. Returns
+/// an empty map when meta.db doesn't exist (fresh install) or any read
+/// fails — every consumer treats missing data as "no extra info" and
+/// falls back to the legacy hash-only display.
+fn load_meta_projects(
+    state: &ApiGraphState,
+) -> std::collections::HashMap<String, MetaProjectRow> {
+    let meta_path = state.paths.meta_db();
+    if !meta_path.is_file() {
+        return std::collections::HashMap::new();
+    }
+    let conn = match rusqlite::Connection::open_with_flags(
+        &meta_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::debug!(error = %e, db = %meta_path.display(), "open meta.db failed");
+            return std::collections::HashMap::new();
+        }
+    };
+    let _ = conn.busy_timeout(std::time::Duration::from_millis(500));
+    let mut out = std::collections::HashMap::new();
+    let mut stmt = match conn.prepare("SELECT id, name, root, last_indexed_at FROM projects") {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::debug!(error = %e, "meta.db: projects table missing");
+            return out;
+        }
+    };
+    let rows = match stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, Option<String>>(3)?,
+        ))
+    }) {
+        Ok(it) => it,
+        Err(e) => {
+            tracing::debug!(error = %e, "meta.db: projects scan failed");
+            return out;
+        }
+    };
+    for r in rows.flatten() {
+        out.insert(
+            r.0,
+            MetaProjectRow {
+                name: r.1,
+                root: r.2,
+                last_indexed_at: r.3,
+            },
+        );
+    }
+    out
+}
+
+/// Newest `*.db` mtime under `dir` as an ISO-8601 string. Used as a
+/// fall-back `last_indexed_at` when meta.db hasn't stamped the project
+/// yet (older builds, in-flight first-build).
+fn newest_db_mtime_iso(dir: &std::path::Path) -> Option<String> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut newest: Option<std::time::SystemTime> = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("db") {
+            continue;
+        }
+        if let Ok(meta) = entry.metadata() {
+            if let Ok(t) = meta.modified() {
+                newest = Some(match newest {
+                    Some(prev) if prev >= t => prev,
+                    _ => t,
+                });
+            }
+        }
+    }
+    let t = newest?;
+    let dt = chrono::DateTime::<chrono::Utc>::from(t);
+    Some(dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+}
+
+/// Sum a single COUNT(*) query against an open shard. Returns 0 on any
+/// error so callers don't have to special-case missing tables.
+fn count_table(conn: &rusqlite::Connection, sql: &str) -> i64 {
+    conn.query_row(sql, [], |r| r.get(0)).unwrap_or(0)
+}
+
 /// `GET /api/projects` — list every directory under
-/// `<MNEME_HOME>/projects/`. Provides D0+D1 callers a way to find the
-/// "first project with a graph.db" without knowing the install layout.
+/// `<MNEME_HOME>/projects/` augmented with summary stats and the
+/// human-readable name from `meta.db::projects`.
 ///
-/// Decision doc §8 q4 lean (iii): expose a list, let the UI pick.
-/// For D0+D1 we just enumerate what's on disk — no DB reads, no
-/// hashing, no validation.
+/// The picker in `vision/src/App.tsx::ProjectPicker` calls this on
+/// mount to populate the dropdown. Entries are sorted by
+/// `last_indexed_at` descending so the most-recently-built project
+/// surfaces first; ties fall back to hash-alphabetical so the order
+/// stays stable when nothing has been built yet.
 async fn api_projects(State(state): State<ApiGraphState>) -> impl IntoResponse {
     let projects_root = state.paths.root().join("projects");
     let mut projects: Vec<DiscoveredProject> = Vec::new();
+    let meta = load_meta_projects(&state);
 
     // Read the directory; if it doesn't exist (fresh install with no
     // build yet), return an empty list — that's a valid state.
@@ -228,17 +371,66 @@ async fn api_projects(State(state): State<ApiGraphState>) -> impl IntoResponse {
             Some(s) => s.to_string(),
             None => continue, // non-UTF-8 dir name — skip silently
         };
-        let has_graph_db = path.join("graph.db").is_file();
+        let graph_db = path.join("graph.db");
+        let has_graph_db = graph_db.is_file();
+
+        // Summary counts: nodes/edges/files from graph.db. Each open
+        // is read-only and bounded by busy_timeout; failures degrade
+        // to zero rather than killing the whole listing.
+        let (nodes_count, edges_count, files_count) = if has_graph_db {
+            match rusqlite::Connection::open_with_flags(
+                &graph_db,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+            ) {
+                Ok(conn) => {
+                    let _ = conn.busy_timeout(std::time::Duration::from_millis(500));
+                    let n = count_table(&conn, "SELECT COUNT(*) FROM nodes");
+                    let e = count_table(&conn, "SELECT COUNT(*) FROM edges");
+                    let f = count_table(&conn, "SELECT COUNT(*) FROM files");
+                    (n, e, f)
+                }
+                Err(_) => (0, 0, 0),
+            }
+        } else {
+            (0, 0, 0)
+        };
+
+        // Friendly metadata from meta.db, falling back to the hash and
+        // a fresh-on-disk mtime when the row hasn't been written yet.
+        let (display_name, canonical_path, last_indexed_at) = match meta.get(&id) {
+            Some(row) => (
+                row.name.clone(),
+                Some(row.root.clone()),
+                row.last_indexed_at
+                    .clone()
+                    .or_else(|| newest_db_mtime_iso(&path)),
+            ),
+            None => (id.clone(), None, newest_db_mtime_iso(&path)),
+        };
+
         projects.push(DiscoveredProject {
-            id,
+            id: id.clone(),
+            hash: id,
             path,
+            display_name,
+            canonical_path,
             has_graph_db,
+            indexed_files: files_count,
+            nodes: nodes_count,
+            edges: edges_count,
+            last_indexed_at,
         });
     }
 
-    // Stable ordering so the frontend can deterministically pick the
-    // first project with a graph.db.
-    projects.sort_by(|a, b| a.id.cmp(&b.id));
+    // Most-recently-indexed first; ties broken by hash for stable
+    // ordering when nothing has been built. `None` last so unbuilt
+    // projects sink to the bottom of the dropdown.
+    projects.sort_by(|a, b| match (&b.last_indexed_at, &a.last_indexed_at) {
+        (Some(b_t), Some(a_t)) => b_t.cmp(a_t).then_with(|| a.hash.cmp(&b.hash)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.hash.cmp(&b.hash),
+    });
 
     Json(ProjectsResponse {
         projects,
@@ -291,11 +483,40 @@ async fn stub_handler() -> impl IntoResponse {
 // "graph.db missing yet" reads as "empty corpus" — the right UX during
 // first install / build-in-progress.
 
-/// `<layer>.db` shard locator. Returns the first project directory
-/// under `<MNEME_HOME>/projects/` whose `<layer>.db` exists, or `None`
-/// when no built shard is found.
-fn find_active_layer_db(state: &ApiGraphState, layer: &str) -> Option<PathBuf> {
+/// `<layer>.db` shard locator.
+///
+/// When `requested` is `Some(hash)` and the directory
+/// `<MNEME_HOME>/projects/<hash>/<layer>.db` exists, return that path
+/// directly — supports the multi-project picker in the vision SPA.
+/// Otherwise (no hash, missing hash, or missing layer file) fall back
+/// to the legacy "first project under projects/ whose `<layer>.db`
+/// exists, alphabetically" lookup so single-project installs keep
+/// working without any param.
+fn find_active_layer_db(
+    state: &ApiGraphState,
+    layer: &str,
+    requested: Option<&str>,
+) -> Option<PathBuf> {
     let projects_root = state.paths.root().join("projects");
+
+    // Direct hit — the picker passes the canonical hash; if the shard
+    // exists for the requested layer use it.
+    if let Some(hash) = requested {
+        // Defensive: prevent path traversal via ".." segments. Every
+        // legitimate project id is hex SHA-256 so it never contains
+        // separators or dots; reject anything else outright.
+        if !hash.is_empty()
+            && !hash.contains('/')
+            && !hash.contains('\\')
+            && !hash.contains("..")
+        {
+            let candidate = projects_root.join(hash).join(format!("{}.db", layer));
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+
     let entries = std::fs::read_dir(&projects_root).ok()?;
     let mut candidates: Vec<PathBuf> = entries
         .flatten()
@@ -319,11 +540,23 @@ fn find_active_layer_db(state: &ApiGraphState, layer: &str) -> Option<PathBuf> {
 /// via plain path with `SQLITE_OPEN_READ_ONLY` — same flags `bun:sqlite`
 /// uses successfully against the same db while the store-worker's
 /// writer is active. Silent fall to `None` on any error.
-fn with_layer_db_sync<F, T>(state: &ApiGraphState, layer: &'static str, work: F) -> Option<T>
+///
+/// `requested_project` threads the optional `?project=<hash>` param
+/// from the request. When `Some`, the shard at
+/// `<root>/projects/<hash>/<layer>.db` is used; when `None`, the legacy
+/// "first shard alphabetically" fallback fires. This lets the multi-
+/// project picker in the vision SPA switch shards without breaking
+/// callers (curl, the old Bun dev server) that never pass the param.
+fn with_layer_db_sync<F, T>(
+    state: &ApiGraphState,
+    layer: &'static str,
+    requested_project: Option<&str>,
+    work: F,
+) -> Option<T>
 where
     F: FnOnce(&rusqlite::Connection) -> Option<T>,
 {
-    let db_path = find_active_layer_db(state, layer)?;
+    let db_path = find_active_layer_db(state, layer, requested_project)?;
     let conn = match rusqlite::Connection::open_with_flags(
         &db_path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
@@ -417,8 +650,11 @@ fn color_for_kind(kind: &str) -> &'static str {
 }
 
 /// `GET /api/graph/nodes` — top N nodes for the force-graph view.
-async fn api_graph_nodes(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let nodes: Vec<GraphNodeOut> = with_layer_db_sync(&state, "graph", |conn| {
+async fn api_graph_nodes(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let nodes: Vec<GraphNodeOut> = with_layer_db_sync(&state, "graph", q.project.as_deref(), |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT qualified_name, name, kind, file_path \
@@ -460,8 +696,11 @@ async fn api_graph_nodes(State(state): State<ApiGraphState>) -> impl IntoRespons
 }
 
 /// `GET /api/graph/edges` — top N edges for the force-graph view.
-async fn api_graph_edges(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let edges: Vec<GraphEdgeOut> = with_layer_db_sync(&state, "graph", |conn| {
+async fn api_graph_edges(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let edges: Vec<GraphEdgeOut> = with_layer_db_sync(&state, "graph", q.project.as_deref(), |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT id, source_qualified, target_qualified, kind \
@@ -499,11 +738,15 @@ async fn api_graph_edges(State(state): State<ApiGraphState>) -> impl IntoRespons
 }
 
 /// `GET /api/graph/status` — shard health + counts for the status bar.
-async fn api_graph_status(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let shard_root: Option<String> = find_active_layer_db(&state, "graph")
+async fn api_graph_status(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let project_param = q.project.as_deref();
+    let shard_root: Option<String> = find_active_layer_db(&state, "graph", project_param)
         .and_then(|p| p.parent().map(|q| q.display().to_string()));
 
-    let stats: GraphStatusOut = with_layer_db_sync(&state, "graph", |conn| {
+    let stats: GraphStatusOut = with_layer_db_sync(&state, "graph", project_param, |conn| {
         let nodes: i64 = conn
             .query_row("SELECT COUNT(*) FROM nodes", [], |r| r.get(0))
             .unwrap_or(0);
@@ -564,8 +807,11 @@ struct ShardFileRow {
     last_parsed_at: Option<String>,
 }
 
-async fn api_graph_files(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let files: Vec<ShardFileRow> = with_layer_db_sync(&state, "graph", |conn| {
+async fn api_graph_files(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let files: Vec<ShardFileRow> = with_layer_db_sync(&state, "graph", q.project.as_deref(), |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT path, language, line_count, byte_count, last_parsed_at \
@@ -604,8 +850,11 @@ struct ShardFindingRow {
     created_at: Option<String>,
 }
 
-async fn api_graph_findings(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let findings: Vec<ShardFindingRow> = with_layer_db_sync(&state, "findings", |conn| {
+async fn api_graph_findings(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let findings: Vec<ShardFindingRow> = with_layer_db_sync(&state, "findings", q.project.as_deref(), |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT id, rule_id, scanner, severity, file, line_start, line_end, \
@@ -739,8 +988,11 @@ fn insert_into_tree(
 
 /// `GET /api/graph/file-tree` — file rows folded into a hierarchical
 /// tree keyed by path segments. Matches `fetchFileTree` in `shard.ts`.
-async fn api_graph_file_tree(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let tree: FileTreeNodeOut = with_layer_db_sync(&state, "graph", |conn| {
+async fn api_graph_file_tree(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let tree: FileTreeNodeOut = with_layer_db_sync(&state, "graph", q.project.as_deref(), |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT path, language, line_count, byte_count, last_parsed_at \
@@ -794,8 +1046,11 @@ struct KindFlowPayloadOut {
 
 /// `GET /api/graph/kind-flow` — sankey aggregation of edges by
 /// (source-kind, target-kind, edge-kind). Mirrors `fetchKindFlow`.
-async fn api_graph_kind_flow(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let payload: KindFlowPayloadOut = with_layer_db_sync(&state, "graph", |conn| {
+async fn api_graph_kind_flow(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let payload: KindFlowPayloadOut = with_layer_db_sync(&state, "graph", q.project.as_deref(), |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT ns.kind AS source_kind, nt.kind AS target_kind, \
@@ -891,8 +1146,11 @@ struct DomainFlowPayloadOut {
 /// `GET /api/graph/domain-flow` — aggregate edges across the
 /// first-path-segment ("domain") boundary. Self-loops are dropped to
 /// match the TS implementation. Mirrors `fetchDomainFlow`.
-async fn api_graph_domain_flow(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let payload: DomainFlowPayloadOut = with_layer_db_sync(&state, "graph", |conn| {
+async fn api_graph_domain_flow(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let payload: DomainFlowPayloadOut = with_layer_db_sync(&state, "graph", q.project.as_deref(), |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT ns.file_path AS src_path, nt.file_path AS tgt_path, COUNT(*) AS c \
@@ -979,9 +1237,13 @@ struct CommunityMatrixPayloadOut {
 /// `semantic.db.community_membership` with `graph.db.edges`. Mirrors
 /// `fetchCommunityMatrix`. Two shards are required; if either is
 /// missing we return an empty payload.
-async fn api_graph_community_matrix(State(state): State<ApiGraphState>) -> impl IntoResponse {
+async fn api_graph_community_matrix(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let project_param = q.project.as_deref();
     // Step 1: read communities + membership from semantic.db.
-    let semantic_data = with_layer_db_sync(&state, "semantic", |conn| {
+    let semantic_data = with_layer_db_sync(&state, "semantic", project_param, |conn| {
         let mut comm_stmt = conn
             .prepare(
                 "SELECT id, name, size, dominant_language \
@@ -1043,7 +1305,7 @@ async fn api_graph_community_matrix(State(state): State<ApiGraphState>) -> impl 
     // Step 2: walk edges in graph.db, accumulate matrix[i][j].
     let n = comm_rows.len();
     let mut matrix: Vec<Vec<i64>> = vec![vec![0_i64; n]; n];
-    let _ = with_layer_db_sync(&state, "graph", |conn| {
+    let _ = with_layer_db_sync(&state, "graph", project_param, |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT source_qualified, target_qualified \
@@ -1101,8 +1363,11 @@ struct CommitRowOut {
 
 /// `GET /api/graph/commits` — recent commits joined to per-file
 /// add/delete totals. Mirrors `fetchCommits`. Source layer: `git.db`.
-async fn api_graph_commits(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let commits: Vec<CommitRowOut> = with_layer_db_sync(&state, "git", |conn| {
+async fn api_graph_commits(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let commits: Vec<CommitRowOut> = with_layer_db_sync(&state, "git", q.project.as_deref(), |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT c.sha, c.author_name, c.committed_at, c.message, \
@@ -1175,9 +1440,13 @@ impl Default for HeatmapPayloadOut {
 /// per-file function-count (complexity proxy) and per-file open-finding
 /// counts bucketed by severity. Mirrors `fetchHeatmap` — pulls from
 /// both `graph.db` and `findings.db`.
-async fn api_graph_heatmap(State(state): State<ApiGraphState>) -> impl IntoResponse {
+async fn api_graph_heatmap(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let project_param = q.project.as_deref();
     // Step 1: files + complexity from graph.db.
-    let from_graph = with_layer_db_sync(&state, "graph", |conn| {
+    let from_graph = with_layer_db_sync(&state, "graph", project_param, |conn| {
         let mut files_stmt = conn
             .prepare(
                 "SELECT path, language, line_count FROM files \
@@ -1222,7 +1491,7 @@ async fn api_graph_heatmap(State(state): State<ApiGraphState>) -> impl IntoRespo
 
     // Step 2: per-(file, severity) finding counts from findings.db.
     let mut sev_by_file: std::collections::HashMap<String, HeatmapSeverities> =
-        with_layer_db_sync(&state, "findings", |conn| {
+        with_layer_db_sync(&state, "findings", project_param, |conn| {
             let mut stmt = conn
                 .prepare(
                     "SELECT file, severity, COUNT(*) AS c FROM findings \
@@ -1444,8 +1713,11 @@ fn test_filename_candidates(src: &str) -> Vec<String> {
 /// nodes. Mirrors `fetchTestCoverage`. Source: `graph.db` only — the
 /// TS code reads `nodes.is_test` from graph.db, not the separate
 /// `tests.db` (which holds runtime metadata).
-async fn api_graph_test_coverage(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let rows: Vec<TestCoverageRowOut> = with_layer_db_sync(&state, "graph", |conn| {
+async fn api_graph_test_coverage(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let rows: Vec<TestCoverageRowOut> = with_layer_db_sync(&state, "graph", q.project.as_deref(), |conn| {
         let mut files_stmt = conn
             .prepare(
                 "SELECT path, language, line_count FROM files \
@@ -1636,8 +1908,11 @@ fn tier_of(path: Option<&str>) -> &'static str {
 
 /// `GET /api/graph/layers` — file rows tagged with tier + domain.
 /// Mirrors `fetchLayerTiers` in `shard.ts`. Source: `graph.db`.
-async fn api_graph_layers(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let payload: LayerTierPayloadOut = with_layer_db_sync(&state, "graph", |conn| {
+async fn api_graph_layers(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let payload: LayerTierPayloadOut = with_layer_db_sync(&state, "graph", q.project.as_deref(), |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT path, language, line_count FROM files \
@@ -1716,9 +1991,13 @@ struct Galaxy3DPayloadOut {
 /// community-id, plus a bounded edge list. Mirrors `fetchGalaxy3D` in
 /// `shard.ts`. Reads `graph.db` (mandatory) and `semantic.db` (optional;
 /// missing semantic just leaves community_id null).
-async fn api_graph_galaxy_3d(State(state): State<ApiGraphState>) -> impl IntoResponse {
+async fn api_graph_galaxy_3d(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let project_param = q.project.as_deref();
     // Step 1: nodes + degree from graph.db.
-    let from_graph = with_layer_db_sync(&state, "graph", |conn| {
+    let from_graph = with_layer_db_sync(&state, "graph", project_param, |conn| {
         let mut node_stmt = conn
             .prepare(
                 "SELECT qualified_name, name, kind, file_path \
@@ -1784,7 +2063,7 @@ async fn api_graph_galaxy_3d(State(state): State<ApiGraphState>) -> impl IntoRes
 
     // Step 2: optional community_id lookup from semantic.db.
     let comm_by_node: std::collections::HashMap<String, i64> =
-        with_layer_db_sync(&state, "semantic", |conn| {
+        with_layer_db_sync(&state, "semantic", project_param, |conn| {
             let mut stmt = conn
                 .prepare("SELECT community_id, node_qualified FROM community_membership")
                 .ok()?;
@@ -1849,8 +2128,11 @@ struct ThemeSwatchRowOut {
 /// `rgb(...)`, `hsl(...)`, `var(--name)`) from open theme-scanner
 /// findings and returns one row per (file, line, value) tuple. Mirrors
 /// `fetchThemeSwatches` in `shard.ts`. Source: `findings.db`.
-async fn api_graph_theme_palette(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let rows: Vec<ThemeSwatchRowOut> = with_layer_db_sync(&state, "findings", |conn| {
+async fn api_graph_theme_palette(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let rows: Vec<ThemeSwatchRowOut> = with_layer_db_sync(&state, "findings", q.project.as_deref(), |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT id, file, line_start, message, suggestion, rule_id, severity \
@@ -2044,8 +2326,11 @@ fn insert_into_hierarchy(
 /// `GET /api/graph/hierarchy` — module/class/file nodes folded into a
 /// hierarchical tree keyed by qualified-name segments. Mirrors
 /// `fetchHierarchy` in `shard.ts`. Source: `graph.db`.
-async fn api_graph_hierarchy(State(state): State<ApiGraphState>) -> impl IntoResponse {
-    let tree: HierarchyNodeOut = with_layer_db_sync(&state, "graph", |conn| {
+async fn api_graph_hierarchy(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    let tree: HierarchyNodeOut = with_layer_db_sync(&state, "graph", q.project.as_deref(), |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT qualified_name, kind, file_path FROM nodes \
@@ -2182,6 +2467,191 @@ mod tests {
             v["projects"].as_array().expect("projects array").is_empty(),
             "fresh install should have zero projects"
         );
+    }
+
+    /// Multi-shard picker contract: when two project directories exist
+    /// and the request asks for a specific `?project=<hash>`, the
+    /// handler must read from THAT shard rather than the
+    /// alphabetically-first one. Builds two graph.db fixtures with
+    /// different file rows and asserts the file-tree response reflects
+    /// the requested project.
+    #[tokio::test]
+    async fn api_graph_file_tree_honours_project_query_param() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // Project "aaaa" — alphabetically-first, contains foo.rs.
+        let proj_a = tmp.path().join("projects").join("aaaa");
+        std::fs::create_dir_all(&proj_a).expect("mkdir aaaa");
+        let conn = rusqlite::Connection::open(proj_a.join("graph.db")).expect("open a");
+        conn.execute_batch(
+            "CREATE TABLE files (path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, \
+                                 language TEXT, last_parsed_at TEXT, \
+                                 line_count INTEGER, byte_count INTEGER); \
+             INSERT INTO files VALUES \
+                ('src/foo.rs', 'sha-a', 'rust', '2026-01-01', 10, 100);",
+        )
+        .expect("seed a");
+        drop(conn);
+
+        // Project "zzzz" — alphabetically-last, contains different file.
+        let proj_z = tmp.path().join("projects").join("zzzz");
+        std::fs::create_dir_all(&proj_z).expect("mkdir zzzz");
+        let conn = rusqlite::Connection::open(proj_z.join("graph.db")).expect("open z");
+        conn.execute_batch(
+            "CREATE TABLE files (path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, \
+                                 language TEXT, last_parsed_at TEXT, \
+                                 line_count INTEGER, byte_count INTEGER); \
+             INSERT INTO files VALUES \
+                ('lib/zeta.rs', 'sha-z', 'rust', '2026-01-01', 99, 999);",
+        )
+        .expect("seed z");
+        drop(conn);
+
+        let state = ApiGraphState {
+            paths: Arc::new(PathManager::with_root(tmp.path().to_path_buf())),
+            livebus: None,
+        };
+
+        // No project param → alphabetically-first ("aaaa", foo.rs).
+        let app = build_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/graph/file-tree")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .expect("body");
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        let raw = serde_json::to_string(&v).expect("json string");
+        assert!(
+            raw.contains("foo.rs"),
+            "default fallback should pick aaaa/graph.db; tree was: {raw}"
+        );
+
+        // Explicit ?project=zzzz → should switch to zzzz/graph.db.
+        let app = build_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/graph/file-tree?project=zzzz")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .expect("body");
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        let raw = serde_json::to_string(&v).expect("json string");
+        assert!(
+            raw.contains("zeta.rs"),
+            "?project=zzzz should pick zzzz/graph.db; tree was: {raw}"
+        );
+        assert!(
+            !raw.contains("foo.rs"),
+            "?project=zzzz must NOT leak rows from aaaa; tree was: {raw}"
+        );
+    }
+
+    /// Path-traversal defence: a malicious `?project=..` must NOT be
+    /// allowed to escape `<MNEME_HOME>/projects/`. The handler should
+    /// silently ignore the bad hash and either fall back to the
+    /// alphabetical default or return an empty payload — never read
+    /// from outside the projects root.
+    #[tokio::test]
+    async fn api_graph_file_tree_rejects_traversal_in_project_param() {
+        let app = build_router(test_state());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/graph/file-tree?project=..%2F..%2Fetc")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        // Even on a fresh tempdir with no projects, the response must
+        // be a 200 with empty tree — not a panic, not a 500.
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .expect("body");
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        assert_eq!(v["name"], serde_json::Value::String("project".into()));
+        assert!(v["children"].as_array().expect("children").is_empty());
+    }
+
+    /// `/api/projects` must surface the picker fields (`hash`,
+    /// `display_name`, `indexed_files`, `nodes`, `edges`,
+    /// `last_indexed_at`, `has_graph_db`) so the dropdown can render
+    /// without a follow-up call. Builds a minimal graph.db so the
+    /// COUNT(*) path is exercised end-to-end.
+    #[tokio::test]
+    async fn api_projects_returns_picker_fields() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let proj_dir = tmp.path().join("projects").join("deadbeef");
+        std::fs::create_dir_all(&proj_dir).expect("mkdir");
+        let conn = rusqlite::Connection::open(proj_dir.join("graph.db")).expect("open");
+        conn.execute_batch(
+            "CREATE TABLE files (path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, \
+                                 language TEXT, last_parsed_at TEXT, \
+                                 line_count INTEGER, byte_count INTEGER); \
+             CREATE TABLE nodes (id INTEGER PRIMARY KEY, qualified_name TEXT, \
+                                 name TEXT, kind TEXT, file_path TEXT); \
+             CREATE TABLE edges (id INTEGER PRIMARY KEY, source_qualified TEXT, \
+                                 target_qualified TEXT, kind TEXT); \
+             INSERT INTO files VALUES ('src/lib.rs', 'sha', 'rust', null, 1, 1); \
+             INSERT INTO nodes (qualified_name, name, kind) VALUES \
+                ('a', 'a', 'function'), \
+                ('b', 'b', 'function'); \
+             INSERT INTO edges (source_qualified, target_qualified, kind) VALUES \
+                ('a', 'b', 'calls');",
+        )
+        .expect("seed");
+        drop(conn);
+
+        let state = ApiGraphState {
+            paths: Arc::new(PathManager::with_root(tmp.path().to_path_buf())),
+            livebus: None,
+        };
+        let app = build_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/projects")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .expect("body");
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        let projects = v["projects"].as_array().expect("projects array");
+        assert_eq!(projects.len(), 1, "exactly one project on disk");
+        let p = &projects[0];
+        assert_eq!(p["hash"], serde_json::Value::String("deadbeef".into()));
+        assert_eq!(p["id"], serde_json::Value::String("deadbeef".into()));
+        assert_eq!(p["has_graph_db"], serde_json::Value::Bool(true));
+        assert_eq!(p["indexed_files"], serde_json::Value::Number(1.into()));
+        assert_eq!(p["nodes"], serde_json::Value::Number(2.into()));
+        assert_eq!(p["edges"], serde_json::Value::Number(1.into()));
+        // No meta.db row was seeded so display_name falls back to hash.
+        assert_eq!(
+            p["display_name"],
+            serde_json::Value::String("deadbeef".into())
+        );
+        // last_indexed_at must be a string (newest *.db mtime fallback).
+        assert!(p["last_indexed_at"].is_string(), "mtime fallback set");
     }
 
     #[tokio::test]

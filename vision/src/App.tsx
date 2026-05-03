@@ -12,6 +12,7 @@ import {
   type DaemonHealthPayload,
   type GraphStatsPayload,
 } from "./api/graph";
+import { fetchProjects, type ProjectSummary } from "./api/projects";
 
 function NavGroupHeader({ label }: { label: string }): JSX.Element {
   return (
@@ -78,6 +79,98 @@ function StatusBar({ status }: { status: GraphStatsPayload | null }): JSX.Elemen
   );
 }
 
+/**
+ * Header dropdown for picking which indexed project to view. Reads the
+ * project list from `/api/projects`, mirrors the selection into the
+ * shared zustand store (which `projectSelection.ts` keeps in sync with
+ * the URL + localStorage), and auto-selects the first project on first
+ * load when no choice was persisted.
+ */
+function ProjectPicker(): JSX.Element {
+  const projectHash = useVisionStore((s) => s.projectHash);
+  const setProjectHash = useVisionStore((s) => s.setProjectHash);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    let cancelled = false;
+    (async (): Promise<void> => {
+      try {
+        const r = await fetchProjects(ac.signal);
+        if (cancelled) return;
+        setProjects(r.projects);
+        if (r.error) setError(r.error);
+        // Auto-select the first project with a built shard when nothing
+        // was picked yet — matches the legacy "show the only shard"
+        // behaviour for single-project installs.
+        if (!projectHash && r.projects.length > 0) {
+          const firstReady = r.projects.find((p) => p.has_graph_db) ?? r.projects[0];
+          if (firstReady) setProjectHash(firstReady.hash);
+        }
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        if (!cancelled) setError(String(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+    // We intentionally only run once on mount — the dropdown reflects
+    // whatever exists at boot. The user can refresh via the daemon
+    // status bar's natural 30s tick if a new project lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
+    setProjectHash(e.target.value);
+  };
+
+  if (loading) {
+    return (
+      <div className="vz-project-picker" data-state="loading" aria-label="project selector">
+        <span className="vz-project-picker-label">project:</span>
+        <span className="vz-project-picker-loading">loading…</span>
+      </div>
+    );
+  }
+  if (projects.length === 0) {
+    return (
+      <div className="vz-project-picker" data-state="empty" aria-label="project selector">
+        <span className="vz-project-picker-label">project:</span>
+        <span className="vz-project-picker-empty">
+          no projects — run <code>mneme build</code>
+          {error ? ` (${error})` : ""}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="vz-project-picker" data-state="ok" aria-label="project selector">
+      <label htmlFor="vz-project-select" className="vz-project-picker-label">
+        project:
+      </label>
+      <select
+        id="vz-project-select"
+        className="vz-project-picker-select"
+        value={projectHash}
+        onChange={onChange}
+      >
+        {projects.map((p) => (
+          <option key={p.hash} value={p.hash} disabled={!p.has_graph_db}>
+            {p.display_name}
+            {p.has_graph_db ? ` (${p.indexed_files.toLocaleString()} files)` : " (no shard)"}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function DaemonBanner({ health }: { health: DaemonHealthPayload | null }): JSX.Element | null {
   if (!health) return null;
   if (health.ok) {
@@ -99,6 +192,9 @@ function DaemonBanner({ health }: { health: DaemonHealthPayload | null }): JSX.E
 export function App(): JSX.Element {
   const activeView = useVisionStore((s) => s.activeView);
   const setActiveView = useVisionStore((s) => s.setActiveView);
+  // Re-fetch status/daemon health whenever the user picks a different
+  // project so the counts in the status bar reflect the active shard.
+  const projectHash = useVisionStore((s) => s.projectHash);
 
   const [status, setStatus] = useState<GraphStatsPayload | null>(null);
   const [daemon, setDaemon] = useState<DaemonHealthPayload | null>(null);
@@ -114,7 +210,9 @@ export function App(): JSX.Element {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // Boot probes: status bar + daemon banner. Status refreshes every 30s.
+  // Boot probes: status bar + daemon banner. Status refreshes every 30s
+  // and re-runs immediately whenever the chosen project changes so the
+  // visible counts always match the shard the views are reading.
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
@@ -141,7 +239,7 @@ export function App(): JSX.Element {
       ac.abort();
       clearInterval(timer);
     };
-  }, []);
+  }, [projectHash]);
 
   if (route.route === "command-center") {
     return <CommandCenter />;
@@ -197,6 +295,7 @@ export function App(): JSX.Element {
       </aside>
 
       <header className="vz-topbar">
+        <ProjectPicker />
         <StatusBar status={status} />
         <DaemonBanner health={daemon} />
         <FilterBar />
