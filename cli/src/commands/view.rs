@@ -80,24 +80,38 @@ async fn run_with_default_bin(args: ViewArgs, default_bin: PathBuf) -> CliResult
         return spawn_native(&default_bin);
     }
 
-    // Path 3: --web OR a non-default --url.
+    // Path 3: --web OR a non-default --url, OR (NEW 2026-05-03 fix) the
+    // native binary doesn't exist on disk. The Vision SPA ships in every
+    // release zip at `~/.mneme/static/vision/` and the daemon serves it
+    // at http://localhost:7777/ via the explicit-route SPA fallback in
+    // supervisor/src/health.rs. So when the Tauri-built binary isn't
+    // present (which is the default for v0.3.x — the binary only ships
+    // when users explicitly build vision/tauri/), opening the browser
+    // gives them the EXACT same 14-view dashboard, just hosted by the
+    // running daemon instead of wrapped in a Tauri shell.
+    //
+    // Pre-fix: this path 4 printed "v0.4 vision app coming" which read
+    // as "not implemented yet" even though the SPA was fully shipped
+    // and serving. Users assumed mneme was trying Tauri and failing;
+    // really it was just printing an outdated message.
     let want_browser = args.web || args.url != DEFAULT_WEB_URL_LITERAL;
-    if want_browser {
+    if want_browser || !default_bin.exists() {
+        if !default_bin.exists() && !args.web && args.url == DEFAULT_WEB_URL_LITERAL {
+            // Inform the user we're using the browser path because the
+            // native binary isn't installed. Helps them understand why
+            // a browser tab opened instead of a desktop window.
+            println!("Vision SPA opening in browser: {}", args.url);
+            println!("(Native Tauri binary not installed - run `mneme view --bin <path>` if you have one.)");
+        }
         return open_browser(&args.url);
     }
 
-    // Path 4: nothing to spawn, no browser requested. Clean hint, exit 0.
-    //
-    // UX-2: append a build-from-source pointer so power users who want
-    // the vision app today (instead of waiting for the v0.4 binary)
-    // know exactly where to find the build instructions. INSTALL.md §6
-    // already documents the Tauri build sequence; we surface that path
-    // explicitly here rather than letting the user discover it by
-    // grepping the repo.
+    // Path 4: --web=false AND url=default AND default_bin doesn't exist
+    // is now unreachable thanks to the path-3 fallthrough above. Kept
+    // as a defensive ELSE branch for future invariant changes.
     println!(
-        "v0.4 vision app coming — install ~/.mneme/bin/mneme-vision \
-         or pass --bin <path>. \
-         See INSTALL.md §6 for instructions on building vision from source."
+        "Vision app: native binary not found AND browser path not requested. \
+         Try: `mneme view --web` to open http://localhost:7777 in your browser."
     );
     Ok(())
 }
