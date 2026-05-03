@@ -468,17 +468,18 @@ Per-query budget: 180 s wall. Each cell shows
 from `total_cost_usd` in Claude's JSON envelope. A 0 score with a 180 s wall
 means the MCP did not return a usable answer in budget - the 0 score is what
 the auto-scorer counted in the response, not a placeholder. Mneme's row was
-re-measured on 2026-05-02 after a tool-loader fix (see "Mneme MCP fix" below);
-the other three MCPs were not re-run because their setup did not change.
+re-measured on 2026-05-03 after a fix to the symbol- and path-resolution
+layer in the MCP server (see "Mneme MCP fixes" below); the other three MCPs
+were not re-run because their setup did not change.
 
 | Query | mneme v0.3.2 | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
 |---|---|---|---|---|
-| Q1 build pipeline functions | 76 s · 5,601 t · $1.05 · **4**/10 | 112 s · 7,855 t · $1.21 · **9**/10 | 103 s · 8,142 t · $1.47 · **9**/10 | 180 s · 0 t · $0 · **0**/10 |
-| Q2 blast radius of `common/src/paths.rs` | 28 s · 1,655 t · $0.54 · **0**/10 | 140 s · 9,560 t · $1.06 · **9**/10 | 180 s · 0 t · $0 · **0**/10 | 176 s · 0 t · $0 · **0**/10 |
-| Q3 build call graph from `cli/src/commands/build.rs` | 33 s · 1,840 t · $0.54 · **0**/10 | 134 s · 9,156 t · $1.44 · **9**/10 | 160 s · 9,310 t · $1.96 · **9**/10 | 180 s · 0 t · $0 · **0**/10 |
-| Q4 design patterns | 110 s · 6,743 t · $1.09 · **5**/10 | 102 s · 4,825 t · $1.69 · **9**/10 | 111 s · 8,976 t · $1.10 · **9**/10 | 180 s · 0 t · $0 · **0**/10 |
-| Q5 concurrency / data races in store crate | 51 s · 2,870 t · $0.58 · **0**/10 | 180 s · 0 t · $0 · **0**/10 | 180 s · 0 t · $0 · **0**/10 | 180 s · 0 t · $0 · **0**/10 |
-| **Totals** | 298 s · 18,709 t · $3.81 · **1.8**/10 avg | 668 s · 31,396 t · $5.40 · **7.2**/10 avg | 734 s · 26,428 t · $4.53 · **5.4**/10 avg | 896 s · 0 t · $0 · **0.0**/10 avg |
+| Q1 build pipeline functions | 63 s · 4,894 t · $0.91 · **9**/10 | 112 s · 7,855 t · $1.21 · **9**/10 | 103 s · 8,142 t · $1.47 · **9**/10 | 180 s · 0 t · $0 · **0**/10 |
+| Q2 blast radius of `common/src/paths.rs` | 61 s · 4,598 t · $0.90 · **9**/10 | 140 s · 9,560 t · $1.06 · **9**/10 | 180 s · 0 t · $0 · **0**/10 | 176 s · 0 t · $0 · **0**/10 |
+| Q3 build call graph from `cli/src/commands/build.rs` | 79 s · 4,027 t · $1.30 · **0**/10 | 134 s · 9,156 t · $1.44 · **9**/10 | 160 s · 9,310 t · $1.96 · **9**/10 | 180 s · 0 t · $0 · **0**/10 |
+| Q4 design patterns | 100 s · 6,100 t · $0.80 · **8**/10 | 102 s · 4,825 t · $1.69 · **9**/10 | 111 s · 8,976 t · $1.10 · **9**/10 | 180 s · 0 t · $0 · **0**/10 |
+| Q5 concurrency / data races in store crate | 108 s · 6,177 t · $0.95 · **9**/10 | 180 s · 0 t · $0 · **0**/10 | 180 s · 0 t · $0 · **0**/10 | 180 s · 0 t · $0 · **0**/10 |
+| **Totals** | 411 s · 25,796 t · $4.86 · **7.0**/10 avg | 668 s · 31,396 t · $5.40 · **7.2**/10 avg | 734 s · 26,428 t · $4.53 · **5.4**/10 avg | 896 s · 0 t · $0 · **0.0**/10 avg |
 
 ### What we read out of this
 
@@ -492,28 +493,30 @@ the other three MCPs were not re-run because their setup did not change.
   reflect real `code-review-graph` MCP behaviour on the host, not a
   configuration error, and would justify a longer per-query budget on a
   re-run.
-- **mneme** registered all 48 tools after the tool-loader fix and was fully
-  callable. The model used `mcp__mneme__god_nodes`, `recall_concept`,
-  `find_references`, `call_graph`, `architecture_overview`, `doctor`,
-  `blast_radius`, `dependency_chain`, `health`, `recall_file`, and
-  `mneme_recall` across the 5 queries (raw envelopes under `results-final/`).
-  Q1 and Q4 returned partial answers (4/10, 5/10). Q2, Q3, Q5 came back as
-  explicit "cannot answer" responses; the auto-scorer correctly counted those
-  as 0. The graph data on disk is fine (14,100 nodes / 64,430 edges /
-  663 files indexed for this corpus, per `mneme_doctor`), but the schema
-  stores Rust symbols as content-addressed node IDs (e.g. `n_05a5280e65b7d1db`)
-  rather than resolved function names, so symbol-name lookups via
-  `find_references` and `call_graph` return empty for bare names like
-  `build_graph` or `Store::new`. Path-based lookups (`recall_file`,
-  `blast_radius`) need the full indexed path form rather than a relative or
-  basename. Both are real product gaps tracked for v0.3.3.
+- **mneme** answered 4 of 5 with full citations (9/10 on Q1, Q2, Q5; 8/10 on
+  Q4) at the lowest token cost of the four. The model used
+  `mcp__mneme__god_nodes`, `recall_concept`, `find_references`, `call_graph`,
+  `architecture_overview`, `doctor`, `blast_radius`, `dependency_chain`,
+  `health`, `recall_file`, and `mneme_recall` across the 5 queries (raw
+  envelopes under `results-final/`). Q3 (function-level call tree from
+  `cli/src/commands/build.rs::run` down to SQLite) returned a "cannot
+  answer" response scored 0 - the graph indexes 68,495 call edges but they
+  live between TypeScript nodes; the Rust parser emits structural
+  `contains` edges only, so a Rust-to-Rust call traversal returns empty.
+  That's the v0.3.3 work item. Symbol- and path-resolution in the MCP
+  layer were tightened on 2026-05-03 so bare names like `Store` or
+  `PathManager` resolve to the indexed fully-qualified names, and relative
+  paths like `common/src/paths.rs` resolve through to the indexed UNC form
+  (`\\?\D:\…\common\src\paths.rs`); without that, `recall_file` returned
+  `exists: false` and `find_references` / `call_graph` returned zero hits
+  even when the data was present.
 - **graphify** connected and listed tools but every tool call hung past the
   180 s budget. The graphify CLI itself works (the corpus index built in
   ~13 s, 3 929 nodes / 7 196 edges) and `claude mcp list` reports
   `Connected`, so the gap is somewhere in the MCP surface or in the
   `fastmcp 3.x` runtime that ships with the autotrigger fork.
 
-### Mneme MCP fix (2026-05-02)
+### Mneme MCP fixes (2026-05-02 and 2026-05-03)
 
 The first run of this bench showed mneme at 0.8/10 avg with all five queries
 returning the same shape: only the two MCP resources (`mneme://commands`,
@@ -528,9 +531,27 @@ stdio` path was unaffected because it execs `bun mcp/src/index.ts` directly,
 which kept `import.meta.url` inside `mcp/src/tools/`. Fix: the registry now
 also walks up to `../src/tools/` from the bundled location, with a
 `MNEME_MCP_TOOLS_DIR` env override, and re-bundling restores 48/48 tools to
-both entry points. After the fix, the same five queries against the same
-corpus produced the row above. Raw envelopes under `results-final/` for the
-mneme cells; the other three MCP rows are unchanged from the first run.
+both entry points.
+
+The 2026-05-02 run after that fix scored 1.8/10 because the tools were
+callable but the SQL behind them did exact-match-only on user input. Two
+follow-up gaps surfaced in the raw envelopes: (1) `recall_file` and
+`blast_radius` keyed file lookups on `WHERE path = ?` against the indexed
+absolute UNC form, so a relative input like `common/src/paths.rs` returned
+`exists: false`; (2) `find_references` and `call_graph` keyed symbol
+lookups on `WHERE qualified_name = ?` against the fully-qualified indexed
+name (e.g. `mneme_store::DbBuilder::build_or_migrate`), so a bare input
+like `Store` or `build_or_migrate` returned zero hits. The 2026-05-03
+re-run patches both: file inputs are normalised through a candidate set
+(exact / resolved-against-project-root / forward-slash variant /
+backslash variant / UNC-stripped variant / 3-2-1 segment LIKE tail) and
+symbol inputs match by `name`, fully-qualified name, or `'%::' || ?` /
+`'%.' || ?` suffix. `blast_radius` also now joins `nodes.file_path` /
+`nodes.name` / `nodes.line_start` into the result so consumers see real
+file citations instead of opaque `n_*` IDs. After the patch the same
+five queries against the same corpus produced the row above. Raw
+envelopes under `results-final/` for the mneme cells; the other three
+MCP rows are unchanged from the first run.
 
 ### Reproduction
 

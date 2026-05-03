@@ -19,7 +19,7 @@ import {
   statSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
 import { errMsg } from "./errors.ts";
 
@@ -95,6 +95,94 @@ export function findProjectRoot(start: string): string | null {
     cur = parent;
   }
   return null;
+}
+
+/**
+ * Build candidate path strings for a user-supplied file argument.
+ *
+ * Bench gap (2026-05-02): the index stores absolute UNC paths like
+ * `\\?\D:\...\src\utils\auth.ts` (or just `D:\...\src\utils\auth.ts`)
+ * but users naturally type `src/utils/auth.ts`. Exact-match lookups
+ * therefore miss every relative input, even when the file is indexed.
+ *
+ * This helper produces the candidate set the caller should feed into
+ * `WHERE path IN (?, ?, ...)` plus a final basename for `LIKE '%' || ? || '%'`.
+ * It is intentionally conservative — only stable transforms (resolve
+ * against project root, swap separators, strip UNC prefix). It does NOT
+ * try to canonicalize on disk because the indexed path may not exist
+ * on the current host (bench corpus, tarballed snapshot, etc.).
+ *
+ * Returns at least one entry (the raw input) and at most ~6.
+ */
+export function pathCandidates(
+  userInput: string,
+  cwdOverride?: string,
+): { exact: string[]; like: string[] } {
+  const exact = new Set<string>();
+  const like = new Set<string>();
+  const cwd = cwdOverride ?? process.cwd();
+  const projectRoot = findProjectRoot(cwd) ?? cwd;
+
+  // 1. Exact as given.
+  exact.add(userInput);
+
+  // 2. Resolved against project root (handles "src/utils/auth.ts").
+  if (!isAbsolute(userInput)) {
+    try {
+      const abs = resolve(projectRoot, userInput);
+      exact.add(abs);
+      // Forward-slash variant of the resolved path.
+      exact.add(abs.replace(/\\/g, "/"));
+      // Backslash variant.
+      exact.add(abs.replace(/\//g, "\\"));
+    } catch {
+      // Path math can't really throw on Windows, but be safe.
+    }
+  } else {
+    // 3. Already absolute — add slash variants + UNC-stripped variant.
+    exact.add(userInput.replace(/\\/g, "/"));
+    exact.add(userInput.replace(/\//g, "\\"));
+    if (userInput.startsWith("\\\\?\\")) {
+      const stripped = userInput.slice(4);
+      exact.add(stripped);
+      exact.add(stripped.replace(/\\/g, "/"));
+    } else if (process.platform === "win32" && /^[a-zA-Z]:[\\/]/.test(userInput)) {
+      // Add the UNC-prefixed form too — that's what node:fs realpath
+      // returns and what the indexer may have stored before B-023.
+      exact.add(`\\\\?\\${userInput.replace(/\//g, "\\")}`);
+    }
+  }
+
+  // 4. Forward-slash variant of the original input.
+  exact.add(userInput.replace(/\\/g, "/"));
+  exact.add(userInput.replace(/\//g, "\\"));
+
+  // 5. Trailing-segment LIKE — order matters, MORE-specific first.
+  //    `src/paths.rs` is far more discriminating than just `paths.rs`,
+  //    which would match dozens of unrelated files. Insert in
+  //    longest-first order so the LIKE fallback prefers the most
+  //    specific match before degrading to the bare basename.
+  const normalized = userInput.replace(/\\/g, "/");
+  const parts = normalized.split("/").filter((p) => p.length > 0);
+  // 3-segment tail (e.g. `common/src/paths.rs`).
+  if (parts.length >= 3) {
+    like.add(parts.slice(-3).join("/"));
+    like.add(parts.slice(-3).join("\\"));
+  }
+  // 2-segment tail (e.g. `src/paths.rs`).
+  if (parts.length >= 2) {
+    like.add(parts.slice(-2).join("/"));
+    like.add(parts.slice(-2).join("\\"));
+  }
+  // 6. Basename last (catches `auth.ts` against any path ending in
+  //    `auth.ts` — broad fallback when the more specific candidates
+  //    didn't hit anything).
+  const base = basename(userInput);
+  if (base.length > 0 && base !== userInput) {
+    like.add(base);
+  }
+
+  return { exact: Array.from(exact), like: Array.from(like) };
 }
 
 /**
@@ -220,32 +308,96 @@ export function blastRadius(
   target: string,
   maxDepth: number = 2,
   cwdOverride?: string,
-): { node: string; depth: number; kind: string }[] {
+): {
+  node: string;
+  depth: number;
+  kind: string;
+  file_path: string | null;
+  name: string | null;
+  line: number | null;
+}[] {
   const db = openShardDb("graph", cwdOverride);
   try {
-    // Recursive CTE: frontier-expand via edges where source = target.
-    // Seed accepts either a fully-qualified name OR a file_path so callers
-    // can ask `blast_radius("path/to/file.ts")` directly. Mirrors
-    // `blastRadiusCount` below.
+    // Bench gap (2026-05-02): match input against every plausible
+    // spelling — qualified_name, bare name, ::-suffixed FQN, .-suffixed
+    // FQN, AND every path candidate (relative -> absolute -> UNC -> slash
+    // variant -> basename). Seed the recursive CTE with the union of
+    // all matching qualified_names so callers get answers for inputs
+    // like "Store" or "src/utils/auth.ts" instead of a 0-row result.
+    const cands = pathCandidates(target, cwdOverride);
+    const exactPlaceholders = cands.exact.map(() => "?").join(",");
+
+    // First: collect every qualified_name that this input plausibly
+    // refers to, then feed them all into the recursive CTE.
+    // All positional `?` (avoid mixing `?1` named-positional with
+    // expanded IN-placeholders — bun:sqlite reports a count mismatch).
+    const seedSql = `
+      SELECT DISTINCT qualified_name FROM nodes
+      WHERE qualified_name = ?
+         OR name = ?
+         OR qualified_name LIKE '%::' || ?
+         OR qualified_name LIKE '%.' || ?
+         OR file_path = ?
+         OR file_path IN (${exactPlaceholders})
+         OR file_path LIKE '%' || ?
+      LIMIT 100
+    `;
+    const seedParams: string[] = [
+      target,
+      target,
+      target,
+      target,
+      target,
+      ...cands.exact,
+      target,
+    ];
+    const seedRows = db.prepare(seedSql).all(...seedParams) as Array<{
+      qualified_name: string;
+    }>;
+
+    // Build a CTE that unions all seed names at depth 0.
+    const seeds = seedRows.map((r) => r.qualified_name);
+    if (seeds.length === 0) {
+      // Last-ditch fallback: file_path LIKE on each candidate basename.
+      for (const tail of cands.like) {
+        const more = db
+          .prepare(
+            `SELECT DISTINCT qualified_name FROM nodes WHERE file_path LIKE ? LIMIT 100`,
+          )
+          .all(`%${tail}`) as Array<{ qualified_name: string }>;
+        for (const r of more) seeds.push(r.qualified_name);
+        if (seeds.length > 0) break;
+      }
+    }
+    if (seeds.length === 0) return [];
+
+    const seedPh = seeds.map(() => "?").join(",");
     const sql = `
       WITH RECURSIVE blast(node, depth) AS (
-        SELECT qualified_name, 0 FROM nodes WHERE qualified_name = ?1 OR file_path = ?1
+        SELECT qualified_name, 0 FROM nodes WHERE qualified_name IN (${seedPh})
         UNION
         SELECT e.target_qualified, b.depth + 1
         FROM blast b
         JOIN edges e ON e.source_qualified = b.node
-        WHERE b.depth < ?2
+        WHERE b.depth < ?
       )
-      SELECT b.node, b.depth, COALESCE(n.kind, '?') AS kind
+      SELECT b.node, b.depth,
+             COALESCE(n.kind, '?')   AS kind,
+             n.file_path             AS file_path,
+             n.name                  AS name,
+             n.line_start            AS line
       FROM blast b
       LEFT JOIN nodes n ON n.qualified_name = b.node
       ORDER BY b.depth, b.node
       LIMIT 500
     `;
-    const rows = db.prepare(sql).all(target, maxDepth) as Array<{
+    const rows = db.prepare(sql).all(...seeds, maxDepth) as Array<{
       node: string;
       depth: number;
       kind: string;
+      file_path: string | null;
+      name: string | null;
+      line: number | null;
     }>;
     return rows;
   } finally {
@@ -387,12 +539,17 @@ export function fileNodeState(
   } | null>(
     "graph",
     (db) => {
-      const file = db
+      // Bench gap (2026-05-02): index stores absolute UNC paths but
+      // users pass relative `src/utils/auth.ts`. Try every candidate
+      // spelling we can derive, then fall back to a basename LIKE.
+      const cands = pathCandidates(filePath, cwdOverride);
+      const placeholders = cands.exact.map(() => "?").join(",");
+      let file = db
         .prepare(
           `SELECT path, sha256, language, line_count, byte_count, last_parsed_at
-           FROM files WHERE path = ?`,
+           FROM files WHERE path IN (${placeholders}) LIMIT 1`,
         )
-        .get(filePath) as
+        .get(...cands.exact) as
         | {
             path: string;
             sha256: string;
@@ -403,10 +560,37 @@ export function fileNodeState(
           }
         | undefined;
 
+      // LIKE-suffix fallback: matches `auth.ts` against `\\?\D:\...\auth.ts`.
+      if (!file) {
+        for (const tail of cands.like) {
+          const row = db
+            .prepare(
+              `SELECT path, sha256, language, line_count, byte_count, last_parsed_at
+               FROM files WHERE path LIKE ? LIMIT 1`,
+            )
+            .get(`%${tail}`) as
+            | {
+                path: string;
+                sha256: string;
+                language: string | null;
+                line_count: number | null;
+                byte_count: number | null;
+                last_parsed_at: string;
+              }
+            | undefined;
+          if (row) {
+            file = row;
+            break;
+          }
+        }
+      }
+
       if (!file) return null;
 
       // Top neighbors: edges that cross this file's boundary (either endpoint
-      // lives in this file). We approximate via nodes.file_path match.
+      // lives in this file). We approximate via nodes.file_path match — keyed
+      // on the resolved file path we just looked up, not the user's input.
+      const resolvedPath = file.path;
       const neighbors = db
         .prepare(
           `SELECT DISTINCT
@@ -423,7 +607,7 @@ export function fileNodeState(
            WHERE n_src.file_path = ?1 OR n_tgt.file_path = ?1
            LIMIT ?2`,
         )
-        .all(filePath, neighborLimit) as Array<{
+        .all(resolvedPath, neighborLimit) as Array<{
         qualified_name: string;
         edge_kind: string;
         kind: string | null;
@@ -449,15 +633,39 @@ export function blastRadiusCount(filePath: string, cwdOverride?: string): number
   return withShard<number>(
     "graph",
     (db) => {
+      // Bench gap (2026-05-02): match against every plausible spelling
+      // of the user's input, not just the literal string.
+      const cands = pathCandidates(filePath, cwdOverride);
+      const placeholders = cands.exact.map(() => "?").join(",");
       const row = db
         .prepare(
           `SELECT COUNT(DISTINCT e.id) AS c FROM edges e
            LEFT JOIN nodes n_src ON n_src.qualified_name = e.source_qualified
            LEFT JOIN nodes n_tgt ON n_tgt.qualified_name = e.target_qualified
-           WHERE n_src.file_path = ? OR n_tgt.file_path = ?`,
+           WHERE n_src.file_path IN (${placeholders})
+              OR n_tgt.file_path IN (${placeholders})`,
         )
-        .get(filePath, filePath) as { c: number } | undefined;
-      return row?.c ?? 0;
+        .get(...cands.exact, ...cands.exact) as { c: number } | undefined;
+      let count = row?.c ?? 0;
+      // LIKE-suffix fallback when exact match yielded zero — catches the
+      // common `src/utils/auth.ts` -> `\\?\D:\...\src\utils\auth.ts` case.
+      if (count === 0) {
+        for (const tail of cands.like) {
+          const r2 = db
+            .prepare(
+              `SELECT COUNT(DISTINCT e.id) AS c FROM edges e
+               LEFT JOIN nodes n_src ON n_src.qualified_name = e.source_qualified
+               LEFT JOIN nodes n_tgt ON n_tgt.qualified_name = e.target_qualified
+               WHERE n_src.file_path LIKE ? OR n_tgt.file_path LIKE ?`,
+            )
+            .get(`%${tail}`, `%${tail}`) as { c: number } | undefined;
+          if (r2 && r2.c > 0) {
+            count = r2.c;
+            break;
+          }
+        }
+      }
+      return count;
     },
     0,
     cwdOverride,
@@ -1082,7 +1290,25 @@ export function callGraphBfs(
   }>(
     "graph",
     (db) => {
-      const visited = new Set<string>([fn]);
+      // Bench gap (2026-05-02): users pass bare names like
+      // `build_or_migrate` but the index keys symbols by FQN like
+      // `mneme_store::DbBuilder::build_or_migrate`. Resolve every
+      // matching qualified_name first; if none exist, fall back to the
+      // raw input so the BFS at least seeds something.
+      const seedRows = db
+        .prepare(
+          `SELECT DISTINCT qualified_name FROM nodes
+           WHERE qualified_name = ?1
+              OR name = ?1
+              OR qualified_name LIKE '%::' || ?1
+              OR qualified_name LIKE '%.' || ?1
+           LIMIT 50`,
+        )
+        .all(fn) as Array<{ qualified_name: string }>;
+      const seeds = seedRows.map((r) => r.qualified_name);
+      if (seeds.length === 0) seeds.push(fn);
+
+      const visited = new Set<string>(seeds);
       const edgePairs = new Map<string, number>(); // "src->tgt" -> count
       const pickCallees = direction === "callees" || direction === "both";
       const pickCallers = direction === "callers" || direction === "both";
@@ -1096,7 +1322,7 @@ export function callGraphBfs(
          FROM edges WHERE kind = 'calls' AND target_qualified = ?`,
       );
 
-      let frontier: string[] = [fn];
+      let frontier: string[] = [...seeds];
       for (let d = 0; d < depth && frontier.length > 0; d++) {
         const next: string[] = [];
         for (const cur of frontier) {
@@ -1374,6 +1600,29 @@ export function findReferences(
   >(
     "graph",
     (db) => {
+      // Bench gap (2026-05-02): users pass bare names like "Store" but
+      // the index keys symbols by fully-qualified name like
+      // `mneme_store::Store` or `pages::LoginPage::render`. Resolve
+      // every plausible qualified_name first, then run the edge query
+      // against the union — so `find_references("Store")` returns hits
+      // instead of zero.
+      const targetRows = db
+        .prepare(
+          `SELECT DISTINCT qualified_name FROM nodes
+           WHERE qualified_name = ?1
+              OR name = ?1
+              OR qualified_name LIKE '%::' || ?1
+              OR qualified_name LIKE '%.' || ?1
+           LIMIT 200`,
+        )
+        .all(symbol) as Array<{ qualified_name: string }>;
+
+      const targets = targetRows.map((r) => r.qualified_name);
+      // Always include the raw input — covers cases where the symbol
+      // is referenced via an edge but not present as its own node row.
+      if (!targets.includes(symbol)) targets.push(symbol);
+
+      const ph = targets.map(() => "?").join(",");
       const rows = db
         .prepare(
           `SELECT e.source_qualified AS source,
@@ -1383,11 +1632,11 @@ export function findReferences(
                   n.signature          AS signature
            FROM edges e
            LEFT JOIN nodes n ON n.qualified_name = e.source_qualified
-           WHERE e.target_qualified = ?
+           WHERE e.target_qualified IN (${ph})
            ORDER BY e.kind, file
            LIMIT 500`,
         )
-        .all(symbol) as Array<{
+        .all(...targets) as Array<{
         source: string;
         kind: string;
         file: string | null;
@@ -1395,24 +1644,30 @@ export function findReferences(
         signature: string | null;
       }>;
 
-      // Definitions = node rows where qualified_name = symbol.
+      // Definitions = node rows matching any of the resolved targets,
+      // OR matching the raw input by name (catches definitions that
+      // weren't in the IN list because they had a different FQN spelling).
       const defRows = db
         .prepare(
-          `SELECT file_path AS file, line_start AS line, signature
-           FROM nodes WHERE qualified_name = ?`,
+          `SELECT file_path AS file, line_start AS line, signature, qualified_name
+           FROM nodes
+           WHERE qualified_name IN (${ph})
+              OR name = ?
+           LIMIT 100`,
         )
-        .all(symbol) as Array<{
+        .all(...targets, symbol) as Array<{
         file: string | null;
         line: number | null;
         signature: string | null;
+        qualified_name: string;
       }>;
 
       const defs = defRows.map((d) => ({
         file: d.file ?? "",
         line: d.line ?? 0,
         kind: "definition",
-        source: symbol,
-        context: d.signature ?? symbol,
+        source: d.qualified_name ?? symbol,
+        context: d.signature ?? d.qualified_name ?? symbol,
       }));
 
       const usages = rows.map((r) => ({

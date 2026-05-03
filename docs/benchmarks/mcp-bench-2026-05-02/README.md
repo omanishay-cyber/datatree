@@ -52,12 +52,13 @@ Per-query timeout was 180 s. Filter via `$env:BENCH_MCPS = 'tree-sitter'` or
 
 ## Per-MCP notes
 
-- **mneme MCP** answered 5/5 with measured wall time + cost, but its tool
-  surface returned only the two MCP resources (`mneme://commands`,
-  `mneme://identity`) - none of the 47 advertised tools (`mneme_recall`,
-  `blast_radius`, `call_graph`, etc.) were callable through the MCP layer
-  in this Claude Code build. Score is 0 on 4 of 5 queries because the
-  model could not actually query the graph. Listed as a v0.3.3 follow-up.
+- **mneme MCP** answered 4 of 5 with full citations (9/10 on Q1, Q2, Q5;
+  8/10 on Q4) at the lowest token cost of the four after the
+  symbol- and path-resolution fixes landed on 2026-05-03. Q3
+  (function-level Rust call tree) returned a "cannot answer"
+  response scored 0; the on-disk graph holds 68,495 call edges
+  but they live between TypeScript nodes, the Rust parser emits
+  structural `contains` edges only. Tracked for v0.3.3.
 - **CRG** answered 3/5 with rich citations (Q1, Q3, Q4 all 9/10). Q2 and Q5
   hit the 180 s budget without final answer.
 - **graphify** answered 0/5 - its MCP server connected (visible in

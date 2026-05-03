@@ -119,21 +119,37 @@ export const tool: ToolDescriptor<
         // Depth 0 is the target itself — skip from consumer lists.
         if (r.depth === 0) continue;
 
+        // Bench gap (2026-05-02): use the joined `file_path` /
+        // `name` / `line` fields from the store layer so consumers
+        // see real file paths instead of opaque `n_*` IDs. Fall back
+        // to the qualified_name only when both file_path and name
+        // are null (a synthetic / unresolved node).
+        const display = r.name ?? r.node;
+        const filePath = r.file_path ?? null;
+
         if (r.kind === "file") {
-          affected_files.push(r.node);
-          if (isTestNode(r.node)) test_files.push(r.node);
+          affected_files.push(filePath ?? r.node);
+          if (isTestNode(filePath ?? r.node)) {
+            test_files.push(filePath ?? r.node);
+          }
         } else {
-          affected_symbols.push(r.node);
-          if (r.depth === 1) critical_paths.push(r.node);
+          affected_symbols.push(display);
+          if (r.depth === 1) critical_paths.push(display);
+          // Also surface the file path so the model has a concrete
+          // citation, not just a function name.
+          if (filePath !== null && !affected_files.includes(filePath)) {
+            affected_files.push(filePath);
+            if (isTestNode(filePath)) test_files.push(filePath);
+          }
         }
 
         const ref: z.infer<typeof CodeRef> = {
-          qualified_name: r.node,
-          file: r.kind === "file" ? r.node : null,
-          line: null,
+          qualified_name: display,
+          file: filePath ?? (r.kind === "file" ? r.node : null),
+          line: r.line,
           kind: r.kind,
         };
-        if (isTestNode(r.node)) tests_affected.push(ref);
+        if (isTestNode(filePath ?? r.node)) tests_affected.push(ref);
         if (r.depth === 1) direct_consumers.push(ref);
         else transitive_consumers.push(ref);
       }
