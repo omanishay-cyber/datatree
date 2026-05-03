@@ -77,8 +77,19 @@ pub async fn run_listener(store: Arc<Store>) -> DtResult<()> {
     // collided with mneme-daemon already binding it — store crashed in
     // <50ms with EADDRINUSE, hit restart budget, got marked degraded.
     // Verified on Linux VM 2026-05-03 01:14 UTC.
+    //
+    // B-L06.5 (2026-05-03): unlink any stale socket file left behind by
+    // a prior crashed worker before binding. Without this, supervisor's
+    // respawn hits EADDRINUSE on the worker's *own* prior file because
+    // the file persists across process exit. Matches the supervisor's
+    // own bind-site pattern in supervisor/src/ipc.rs.
     let socket_path = store.paths.store_socket();
     info!(socket = %socket_path.display(), "store IPC listening");
+
+    #[cfg(unix)]
+    {
+        let _ = std::fs::remove_file(&socket_path);
+    }
 
     use interprocess::local_socket::tokio::prelude::*;
     use interprocess::local_socket::{GenericFilePath, ListenerOptions, ToFsName};
