@@ -58,8 +58,10 @@ set -euo pipefail
 # from the same release URL we'll pull binaries from.
 # -----------------------------------------------------------------------------
 
-VERSION="${MNEME_VERSION:-v0.3.2}"
-RELEASE_BASE="https://github.com/omanishay-cyber/mneme/releases/download/${VERSION}"
+# B-L01 (2026-05-03): renamed from VERSION to MNEME_REL_TAG for consistency
+# with install-linux.sh and to avoid future clobbering by sourced env files.
+MNEME_REL_TAG="${MNEME_VERSION:-v0.3.2}"
+RELEASE_BASE="https://github.com/omanishay-cyber/mneme/releases/download/${MNEME_REL_TAG}"
 
 # Locate lib-common.sh:
 #   1. Same dir as this script (when invoked locally)

@@ -53,8 +53,12 @@ set -euo pipefail
 # from the same release URL we'll pull binaries from.
 # -----------------------------------------------------------------------------
 
-VERSION="${MNEME_VERSION:-v0.3.2}"
-RELEASE_BASE="https://github.com/omanishay-cyber/mneme/releases/download/${VERSION}"
+# B-L01 (2026-05-03): renamed from VERSION to MNEME_REL_TAG to avoid being
+# clobbered by `. /etc/os-release` later (which sets VERSION=22.04.5 LTS
+# on Ubuntu, mangling our download URL into spaces + parens). Internal-only
+# var; the user-facing env override MNEME_VERSION is unchanged.
+MNEME_REL_TAG="${MNEME_VERSION:-v0.3.2}"
+RELEASE_BASE="https://github.com/omanishay-cyber/mneme/releases/download/${MNEME_REL_TAG}"
 
 # Locate lib-common.sh:
 #   1. Same dir as this script (when invoked locally)
@@ -121,7 +125,7 @@ if [ -n "$(detect_wsl)" ]; then
     say "instance that the Windows-side Claude Code cannot reach."
     say ""
     say "RECOMMENDED -- run the Windows installer instead, from PowerShell:"
-    say "  iex (irm https://github.com/omanishay-cyber/mneme/releases/download/${VERSION}/bootstrap-install.ps1)"
+    say "  iex (irm https://github.com/omanishay-cyber/mneme/releases/download/${MNEME_REL_TAG}/bootstrap-install.ps1)"
     say ""
     say "If you genuinely want a Linux-side install (e.g. you're using Claude Code"
     say "from inside WSL), set MNEME_FORCE_WSL=1 and re-run this script."
@@ -172,7 +176,7 @@ elif command -v zypper  >/dev/null 2>&1; then PKG_MGR="zypper"
 fi
 
 step "mneme bootstrap installer (Linux)"
-say "version    : ${VERSION}"
+say "version    : ${MNEME_REL_TAG}"
 say "user       : ${USER:-$(id -un)}"
 say "distro     : ${DISTRO_NAME} (family: ${DISTRO_FAMILY})"
 say "arch       : ${ARCH} (uname -m: $(uname -m))"
@@ -215,7 +219,22 @@ if ! command -v curl >/dev/null 2>&1; then
     esac
 fi
 require_cmd tar "should be preinstalled on Linux -- check /usr/bin/tar"
-ok "curl + tar present"
+
+# B-L03 (2026-05-03): unzip is required by the `bun` upstream installer
+# (bun.sh/install hard-fails with "unzip is required to install bun" on
+# fresh Ubuntu 22.04 and other minimal images). Probe + offer install hint.
+if ! command -v unzip >/dev/null 2>&1; then
+    case "${DISTRO_FAMILY}" in
+        debian) fail "unzip missing (required by Bun installer) -- install: sudo apt-get install -y unzip" ;;
+        redhat) fail "unzip missing (required by Bun installer) -- install: sudo dnf install -y unzip" ;;
+        arch)   fail "unzip missing (required by Bun installer) -- install: sudo pacman -S --noconfirm unzip" ;;
+        alpine) fail "unzip missing (required by Bun installer) -- install: sudo apk add --no-cache unzip" ;;
+        suse)   fail "unzip missing (required by Bun installer) -- install: sudo zypper install -y unzip" ;;
+        *)      fail "unzip missing (required by Bun installer) -- install via your distro's package manager" ;;
+    esac
+fi
+
+ok "curl + tar + unzip present"
 
 # git: optional, only matters for `mneme build` commit-SHA metadata.
 if command -v git >/dev/null 2>&1; then
@@ -320,7 +339,7 @@ fi
 
 step "download release tarball"
 
-ASSET="mneme-${VERSION}-linux-${ARCH}.tar.gz"
+ASSET="mneme-${MNEME_REL_TAG}-linux-${ARCH}.tar.gz"
 ASSET_URL="${RELEASE_BASE}/${ASSET}"
 
 TMP_DIR=$(mktemp -d -t mneme-bootstrap.XXXXXX)
@@ -341,7 +360,7 @@ if ! download_with_retry "${ASSET_URL}" "${LOCAL_TARBALL}" 3; then
        URL: ${ASSET_URL}
        This usually means the linux-${ARCH} binary has not yet been
        uploaded to the v0.3.2 release page. Check the release at:
-         https://github.com/omanishay-cyber/mneme/releases/tag/${VERSION}
+         https://github.com/omanishay-cyber/mneme/releases/tag/${MNEME_REL_TAG}
        If the asset is listed there, re-run this script. If not, the
        cross-compile workflow may still be building -- retry in ~15 min."
 fi
@@ -583,7 +602,7 @@ fi
 # -----------------------------------------------------------------------------
 
 step "DONE"
-say "mneme ${VERSION} installed for linux-${ARCH}."
+say "mneme ${MNEME_REL_TAG} installed for linux-${ARCH}."
 echo ""
 say "Verify (in a NEW shell so PATH picks up ~/.mneme/bin):"
 say "  mneme --version"
