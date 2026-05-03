@@ -136,8 +136,11 @@ echo ""
 
 step "pre-flight checks"
 
-# 5 GB free at $HOME (3.4 GB models + 1 GB binaries + working space).
-pre_flight_disk_space 5
+# B-L04 (2026-05-03): bumped from 5 GB to 8 GB. Real install peaks at
+# ~7 GB because models stage to a temp dir then copy into ~/.mneme/models
+# while the staging dir is still alive. 8 GB covers staging + final +
+# binaries + working space + a small headroom.
+pre_flight_disk_space 8
 
 # bash 3.2 ships with macOS by default -- our script targets bash 3.2+
 # semantics (no associative arrays, no [[ ${var,,} ]]). Confirm we have

@@ -197,8 +197,13 @@ echo ""
 
 step "pre-flight checks"
 
-# 5 GB free at $HOME (3.4 GB models + 1 GB binaries + working space).
-pre_flight_disk_space 5
+# B-L04 (2026-05-03): bumped from 5 GB to 8 GB. Real install peaks at
+# ~7 GB because models stage at /tmp/mneme-bootstrap.XXX/models (3.6 GB)
+# THEN copy into ~/.mneme/models (another 3.6 GB) while the staging dir
+# is still alive. 5 GB passes pre-flight then fails halfway through the
+# phi-3-mini-4k copy with ENOSPC. 8 GB covers staging + final + binaries
+# + working space + a small headroom.
+pre_flight_disk_space 8
 
 # bash version (we target bash 3.2+ semantics for portability).
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -426,8 +431,14 @@ Documentation=https://github.com/omanishay-cyber/mneme
 After=network.target
 
 [Service]
+# B-L05 (2026-05-03): invoke the supervisor binary directly. The CLI's
+# 'mneme daemon start' wrapper spawns supervisor detached and EXITS,
+# which under Type=simple makes systemd think the unit failed (and the
+# unsupported --foreground flag also tripped clap). The supervisor
+# binary mneme-daemon is itself the long-running process — Type=simple
+# owns it directly, no double-spawn, no --foreground needed.
 Type=simple
-ExecStart=${MNEME_BIN} daemon start --foreground
+ExecStart=${MNEME_HOME}/bin/mneme-daemon start
 Restart=on-failure
 RestartSec=10
 TimeoutStartSec=30
