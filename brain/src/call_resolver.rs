@@ -3,7 +3,9 @@
 //! `parsers/src/extractor.rs::collect_calls` emits Calls edges with a
 //! placeholder `target_qualified` of the form
 //!
-//!     call::<file_path>::<callee_text>
+//! ```text
+//! call::<file_path>::<callee_text>
+//! ```
 //!
 //! and stashes the raw callee text in `extra.unresolved`. The original
 //! design comment promised "downstream resolvers (brain) can map
