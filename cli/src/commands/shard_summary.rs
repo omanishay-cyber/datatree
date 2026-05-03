@@ -388,7 +388,10 @@ fn print_shard_row(d: &ShardDescriptor, probe: &ShardProbe) {
             "         no data yet (schema ready, table `{}` will be filled by: {})",
             d.primary_table, d.expected_source
         ),
-        ShardProbe::Rows(0) => format!("         no data yet (will be filled by: {})", d.expected_source),
+        ShardProbe::Rows(0) => format!(
+            "         no data yet (will be filled by: {})",
+            d.expected_source
+        ),
         ShardProbe::Rows(_) => String::new(),
     };
     // Pad shard file name to a fixed width for legibility. 16 is wide

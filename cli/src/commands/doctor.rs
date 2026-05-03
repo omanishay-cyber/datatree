@@ -1883,7 +1883,9 @@ pub fn check_build_toolchain() -> Vec<DoctorRow> {
             }
         }
         None => {
-            vswhere_row_value = "(optional, dev-only) — install Visual Studio Installer for source builds".to_string();
+            vswhere_row_value =
+                "(optional, dev-only) — install Visual Studio Installer for source builds"
+                    .to_string();
         }
     }
 
