@@ -1,0 +1,10 @@
+# Bun build artifacts (regenerated on every build, never commit)
+index.js
+index-bundled.js
+dist/
+node_modules/
+
+# Local-only test/dev files
+.env
+.env.local
+*.log
