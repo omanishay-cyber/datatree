@@ -154,39 +154,40 @@ All four MCPs were registered via `claude mcp add`, and `claude mcp list` confir
 
 Each cell shows `wall-time s · output tokens · cost USD · relevance score (0-10)`. Wall time is the end-to-end Claude process duration including all MCP roundtrips and the model's final synthesis. Cost is from `total_cost_usd` in the Claude JSON envelope. Relevance is auto-scored by counting ground-truth markers (a hand-curated list of ~67 known auth symbols across 12 files).
 
-> The bench below was run on a release that had a Windows MCP-CLI path-hashing mismatch. The fix shipped in the current zip; the new bench is being re-run on the patched binary and will replace these numbers.
+> Re-run on 2026-05-03 with the MCP-CLI path-hashing mismatch patched. The MCP now finds the right shard. The numbers below are the post-fix mneme column; tree-sitter, CRG, and graphify columns are unchanged from the original run.
 
-| Query | mneme (results pending re-run) | tree-sitter | CRG | graphify |
+| Query | mneme | tree-sitter | CRG | graphify |
 |---|---|---|---|---|
-| Q1 - Find all auth functions (~67 symbols) | re-bench pending | 115 s · 4,668 t · $0.22 · **8**/10 | (timeout 480 s) | (timeout 240 s) |
-| Q2 - Blast radius of `src/utils/auth.ts` (~14 consumers) | re-bench pending | 131 s · 4,918 t · $0.17 · **9**/10 | (timeout 180 s) | (not measured)* |
-| Q3 - Login call graph from `LoginPage` | re-bench pending | 277 s · 8,623 t · $0.59 · **9**/10 | (timeout 180 s) | (not measured)* |
-| Q4 - Design patterns | re-bench pending | 443 s · 11,469 t · $0.74 · **8**/10 | (not measured)* | (not measured)* |
-| Q5 - Security issues in auth | re-bench pending | 220 s · 8,508 t · $0.49 · **9**/10 | (not measured)* | (not measured)* |
-| **Totals (measured)** | _re-bench pending_ | 1,186 s · 38,186 t · $2.21 · **8.6**/10 avg | 3x timeout, 2x skipped | 1x timeout, 4x skipped |
+| Q1 - Find all auth functions (~67 symbols) | 204 s · 7,646 t · $0.35 · **4**/10 | 115 s · 4,668 t · $0.22 · **8**/10 | (timeout 480 s) | (timeout 240 s) |
+| Q2 - Blast radius of `src/utils/auth.ts` (~14 consumers) | 71 s · 1,801 t · $0.11 · **0**/10 | 131 s · 4,918 t · $0.17 · **9**/10 | (timeout 180 s) | (not measured)* |
+| Q3 - Login call graph from `LoginPage` | 123 s · 3,488 t · $0.17 · **0**/10 | 277 s · 8,623 t · $0.59 · **9**/10 | (timeout 180 s) | (not measured)* |
+| Q4 - Design patterns | 352 s · 6,260 t · $0.56 · **9**/10 | 443 s · 11,469 t · $0.74 · **8**/10 | (not measured)* | (not measured)* |
+| Q5 - Security issues in auth | 201 s · 5,746 t · $0.28 · **0**/10 | 220 s · 8,508 t · $0.49 · **9**/10 | (not measured)* | (not measured)* |
+| **Totals (measured)** | 951 s · 24,941 t · $1.47 · **2.6**/10 avg | 1,186 s · 38,186 t · $2.21 · **8.6**/10 avg | 3x timeout, 2x skipped | 1x timeout, 4x skipped |
 
 \* After 3 consecutive 480 s + 180 s timeouts on CRG and 1x 240 s timeout on graphify with no partial response captured, we stopped further attempts to keep total bench wall-time bounded. The pattern was uniform - both servers connect and respond to `tools/list` but Claude never receives output from any tool call within the timeout.
 
 ### Per-query verdicts
 
 **Q1 - "Find all auth functions"**
-Tree-sitter returned a complete table with line numbers and signatures (`hashPassword:44`, `verifyPassword:64`, `generateRecoveryCode:92`, plus the Zustand store actions) in 115 s for $0.22, scoring 8/10 against a 67-symbol ground truth. Mneme's MCP returned "shard not found" because of a Windows path-hashing mismatch between MCP and CLI (now fixed). The mneme CLI from the same directory returned 5 hits for `hashPassword` with file:line citations, so the graph data was correct. Only the MCP-side lookup was broken.
+Tree-sitter returned a complete table with line numbers and signatures (`hashPassword:44`, `verifyPassword:64`, `generateRecoveryCode:92`, plus the Zustand store actions) in 115 s for $0.22, scoring 8/10 against a 67-symbol ground truth. Mneme's MCP found the right shard this time (the path-hash fix worked) and identified 12 auth-participating files via `god_nodes` and `recall_concept`, including `useAuthStore.ts` (degree 630, blast_radius 1,052) and the full set of importers. It could not enumerate function names — the `find_references` and `call_graph` tools returned graph stubs (`function n_515407c6bb94c5f3`) instead of resolved symbols, so file-level recall was good but function-level recall failed. Partial answer; 4/10.
 
 **Q2 - "Blast radius of `src/utils/auth.ts`"**
-Tree-sitter's standout query: 41 ground-truth markers, file:line citations for every consumer (`orgManager.ts:632`, `:792`, `:793`; `useAuthStore.ts:809`, `:865`), 131 s for $0.17. CRG, designed exactly for this question, hit the 180 s timeout with no partial response. Mneme MCP again hit the project-resolution bug.
+Tree-sitter's standout query: 41 ground-truth markers, file:line citations for every consumer (`orgManager.ts:632`, `:792`, `:793`; `useAuthStore.ts:809`, `:865`), 131 s for $0.17. CRG, designed exactly for this question, hit the 180 s timeout with no partial response. Mneme reported `src/utils/auth.ts` "does not exist" because `recall_file` does an exact-string match against the `files.path` column, and the indexed paths are stored absolute (`\\?\C:\...\src\utils\auth.ts`) while the question used the relative path. The shard genuinely contains the file — `mneme recall hashPassword` from the CLI returned 5 hits at `src\utils\auth.ts:44` — but the MCP tool can't bridge the relative-to-absolute gap. 0/10 because the user-facing answer was wrong even though the underlying data was right.
 
 **Q3 - "Login call graph from `LoginPage`"**
-Tree-sitter produced an 8,623-token indented tree showing the full IPC chain: React component to Zustand store to Electron main to safeStorage decrypt to GitHub API. 4 m 37 s wall, $0.59. A persistent-graph tool should be 10x faster and cheaper on this query (single SQL traversal vs 20 MCP roundtrips). Tree-sitter pays the per-query parsing tax to stay fresh.
+Tree-sitter produced an 8,623-token indented tree showing the full IPC chain: React component to Zustand store to Electron main to safeStorage decrypt to GitHub API. 4 m 37 s wall, $0.59. Mneme's `call_graph` and `find_references` returned zero hits for every login-related symbol (`LoginPage`, `handleLogin`, `useAuth`, `login`, `authStore`) because the symbol-name index is keyed on `qualified_name` which the MCP tools didn't normalise from the bare names Claude passed. `recall_concept` similarly returned empty. Misdiagnosed the index as empty when it actually held 5,223 nodes / 41,850 edges. 0/10.
 
 **Q4 - "Design patterns used in this project"**
-Tree-sitter identified Singleton (`syncQueue.ts:380`), Observer/Pub-Sub, Command, Strategy, Factory, and more. 53 turns, 11,469 output tokens, $0.74. This is a fuzzy semantic question that suits Claude's reasoning but punishes any tool that has to enumerate everything.
+Tree-sitter identified Singleton (`syncQueue.ts:380`), Observer/Pub-Sub, Command, Strategy, Factory, and more. 53 turns, 11,469 output tokens, $0.74. Mneme's best result: 12 patterns named with concrete file:line citations (Singleton on `useAuthStore`/`useAppStore`/`useTechStore`, Adapter on `safeStorageAdapter:24-98`, Decorator via `persist()`, Factory on `createQueueExecutor()`, Mediator on `syncToStoreApp:900`, etc.) plus blast-radius numbers from the graph (`useAuthStore` has 348 dependents). 29 turns, $0.56. This question played to mneme's strength: the architecture-graph tools (`god_nodes`, `mneme_context`) return file-scoped data that doesn't depend on per-symbol path resolution. 9/10.
 
 **Q5 - "Security issues in auth"**
-Tree-sitter caught two real bugs: `useAuthStore.ts:836` does plain-text `password === '12345'` for legacy employees, and `useAuthStore.ts:841` has a browser-mode fallback that sets `passwordValid = true` if `window.electronAPI` is missing. 8,508 output tokens, $0.49, 26 turns. Mneme has a dedicated `audit_security` scanner; re-run pending against the fixed MCP.
+Tree-sitter caught two real bugs: `useAuthStore.ts:836` does plain-text `password === '12345'` for legacy employees, and `useAuthStore.ts:841` has a browser-mode fallback that sets `passwordValid = true` if `window.electronAPI` is missing. 8,508 output tokens, $0.49, 26 turns. Mneme's `audit_security` scanner returned `findings: []` and every `find_references` call (`ipcMain`, `webPreferences`, `password`, `token`, `contextIsolation`) returned zero hits. Same root cause as Q3 — the symbol-name lookup path inside the MCP doesn't match how qualified names are stored. 0/10.
 
 ### Caveats
 
-- The MCP-CLI path-hashing mismatch is fixed in the current v0.3.2 zip. The CLI built shards keyed off the project root path; the MCP looked them up with a slightly different normalisation, so it returned "shard not found" on Windows. Both sides now hash the same way. Re-bench in progress.
+- The MCP-CLI path-hashing mismatch (project root hashed differently on each side, so MCP looked up a non-existent shard) is fixed. The post-fix mneme column above replaces the "re-bench pending" cells from the original publication. The MCP now finds the right shard on every call.
+- A second class of bugs surfaced in this re-run that the path fix exposed rather than caused: the per-tool query handlers do exact-string matches against absolute Windows paths in the `files` table (so a relative-path question like "blast radius of `src/utils/auth.ts`" can't match) and call-graph / find-references queries lookup against `qualified_name` without normalising bare symbol names, so `LoginPage` returns zero. The shard data is correct — `mneme recall hashPassword` from the CLI returns 5 hits at `src\utils\auth.ts:44` — but several MCP tool surfaces don't bridge user-friendly inputs to how the data is stored. Tracked for the next release; the architecture-graph tools that don't depend on per-symbol resolution (Q4) work end-to-end.
 - CRG and graphify consistently hit the per-query timeout (480 s on Q1, 180 s on Q2-Q3) before producing any response. The MCP servers themselves were healthy (`claude mcp list` showed `Connected`, the CLIs returned populated graphs), but the hang was inside the Claude-to-MCP roundtrip path. Not enough data to say whether this is a Claude Code 2.1.119 issue, an MCP-protocol-version mismatch, a Windows stdio quirk, or a bug in either tool. The table notes "(timeout)" rather than fabricate timing.
 - Tree-sitter was the only MCP that delivered detailed answers across all five queries. Its per-query parsing model is slow (avg 247 s) and expensive (avg $0.43 per query) but the answers are precise.
 
