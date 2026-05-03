@@ -967,10 +967,168 @@
       .install-cmd::after { display: none; }
     }
 
+    /* ============================================================ */
+    /*  TOP NAV - fixed, glassy, with scroll-progress baked in       */
+    /* ============================================================ */
+    .topnav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 50;
+      background: color-mix(in srgb, var(--bg) 78%, transparent);
+      backdrop-filter: saturate(160%) blur(14px);
+      -webkit-backdrop-filter: saturate(160%) blur(14px);
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+    }
+    .topnav-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    .topnav-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.015em;
+      color: var(--text-strong);
+      text-decoration: none;
+    }
+    .topnav-brand:hover { text-decoration: none; opacity: 0.85; }
+    .topnav-links {
+      display: flex;
+      gap: 18px;
+      margin-left: 8px;
+    }
+    .topnav-links a {
+      font-size: 13.5px;
+      color: var(--muted);
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      padding: 6px 2px;
+      border-bottom: 1.5px solid transparent;
+      transition: color 0.15s ease, border-color 0.15s ease;
+      text-decoration: none;
+    }
+    .topnav-links a:hover {
+      color: var(--text-strong);
+      border-bottom-color: var(--accent-green);
+      text-decoration: none;
+    }
+    .topnav-actions {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .topnav-stars {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--bg-3);
+      color: var(--text-strong);
+      font-size: 12.5px;
+      font-weight: 600;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      transition: border-color 0.15s ease, background 0.15s ease;
+      text-decoration: none;
+    }
+    .topnav-stars:hover {
+      border-color: var(--accent-green);
+      background: rgba(22,163,124,0.06);
+      text-decoration: none;
+    }
+    .topnav-stars .stars-count { color: var(--accent-green); }
+    .topnav-theme {
+      width: 32px; height: 32px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--bg-3);
+      color: var(--text-strong);
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    .topnav-theme:hover { border-color: var(--accent-green); }
+    .topnav-theme .i-moon { display: none; }
+    [data-theme="dark"] .topnav-theme .i-sun { display: none; }
+    [data-theme="dark"] .topnav-theme .i-moon { display: block; }
+
+    /* Scroll-progress bar */
+    .scroll-progress {
+      position: absolute;
+      bottom: -1px; left: 0;
+      height: 2px;
+      width: var(--scroll-progress, 0%);
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+      transition: width 0.05s linear;
+    }
+
+    /* push hero down so it doesn't sit under the nav */
+    .hero { padding-top: 88px; }
+
+    @media (max-width: 760px) {
+      .topnav-links { display: none; }
+      .stars-label { display: none; }
+      .topnav-inner { padding: 10px 16px; gap: 12px; }
+    }
+
   </style>
 </head>
 <body>
-<div class="page">
+<header class="topnav" role="navigation" aria-label="primary">
+  <div class="topnav-inner">
+    <a class="topnav-brand" href="#top" aria-label="mneme home">
+      <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="3" y="3" width="26" height="26" rx="6" fill="currentColor"/>
+        <path d="M8 22 L8 12 L11 12 L16 18 L21 12 L24 12 L24 22"
+              stroke="var(--accent-green)" stroke-width="2.4" fill="none"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="16" cy="9.5" r="1.4" fill="var(--accent-green)"/>
+      </svg>
+      <span>mneme</span>
+    </a>
+    <nav class="topnav-links" aria-label="sections">
+      <a href="#install">Install</a>
+      <a href="#features">Why</a>
+      <a href="#bench">Benchmarks</a>
+      <a href="#tools">MCP tools</a>
+      <a href="#architecture">Architecture</a>
+    </nav>
+    <div class="topnav-actions">
+      <a class="topnav-stars" href="https://github.com/omanishay-cyber/mneme"
+         aria-label="Star mneme on GitHub">
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+          <path fill="currentColor" d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/>
+        </svg>
+        <span class="stars-label">Star</span>
+        <span class="stars-count" data-gh-stars>-</span>
+      </a>
+      <button class="topnav-theme" type="button" aria-label="Toggle color theme"
+              data-theme-toggle>
+        <svg class="i-sun" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+        </svg>
+        <svg class="i-moon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <div class="scroll-progress" role="presentation" aria-hidden="true"></div>
+</header>
+
+<div class="page" id="top">
 
   <!-- ============================================================ -->
   <!--  HERO                                                         -->
@@ -1617,6 +1775,44 @@ python run_crg_bench.py</code></pre>
       });
     }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
     targets.forEach(function (t) { io.observe(t); });
+  })();
+
+  // Scroll-progress bar
+  (function () {
+    const bar = document.querySelector('.scroll-progress');
+    if (!bar) return;
+    const update = function () {
+      const h = document.documentElement;
+      const denom = h.scrollHeight - h.clientHeight;
+      const scrolled = denom > 0 ? h.scrollTop / denom : 0;
+      bar.style.setProperty('--scroll-progress', (scrolled * 100).toFixed(2) + '%');
+    };
+    document.addEventListener('scroll', update, { passive: true });
+    update();
+  })();
+
+  // Live GitHub stars badge - cached for 6h in localStorage
+  (function () {
+    const els = document.querySelectorAll('[data-gh-stars]');
+    if (!els.length) return;
+    const cacheKey = 'mneme-gh-stars';
+    const cacheTtl = 6 * 60 * 60 * 1000;
+    const setAll = function (text) { els.forEach(function (el) { el.textContent = text; }); };
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (cached && Date.now() - cached.t < cacheTtl) {
+        setAll(Number(cached.n).toLocaleString());
+        return;
+      }
+    } catch (e) { /* ignore */ }
+    fetch('https://api.github.com/repos/omanishay-cyber/mneme')
+      .then(function (r) { if (!r.ok) throw new Error('gh'); return r.json(); })
+      .then(function (j) {
+        const n = j.stargazers_count;
+        setAll(Number(n).toLocaleString());
+        try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), n: n })); } catch (e) {}
+      })
+      .catch(function () { setAll('★'); });
   })();
 </script>
 
