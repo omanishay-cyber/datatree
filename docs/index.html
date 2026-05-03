@@ -1090,6 +1090,11 @@
       box-shadow: var(--shadow-card);
       position: relative;
       transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+      width: 100%;
+      color: inherit;
     }
     .codeword-card:hover {
       transform: translateY(-3px);
@@ -1112,6 +1117,26 @@
       color: var(--muted);
       line-height: 1.55;
     }
+    .codeword-card .cw-hint {
+      display: block;
+      margin-top: 12px;
+      font-size: 11px;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      color: var(--muted-2);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    .codeword-card:hover .cw-hint,
+    .codeword-card:focus-visible .cw-hint { opacity: 1; }
+    .codeword-card.copied {
+      border-color: var(--accent-green);
+      box-shadow: 0 0 0 3px rgba(22,163,124,0.18), var(--shadow-card);
+    }
+    .codeword-card.copied .cw-hint { color: var(--accent-green); opacity: 1; }
+    .codeword-card.copied .cw-hint::before { content: "\2713 copied - paste into Claude"; }
+    .codeword-card.copied .cw-hint span { display: none; }
 
     /* ============================================================ */
     /*  MCP TOOLS GRID                                                */
@@ -1841,22 +1866,30 @@ python run_crg_bench.py</code></pre>
     <p class="lead" style="font-size: 14px; max-width: 640px;">Type one of these as a single word and Claude switches modes instantly. No prompt engineering. No ceremony. Just a verb.</p>
 
     <div class="codewords-grid">
-      <div class="codeword-card cw-cold">
+      <button class="codeword-card cw-cold" type="button" data-copy="coldstart"
+              aria-label="Copy coldstart to clipboard">
         <div class="word">coldstart</div>
         <div class="desc">Pause. Observe only. Claude reads context, drafts a plan, and waits - no code changes until you say go.</div>
-      </div>
-      <div class="codeword-card cw-hot">
+        <span class="cw-hint"><span>click to copy</span></span>
+      </button>
+      <button class="codeword-card cw-hot" type="button" data-copy="hotstart"
+              aria-label="Copy hotstart to clipboard">
         <div class="word">hotstart</div>
         <div class="desc">Resume with discipline. Claude builds a numbered roadmap and verifies each step before moving on.</div>
-      </div>
-      <div class="codeword-card cw-fire">
+        <span class="cw-hint"><span>click to copy</span></span>
+      </button>
+      <button class="codeword-card cw-fire" type="button" data-copy="firestart"
+              aria-label="Copy firestart to clipboard">
         <div class="word">firestart</div>
         <div class="desc">Full loadout. Loads every relevant fireworks skill, primes the mneme graph, then runs disciplined hotstart.</div>
-      </div>
-      <div class="codeword-card cw-chs">
+        <span class="cw-hint"><span>click to copy</span></span>
+      </button>
+      <button class="codeword-card cw-chs" type="button" data-copy="CHS"
+              aria-label="Copy CHS to clipboard">
         <div class="word">CHS</div>
         <div class="desc">"Check my screenshot." Claude reads the newest file in your Screenshots folder and answers based on what's there.</div>
-      </div>
+        <span class="cw-hint"><span>click to copy</span></span>
+      </button>
     </div>
 
     <h3 style="margin-top:36px; font-size:1.1rem;">Fireworks skills - auto-dispatched by keyword</h3>
@@ -2125,15 +2158,21 @@ python run_crg_bench.py</code></pre>
         };
         const onSuccess = function () {
           btn.classList.add('copied');
-          const span = btn.querySelector('span');
-          if (span) {
-            const orig = span.textContent;
-            span.textContent = 'Copied';
-            setTimeout(function () {
-              btn.classList.remove('copied');
-              span.textContent = orig;
-            }, 1500);
+          // Only swap label text on install-copy buttons (Copy -> Copied).
+          // Codeword cards use a CSS ::before for their copied state.
+          let labelEl = null;
+          if (btn.classList.contains('install-copy')) {
+            labelEl = btn.querySelector('span');
           }
+          let orig;
+          if (labelEl) {
+            orig = labelEl.textContent;
+            labelEl.textContent = 'Copied';
+          }
+          setTimeout(function () {
+            btn.classList.remove('copied');
+            if (labelEl) labelEl.textContent = orig;
+          }, 1500);
         };
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(text).then(onSuccess, function () { if (writeFallback()) onSuccess(); });
