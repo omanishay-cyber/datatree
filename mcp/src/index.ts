@@ -144,7 +144,14 @@ async function startMcp(): Promise<void> {
   const server = new MnemeMcpServer(ctx);
   await server.start();
 
-  // Lifecycle: shut down cleanly on SIGINT/SIGTERM.
+  // Lifecycle: shut down cleanly on SIGINT/SIGTERM/stdin-EOF.
+  //
+  // Stdin EOF = the MCP client (Claude Code, doctor probe, ad-hoc shell
+  // pipe) closed its end of the pipe. The MCP SDK's StdioServerTransport
+  // doesn't auto-exit on EOF, so without this the child sticks around
+  // (observed in B-023 verify run 2026-05-03 00:16 UTC: `mneme mcp stdio`
+  // held the process until the test's 30s wait timeout fired). Adding
+  // the EOF + close handlers makes shutdown deterministic.
   const shutdown = async (signal: string): Promise<void> => {
     console.error(`[mneme-mcp] received ${signal}, shutting down`);
     registry.unwatch();
@@ -154,6 +161,8 @@ async function startMcp(): Promise<void> {
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.stdin.on("end", () => void shutdown("stdin EOF"));
+  process.stdin.on("close", () => void shutdown("stdin close"));
 }
 
 // ---------------------------------------------------------------------------
