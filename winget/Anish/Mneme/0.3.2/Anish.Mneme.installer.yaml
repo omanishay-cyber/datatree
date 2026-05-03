@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+
+PackageIdentifier: Anish.Mneme
+PackageVersion: 0.3.2
+InstallerType: zip
+NestedInstallerType: portable
+InstallModes:
+- interactive
+- silent
+UpgradeBehavior: install
+Commands:
+- mneme
+# arm64 build pending — re-PR once mneme-v0.3.2-windows-arm64.zip is published.
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/mneme-v0.3.2-windows-x64.zip
+  InstallerSha256: F11DB0DA304662161A5B662F2A6CC4C39E9DFB225EABE4DF6C47F2069F498BDB
+  NestedInstallerFiles:
+  - RelativeFilePath: bin\mneme.exe
+    PortableCommandAlias: mneme
+ManifestType: installer
+ManifestVersion: 1.6.0
