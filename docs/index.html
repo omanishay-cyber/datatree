@@ -1578,7 +1578,23 @@
       .codewords-grid { grid-template-columns: 1fr; }
     }
 
-  </style>
+  
+    /* MAINTAINER OVERRIDE: paragraphs inside sections fill the full section width.
+       Beats every per-class max-width AND inline style="max-width: ..." overrides. */
+    section p,
+    section .lead,
+    section .lead-sm,
+    section .lead-callout,
+    section .quote,
+    section blockquote,
+    section li,
+    .cmp-wrap p,
+    .cmp-wrap .lead,
+    .cmp-wrap .lead-sm,
+    .install-foot {
+      max-width: none !important;
+    }
+</style>
 </head>
 <body>
 <header class="topnav" role="navigation" aria-label="primary">
