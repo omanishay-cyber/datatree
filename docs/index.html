@@ -1283,7 +1283,7 @@
     <p class="lead" style="margin-bottom: 12px;">We pointed Claude Code 2.1.119 at a real Electron + React + TypeScript codebase (~12K LOC, 82 source files) on a Windows 11 AWS instance and asked the same 5 questions through each MCP, isolated via <code>--strict-mcp-config</code>. Same model, same prompt, same project. Score is auto-counted against a hand-curated ground-truth of ~67 known auth symbols across 12 files (0-10 scale).</p>
 
     <p class="lead" style="margin-bottom: 14px; padding: 12px 16px; background: var(--bg-2); border-left: 3px solid var(--accent-green); border-radius: 6px; font-size:0.92rem;">
-      <strong>Update 2026-05-02:</strong> the bench caught a real mneme bug (B-023) — MCP's <code>projectIdForPath</code> lower-cased + slash-normalized Windows paths while the Rust CLI preserved native case + backslashes. Same project hashed to different ids; MCP returned <code>shard not found</code> on every tool call while the CLI's shard sat right there. <strong>Fixed in commit <code>f4c7dd1</code></strong> (MCP now matches CLI byte-for-byte). Pre-fix mneme cells below show <em>re-bench pending</em>; the underlying graph engine was correct (CLI from same cwd returned 5 hits with file:line citations for the same query) — the bug was purely the MCP-side lookup. Fair re-bench will land with the next v0.3.2 hotfix re-upload.
+      The bench below was run on a release that had a Windows MCP-CLI path-hashing mismatch — the MCP looked for a shard at a different hash than the CLI built. The CLI from the same directory returned correct results, so the graph data was fine; only the MCP-side lookup was broken. The fix shipped in the current zip and a re-run is in progress.
     </p>
 
     <div class="cmp-wrap">

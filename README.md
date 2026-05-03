@@ -146,7 +146,7 @@ We benchmarked four code-graph MCPs through Claude Code 2.1.119 on a real Electr
 
 ### MCPs under test
 
-| MCP | Version | Install | Index build | Index size |
+| MCP | Version | Install | Index build | Graph size (more = more code parsed) |
 |---|---|---|---|---|
 | **mneme** (this project) | v0.3.2 | `iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)` | **80 s** | 5,110 nodes / 20,925 edges |
 | **tree-sitter** ([repo](https://github.com/wrale/mcp-server-tree-sitter)) | v0.7.0 | `pip install mcp-server-tree-sitter` | per-query (no persistent index) | n/a |
@@ -159,9 +159,9 @@ All four MCPs were registered via `claude mcp add`, and `claude mcp list` confir
 
 Each cell shows `wall-time s · output tokens · cost USD · relevance score (0-10)`. Wall time is the end-to-end Claude process duration including all MCP roundtrips and the model's final synthesis. Cost is from `total_cost_usd` in the Claude JSON envelope. Relevance is auto-scored by counting ground-truth markers (a hand-curated list of ~67 known auth symbols across 12 files).
 
-> **2026-05-02 update — fair re-bench pending.** The bench below caught a real mneme bug (B-023): the MCP server's `projectIdForPath` lower-cased + slash-normalized Windows paths while the Rust CLI's `ProjectId::from_path` preserved native case + backslashes. Same project → different hashes → MCP looked up a shard that didn't exist while the CLI's shard sat right there. **Fixed in commit `f4c7dd1`** (MCP now matches CLI byte-for-byte). The pre-fix mneme numbers were `0/5 shard not found` across the board because of this single mismatch — not the underlying graph engine, which the CLI itself proved worked (5 hits with file:line citations for the same query, run from same cwd). A re-bench against the fixed MCP will land in the next v0.3.2 hotfix re-upload.
+> The bench below was run on a release that had a Windows MCP-CLI path-hashing mismatch. The fix shipped in the current zip; the new bench is being re-run on the patched binary and will replace these numbers.
 
-| Query | mneme (re-bench pending B-023 fix) | tree-sitter | CRG | graphify |
+| Query | mneme (results pending re-run) | tree-sitter | CRG | graphify |
 |---|---|---|---|---|
 | Q1 - Find all auth functions (~67 symbols) | re-bench pending | 115 s · 4,668 t · $0.22 · **8**/10 | (timeout 480 s) | (timeout 240 s) |
 | Q2 - Blast radius of `src/utils/auth.ts` (~14 consumers) | re-bench pending | 131 s · 4,918 t · $0.17 · **9**/10 | (timeout 180 s) | (not measured)* |
@@ -175,7 +175,7 @@ Each cell shows `wall-time s · output tokens · cost USD · relevance score (0-
 ### Per-query verdicts
 
 **Q1 - "Find all auth functions"**
-Tree-sitter delivered a complete table with line numbers and signatures (`hashPassword:44`, `verifyPassword:64`, `generateRecoveryCode:92`, plus all the Zustand store actions) in 115 s for $0.22 - score 8/10 against a 67-symbol ground truth. Mneme's MCP correctly identified the index was empty and reported "shard not found" for every tool call: this is a real v0.3.2 bug where the MCP server resolves the project differently than the CLI does at build time (filed as B-023 for v0.3.3 - see "Honest caveats" below). The mneme CLI itself, run from the same cwd, returned 5 hits for `hashPassword` including the file:line citation, so the underlying graph data was correct - the bug is purely in the MCP's project-resolution lookup.
+Tree-sitter returned a complete table with line numbers and signatures (`hashPassword:44`, `verifyPassword:64`, `generateRecoveryCode:92`, plus all the Zustand store actions) in 115 s for $0.22 — 8/10 against a 67-symbol ground truth. Mneme's MCP returned "shard not found" because of a Windows path-hashing mismatch between MCP and CLI (now fixed). The mneme CLI from the same directory returned 5 hits for `hashPassword` with file:line citations, so the graph data was correct — only the MCP-side lookup was broken.
 
 **Q2 - "Blast radius of `src/utils/auth.ts`"**
 Tree-sitter's standout query: 41 ground-truth markers, file:line citations for every consumer (`orgManager.ts:632`, `:792`, `:793`; `useAuthStore.ts:809`, `:865`), 131 s for $0.17. CRG, designed exactly for this question, hit the 180 s timeout with no partial response captured. Mneme MCP again hit the project-resolution bug.
@@ -187,11 +187,11 @@ Tree-sitter produced an 8,623-token indented multi-page tree showing the full IP
 Tree-sitter identified Singleton (`syncQueue.ts:380`), Observer/Pub-Sub, Command, Strategy, Factory, plus more - 53 turns, 11,469 output tokens, $0.74 (the longest answer in the bench). This is a fuzzy semantic question that suits Claude's reasoning but punishes any tool that has to enumerate everything.
 
 **Q5 - "Security issues in auth"**
-Tree-sitter caught a CRITICAL real bug: `useAuthStore.ts:836` does plain-text `password === '12345'` for legacy employees, and `useAuthStore.ts:841` has a browser-mode fallback that sets `passwordValid = true` unconditionally if `window.electronAPI` is missing. 8,508 output tokens, $0.49, 26 turns. Mneme has a dedicated `audit_security` scanner that should one-shot this once the project-resolution bug (B-023) is fixed in v0.3.3.
+Tree-sitter caught a real bug: `useAuthStore.ts:836` does plain-text `password === '12345'` for legacy employees, and `useAuthStore.ts:841` has a browser-mode fallback that sets `passwordValid = true` unconditionally if `window.electronAPI` is missing. 8,508 output tokens, $0.49, 26 turns. Mneme has a dedicated `audit_security` scanner — re-run pending against the fixed MCP.
 
 ### Honest caveats
 
-- **mneme as installed in v0.3.2** has a CLI/MCP project-resolution mismatch on Windows. `mneme build .` from a PowerShell session at the project root created a fully populated 12 MB shard at hash `7149...` (keyed off the deep project path). When Claude Code spawned the MCP server, the MCP supervisor looked up the project under hash `b32b...` (created during install with the user-home root) and reported "shard not found" for every `recall_concept`/`blast_radius`/`call_graph` call - even though the underlying graph data was there. The mneme CLI itself, called from the same cwd, returned 5 hits for `hashPassword` including file:line citations. We're filing this as B-023 for v0.3.3: the MCP should either (a) walk parent directories until it finds an existing shard (like `git` walks for `.git`), or (b) prefer the deepest project root that contains the cwd over a stale ancestor.
+- **The MCP-CLI path-hashing mismatch is fixed in the current v0.3.2 zip.** The CLI built shards keyed off the project root path; the MCP looked them up with a slightly different normalisation, so it returned "shard not found" on Windows. Both sides now hash the same way. Re-bench in progress.
 - **CRG and graphify** consistently hit the per-query timeout (480 s on Q1, then 180 s on Q2-Q3) before producing any response. The MCP servers themselves were healthy (`claude mcp list` showed `Connected`, the CLIs `code-review-graph status` and `graphify update .` both returned populated graphs) - the hang was inside the Claude to MCP roundtrip path. We don't have enough data to say whether this is a Claude Code 2.1.119 issue, an MCP-protocol-version mismatch, a Windows-specific stdio quirk, or a bug in either tool. We note "(timeout)" rather than fabricate timing.
 - **tree-sitter** is the only MCP that consistently delivered detailed answers across all five queries. Its per-query parsing model is slow (avg 247 s) and expensive (avg $0.43 per query) but the answers are remarkably precise.
 
@@ -483,9 +483,9 @@ Honest inventory as of the v0.3.2 hotfix (2026-05-02). Most surfaces flipped fro
 | **Plugin slash commands `/mn-build`, `/mn-recall`, etc.** | ✅ **auto-registered in v0.3.2 (B1.5)** | install.ps1 step 7 symlinks `~/.mneme/plugin/` to `~/.claude/plugins/mneme/` (falls back to recursive copy if symlink perms denied). Restart Claude Code -> `/mn-` autocompletes the full command set. |
 | **MCP node_modules pre-installed (no manual `bun install`)** | ✅ **fixed in v0.3.2 (B1)** | install.ps1 step 5b runs `bun install --frozen-lockfile` after extract. stage-release-zip.ps1 also fail-loud refuses to ship a zip with empty mcp/node_modules (B2 validation gate). |
 | **Audit pipeline streams findings (no data loss on timeout)** | ✅ **fixed in v0.3.2 (B12)** | mneme-scanners writes findings to findings.db every 100 rows or 5s. Even if the subprocess gets killed mid-scan, all persisted findings survive. |
-| **Audit fan-out across scanner-workers** | ✅ **shipped in v0.3.2 (B11.7)** | Supervisor dispatches Job::Scan per file across the 6-worker scanner pool. Was single-process subprocess before. ~5x faster on a high-end AWS server. |
-| **Audit hang guard** | ✅ **per-line stall (30s), no wall-clock** in v0.3.2 (B11.8) | The previous `MNEME_AUDIT_TIMEOUT_SEC=300` outer wall-clock killed slow-but-working scans. Removed. Per-line stall detector remains as the sole hang guard. No env var override needed for big projects. |
-| **`--rebuild` flag on `mneme build`** | ✅ shipped in v0.3.2 (B11.5) | Wipes `build-state.json` checkpoint + forces `--full` re-parse. Use when you want zero state carryover. |
+| **Audit fan-out across scanner-workers** | ✅ **shipped in v0.3.2** | Supervisor dispatches Job::Scan per file across the 6-worker scanner pool. Was single-process subprocess before. ~5x faster on a high-end AWS server. |
+| **Audit hang guard** | ✅ **per-line stall (30s), no wall-clock** in v0.3.2 | The previous `MNEME_AUDIT_TIMEOUT_SEC=300` outer wall-clock killed slow-but-working scans. Removed. Per-line stall detector remains as the sole hang guard. No env var override needed for big projects. |
+| **`--rebuild` flag on `mneme build`** | ✅ shipped in v0.3.2 | Wipes `build-state.json` checkpoint + forces `--full` re-parse. Use when you want zero state carryover. |
 | **8 Claude Code hooks default-on** | ✅ shipped in v0.3.2 (K1) | `mneme install` writes 8 hook entries under `~/.claude/settings.json::hooks` by default. Pass `--no-hooks` to skip. Hooks read STDIN JSON and exit 0 on internal error so a mneme bug can never block tool calls. |
 | **Per-worker `rss_mb` on Windows** | ✅ resolved in v0.3.2 (C1) | Supervisor SLA snapshot reports real `rss_mb` via `GetProcessMemoryInfo`. |
 | **Multi-arch + cross-OS install** | ✅ Win x64 (live) * macOS Intel + Apple Silicon (live) * Linux x64 (live) * Win arm64 / Linux arm64 (CI building) in v0.3.2 | 3 install commands (one per OS), each auto-detects arch via `$env:PROCESSOR_ARCHITECTURE` (Win) or `uname -m` (POSIX). Refuses 32-bit Windows (Bun runtime requires x64+). |
