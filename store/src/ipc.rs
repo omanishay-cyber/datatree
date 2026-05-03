@@ -72,7 +72,12 @@ pub struct WireResponse {
 }
 
 pub async fn run_listener(store: Arc<Store>) -> DtResult<()> {
-    let socket_path = store.paths.supervisor_socket();
+    // B-L06 (2026-05-03): use the dedicated store_socket(), NOT the
+    // supervisor's socket. Pre-fix, this called supervisor_socket() and
+    // collided with mneme-daemon already binding it — store crashed in
+    // <50ms with EADDRINUSE, hit restart budget, got marked degraded.
+    // Verified on Linux VM 2026-05-03 01:14 UTC.
+    let socket_path = store.paths.store_socket();
     info!(socket = %socket_path.display(), "store IPC listening");
 
     use interprocess::local_socket::tokio::prelude::*;

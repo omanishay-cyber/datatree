@@ -201,6 +201,24 @@ impl PathManager {
             self.root.join("livebus.sock")
         }
     }
+
+    /// B-L06 (2026-05-03): the store-worker child needs its OWN socket,
+    /// distinct from the supervisor's. Pre-fix, store/src/ipc.rs called
+    /// supervisor_socket() and tried to bind it — but the supervisor
+    /// (mneme-daemon) was already listening there, so the store crashed
+    /// in <50ms with EADDRINUSE. Restart loop hit budget (6 in 60s),
+    /// store marked degraded, write IPC broken (read still worked via
+    /// direct SQLite). Verified on Linux VM 2026-05-03 01:14 UTC.
+    pub fn store_socket(&self) -> PathBuf {
+        #[cfg(windows)]
+        {
+            PathBuf::from(r"\\.\pipe\mneme-store")
+        }
+        #[cfg(not(windows))]
+        {
+            self.root.join("store.sock")
+        }
+    }
 }
 
 impl Default for PathManager {
