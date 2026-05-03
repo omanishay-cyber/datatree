@@ -119,6 +119,13 @@ zip = { version = "0.6", default-features = false, features = ["deflate"] }
 # `mneme self-update`: gzip + tar for Linux/macOS release archives.
 flate2 = "1"
 tar = "0.4"
+# `mneme export`: streaming XML writer used by the GraphML emitter.
+# Picks the same major version vendored transitively by the Tauri
+# build (vision/tauri/Cargo.lock pins 0.38) but stays at the most
+# recent 0.36.x line to keep our public surface narrow — we only
+# need `Writer::new` + `BytesStart::new` + `write_event`, which
+# have been stable since 0.30.
+quick-xml = "0.36"
 
 [target.'cfg(windows)'.dependencies]
 # Windows path normalisation so manifest paths produced on Win look POSIX

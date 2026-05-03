@@ -25,6 +25,7 @@
 //! mneme drift [--severity=...]
 //! mneme history <query> [--since=...]
 //! mneme graph-diff <from> <to> [--format=json|table|markdown] [--files=...] [--node-type=...]
+//! mneme export --format=graphml|obsidian|cypher|svg|jsonld -o <path> [--kinds=...] [--files=...] [--max-nodes=N]
 //! mneme snap
 //! mneme doctor
 //! mneme rebuild
@@ -141,6 +142,12 @@ enum Command {
     /// explicit `.db` paths.
     #[command(name = "graph-diff")]
     GraphDiff(commands::graph_diff::GraphDiffArgs),
+    /// Export the project's code-graph to a portable, tool-friendly
+    /// format: GraphML (Yed/Cytoscape/Gephi), Obsidian wiki-link
+    /// markdown, Neo4j Cypher script, static SVG, or schema.org
+    /// JSON-LD. Filters mirror the rest of the CLI: `--kinds`,
+    /// `--files`, `--max-nodes`.
+    Export(commands::export::ExportArgs),
     /// Take a manual snapshot of the active shard.
     Snap(commands::snap::SnapArgs),
     /// Self-test the running daemon and shards.
@@ -233,6 +240,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
         Command::Drift(args) => commands::drift::run(args, socket_override).await,
         Command::History(args) => commands::history::run(args).await,
         Command::GraphDiff(args) => commands::graph_diff::run(args).await,
+        Command::Export(args) => commands::export::run(args).await,
         Command::Snap(args) => commands::snap::run(args, socket_override).await,
         Command::Doctor(args) => commands::doctor::run(args, socket_override).await,
         Command::Rebuild(args) => commands::rebuild::run(args, socket_override).await,

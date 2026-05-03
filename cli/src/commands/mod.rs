@@ -13,6 +13,7 @@ pub mod cache;
 pub mod daemon;
 pub mod doctor;
 pub mod drift;
+pub mod export;
 pub mod federated;
 pub mod godnodes;
 pub mod graph_diff;
