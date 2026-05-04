@@ -160,25 +160,25 @@ try {
 }
 
 function Get-Asset {
-    # Wave 6 / 2026-05-02: dual-source download (Hugging Face primary,
-    # GitHub Release fallback). For legacy callers that don't pass
-    # explicit URLs, $PrimaryUrl auto-derives to the GitHub release
-    # path (preserving the old `$releaseBase/$Name` behavior used for
-    # the installer zip itself).
+    # Bug #228 + #229 + #230 + Layer C (2026-05-04): single-source
+    # download (Hugging Face only), curl.exe-based to bypass Windows
+    # `Invoke-WebRequest` MemoryStream cap (~2 GB), with skip-if-present
+    # short-circuit when the destination file already exists at the
+    # expected size. Replaces the old dual-source HF+GitHub +
+    # split-part-fallback pattern that failed on Windows for any
+    # asset >1 GB.
     #
-    # Wave 6 follow-up / 2026-05-02: phi-3 cannot use the auto-derived
-    # GitHub fallback because the merged file is 2.28 GB and GitHub
-    # Releases caps individual assets at 2 GB. For phi-3 the caller
-    # passes `-NoAutoFallback` so HF stays the only single-file source;
-    # the parts-based GitHub fallback runs separately via
-    # `Get-Phi3-PartsFallback` after the main asset loop.
+    # `curl.exe` ships with Windows 10 1803+ / Windows 11 / Server 2019+
+    # and Linux/macOS coreutils. Streams to disk directly; no .NET
+    # buffer caps. Falls back to `Invoke-WebRequest` only for tiny
+    # files (<500 MB) on hosts where curl.exe is somehow absent.
     param(
         [string]$Name,
         [string]$Dest,
         [int]$RetryCount = 3,
         [string]$PrimaryUrl = $null,
         [string]$FallbackUrl = $null,
-        [switch]$NoAutoFallback
+        [int64]$ExpectedSize = -1
     )
 
     # B5: silence Invoke-WebRequest "Writing web request" progress chatter.
@@ -190,17 +190,30 @@ function Get-Asset {
     # compatibility (used by the release-zip download in Step 1).
     if (-not $PrimaryUrl) { $PrimaryUrl = "$releaseBase/$Name" }
 
-    # Default $FallbackUrl to the GitHub release URL when the caller
-    # supplied a $PrimaryUrl that isn't already the release URL --
-    # i.e., HF primary + GitHub fallback for the model downloads.
-    # Skip auto-derive when the caller explicitly opts out via
-    # -NoAutoFallback (used for phi-3, where the GitHub asset is split
-    # into two parts and downloaded via Get-Phi3-PartsFallback instead).
-    if (-not $FallbackUrl -and -not $NoAutoFallback -and $PrimaryUrl -ne "$releaseBase/$Name") {
-        $FallbackUrl = "$releaseBase/$Name"
+    # Bug #228 (2026-05-04): skip-if-present guard. If the destination
+    # already exists at the expected size, treat as a no-op. Saves
+    # ~3.5 GB of redundant downloads when re-installing on a host
+    # that already has the models laid down. ExpectedSize=-1 means
+    # caller doesn't know (e.g. release zip), so we always download.
+    if ((Test-Path $Dest) -and $ExpectedSize -gt 0) {
+        $existingSz = (Get-Item $Dest).Length
+        if ($existingSz -eq $ExpectedSize) {
+            $mb = [math]::Round($existingSz / 1MB, 2)
+            OK "skip $Name ($mb MB already on disk, size matches)"
+            return
+        }
+        WarnLine "$Name on disk ($existingSz bytes) != expected ($ExpectedSize) -- re-downloading"
+        Remove-Item -LiteralPath $Dest -Force -ErrorAction SilentlyContinue
     }
 
+    # Detect curl.exe once. Windows 10 1803+ ships it at C:\Windows\System32\curl.exe.
+    $curlExe = $null
+    $cmd = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($cmd) { $curlExe = $cmd.Source }
+
     # Build the source list: primary always, fallback only if distinct.
+    # HF-only architecture (2026-05-04) — bootstrap callers pass
+    # explicit URLs; auto-fallback derivation removed.
     $sources = @(
         @{ Url = $PrimaryUrl; Label = 'primary' }
     )
@@ -214,36 +227,30 @@ function Get-Asset {
         for ($attempt = 1; $attempt -le $RetryCount; $attempt++) {
             try {
                 Step "Fetching $Name from $label (attempt $attempt/$RetryCount): $url"
-                # A7-014 (2026-05-04): -PassThru returns the response object
-                # so we can read the Content-Length header and gate the
-                # download on an exact-size match. The original >=100-byte
-                # sanity check passes any partial download >=100 bytes
-                # (e.g. a CDN drop mid-stream of the 58 MB zip), which
-                # then hands a corrupt zip to Expand-Archive and silently
-                # produces a half-installed ~/.mneme. With Content-Length
-                # available on every GitHub Release + HF asset, an exact
-                # match closes that window. Falls through to the legacy
-                # >=100-byte sanity check if Content-Length is absent
-                # (e.g. transfer-encoding: chunked).
-                $resp = Invoke-WebRequest -Uri $url -OutFile $Dest -UseBasicParsing -PassThru
+
+                if ($curlExe) {
+                    # Bug #229 + #230: curl.exe streams response body
+                    # directly to disk -- no .NET MemoryStream / byte[]
+                    # buffer cap. -L follow redirects (HF uses CF
+                    # 302->S3), -f fail on 4xx (vs Invoke-WebRequest's
+                    # default which writes the HTML error page to
+                    # disk), -sS quiet but show errors.
+                    & $curlExe -L -f -sS --output $Dest $url
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "curl.exe exited with code $LASTEXITCODE"
+                    }
+                } else {
+                    # Fallback: Invoke-WebRequest. Will fail for files
+                    # >2 GB on Windows (.NET MemoryStream cap). Only
+                    # reached on hosts without curl.exe.
+                    WarnLine "curl.exe not found; using Invoke-WebRequest (may fail on files >2 GB)"
+                    Invoke-WebRequest -Uri $url -OutFile $Dest -UseBasicParsing
+                }
+
                 $sz = (Get-Item $Dest).Length
-                $expectedLen = -1
-                try {
-                    $cl = $null
-                    if ($resp -and $resp.Headers) {
-                        # On PS5.1 the Headers dict can be case-sensitive;
-                        # PS7 returns string[] for each header. Try both.
-                        $cl = $resp.Headers['Content-Length']
-                        if (-not $cl) { $cl = $resp.Headers['content-length'] }
-                    }
-                    if ($cl) {
-                        $clStr = if ($cl -is [array]) { $cl[0] } else { [string]$cl }
-                        $expectedLen = [int64]$clStr
-                    }
-                } catch { $expectedLen = -1 }
-                if ($expectedLen -gt 0 -and $sz -ne $expectedLen) {
+                if ($ExpectedSize -gt 0 -and $sz -ne $ExpectedSize) {
                     Remove-Item -LiteralPath $Dest -Force -ErrorAction SilentlyContinue
-                    throw "size mismatch for $Name (expected $expectedLen bytes, got $sz) -- truncated download"
+                    throw "size mismatch for $Name (expected $ExpectedSize bytes, got $sz) -- truncated download"
                 }
                 if ($sz -lt 100) { throw "downloaded file too small ($sz bytes) -- likely a 404 HTML page" }
 
@@ -291,86 +298,18 @@ function Get-Asset {
     }
 }
 
-function Get-Phi3-PartsFallback {
-    # Wave 6 follow-up / 2026-05-02: phi-3 GitHub fallback path.
-    #
-    # GitHub Releases caps an individual asset at 2 GB. The merged
-    # phi-3-mini-4k.gguf is 2.28 GB, so it cannot be uploaded as a
-    # single file -- the v0.3.2 release ships it as two equal halves
-    # named `phi-3-mini-4k.gguf.part00` and `phi-3-mini-4k.gguf.part01`
-    # (1196615536 bytes each, byte-symmetric split). HF does NOT have
-    # this cap so the primary path stays a single-file download; this
-    # helper only runs when HF is unreachable.
-    #
-    # Why concatenate here instead of letting `mneme models install
-    # --from-path` see the parts directly? `install_from_path_to_root`
-    # in cli/src/commands/models.rs DOES merge `.part0N` glob patterns
-    # at install time, but doing the concat here keeps the failure
-    # mode obvious (one file present at $Dest = one asset present)
-    # and matches what the HF primary path produces, so the rest of
-    # the bootstrap doesn't need to special-case how phi-3 arrived.
-    param(
-        [string]$Dest,
-        [int]$RetryCount = 3
-    )
-
-    $tmp = Split-Path -Parent $Dest
-    $p00 = Join-Path $tmp 'phi-3-mini-4k.gguf.part00'
-    $p01 = Join-Path $tmp 'phi-3-mini-4k.gguf.part01'
-
-    Step "phi-3 GitHub fallback: downloading split parts (HF single-file unreachable)"
-
-    # Download both parts WITH -NoAutoFallback so Get-Asset doesn't
-    # try to derive a (nonexistent) HF URL for the parts -- the parts
-    # only live on GitHub Releases, by design.
-    Get-Asset -Name 'phi-3-mini-4k.gguf.part00' `
-              -Dest $p00 -RetryCount $RetryCount `
-              -PrimaryUrl "$releaseBase/phi-3-mini-4k.gguf.part00" `
-              -NoAutoFallback
-    Get-Asset -Name 'phi-3-mini-4k.gguf.part01' `
-              -Dest $p01 -RetryCount $RetryCount `
-              -PrimaryUrl "$releaseBase/phi-3-mini-4k.gguf.part01" `
-              -NoAutoFallback
-
-    # Concatenate part00 + part01 -> $Dest. We use raw FileStream I/O
-    # rather than `Get-Content -Raw + Set-Content -Raw` because the
-    # latter buffers the whole file (~2.4 GB) in memory and OOMs on
-    # 8 GB / 16 GB laptops.
-    Step "phi-3 GitHub fallback: merging parts -> $Dest"
-    $expectedTotal = 2393231072
-    $out = [System.IO.File]::Create($Dest)
-    $buf = New-Object byte[] 1048576
-    try {
-        foreach ($p in @($p00, $p01)) {
-            $in = [System.IO.File]::OpenRead($p)
-            try {
-                while ($true) {
-                    $n = $in.Read($buf, 0, $buf.Length)
-                    if ($n -le 0) { break }
-                    $out.Write($buf, 0, $n)
-                }
-            } finally {
-                $in.Close()
-            }
-        }
-    } finally {
-        $out.Close()
-    }
-
-    $actual = (Get-Item $Dest).Length
-    if ($actual -ne $expectedTotal) {
-        Remove-Item -LiteralPath $Dest -Force -ErrorAction SilentlyContinue
-        throw "phi-3 GitHub fallback: merged file size mismatch (expected $expectedTotal, got $actual)"
-    }
-
-    # Tidy up parts on disk -- they're not needed once merged. The
-    # merged file at $Dest is what `mneme models install --from-path`
-    # consumes; keeping the parts wastes ~2.3 GB of $env:TEMP.
-    Remove-Item -LiteralPath $p00 -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $p01 -Force -ErrorAction SilentlyContinue
-
-    OK ("phi-3 merged from GitHub parts ({0:N0} bytes)" -f $actual)
-}
+# Bug Layer C (2026-05-04): Get-Phi3-PartsFallback REMOVED.
+#
+# Rationale: HF Hub is now the canonical model mirror; the GitHub
+# split-part fallback added complexity for ~zero real-world benefit
+# (HF Hub uptime ~99.9%) and was DOA on Windows anyway because the
+# .partNN files are 1.2 GB each, exceeding `Invoke-WebRequest`'s
+# .NET buffer caps. Get-Asset now uses curl.exe (Windows 10+ ships
+# it) which streams to disk with no buffer cap, so single-file HF
+# downloads up to phi-3's 2.4 GB work fine on Windows.
+#
+# If HF becomes unreachable, users can manually download phi-3 from
+# any mirror and run `mneme models install --from-path <dir>`.
 
 # ---------------------------------------------------------------------------
 # Step 1: Download the release zip
@@ -500,51 +439,46 @@ if ($NoModels) {
     # parts on both? It saves a one-time 2.4 GB upload to HF, keeps
     # the HF code path identical to the other 4 assets, and matches
     # how the v0.3.2 release was actually shipped.
+    # Bug Layer C (2026-05-04): HF-only single-source. Sizes are
+    # exact byte counts from the HF mirror, used by Get-Asset's
+    # skip-if-present guard (no redundant 3.5 GB re-download when
+    # the user already has the models laid down from a prior
+    # install). Sizes also gate the post-download truncation check.
     $assets = @(
         @{
             Name = 'bge-small-en-v1.5.onnx';
             Required = $true;
             PrimaryUrl = 'https://huggingface.co/aaditya4u/mneme-models/resolve/main/bge-small-en-v1.5.onnx';
-            FallbackUrl = $null;
-            NoAutoFallback = $false;
-            PartsFallback = $false
+            ExpectedSize = 133093490
         },
         @{
             Name = 'tokenizer.json';
             Required = $true;
             PrimaryUrl = 'https://huggingface.co/aaditya4u/mneme-models/resolve/main/tokenizer.json';
-            FallbackUrl = $null;
-            NoAutoFallback = $false;
-            PartsFallback = $false
+            ExpectedSize = 742067
         },
         @{
             Name = 'qwen-embed-0.5b.gguf';
             Required = $false;
             PrimaryUrl = 'https://huggingface.co/aaditya4u/mneme-models/resolve/main/qwen-embed-0.5b.gguf';
-            FallbackUrl = $null;
-            NoAutoFallback = $false;
-            PartsFallback = $false
+            ExpectedSize = 639150592
         },
         @{
             Name = 'qwen-coder-0.5b.gguf';
             Required = $false;
             PrimaryUrl = 'https://huggingface.co/aaditya4u/mneme-models/resolve/main/qwen-coder-0.5b.gguf';
-            FallbackUrl = $null;
-            NoAutoFallback = $false;
-            PartsFallback = $false
+            ExpectedSize = 491400064
         },
         @{
-            # phi-3: HF single-file primary; GitHub split-parts
-            # fallback is handled by Get-Phi3-PartsFallback (NOT by
-            # Get-Asset's auto-derived release URL, because that URL
-            # 404s -- the merged 2.28 GB file exceeds GitHub's 2 GB
-            # asset cap, so only `.part00` + `.part01` exist there).
+            # phi-3: 2.4 GB single file from HF. Pre-Layer-C this had
+            # a GitHub split-parts fallback; that's removed because
+            # the parts ALSO failed on Windows (>1 GB hits Invoke-
+            # WebRequest's byte[] cap). curl.exe handles the single
+            # 2.4 GB stream cleanly.
             Name = 'phi-3-mini-4k.gguf';
             Required = $false;
             PrimaryUrl = 'https://huggingface.co/aaditya4u/mneme-models/resolve/main/phi-3-mini-4k.gguf';
-            FallbackUrl = $null;
-            NoAutoFallback = $true;
-            PartsFallback = $true
+            ExpectedSize = 2393231072
         }
     )
 
@@ -553,35 +487,18 @@ if ($NoModels) {
     foreach ($a in $assets) {
         $dest = Join-Path $modelsDir $a.Name
         try {
-            $callArgs = @{
-                Name = $a.Name
-                Dest = $dest
-                RetryCount = 3
-                PrimaryUrl = $a.PrimaryUrl
-                FallbackUrl = $a.FallbackUrl
-            }
-            if ($a.NoAutoFallback) { $callArgs['NoAutoFallback'] = $true }
-            Get-Asset @callArgs
+            Get-Asset -Name $a.Name `
+                      -Dest $dest `
+                      -RetryCount 3 `
+                      -PrimaryUrl $a.PrimaryUrl `
+                      -ExpectedSize $a.ExpectedSize
             $modelDownloads += 1
         } catch {
-            # phi-3 has a dedicated GitHub parts fallback path. Try
-            # it before recording the failure -- if it succeeds, the
-            # asset is still present at $dest and the rest of the
-            # install proceeds normally.
-            if ($a.PartsFallback) {
-                try {
-                    Get-Phi3-PartsFallback -Dest $dest -RetryCount 3
-                    $modelDownloads += 1
-                    continue
-                } catch {
-                    WarnLine "phi-3 GitHub parts fallback also failed: $_"
-                }
-            }
             $modelFailures += $a.Name
             if ($a.Required) {
-                WarnLine "REQUIRED asset $($a.Name) failed -- smart embeddings will be unavailable"
+                WarnLine "REQUIRED asset $($a.Name) failed -- smart embeddings will be unavailable. Manual recovery: download from any phi-3/bge mirror and run 'mneme models install --from-path <dir>'."
             } else {
-                WarnLine "optional asset $($a.Name) failed -- corresponding capability disabled"
+                WarnLine "optional asset $($a.Name) failed -- corresponding capability disabled. Manual recovery: 'mneme models install --from-path <dir>'."
             }
         }
     }

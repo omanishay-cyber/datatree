@@ -723,36 +723,60 @@ pub fn install_from_path_to_root(src_dir: &Path, root: &Path) -> CliResult<usize
 
         let src_path = dirent.path();
         let dst_path = root.join(&name);
-        let bytes = fs::copy(&src_path, &dst_path).map_err(|e| {
-            CliError::Other(format!(
-                "copy {} -> {}: {e}",
-                src_path.display(),
-                dst_path.display()
-            ))
-        })?;
 
-        // A1-010 (2026-05-04): verify the copied bytes byte-for-byte by
-        // comparing source and destination SHA-256. fs::copy returns the
-        // byte count from its own counter, but on flaky media (USB 2.0,
-        // network mount, SD card) Windows can short-read mid-stream and
-        // hand us a corrupt destination with the byte count still
-        // matching. We're about to install a multi-GB model file the
-        // user will run inference against -- silent corruption here
-        // surfaces as bad embeddings forever, with no diagnosed cause.
-        // Hash both files; abort on mismatch with the corrupt destination
-        // removed so a retry doesn't trust the cached copy.
-        let src_sha = sha256_file(&src_path)
-            .map_err(|e| CliError::Other(format!("sha256 source {}: {e}", src_path.display())))?;
-        let dst_sha = sha256_file(&dst_path)
-            .map_err(|e| CliError::Other(format!("sha256 dest {}: {e}", dst_path.display())))?;
-        if src_sha != dst_sha {
-            let _ = fs::remove_file(&dst_path);
-            return Err(CliError::Other(format!(
-                "model copy verify failed for {}: src sha {} != dst sha {} (flaky media? \
-                 corrupt destination removed; retry the install)",
-                name, src_sha, dst_sha
-            )));
-        }
+        // Bug #231 (2026-05-04): self-copy guard. When the user
+        // points `--from-path` at the model root itself (e.g. to
+        // re-register existing files into the manifest after a
+        // partial install), `fs::copy(src, src)` fails on Windows
+        // with `os error 32: file in use`. Detect that case via
+        // canonical-path comparison and skip the copy + skip the
+        // SHA-verify — the file is already where it needs to be.
+        let same_file = match (src_path.canonicalize(), dst_path.canonicalize()) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        };
+
+        let (bytes, dst_sha) = if same_file {
+            // No copy. Just hash for the manifest entry.
+            let sha = sha256_file(&dst_path)
+                .map_err(|e| CliError::Other(format!("sha256 {}: {e}", dst_path.display())))?;
+            let sz = fs::metadata(&dst_path)
+                .map_err(|e| CliError::Other(format!("stat {}: {e}", dst_path.display())))?
+                .len();
+            (sz, sha)
+        } else {
+            let bytes = fs::copy(&src_path, &dst_path).map_err(|e| {
+                CliError::Other(format!(
+                    "copy {} -> {}: {e}",
+                    src_path.display(),
+                    dst_path.display()
+                ))
+            })?;
+            // A1-010 (2026-05-04): verify the copied bytes byte-for-byte by
+            // comparing source and destination SHA-256. fs::copy returns the
+            // byte count from its own counter, but on flaky media (USB 2.0,
+            // network mount, SD card) Windows can short-read mid-stream and
+            // hand us a corrupt destination with the byte count still
+            // matching. We're about to install a multi-GB model file the
+            // user will run inference against -- silent corruption here
+            // surfaces as bad embeddings forever, with no diagnosed cause.
+            // Hash both files; abort on mismatch with the corrupt destination
+            // removed so a retry doesn't trust the cached copy.
+            let src_sha = sha256_file(&src_path).map_err(|e| {
+                CliError::Other(format!("sha256 source {}: {e}", src_path.display()))
+            })?;
+            let dst_sha = sha256_file(&dst_path)
+                .map_err(|e| CliError::Other(format!("sha256 dest {}: {e}", dst_path.display())))?;
+            if src_sha != dst_sha {
+                let _ = fs::remove_file(&dst_path);
+                return Err(CliError::Other(format!(
+                    "model copy verify failed for {}: src sha {} != dst sha {} (flaky media? \
+                     corrupt destination removed; retry the install)",
+                    name, src_sha, dst_sha
+                )));
+            }
+            (bytes, dst_sha)
+        };
 
         entries.push(ManifestEntry {
             name: name.clone(),
@@ -782,10 +806,41 @@ pub fn install_from_path_to_root(src_dir: &Path, root: &Path) -> CliResult<usize
         }
     }
 
+    // Bug #232 (2026-05-04): merge with existing manifest instead
+    // of replacing. Previously, calling `mneme models install
+    // --from-path <dir>` with a partial set (e.g. only phi-3 in
+    // <dir>) wiped the manifest entries for the OTHER 4 models
+    // already on disk. Real-world cause: a partial-failure recovery
+    // workflow (download phi-3 separately after the bootstrap's
+    // phi-3 step failed) silently dropped bge / qwen / tokenizer
+    // from the registry, even though their files were still on
+    // disk. The fix: read existing manifest entries, drop any whose
+    // name appears in the new install set, then concatenate.
+    let mut new_names: HashSet<String> = HashSet::new();
+    for e in &entries {
+        new_names.insert(e.name.clone());
+    }
+    if let Ok(Some(existing)) = read_manifest(root) {
+        for old in existing.entries {
+            if new_names.contains(&old.name) {
+                continue;
+            }
+            // Verify the file referenced by the old manifest entry
+            // is still actually on disk before carrying the entry
+            // forward. If the file was deleted out-of-band we drop
+            // the stale entry rather than ship a manifest that lies.
+            let p = root.join(&old.path);
+            if p.exists() {
+                entries.push(old);
+            }
+        }
+    }
+
     // Deterministic ordering — same input dir always produces the same
     // manifest bytes. Helps with diffability + reproducible installs.
     entries.sort_by(|a, b| a.name.cmp(&b.name));
 
+    let new_count = entries.len();
     let manifest = Manifest {
         version: 1,
         entries,
@@ -804,7 +859,7 @@ pub fn install_from_path_to_root(src_dir: &Path, root: &Path) -> CliResult<usize
         );
     }
 
-    Ok(manifest.entries.len())
+    Ok(new_count)
 }
 
 /// Read the manifest at `<root>/manifest.json` if it exists. Returns
