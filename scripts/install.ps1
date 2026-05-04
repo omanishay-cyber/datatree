@@ -1182,6 +1182,30 @@ if ($MissingBinaries.Count -gt 0) {
 }
 Write-OK ("post-extract verification: all {0} core binaries present" -f $ExpectedBinaries.Count)
 
+# Mneme OS branding alias: expose `mnemeos.exe` alongside `mneme.exe` in
+# the bin dir so users on the new canonical brand name get the same
+# binary. Hard link is preferred (no extra disk) but falls back to a
+# copy on filesystems that don't support it. Idempotent: removes any
+# stale alias before re-creating.
+$MnemeExe   = Join-Path $BinDir 'mneme.exe'
+$MnemeosExe = Join-Path $BinDir 'mnemeos.exe'
+if (Test-Path -LiteralPath $MnemeExe) {
+    if (Test-Path -LiteralPath $MnemeosExe) {
+        Remove-Item -LiteralPath $MnemeosExe -Force -ErrorAction SilentlyContinue
+    }
+    try {
+        New-Item -ItemType HardLink -Path $MnemeosExe -Value $MnemeExe -ErrorAction Stop | Out-Null
+        Write-OK "Mneme OS alias: mnemeos.exe -> mneme.exe (hard link)"
+    } catch {
+        try {
+            Copy-Item -LiteralPath $MnemeExe -Destination $MnemeosExe -Force -ErrorAction Stop
+            Write-OK "Mneme OS alias: mnemeos.exe -> mneme.exe (copy fallback)"
+        } catch {
+            Write-Warn ("could not create mnemeos.exe alias: {0}" -f $_.Exception.Message)
+        }
+    }
+}
+
 # F1 D1: verify the Vision SPA static bundle landed at the canonical
 # production layout the daemon expects (~/.mneme/static/vision/index.html).
 # The daemon's tower-http ServeDir mount in supervisor/src/health.rs

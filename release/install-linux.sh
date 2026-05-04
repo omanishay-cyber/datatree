@@ -393,6 +393,18 @@ fi
 chmod +x "${MNEME_HOME}/bin"/* 2>/dev/null || true
 ok "extracted (mneme present at ${MNEME_BIN})"
 
+# Mneme OS branding alias: expose `mnemeos` alongside `mneme` so users
+# on the new canonical brand name get the same binary. Idempotent.
+MNEMEOS_BIN="${MNEME_HOME}/bin/mnemeos"
+if [ -e "${MNEMEOS_BIN}" ] || [ -L "${MNEMEOS_BIN}" ]; then
+    rm -f "${MNEMEOS_BIN}"
+fi
+if ln -sf mneme "${MNEMEOS_BIN}" 2>/dev/null; then
+    ok "Mneme OS alias: mnemeos -> mneme (symlink)"
+else
+    say "warn: could not create mnemeos alias at ${MNEMEOS_BIN} (continuing)"
+fi
+
 # Compatibility symlink: many parts of the daemon + MCP code reference
 # ~/.mneme/ as a hardcoded path. Symlink it to the canonical location.
 SYMLINK_PATH="${HOME}/.mneme"
