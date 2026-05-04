@@ -339,7 +339,20 @@ fn relevant_tools_for_platform(platform: Option<&str>) -> Option<&'static [&'sta
         // Cursor / VS Code / Zed / Codex / etc. need only baseline
         // toolchain (Rust + Node + Git). Tauri / Tesseract / Java are
         // for the standalone build pipeline and multimodal-bridge.
-        Some(p) if matches!(p.as_str(), "cursor" | "vscode" | "vs-code" | "zed" | "codex" | "windsurf" | "qoder" | "qwen" | "gemini") => {
+        Some(p)
+            if matches!(
+                p.as_str(),
+                "cursor"
+                    | "vscode"
+                    | "vs-code"
+                    | "zed"
+                    | "codex"
+                    | "windsurf"
+                    | "qoder"
+                    | "qwen"
+                    | "gemini"
+            ) =>
+        {
             Some(&["G1", "G3", "G5"]) // Rust, Node, Git only
         }
         // Claude Code, the canonical default, exercises every integration.
@@ -717,11 +730,11 @@ pub fn drop_standalone_uninstaller() -> std::io::Result<()> {
         // bundled via include_str! so the same byte-equality + chmod
         // pattern as the Windows .ps1 case applies.
         const UNINSTALL_SH_BYTES: &[u8] = include_bytes!("../../../scripts/uninstall.sh");
-        let home = match dirs::home_dir() {
-            Some(h) => h,
-            None => return Ok(()),
-        };
-        let mneme_dir = home.join(".mneme");
+        // Class HOME discipline: resolve through PathManager so MNEME_HOME
+        // overrides apply (mirrors the Windows branch above at L681).
+        let mneme_dir = common::paths::PathManager::default_root()
+            .root()
+            .to_path_buf();
         if !mneme_dir.exists() {
             std::fs::create_dir_all(&mneme_dir)?;
         }
@@ -738,10 +751,7 @@ pub fn drop_standalone_uninstaller() -> std::io::Result<()> {
         }
         // chmod +x (mode 0o755).
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(
-            &script_path,
-            std::fs::Permissions::from_mode(0o755),
-        )?;
+        std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))?;
         info!(
             path = %script_path.display(),
             bytes = UNINSTALL_SH_BYTES.len(),

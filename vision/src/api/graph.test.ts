@@ -25,8 +25,8 @@ import {
   fetchKindFlow,
   fetchHeatmap,
   fetchGalaxy3D,
-} from "./graph.ts";
-import { useVisionStore } from "../store.ts";
+} from "./graph";
+import { useVisionStore } from "../store";
 
 interface FetchCall {
   url: string;
@@ -99,7 +99,7 @@ test("fetchNodes normalises a bare-array daemon response to an envelope", async 
 test("fetchNodes returns empty + error when fetch rejects", async () => {
   (globalThis as { fetch: typeof fetch }).fetch = (async () => {
     throw new Error("connection refused");
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   const got = await fetchNodes();
   expect(got.nodes).toEqual([]);
   expect(got.error).toContain("connection refused");

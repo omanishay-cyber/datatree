@@ -15,7 +15,7 @@ import {
   type LiveEvent,
   type CommandCenterStep,
   type CommandCenterDecision,
-} from "./store.ts";
+} from "./store";
 
 beforeEach(() => {
   // Reset the store to a known initial shape between tests.

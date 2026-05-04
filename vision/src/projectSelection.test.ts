@@ -9,8 +9,8 @@
  * Run with:  cd vision && bun test src/projectSelection.test.ts
  */
 import { test, expect, beforeEach } from "bun:test";
-import { useVisionStore } from "./store.ts";
-import { withProject } from "./projectSelection.ts";
+import { useVisionStore } from "./store";
+import { withProject } from "./projectSelection";
 
 beforeEach(() => {
   useVisionStore.getState().setProjectHash("");

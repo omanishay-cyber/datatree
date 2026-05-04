@@ -159,16 +159,17 @@ pub fn spawn_worker(cfg: WorkerConfig) -> WorkerHandle {
         if let Err(e) = store.flush() {
             warn!(error = %e, "embed store flush on shutdown failed");
             // Try to write a marker so the next startup can warn the user.
-            if let Some(dir) = dirs::home_dir() {
-                let marker = dir.join(".mneme").join("cache").join("embed").join(
-                    format!("pending_{}.marker", chrono::Utc::now().timestamp()),
-                );
-                if let Some(parent) = marker.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                if let Err(me) = std::fs::write(&marker, format!("flush failed: {e}\n")) {
-                    warn!(error = %me, path = %marker.display(), "failed to write pending-flush marker");
-                }
+            // Path resolved through `common::paths::PathManager::default_root()`
+            // so MNEME_HOME overrides are honored uniformly with the rest of the
+            // codebase (Class HOME guardrail discipline).
+            let marker = common::paths::PathManager::default_root()
+                .embed_cache()
+                .join(format!("pending_{}.marker", chrono::Utc::now().timestamp()));
+            if let Some(parent) = marker.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Err(me) = std::fs::write(&marker, format!("flush failed: {e}\n")) {
+                warn!(error = %me, path = %marker.display(), "failed to write pending-flush marker");
             }
         }
     });
