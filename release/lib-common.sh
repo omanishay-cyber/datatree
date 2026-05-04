@@ -132,15 +132,52 @@ require_cmd() {
 }
 
 # ---------------------------------------------------------------------------
-# pre_flight_disk_space <gb>
+# pre_flight_disk_space <gb> [models_dir]
 # ---------------------------------------------------------------------------
 # Verifies $HOME has at least <gb> gigabytes free. Refuses install early
 # if not -- the model bundle alone is 3.4 GB, plus binaries + ONNX runtime.
 # Per B11.5w: "<5 GB disk free -> refuse early".
+#
+# Bug #228 PROPER follow-up (2026-05-04): if a 2nd argument is passed
+# pointing at the FINAL model root (~/.mneme/models), and that dir
+# already contains all 5 model files at their canonical byte counts,
+# subtract 3.4 GB from the requirement. Re-installers who already
+# have models laid down only need ~1 GB working space (binaries +
+# tarball + scratch), not the full 8 GB upfront.
 pre_flight_disk_space() {
     local needed_gb="$1"
+    local models_dir="${2:-}"
     local home_dir="${HOME:-/tmp}"
     local avail_kb
+
+    # Discount for already-present models. Hardcoded byte counts mirror
+    # the MODEL_LIST sizes in install-linux.sh / install-mac.sh /
+    # bootstrap-install.ps1 — the canonical HF mirror sizes.
+    if [ -n "${models_dir}" ] && [ -d "${models_dir}" ]; then
+        local _have_all=1
+        for spec in \
+            "bge-small-en-v1.5.onnx:133093490" \
+            "tokenizer.json:742067" \
+            "qwen-embed-0.5b.gguf:639150592" \
+            "qwen-coder-0.5b.gguf:491400064" \
+            "phi-3-mini-4k.gguf:2393231072"; do
+            local fname="${spec%%:*}"
+            local fsize="${spec##*:}"
+            local fpath="${models_dir}/${fname}"
+            if [ ! -f "${fpath}" ]; then _have_all=0; break; fi
+            local on_disk
+            on_disk=$(stat -c%s "${fpath}" 2>/dev/null) || on_disk=$(stat -f%z "${fpath}" 2>/dev/null) || on_disk=""
+            if [ "${on_disk}" != "${fsize}" ]; then _have_all=0; break; fi
+        done
+        if [ "${_have_all}" = "1" ]; then
+            # All 5 models present at expected sizes — skip-if-present
+            # will fire later. Only need ~1 GB (binaries + tarball +
+            # scratch). Cap at 1 GB regardless of caller's request.
+            needed_gb=1
+            ok "models already at ${models_dir} -- pre-flight reduced to ${needed_gb} GB (skip-if-present will short-circuit downloads)"
+        fi
+    fi
+
     # `df -Pk` is the POSIX-portable form (-P for portable output, -k for
     # 1024-byte blocks). The 4th field is "Available" in 1K blocks.
     avail_kb=$(df -Pk "${home_dir}" 2>/dev/null | awk 'NR==2 {print $4}')

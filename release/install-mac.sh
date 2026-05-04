@@ -161,7 +161,11 @@ step "pre-flight checks"
 # ~7 GB because models stage to a temp dir then copy into ~/.mneme/models
 # while the staging dir is still alive. 8 GB covers staging + final +
 # binaries + working space + a small headroom.
-pre_flight_disk_space 8
+# Pass the canonical model root so pre-flight can short-circuit to a
+# 1 GB requirement when re-installing on a host with models already laid
+# down (Bug #228 PROPER follow-up, 2026-05-04). MNEME_HOME isn't set
+# yet at this stage so we hardcode the canonical dir.
+pre_flight_disk_space 8 "${HOME}/.local/share/mneme/models"
 
 # bash 3.2 ships with macOS by default -- our script targets bash 3.2+
 # semantics (no associative arrays, no [[ ${var,,} ]]). Confirm we have
