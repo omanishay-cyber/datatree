@@ -482,9 +482,35 @@ if ($NoModels) {
         }
     )
 
+    # Bug #228 — proper skip-if-present: check the FINAL model root
+    # (`~/.mneme/models/<file>`) BEFORE staging any download to TEMP.
+    # The original Get-Asset-internal check only saw the TEMP staging
+    # path which is fresh on every run, so it never short-circuited
+    # in practice. The final-dest check here saves up to ~3.5 GB of
+    # redundant network transfer when re-installing on a host that
+    # already has the models laid down. The Bug #232 manifest-merge
+    # fix in `models install --from-path` ensures pre-existing
+    # entries survive when the staging dir contains only a subset
+    # (e.g. user already has phi-3 + bge, only qwen-coder is fresh).
+    $finalModelsDir = Join-Path $env:USERPROFILE '.mneme\models'
+
     $modelDownloads = 0
+    $modelSkips     = 0
     $modelFailures  = @()
     foreach ($a in $assets) {
+        # Pre-stage check: if the final destination already has the
+        # file at the right size, skip download AND skip TEMP staging.
+        # `mneme models install --from-path $modelsDir` later won't
+        # see this filename in TEMP, but the manifest-merge logic
+        # preserves the existing entry.
+        $finalPath = Join-Path $finalModelsDir $a.Name
+        if ((Test-Path $finalPath) -and ((Get-Item $finalPath).Length -eq $a.ExpectedSize)) {
+            $mb = [math]::Round($a.ExpectedSize / 1MB, 2)
+            OK "skip $($a.Name) ($mb MB already at $finalPath, size matches)"
+            $modelSkips += 1
+            continue
+        }
+
         $dest = Join-Path $modelsDir $a.Name
         try {
             Get-Asset -Name $a.Name `
@@ -502,7 +528,7 @@ if ($NoModels) {
             }
         }
     }
-    OK "downloaded $modelDownloads / $($assets.Count) model assets ($(($modelFailures | Measure-Object).Count) failed)"
+    OK "downloaded $modelDownloads / $($assets.Count) model assets ($(($modelFailures | Measure-Object).Count) failed, $modelSkips skipped — already on disk)"
 
     # NOTE (Wave 6 follow-up, 2026-05-02): phi-3 ships asymmetrically
     # -- one 2.4 GB file on HF (the fast primary path), and two ~1.14
