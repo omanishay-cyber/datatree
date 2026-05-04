@@ -207,8 +207,7 @@ fn try_load(path: &Path) -> Result<Backend, String> {
         // Reborrow Box::leak's `&'static mut` as immutable `&'static`.
         // LlamaBackend's API is &self for context creation, so we never
         // need mutable access after init.
-        let leaked: &'static llama_cpp_2::llama_backend::LlamaBackend =
-            Box::leak(Box::new(b));
+        let leaked: &'static llama_cpp_2::llama_backend::LlamaBackend = Box::leak(Box::new(b));
         // OnceLock::set is no-op-OK if a concurrent caller already won.
         let _ = BACKEND_SINGLETON.set(leaked);
     }
@@ -231,8 +230,8 @@ fn try_load(path: &Path) -> Result<Backend, String> {
     // the KV-cache reset cost (~ms, not seconds).
     use llama_cpp_2::context::params::LlamaContextParams;
     const BATCH_CAPACITY: u32 = 2048;
-    let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(std::num::NonZeroU32::new(BATCH_CAPACITY));
+    let ctx_params =
+        LlamaContextParams::default().with_n_ctx(std::num::NonZeroU32::new(BATCH_CAPACITY));
     let ctx = model
         .new_context(backend, ctx_params)
         .map_err(|e| format!("context: {e}"))?;

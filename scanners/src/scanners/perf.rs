@@ -44,21 +44,40 @@ static SET_STATE: Lazy<Regex> =
 /// list is the false-positive denylist.
 const DENY_SETTERS: &[&str] = &[
     // Timer / scheduling
-    "setTimeout", "setInterval", "setImmediate",
+    "setTimeout",
+    "setInterval",
+    "setImmediate",
     // Date methods
-    "setFullYear", "setMonth", "setDate", "setHours", "setMinutes",
-    "setSeconds", "setMilliseconds", "setTime",
-    "setUTCFullYear", "setUTCMonth", "setUTCDate", "setUTCHours",
-    "setUTCMinutes", "setUTCSeconds", "setUTCMilliseconds",
+    "setFullYear",
+    "setMonth",
+    "setDate",
+    "setHours",
+    "setMinutes",
+    "setSeconds",
+    "setMilliseconds",
+    "setTime",
+    "setUTCFullYear",
+    "setUTCMonth",
+    "setUTCDate",
+    "setUTCHours",
+    "setUTCMinutes",
+    "setUTCSeconds",
+    "setUTCMilliseconds",
     // DOM / Web APIs
-    "setAttribute", "setAttributeNS", "setProperty",
-    "setItem", "setRequestHeader",
-    "setSelectionRange", "setRangeText",
-    "setCustomValidity", "setPointerCapture",
+    "setAttribute",
+    "setAttributeNS",
+    "setProperty",
+    "setItem",
+    "setRequestHeader",
+    "setSelectionRange",
+    "setRangeText",
+    "setCustomValidity",
+    "setPointerCapture",
     // Router / framework
     "setSearchParams",
     // Node / build
-    "setMaxListeners", "setEncoding",
+    "setMaxListeners",
+    "setEncoding",
     // Native UI
     "setStatusBarStyle",
 ];

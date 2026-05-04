@@ -186,11 +186,9 @@ impl ParserPool {
         // gets picked up via the fallback path. The semaphore permit
         // guarantees AT LEAST one slot is free; rotating the index
         // ensures that "free slot" is actually selected over time.
-        static FALLBACK_RR: std::sync::atomic::AtomicUsize =
-            std::sync::atomic::AtomicUsize::new(0);
+        static FALLBACK_RR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = slots.slots.len().max(1);
-        let start_idx =
-            FALLBACK_RR.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % n;
+        let start_idx = FALLBACK_RR.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % n;
         let guard = slots.slots[start_idx].clone().lock_owned().await;
         Ok(ParserLease {
             guard,

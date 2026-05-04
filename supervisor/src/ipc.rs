@@ -975,9 +975,8 @@ async fn dispatch(
                     // and queue-full drops to the CLI via the response
                     // message so the operator can re-run with a
                     // narrower scope or wait for the queue to drain.
-                    let mut msg = format!(
-                        "audit dispatched: {queued} files queued ({scanned} scanned)"
-                    );
+                    let mut msg =
+                        format!("audit dispatched: {queued} files queued ({scanned} scanned)");
                     if truncated {
                         msg.push_str(&format!(
                             "; WARNING: enumeration truncated at scan cap -- partial audit, re-run with a narrower path"

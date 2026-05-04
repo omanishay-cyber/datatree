@@ -265,7 +265,8 @@ fn install(from_path: Option<PathBuf>, from_url: Option<String>, force: bool) ->
             return Err(CliError::Other(
                 "--force without --from-path requires the fastembed-install feature \
                  (rebuild with --features fastembed-install) or pass --from-path to \
-                 re-install from a local bundle".to_string(),
+                 re-install from a local bundle"
+                    .to_string(),
             ));
         }
     }
@@ -734,12 +735,10 @@ pub fn install_from_path_to_root(src_dir: &Path, root: &Path) -> CliResult<usize
         // surfaces as bad embeddings forever, with no diagnosed cause.
         // Hash both files; abort on mismatch with the corrupt destination
         // removed so a retry doesn't trust the cached copy.
-        let src_sha = sha256_file(&src_path).map_err(|e| {
-            CliError::Other(format!("sha256 source {}: {e}", src_path.display()))
-        })?;
-        let dst_sha = sha256_file(&dst_path).map_err(|e| {
-            CliError::Other(format!("sha256 dest {}: {e}", dst_path.display()))
-        })?;
+        let src_sha = sha256_file(&src_path)
+            .map_err(|e| CliError::Other(format!("sha256 source {}: {e}", src_path.display())))?;
+        let dst_sha = sha256_file(&dst_path)
+            .map_err(|e| CliError::Other(format!("sha256 dest {}: {e}", dst_path.display())))?;
         if src_sha != dst_sha {
             let _ = fs::remove_file(&dst_path);
             return Err(CliError::Other(format!(
@@ -1177,10 +1176,7 @@ mod tests {
             Some(("model.bin", 100))
         );
         // Case insensitive on the "part" prefix.
-        assert_eq!(
-            parse_split_part("model.bin.PART02"),
-            Some(("model.bin", 2))
-        );
+        assert_eq!(parse_split_part("model.bin.PART02"), Some(("model.bin", 2)));
         // Stems CAN contain dots; rsplit_once peels the last suffix only.
         assert_eq!(
             parse_split_part("a.b.c.gguf.part00"),
@@ -1370,7 +1366,11 @@ mod tests {
             .iter()
             .find(|e| e.name == "model.onnx")
             .expect("entry");
-        let recorded = entry.sha256.as_deref().expect("sha256 recorded").to_string();
+        let recorded = entry
+            .sha256
+            .as_deref()
+            .expect("sha256 recorded")
+            .to_string();
 
         // Simulate post-install tamper / bit-flip.
         std::fs::write(dst.path().join("model.onnx"), b"TAMPERED-BYTES").unwrap();
@@ -1428,16 +1428,8 @@ mod tests {
         let src = tempfile::tempdir().unwrap();
         let dst = tempfile::tempdir().unwrap();
 
-        std::fs::write(
-            src.path().join("phi-3-mini-4k.gguf.part00"),
-            b"part-zero",
-        )
-        .unwrap();
-        std::fs::write(
-            src.path().join("phi-3-mini-4k.gguf.part02"),
-            b"part-two",
-        )
-        .unwrap();
+        std::fs::write(src.path().join("phi-3-mini-4k.gguf.part00"), b"part-zero").unwrap();
+        std::fs::write(src.path().join("phi-3-mini-4k.gguf.part02"), b"part-two").unwrap();
 
         let n = install_from_path_to_root(src.path(), dst.path())
             .expect("install should not error on a gap");

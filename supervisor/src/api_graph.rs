@@ -566,11 +566,7 @@ where
     let requested_owned: Option<String> = requested_project.map(|s| s.to_string());
 
     match tokio::task::spawn_blocking(move || {
-        let db_path = find_active_layer_db(
-            &state_for_blocking,
-            layer,
-            requested_owned.as_deref(),
-        )?;
+        let db_path = find_active_layer_db(&state_for_blocking, layer, requested_owned.as_deref())?;
         let conn = match rusqlite::Connection::open_with_flags(
             &db_path,
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,

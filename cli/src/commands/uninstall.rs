@@ -934,10 +934,12 @@ fn purge_mneme_state() {
         // (we'd rather succeed with possibly-hijacked ping than fail
         // outright, since the only consequence is the 11-second wait
         // gets replaced).
-        let system_root = std::env::var("SystemRoot")
-            .unwrap_or_else(|_| "C:\\Windows".to_string());
+        let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
         let ping_exe = format!("{}\\System32\\ping.exe", system_root);
-        let powershell_exe = format!("{}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", system_root);
+        let powershell_exe = format!(
+            "{}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            system_root
+        );
         let cmd_str = format!(
             "\"{}\" -n 11 127.0.0.1 >nul & rmdir /s /q \"{}\" & \"{}\" -NoProfile -ExecutionPolicy Bypass -File \"{}\"",
             ping_exe,

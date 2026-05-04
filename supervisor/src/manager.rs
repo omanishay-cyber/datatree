@@ -559,8 +559,7 @@ impl ChildManager {
                 // exactly when the system was most stressed.
                 if let Some(h) = self.handle_for(&req.name).await {
                     let mut handle = h.lock().await;
-                    handle.restart_dropped_count =
-                        handle.restart_dropped_count.saturating_add(1);
+                    handle.restart_dropped_count = handle.restart_dropped_count.saturating_add(1);
                 }
                 debug!(child = %req.name, "shutdown in progress; ignoring restart request");
                 continue;

@@ -231,8 +231,8 @@ pub async fn run(args: SelfUpdateArgs) -> CliResult<()> {
         let disks = Disks::new_with_refreshed_list();
         let needed = (asset.size as f64 * 1.2) as u64;
         // Find the disk whose mount_point is the longest prefix of staging_root.
-        let staging_canon = std::fs::canonicalize(&staging_root)
-            .unwrap_or_else(|_| staging_root.clone());
+        let staging_canon =
+            std::fs::canonicalize(&staging_root).unwrap_or_else(|_| staging_root.clone());
         let mut best_match: Option<(usize, u64)> = None;
         for d in disks.list() {
             let mp = d.mount_point();
@@ -835,9 +835,9 @@ fn daemon_process_alive() -> bool {
     ];
     sys.processes().values().any(|p| {
         let name = p.name().to_string_lossy().to_lowercase();
-        watch.iter().any(|w| {
-            name == *w || name == format!("{w}.exe").as_str()
-        })
+        watch
+            .iter()
+            .any(|w| name == *w || name == format!("{w}.exe").as_str())
     })
 }
 
@@ -1373,14 +1373,11 @@ mod tests {
         make_dummy_exe(&target.join(exe_name("mneme")), b"OLD-A");
         make_dummy_exe(&target.join(exe_name("mneme-daemon")), b"OLD-B");
 
-        let swapped = replace_binaries_atomically(&staging, &target, false)
-            .expect("partial swap succeeds");
+        let swapped =
+            replace_binaries_atomically(&staging, &target, false).expect("partial swap succeeds");
         assert_eq!(swapped, 2, "exactly 2 binaries should be swapped");
 
-        assert_eq!(
-            fs::read(target.join(exe_name("mneme"))).unwrap(),
-            b"NEW-A",
-        );
+        assert_eq!(fs::read(target.join(exe_name("mneme"))).unwrap(), b"NEW-A",);
         assert_eq!(
             fs::read(target.join(exe_name("mneme-daemon"))).unwrap(),
             b"NEW-B",
@@ -1443,8 +1440,7 @@ mod tests {
         make_dummy_exe(&staging.join(exe_name("mneme")), b"NEW");
         make_dummy_exe(&target.join(exe_name("mneme")), b"OLD");
         // Drop a stale .deleteme leftover in the target dir.
-        let stale_deleteme =
-            target.join(format!("{}.deleteme", exe_name("mneme")));
+        let stale_deleteme = target.join(format!("{}.deleteme", exe_name("mneme")));
         make_dummy_exe(&stale_deleteme, b"STALE-FROM-PRIOR-FAILED-SWAP");
 
         let swapped = replace_binaries_atomically(&staging, &target, false)
@@ -1472,9 +1468,7 @@ mod tests {
         // `bin/` directory automatically.
         let td = tempfile::tempdir().expect("tempdir");
         let staging = td.path().join("staging");
-        let nested_bin = staging
-            .join("mneme-v0.3.3-windows-x64")
-            .join("bin");
+        let nested_bin = staging.join("mneme-v0.3.3-windows-x64").join("bin");
         let target = td.path().join("target");
         fs::create_dir_all(&nested_bin).unwrap();
         fs::create_dir_all(&target).unwrap();

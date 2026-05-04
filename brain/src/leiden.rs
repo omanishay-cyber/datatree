@@ -372,11 +372,7 @@ struct Aggregated {
     parent: Vec<usize>,
 }
 
-fn aggregate(
-    adj: &[Vec<(usize, f64)>],
-    refined: &[usize],
-    partition: &[usize],
-) -> Aggregated {
+fn aggregate(adj: &[Vec<(usize, f64)>], refined: &[usize], partition: &[usize]) -> Aggregated {
     let k = refined.iter().copied().max().map(|x| x + 1).unwrap_or(0);
     let mut new_adj: Vec<HashMap<usize, f64>> = vec![HashMap::new(); k];
     for (u, row) in adj.iter().enumerate() {

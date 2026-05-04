@@ -886,7 +886,8 @@ fn probe_mcp_claude_code_status() -> McpHostStatus {
     let raw = match std::fs::read_to_string(&registry_path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            status.note = Some("~/.claude.json missing -- Claude Code never installed an MCP entry".into());
+            status.note =
+                Some("~/.claude.json missing -- Claude Code never installed an MCP entry".into());
             return status;
         }
         Err(e) => {
@@ -910,10 +911,8 @@ fn probe_mcp_claude_code_status() -> McpHostStatus {
     let mneme = match mneme {
         Some(m) => m,
         None => {
-            status.note = Some(
-                "no mcpServers.mneme entry -- run `mneme install` to register"
-                    .into(),
-            );
+            status.note =
+                Some("no mcpServers.mneme entry -- run `mneme install` to register".into());
             return status;
         }
     };
@@ -950,7 +949,10 @@ fn probe_mcp_claude_code_status() -> McpHostStatus {
             status.note = Some(format!(
                 "registered command {:?} doesn't match current binary {:?}",
                 registered_cmd,
-                current_exe.as_ref().map(|p| p.display().to_string()).unwrap_or_default()
+                current_exe
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default()
             ));
         }
     }

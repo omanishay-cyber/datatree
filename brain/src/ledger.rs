@@ -251,15 +251,14 @@ impl SqliteLedger {
         // BUG-A2-012 fix: surface invalid timestamps via warn! rather than
         // silently substituting "now", which previously masked corruption
         // in the `timestamp` column.
-        let timestamp =
-            DateTime::<Utc>::from_timestamp_millis(ts_millis).unwrap_or_else(|| {
-                warn!(
-                    id = %id,
-                    ts_millis,
-                    "ledger entry has invalid timestamp; substituting now"
-                );
-                Utc::now()
-            });
+        let timestamp = DateTime::<Utc>::from_timestamp_millis(ts_millis).unwrap_or_else(|| {
+            warn!(
+                id = %id,
+                ts_millis,
+                "ledger entry has invalid timestamp; substituting now"
+            );
+            Utc::now()
+        });
         let summary: String = row.get("summary")?;
         let rationale: Option<String> = row.get("rationale")?;
         let touched_files_json: String = row.get("touched_files")?;

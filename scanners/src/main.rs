@@ -194,10 +194,7 @@ async fn main() -> std::io::Result<()> {
                             // back of the FIFO order so future evictions
                             // pick a less-recently-used shard first.
                             // Linear scan over <=16 entries is trivial.
-                            if let Some(pos) = shard_writer_order
-                                .iter()
-                                .position(|p| p == shard)
-                            {
+                            if let Some(pos) = shard_writer_order.iter().position(|p| p == shard) {
                                 let path = shard_writer_order.remove(pos).unwrap();
                                 shard_writer_order.push_back(path);
                             }
@@ -551,8 +548,7 @@ async fn run_orchestrator_mode(cmd: OrchestratorCommand) -> std::io::Result<()> 
     let errors = Arc::new(AtomicUsize::new(0));
     let timeouts = Arc::new(AtomicUsize::new(0));
     let files_since_progress = Arc::new(AtomicUsize::new(0));
-    let last_progress_emit =
-        Arc::new(tokio::sync::Mutex::new(std::time::Instant::now()));
+    let last_progress_emit = Arc::new(tokio::sync::Mutex::new(std::time::Instant::now()));
 
     // Bounded concurrency: num_cpus. Higher values thrash; lower values
     // leave cores idle. Cap at 16 so a 64-core box doesn't spawn 64 task
@@ -652,11 +648,7 @@ async fn run_orchestrator_mode(cmd: OrchestratorCommand) -> std::io::Result<()> 
             {
                 Ok(Ok(r)) => r,
                 Ok(Err(join_err)) => {
-                    eprintln!(
-                        "[scan-spawn-error] {} ({})",
-                        path_buf.display(),
-                        join_err
-                    );
+                    eprintln!("[scan-spawn-error] {} ({})", path_buf.display(), join_err);
                     errors_c.fetch_add(1, AtomicOrdering::Relaxed);
                     return;
                 }
@@ -680,8 +672,7 @@ async fn run_orchestrator_mode(cmd: OrchestratorCommand) -> std::io::Result<()> 
                 res.failed_scanners.len()
             );
             if !res.failed_scanners.is_empty() {
-                errors_c
-                    .fetch_add(res.failed_scanners.len(), AtomicOrdering::Relaxed);
+                errors_c.fetch_add(res.failed_scanners.len(), AtomicOrdering::Relaxed);
             }
             let mut buf_out = stdout_c.lock().await;
             for f in &res.findings {
@@ -701,8 +692,7 @@ async fn run_orchestrator_mode(cmd: OrchestratorCommand) -> std::io::Result<()> 
             // Progress heartbeat -- atomic snapshot of counters under the
             // last-emit mutex so two tasks don't double-emit on the same tick.
             let mut last_emit = last_progress_emit_c.lock().await;
-            let cur_progress =
-                files_since_progress_c.load(AtomicOrdering::Relaxed);
+            let cur_progress = files_since_progress_c.load(AtomicOrdering::Relaxed);
             if cur_progress >= PROGRESS_FILE_INTERVAL
                 || last_emit.elapsed() >= PROGRESS_TIME_INTERVAL
             {

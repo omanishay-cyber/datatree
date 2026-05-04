@@ -138,9 +138,7 @@ impl VideoExtractor {
         // overflow `i64`.
         let denom = (v_time_base.denominator() as i64).max(1);
         let num = (v_time_base.numerator() as i64).max(1);
-        let interval_ticks: i64 = (self.frame_sample_secs as i64)
-            .saturating_mul(denom)
-            / num;
+        let interval_ticks: i64 = (self.frame_sample_secs as i64).saturating_mul(denom) / num;
         let mut next_sample_ticks: i64 = 0;
 
         for (stream, packet) in ictx.packets() {

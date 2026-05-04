@@ -50,8 +50,7 @@ impl Extractor for MarkdownExtractor {
 
         let mut doc = ExtractedDoc::empty("markdown", path);
         if lossy_substituted {
-            doc.metadata
-                .insert("encoding".into(), "utf8-lossy".into());
+            doc.metadata.insert("encoding".into(), "utf8-lossy".into());
         }
 
         // Walk the pulldown stream, track current section, code blocks,
@@ -84,11 +83,8 @@ impl Extractor for MarkdownExtractor {
                     // nodes_fts. The comment at this site has documented
                     // the intent for months; the logic was just never
                     // wired up. Now matched.
-                    let is_top_level =
-                        level == HeadingLevel::H1 || level == HeadingLevel::H2;
-                    if is_top_level
-                        && (current_heading.is_some() || !current_body.is_empty())
-                    {
+                    let is_top_level = level == HeadingLevel::H1 || level == HeadingLevel::H2;
+                    if is_top_level && (current_heading.is_some() || !current_body.is_empty()) {
                         section_index += 1;
                         doc.pages.push(PageText {
                             index: section_index,
@@ -102,17 +98,14 @@ impl Extractor for MarkdownExtractor {
                 }
                 Event::End(TagEnd::Heading(level)) => {
                     let h = heading_buf.take().unwrap_or_default();
-                    let is_top_level =
-                        level == HeadingLevel::H1 || level == HeadingLevel::H2;
+                    let is_top_level = level == HeadingLevel::H1 || level == HeadingLevel::H2;
                     if is_top_level {
                         current_heading = Some(h.clone());
                     } else {
                         // Deeper heading: keep the parent heading title for
                         // the section, but inline the heading text into the
                         // body so the recall path still surfaces the words.
-                        if !current_body.is_empty()
-                            && !current_body.ends_with("\n\n")
-                        {
+                        if !current_body.is_empty() && !current_body.ends_with("\n\n") {
                             current_body.push_str("\n\n");
                         }
                         current_body.push_str(&h);

@@ -86,13 +86,10 @@ fn variant_detail(e: &DbError) -> Option<String> {
             json_str(holder),
             json_str(&since.to_string())
         )),
-        DbError::Timeout { elapsed_ms } => {
-            Some(format!("{{\"elapsed_ms\":{}}}", elapsed_ms))
+        DbError::Timeout { elapsed_ms } => Some(format!("{{\"elapsed_ms\":{}}}", elapsed_ms)),
+        DbError::SchemaMismatch { expected, found } => {
+            Some(format!("{{\"expected\":{},\"found\":{}}}", expected, found))
         }
-        DbError::SchemaMismatch { expected, found } => Some(format!(
-            "{{\"expected\":{},\"found\":{}}}",
-            expected, found
-        )),
         DbError::DiskFull { available_bytes } => {
             Some(format!("{{\"available_bytes\":{}}}", available_bytes))
         }
@@ -100,9 +97,7 @@ fn variant_detail(e: &DbError) -> Option<String> {
             Some(format!("{{\"backtrace\":{}}}", json_str(backtrace)))
         }
         DbError::Sqlite(s) => Some(format!("{{\"sqlite\":{}}}", json_str(s))),
-        DbError::NotFound
-        | DbError::SerializationFailure
-        | DbError::PermissionDenied => None,
+        DbError::NotFound | DbError::SerializationFailure | DbError::PermissionDenied => None,
     }
 }
 
