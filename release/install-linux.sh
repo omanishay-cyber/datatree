@@ -566,12 +566,19 @@ else
     # models install --from-path <dir>` after the user fetches files
     # from any other mirror, NOT a silent degraded path that may
     # itself fail mid-stream.
+    #
+    # 4th column placeholder: we use literal "-" (not empty) because
+    # bash `read` with `IFS=$'\t'` treats tab as whitespace and
+    # COLLAPSES consecutive tabs, so an empty 4th field would shift
+    # the 5th field's value into m_fallback. The "-" is normalised to
+    # empty inside the loop. This is the one-character fix for the
+    # silent skip-if-present bug found on Linux VM 2026-05-04.
     MODEL_LIST=$(cat <<MODELS_EOF
-bge-small-en-v1.5.onnx	1	${HF_BASE}/bge-small-en-v1.5.onnx		133093490
-tokenizer.json	1	${HF_BASE}/tokenizer.json		742067
-qwen-embed-0.5b.gguf	0	${HF_BASE}/qwen-embed-0.5b.gguf		639150592
-qwen-coder-0.5b.gguf	0	${HF_BASE}/qwen-coder-0.5b.gguf		491400064
-phi-3-mini-4k.gguf	0	${HF_BASE}/phi-3-mini-4k.gguf		2393231072
+bge-small-en-v1.5.onnx	1	${HF_BASE}/bge-small-en-v1.5.onnx	-	133093490
+tokenizer.json	1	${HF_BASE}/tokenizer.json	-	742067
+qwen-embed-0.5b.gguf	0	${HF_BASE}/qwen-embed-0.5b.gguf	-	639150592
+qwen-coder-0.5b.gguf	0	${HF_BASE}/qwen-coder-0.5b.gguf	-	491400064
+phi-3-mini-4k.gguf	0	${HF_BASE}/phi-3-mini-4k.gguf	-	2393231072
 MODELS_EOF
 )
 
@@ -606,6 +613,9 @@ MODELS_EOF
         # default so `set -u` doesn't trip later when m_fallback is
         # passed to download_dual_source.
         m_fallback="${m_fallback:-}"
+        # Normalise placeholder "-" back to empty (see MODEL_LIST comment
+        # above re bash IFS-tab whitespace collapsing).
+        if [ "${m_fallback}" = "-" ]; then m_fallback=""; fi
         m_size="${m_size:-0}"
         IFS=$'\n'
 
