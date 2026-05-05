@@ -334,18 +334,52 @@ if [ -f "${UNIT_PATH}" ] && [ "${SYSTEMD_AVAILABLE}" -eq 1 ]; then
     systemctl --user disable "${UNIT_NAME}" 2>/dev/null || true
 fi
 
-# pkill anchored regex -- only matches argv[0] starting with mneme.
+# BUG-NEW-P fix (2026-05-05): the previous `pkill -f '^mneme'` anchored
+# the regex at argv[0] character 0. Production-installed daemons run
+# with their FULL PATH as argv[0] — e.g.
+#   /home/anish/.local/share/mneme/bin/mneme-daemon start
+# argv[0] starts with `/`, so `^mneme` never matches and orphaned
+# daemons survive the wipe. On a VM that had been re-installed 7
+# times today, `ps -ef | grep mneme-daemon` showed 7 zombies, each
+# burning a CPU thread + restart-looping at ~100/24h.
+#
+# Fix: explicitly enumerate the worker binaries by name and match the
+# basename anywhere in the command line. Covers both bare `mneme-daemon`
+# (PATH-spawned) and `/path/to/mneme-daemon` (systemd-spawned + manual).
 killed=0
 if command -v pkill >/dev/null 2>&1; then
-    if pkill -f '^mneme' >/dev/null 2>&1; then
-        killed=1
+    for bin in \
+        mneme-daemon \
+        mneme-store \
+        mneme-parsers \
+        mneme-scanners \
+        mneme-brain \
+        mneme-livebus \
+        mneme-md-ingest \
+        mneme-multimodal; do
+        # Match on either path-prefixed (`/.../mneme-X`) or bare
+        # (`mneme-X`) at start of argv[0]. The trailing space-or-EOL
+        # boundary keeps `mneme-store` from also clobbering a
+        # hypothetical `mneme-store-debug`.
+        if pkill -9 -f "(^|/)${bin}( |$)" >/dev/null 2>&1; then
+            killed=$((killed + 1))
+        fi
+    done
+    if [ "${killed}" -gt 0 ]; then
         sleep 2
     fi
 fi
-if [ "${killed}" -eq 1 ]; then
-    ok "stopped running mneme process(es)"
+if [ "${killed}" -gt 0 ]; then
+    ok "stopped ${killed} mneme worker pattern(s) (some patterns may have matched 0 procs)"
 else
     ok "no mneme processes running -- safe to extract"
+fi
+
+# Belt-and-suspenders: also kill anything still holding the daemon's
+# socket/pipe file. Stale daemons sometimes survive pkill if they were
+# in `D` (uninterruptible sleep) state during the SIGKILL.
+if command -v fuser >/dev/null 2>&1 && [ -e "${HOME}/.mneme/run/supervisor.sock" ]; then
+    fuser -k "${HOME}/.mneme/run/supervisor.sock" 2>/dev/null || true
 fi
 
 # -----------------------------------------------------------------------------

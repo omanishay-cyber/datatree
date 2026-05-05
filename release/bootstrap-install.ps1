@@ -332,6 +332,20 @@ Get-Asset -Name $zipName -Dest $localZip
 # Step 2: Stop any running mneme processes (in case of re-install)
 # ---------------------------------------------------------------------------
 Section "Stop existing mneme processes (if any)"
+# BUG-NEW-P fix (2026-05-05): defensive scheduled-task delete BEFORE
+# we kill processes. The `MnemeDaemon` Scheduled Task fires on logon
+# AND can fire opportunistically; if it fires DURING this script's
+# kill+extract window (race window: typically 30-60s), the task
+# spawns a fresh daemon from the OLD binary path and re-locks files
+# under ~/.mneme/bin/* — the extract then fails or produces a
+# corrupt/inconsistent install.
+#
+# Unregistering the task here closes that race. The inner installer
+# (scripts/install.ps1) re-registers it after the extract completes.
+# If the task doesn't exist (fresh install), schtasks /Delete /F
+# returns exit 1 silently — that's fine.
+& schtasks /Delete /TN MnemeDaemon /F 2>$null | Out-Null
+
 $names = @('mneme', 'mneme-daemon', 'mneme-store', 'mneme-parsers', 'mneme-scanners',
            'mneme-brain', 'mneme-livebus', 'mneme-md-ingest', 'mneme-multimodal')
 # Bug G-7 (2026-05-01): the empty `catch { }` swallowed every
@@ -351,6 +365,8 @@ foreach ($n in $names) {
         }
     }
 }
+# Settle so the OS releases handles before extract.
+if ($killed -gt 0) { Start-Sleep -Milliseconds 500 }
 OK "stopped $killed process(es)$(if ($failed -gt 0) { "  ($failed failed)" })"
 
 # ---------------------------------------------------------------------------

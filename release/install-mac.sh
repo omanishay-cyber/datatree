@@ -276,17 +276,34 @@ if [ -f "${PLIST_PATH}" ]; then
     launchctl unload "${PLIST_PATH}" 2>/dev/null || true
 fi
 
-# pkill anchored regex -- only matches argv[0] starting with mneme so
-# we don't accidentally kill an editor with a mneme path open.
+# BUG-NEW-P fix (2026-05-05): the previous `pkill -f '^mneme'` anchored
+# argv[0] character 0, but production-installed daemons run with full
+# paths as argv[0] (e.g. `/Users/anish/.mneme/bin/mneme-daemon start`).
+# The regex never matched, leaving orphaned daemons. Same fix shape as
+# install-linux.sh — explicit binary-name list with path-or-bare
+# matching. Editor-protection from the original comment is preserved
+# because we only target the workers' specific binary names.
 killed=0
 if command -v pkill >/dev/null 2>&1; then
-    if pkill -f '^mneme' >/dev/null 2>&1; then
-        killed=1
+    for bin in \
+        mneme-daemon \
+        mneme-store \
+        mneme-parsers \
+        mneme-scanners \
+        mneme-brain \
+        mneme-livebus \
+        mneme-md-ingest \
+        mneme-multimodal; do
+        if pkill -9 -f "(^|/)${bin}( |$)" >/dev/null 2>&1; then
+            killed=$((killed + 1))
+        fi
+    done
+    if [ "${killed}" -gt 0 ]; then
         sleep 2
     fi
 fi
-if [ "${killed}" -eq 1 ]; then
-    ok "stopped running mneme process(es)"
+if [ "${killed}" -gt 0 ]; then
+    ok "stopped ${killed} mneme worker pattern(s)"
 else
     ok "no mneme processes running -- safe to extract"
 fi
