@@ -440,10 +440,19 @@ pub fn rewrite_rust_path(syntactic: &str, file_prefix: &str, uses: &UseMap) -> S
 }
 
 /// Helper: drop the rightmost segment of a `crate::a::b::c` path.
+///
+/// v0.4.0 audit fix (2026-05-05): the prior version returned the input
+/// unchanged when no `::` separator was present. That made
+/// `super::foo` from `crate` (the crate root) silently resolve to
+/// `crate::foo` instead of bubbling up the "tried to walk above the
+/// root" condition. Now returns an empty string, which the `super::`
+/// rewrite path handles by emitting just the symbol name (`foo`),
+/// matching the canonical form for "extern path with unknown
+/// origin" — the embedder still gets a usable token.
 fn parent_module(prefix: &str) -> String {
     match prefix.rsplit_once("::") {
         Some((parent, _)) => parent.to_string(),
-        None => prefix.to_string(), // already at root
+        None => String::new(), // already at (or above) crate root
     }
 }
 
@@ -532,12 +541,29 @@ impl TypeScriptResolver {
     }
 }
 
-/// File-prefix for TS/JS canonical names. Unlike Rust we keep the
-/// extension because TS files aren't directory-as-module — `Foo.tsx`
-/// vs `Foo.ts` vs `Foo.js` are distinct files with potentially
-/// distinct exports. Path uses forward slashes always.
+/// File-prefix for TS/JS canonical names. v0.4.0 audit (2026-05-05)
+/// caught a definition/reference symmetry bug: keeping the extension
+/// here meant the definition `Foo.tsx::Bar` lived in a different
+/// namespace than the reference `./Foo` (which the relative-import
+/// resolver returns as `src/components/Foo`, no extension). The two
+/// strings should describe the same logical file. We now strip every
+/// extension we ship with so both sides land in the same namespace.
+///
+/// Stripped extensions (precedence — first match wins):
+/// `.tsx`, `.ts`, `.jsx`, `.js`, `.mjs`, `.cjs`. Order matters because
+/// `Foo.spec.ts` must keep `Foo.spec` (we strip only the trailing
+/// `.ts`, never any earlier dot in the basename).
+///
+/// Path uses forward slashes always.
 pub fn ts_file_prefix(relative_path: &str) -> String {
-    relative_path.replace('\\', "/")
+    let normalised = relative_path.replace('\\', "/");
+    const STRIPPABLE_EXTS: &[&str] = &[".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs"];
+    for ext in STRIPPABLE_EXTS {
+        if let Some(stem) = normalised.strip_suffix(ext) {
+            return stem.to_string();
+        }
+    }
+    normalised
 }
 
 /// tsconfig.json `compilerOptions.paths` alias map. The extractor
@@ -877,7 +903,17 @@ pub fn resolve_python_relative(import: &str, file_prefix: &str) -> String {
         anchor = parent_python_module(&anchor);
     }
     if remainder.is_empty() {
-        anchor
+        // v0.4.0 audit fix (2026-05-05): bare `.` from a top-level
+        // single-segment module (e.g. file_prefix = "cli") used to
+        // produce an empty anchor → empty canonical → embed-anchor
+        // builder dropped the symbol entirely. Treat the bare-dot
+        // case as "the importing module itself", which matches
+        // Python's `from . import foo` semantics.
+        if anchor.is_empty() {
+            file_prefix.to_string()
+        } else {
+            anchor
+        }
     } else if anchor.is_empty() {
         remainder.to_string()
     } else {
@@ -1019,6 +1055,24 @@ mod tests {
         assert_eq!(
             r.resolve_definition("WorkerPool::spawn", &c).as_str(),
             "WorkerPool::spawn"
+        );
+    }
+
+    #[test]
+    fn rewrite_rust_super_at_crate_root_does_not_double_back_to_crate() {
+        // v0.4.0 audit fix (2026-05-05): the prior parent_module()
+        // returned its input unchanged when no `::` was present, so
+        // `super::foo` from `crate` (the crate root) silently became
+        // `crate::foo` — exactly what `self::foo` should produce, not
+        // `super::`. parent_module now returns "" when we're at root,
+        // so the super:: rewrite emits just the bare symbol.
+        let uses = UseMap::default();
+        // From crate root: `super::*` walks past root → bare symbol.
+        assert_eq!(rewrite_rust_path("super::foo", "crate", &uses), "foo",);
+        // From `crate::a`: super::super::foo walks twice, also past root.
+        assert_eq!(
+            rewrite_rust_path("super::super::foo", "crate::a", &uses),
+            "foo",
         );
     }
 
@@ -1182,10 +1236,35 @@ mod tests {
             relative_path: "vision/src/views/ForceGalaxy.tsx",
             language: Language::TypeScript,
         };
+        // v0.4.0 audit fix: file-prefix strips the .tsx extension so
+        // the definition `Foo.tsx::Bar` lives in the same namespace as
+        // the relative-import reference `./Foo` (which resolves
+        // without an extension). Without the strip, def/ref symmetry
+        // breaks.
         assert_eq!(
             r.resolve_definition("ForceGalaxy", &c).as_str(),
-            "vision/src/views/ForceGalaxy.tsx::ForceGalaxy"
+            "vision/src/views/ForceGalaxy::ForceGalaxy"
         );
+    }
+
+    #[test]
+    fn ts_file_prefix_strips_known_extensions() {
+        // Every extension the TS toolchain bundles should strip.
+        assert_eq!(ts_file_prefix("src/Foo.tsx"), "src/Foo");
+        assert_eq!(ts_file_prefix("src/Foo.ts"), "src/Foo");
+        assert_eq!(ts_file_prefix("src/Foo.jsx"), "src/Foo");
+        assert_eq!(ts_file_prefix("src/Foo.js"), "src/Foo");
+        assert_eq!(ts_file_prefix("src/Foo.mjs"), "src/Foo");
+        assert_eq!(ts_file_prefix("src/Foo.cjs"), "src/Foo");
+        // Multi-dot basenames preserve every dot but the trailing ext.
+        assert_eq!(ts_file_prefix("src/Foo.spec.ts"), "src/Foo.spec");
+        assert_eq!(ts_file_prefix("src/Foo.d.ts"), "src/Foo.d");
+        // No recognised extension → identity (don't break unknown
+        // shapes; keeps the resolver forward-compatible with future
+        // extensions like `.svelte` or `.vue`).
+        assert_eq!(ts_file_prefix("src/Foo.svelte"), "src/Foo.svelte");
+        // Windows-style backslashes still normalised before strip.
+        assert_eq!(ts_file_prefix(r"src\Foo.tsx"), "src/Foo");
     }
 
     #[test]
@@ -1396,6 +1475,19 @@ mod tests {
             resolve_python_relative("absolute.pkg.mod", "pkg.sub.mod"),
             "absolute.pkg.mod"
         );
+    }
+
+    #[test]
+    fn resolve_python_relative_bare_dot_from_top_level_module_returns_self() {
+        // v0.4.0 audit fix (2026-05-05): bare `.` from a single-
+        // segment file_prefix used to produce empty string -> the
+        // embed-anchor builder dropped the symbol entirely. Now it
+        // resolves to the file_prefix itself, matching Python's
+        // `from . import foo` semantics.
+        assert_eq!(resolve_python_relative(".", "cli"), "cli");
+        assert_eq!(resolve_python_relative(".", "pkg"), "pkg");
+        // Regression: nested case unchanged.
+        assert_eq!(resolve_python_relative(".", "pkg.sub.mod"), "pkg.sub");
     }
 
     #[test]

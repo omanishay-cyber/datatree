@@ -31,7 +31,10 @@ fn migrations_v0_to_v3_runs_idempotently_on_empty_db() {
     let conn = fresh_db();
     assert_eq!(user_version(&conn), 0, "fresh db starts at user_version=0");
 
-    let final_version = apply_migrations(&conn).expect("apply on empty db");
+    // Use Meta layer for the empty-table no-op invariant — its
+    // migration set is the default empty MIGRATIONS slice.
+    let final_version =
+        apply_migrations(&conn, common::layer::DbLayer::Meta).expect("apply on empty db");
 
     if MIGRATIONS.is_empty() {
         // Empty table: nothing should advance.
@@ -54,8 +57,9 @@ fn migrations_v0_to_v3_skips_already_applied_blocks() {
     // all.
     let conn = fresh_db();
 
-    let first = apply_migrations(&conn).expect("first run");
-    let second = apply_migrations(&conn).expect("second run is no-op");
+    let first = apply_migrations(&conn, common::layer::DbLayer::Meta).expect("first run");
+    let second =
+        apply_migrations(&conn, common::layer::DbLayer::Meta).expect("second run is no-op");
 
     assert_eq!(
         first, second,

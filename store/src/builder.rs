@@ -173,7 +173,7 @@ fn init_shard(paths: &PathManager, project: &ProjectId, layer: DbLayer) -> DtRes
     // Run pending column-additive migrations from `schema::MIGRATIONS`.
     // No-op when the table is empty (v0.3.2 ship state). Once v0.4 adds
     // entries, this catches v0.3.x shards forward without a rebuild.
-    apply_migrations(&conn)?;
+    apply_migrations(&conn, layer)?;
     // phase-c10: for Graph shards, back-fill nodes_fts from nodes if the
     // FTS index is empty but the base table has rows (upgrade path for
     // graph.db files built before the sync triggers existed). Idempotent
@@ -254,7 +254,7 @@ fn init_meta(paths: &PathManager) -> DtResult<()> {
     record_version(&conn)?;
     // See comment in `init_shard` — migrations also run on the
     // root-level meta.db so cross-project tables stay in sync.
-    apply_migrations(&conn)?;
+    apply_migrations(&conn, DbLayer::Meta)?;
     Ok(())
 }
 

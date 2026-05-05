@@ -35,30 +35,58 @@ use rusqlite::Connection;
 
 use common::error::{DbError, DtResult};
 
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
-/// Forward-only migration table.
+/// Forward-only migration table for shards that don't have a layer-
+/// specific migration set. v0.3.2 framework default — kept empty so
+/// adding a layer-agnostic migration is still a one-line change.
 ///
 /// Each tuple is `(target_user_version, &[sql_statements])`. The runner
 /// applies blocks whose `target_user_version > PRAGMA user_version` in
 /// ascending order, executing every statement in the block as a single
 /// transaction, then bumping `PRAGMA user_version` to the target.
-///
-/// **Invariants**:
-/// - Targets are strictly ascending (1, 2, 3, ...). The runner enforces
-///   this.
-/// - Each statement must be idempotent-safe enough to survive a re-run
-///   on a partially-applied shard if SQLite crashes mid-transaction.
-///   In practice this means `CREATE TABLE IF NOT EXISTS` and
-///   `ALTER TABLE` guarded by a "column does not exist" check by the
-///   author — but ALTER TABLE itself is not idempotent in SQLite
-///   (it errors on duplicate column), so authors should write each
-///   block defensively.
-/// - Forward-only. There is no down-migration.
-///
-/// For v0.3.2 ship, this is empty: the framework lands but is a no-op.
-/// v0.4 will append entries here as columns are added.
 pub const MIGRATIONS: &[(u32, &[&str])] = &[];
+
+/// Migrations specific to the **Graph** layer (`graph.db`). Per-layer
+/// scoping was added with v0.4.0 Item #117 — a workspace-wide migration
+/// table can't run `DELETE FROM embeddings` because that table only
+/// exists on the Semantic layer; SQLite's parser rejects the statement
+/// outright on shards that don't have it. Splitting MIGRATIONS by
+/// layer keeps each block well-typed against the schema it targets.
+const MIGRATIONS_GRAPH: &[(u32, &[&str])] = &[
+    // v0.4.0 Item #117 (symbol-anchored embeddings). v0.3.x shards
+    // have populated `embedding_id` values pointing at file-anchored
+    // vectors. On upgrade we MUST clear the back-references so the
+    // re-embed pass reads every node again with the new symbol-anchor
+    // text — otherwise the keystone recall fix produces zero
+    // observable improvement for upgrading users (the entire premise
+    // of v0.4.0). Idempotent: re-running just no-ops.
+    (
+        2,
+        &["UPDATE nodes SET embedding_id = NULL WHERE embedding_id IS NOT NULL"],
+    ),
+];
+
+/// Migrations specific to the **Semantic** layer (`semantic.db`).
+/// Paired with [`MIGRATIONS_GRAPH`] — both bump `user_version` to 2
+/// at the same v0.3.x→v0.4.0 transition.
+const MIGRATIONS_SEMANTIC: &[(u32, &[&str])] = &[
+    // v0.4.0 Item #117: clear file-anchored embeddings so the next
+    // build pass re-embeds every node with symbol-anchored text.
+    // Cheap: deletes ~20 K rows on a typical project; embed pass
+    // re-populates in the same build run.
+    (2, &["DELETE FROM embeddings"]),
+];
+
+/// Pick the migration set appropriate for `layer`. Layers without
+/// schema changes return the default (empty) set.
+fn migrations_for_layer(layer: DbLayer) -> &'static [(u32, &'static [&'static str])] {
+    match layer {
+        DbLayer::Graph => MIGRATIONS_GRAPH,
+        DbLayer::Semantic => MIGRATIONS_SEMANTIC,
+        _ => MIGRATIONS,
+    }
+}
 
 /// Apply every pending migration block whose target version is greater
 /// than the database's current `PRAGMA user_version`. Returns the new
@@ -66,39 +94,41 @@ pub const MIGRATIONS: &[(u32, &[&str])] = &[];
 ///
 /// Behavior:
 /// - Reads `PRAGMA user_version` (defaults to 0 on a fresh shard).
-/// - Walks [`MIGRATIONS`] in order; for each `(target, stmts)` where
-///   `target > current`, runs the block inside a transaction and bumps
-///   `user_version` to `target`.
+/// - Walks the layer's migration table in order; for each `(target,
+///   stmts)` where `target > current`, runs the block inside a
+///   transaction and bumps `user_version` to `target`.
 /// - On SQL error: rolls back that block, returns
 ///   [`DbError::Sqlite`] (never silently skips).
-/// - Empty `MIGRATIONS` slice is a clean no-op that returns the
+/// - Empty migration slice is a clean no-op that returns the
 ///   current `user_version` unchanged.
 ///
 /// This is called from `builder::init_shard` and `builder::init_meta`
 /// AFTER the baseline `schema_sql` `CREATE TABLE IF NOT EXISTS`
 /// statements run, so v0.3.0 shards built before any migrations
 /// existed are correctly migrated forward when the user upgrades.
-pub fn apply_migrations(conn: &Connection) -> DtResult<u32> {
+pub fn apply_migrations(conn: &Connection, layer: DbLayer) -> DtResult<u32> {
     let mut current: u32 = conn
         .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
         .map_err(DbError::from)? as u32;
+
+    let migrations = migrations_for_layer(layer);
 
     // Verify ascending targets; bail loudly on a malformed table rather
     // than silently applying out of order. This is a programmer error,
     // not a runtime one — but the cost of the check is one comparison
     // per entry so we keep it.
     let mut last_target: u32 = 0;
-    for (target, _) in MIGRATIONS.iter() {
+    for (target, _) in migrations.iter() {
         if *target <= last_target {
             return Err(common::error::DtError::Internal(format!(
-                "MIGRATIONS not strictly ascending: {} after {}",
-                target, last_target
+                "MIGRATIONS for {:?} not strictly ascending: {} after {}",
+                layer, target, last_target
             )));
         }
         last_target = *target;
     }
 
-    for (target, stmts) in MIGRATIONS.iter() {
+    for (target, stmts) in migrations.iter() {
         if *target <= current {
             continue;
         }
