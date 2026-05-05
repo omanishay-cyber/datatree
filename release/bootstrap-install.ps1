@@ -144,11 +144,34 @@ try {
     $prevPP = $ProgressPreference
     $ProgressPreference = 'SilentlyContinue'
     try {
-        $manifestRaw = Invoke-WebRequest -Uri $manifestUrl -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+        # VM-2026-05-05 fix: Invoke-WebRequest on PowerShell 5.1
+        # returns `Content` as a byte[] for any response whose
+        # Content-Type isn't `text/*` — and GitHub serves release
+        # assets as `application/octet-stream`. Piping a byte[] into
+        # ConvertFrom-Json silently produces $null, which made the
+        # foreach below iterate 0 entries even though the JSON was
+        # fetched successfully. The bug surfaced as "loaded SHA-256
+        # manifest: 0 pinned files" + every subsequent download
+        # WARN'd about no pinned hash → integrity check skipped.
+        #
+        # Two-tier fix: prefer Invoke-RestMethod (auto-decodes JSON
+        # regardless of Content-Type), fall back to IWR + explicit
+        # byte→string decode for environments that hate IRM.
+        $manifest = $null
+        try {
+            $manifest = Invoke-RestMethod -Uri $manifestUrl -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+        } catch {
+            $manifestRaw = Invoke-WebRequest -Uri $manifestUrl -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+            $contentText = if ($manifestRaw.Content -is [byte[]]) {
+                [System.Text.Encoding]::UTF8.GetString($manifestRaw.Content)
+            } else {
+                [string]$manifestRaw.Content
+            }
+            $manifest = $contentText | ConvertFrom-Json
+        }
     } finally {
         $ProgressPreference = $prevPP
     }
-    $manifest = $manifestRaw.Content | ConvertFrom-Json
     if ($manifest -and $manifest.files) {
         foreach ($prop in $manifest.files.PSObject.Properties) {
             $ExpectedHashes[$prop.Name] = ([string]$prop.Value).ToUpper()
@@ -340,11 +363,30 @@ Section "Stop existing mneme processes (if any)"
 # under ~/.mneme/bin/* — the extract then fails or produces a
 # corrupt/inconsistent install.
 #
-# Unregistering the task here closes that race. The inner installer
-# (scripts/install.ps1) re-registers it after the extract completes.
-# If the task doesn't exist (fresh install), schtasks /Delete /F
-# returns exit 1 silently — that's fine.
-& schtasks /Delete /TN MnemeDaemon /F 2>$null | Out-Null
+# VM-2026-05-05 fix: the prior `2>$null | Out-Null` did NOT swallow
+# PowerShell's NativeCommandError when schtasks emits to stderr on
+# either (a) "task doesn't exist" (fresh install — exit 1 + stderr
+# message) or (b) "Access is denied" (non-admin user — exit 1 +
+# stderr message). With `$ErrorActionPreference = 'Stop'` set
+# upstream, that NativeCommandError halts the entire installer.
+#
+# Wrap in try/catch + explicit `$ErrorActionPreference = 'Continue'`
+# inside the block so neither error path can propagate. We also
+# silently accept the no-op (task missing OR no admin to delete it)
+# — the inner installer (scripts/install.ps1) will (a) try to
+# register the task and (b) skip registration gracefully if no admin.
+try {
+    $oldEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & schtasks /Delete /TN MnemeDaemon /F *>&1 | Out-Null
+    $ErrorActionPreference = $oldEAP
+} catch {
+    # Absorb every failure mode (no task / no admin / locale-mangled
+    # error text). The deletion is best-effort; if it didn't happen
+    # the worst case is the daemon respawns once during install,
+    # which is detected + handled by the per-binary lock retry in
+    # the extract step below.
+}
 
 $names = @('mneme', 'mneme-hook', 'mneme-daemon', 'mneme-store', 'mneme-parsers', 'mneme-scanners',
            'mneme-brain', 'mneme-livebus', 'mneme-md-ingest', 'mneme-multimodal')
