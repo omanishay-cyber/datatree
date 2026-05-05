@@ -2063,6 +2063,21 @@ async fn run_embedding_pass(
         return stats;
     }
 
+    // PERF-P0-001 visibility (v0.4.0 audit, 2026-05-05): the embed
+    // pass currently does per-row Insert+Update through the inject
+    // layer (mpsc channel + writer task + per-row transaction).
+    // For 50K rows that's ~100K serialised writes on top of inference
+    // — 30-60 s of pure SQL wall time on a typical SSD. Batching via
+    // `batch_inject` + `INSERT…ON CONFLICT…RETURNING` is queued for
+    // v0.4.0.x. In the meantime: announce the work up front so the
+    // user knows what to expect, and surface it via tracing so the
+    // CLI heartbeat picks it up.
+    info!(
+        nodes = with_text.len(),
+        "embedding pass starting — large projects can take several minutes; \
+         heartbeat shows live progress every 30 s"
+    );
+
     // Bug-2026-05-02 cosmetic: wire the heartbeat counter to actual
     // embed progress. set_phase("embed") at the call site clears the
     // processed atomic; set_total here makes the per-30s heartbeat
