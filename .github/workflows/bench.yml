@@ -185,7 +185,14 @@ jobs:
           cur = json.loads(pathlib.Path("bench-run.json").read_text() or "{}")
           base = json.loads(pathlib.Path("baseline/bench-run.json").read_text() or "{}")
           # Tracked metrics: (dotted_path, human_name, higher_is_worse)
+          # Item #123 (2026-05-05): added token-reduction-ratio as the
+          # headline regression gate. It's computed below from
+          # compare_totals.cold_total_tokens / mneme_total_tokens —
+          # the ratio is "× fewer tokens than no-mneme baseline".
+          # Higher is BETTER, so we set higher_is_worse=False; the
+          # regression comparator below now honors that direction.
           tracked = [
+              ("compare_totals.token_reduction_ratio", "token reduction (× vs no-mneme)", False),
               ("compare_totals.mneme_total_ms", "mneme total retrieval (ms)", True),
               ("first_build.cold_ms",           "first build cold (ms)",      True),
               ("first_build.warm_ms",           "first build warm (ms)",      True),
@@ -200,16 +207,37 @@ jobs:
                       return None
                   obj = obj[part]
               return obj
+          # Compute the synthetic token_reduction_ratio for both base
+          # and cur if the underlying token sums are present. Bench
+          # harness exports cold_total_tokens (no-mneme baseline) and
+          # mneme_total_tokens; ratio cold/mneme is "× reduction".
+          for blob_name, blob in (("base", base), ("cur", cur)):
+              ct = dig(blob, "compare_totals")
+              if not isinstance(ct, dict):
+                  continue
+              cold = ct.get("cold_total_tokens")
+              mneme = ct.get("mneme_total_tokens")
+              if isinstance(cold, (int, float)) and isinstance(mneme, (int, float)) and mneme > 0:
+                  ct["token_reduction_ratio"] = round(cold / mneme, 3)
           rows = []
           regressed = False
-          for path, name, _ in tracked:
+          # Item #123: respect higher_is_worse direction. For
+          # higher_is_worse=True (latency, size), regression =
+          # delta > +10%. For higher_is_worse=False (token reduction
+          # ratio), regression = delta < -10% (the ratio dropped
+          # by more than 10%, i.e. mneme is saving fewer tokens than
+          # before relative to baseline).
+          for path, name, hiw in tracked:
               b = dig(base, path)
               c = dig(cur, path)
               if not (isinstance(b, (int, float)) and isinstance(c, (int, float)) and b > 0):
                   continue
               delta = (c - b) / b * 100.0
               flag = ""
-              if delta > 10.0:
+              if hiw and delta > 10.0:
+                  flag = " ⚠️ **regression**"
+                  regressed = True
+              elif (not hiw) and delta < -10.0:
                   flag = " ⚠️ **regression**"
                   regressed = True
               rows.append(f"| {name} | {b:.2f} | {c:.2f} | {delta:+.1f}%{flag} |")
@@ -262,3 +290,24 @@ jobs:
                 owner, repo, issue_number, body,
               });
             }
+
+      # Item #123 (2026-05-05): hard fail on regression. PRs that
+      # regress any tracked metric by >10% (latency/size up, or
+      # token-reduction ratio down) now fail this job, blocking the
+      # merge until the regression is addressed or explicitly
+      # acknowledged via a baseline-refresh PR. Without this gate the
+      # comparator only POSTED a comment — easy to miss in a busy
+      # review queue.
+      #
+      # The fail-on-regression step only runs on PRs to keep main-
+      # branch pushes from blowing up retroactively when a baseline
+      # shifts.
+      - name: Fail on regression
+        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && steps.compare.outputs.status == 'regressed'
+        run: |
+          echo "::error::Benchmark regression detected — see PR comment for the full table."
+          echo "If this regression is intentional (e.g. you're trading latency for correctness),"
+          echo "refresh the baseline by running the bench-baseline.yml workflow on \`main\`"
+          echo "AFTER your PR merges and the next release cuts. The bench-history.csv trend"
+          echo "row will record the new floor."
+          exit 1
