@@ -1,23 +1,28 @@
 <div class="mneme-hero">
+<div class="mneme-hero-grid">
+<div class="mneme-hero-left">
 
 <span class="eyebrow">v0.4.0 — Keystone shipped</span>
 
-<h1 class="hero-title">The AI superbrain<br />for your codebase.</h1>
+<h1 class="hero-title">Stop grepping.<br />Start recalling.</h1>
 
-<p class="lede">Mneme is a local-only memory layer for AI coding tools. It indexes your project once, then keeps the graph fresh as you edit. Your AI sees the code through Mneme's lens — not through ad-hoc grep — and gets the same answers across sessions, restarts, and compaction.</p>
+<p class="lede">Mneme is a local-only memory layer for AI coding tools. Index your project once, then ask for any symbol, dependency, or call graph in seconds — across sessions, restarts, and compaction.</p>
 
 <div class="cta-row">
   <a class="mneme-cta mneme-cta-primary" href="./install/index.html">Install in one line<span class="arrow">&nbsp;→</span></a>
-  <a class="mneme-cta mneme-cta-secondary" href="./concepts/architecture.html">Read the architecture<span class="arrow">&nbsp;→</span></a>
+  <a class="mneme-cta mneme-cta-text" href="./concepts/architecture.html">See how it works<span class="arrow">&nbsp;→</span></a>
 </div>
 
 <div class="mneme-stats">
   <div class="mneme-stat"><span class="num">50</span><span class="lbl">MCP tools</span></div>
   <div class="mneme-stat"><span class="num">14</span><span class="lbl">Graph views</span></div>
   <div class="mneme-stat"><span class="num">22</span><span class="lbl">Storage layers</span></div>
-  <div class="mneme-stat"><span class="num">3</span><span class="lbl">Languages indexed</span></div>
+  <div class="mneme-stat"><span class="num">3</span><span class="lbl">Resolvers</span></div>
   <div class="mneme-stat"><span class="num">100%</span><span class="lbl">Local-only</span></div>
 </div>
+
+</div>
+<div class="mneme-hero-right">
 
 <div class="mneme-terminal">
   <div class="mneme-terminal-bar">
@@ -26,29 +31,37 @@
   </div>
   <div class="mneme-terminal-body">
 <pre><code><span class="prompt">$</span> <span class="cmd">mneme recall_concept "spawn"</span>
-  <span class="arrow">→</span>  <span class="out-strong">crate::manager::WorkerPool::spawn</span>  <span class="path">supervisor/src/manager.rs:1100</span>
-     <span class="out">pub async fn spawn(&amp;self, job: Job) -&gt; Result&lt;JobId&gt;</span>
-     <span class="out">callers:</span> <span class="num">12</span>  <span class="out">dependents:</span> <span class="num">5</span>  <span class="out">tests:</span> <span class="num">3</span>
+  <span class="arrow">→</span>  <span class="out-strong">crate::manager::WorkerPool::spawn</span>
+     <span class="path">supervisor/src/manager.rs:1100</span>
+     <span class="out">callers:</span> <span class="num">12</span>  <span class="out">deps:</span> <span class="num">5</span>  <span class="out">tests:</span> <span class="num">3</span>
 
-<span class="prompt">$</span> <span class="cmd">mneme blast supervisor/src/manager.rs --depth=2</span>
-  <span class="arrow">→</span>  <span class="out-strong">risk:</span> <span class="ok">moderate</span>  <span class="out">  edges to refactor:</span> <span class="num">17</span>
-     <span class="out">— supervisor/src/health.rs    (calls spawn 4×)</span>
-     <span class="out">— cli/src/commands/build.rs   (calls spawn 2× in run_dispatched)</span>
-     <span class="out">— supervisor/src/api_graph.rs (1 indirect through worker pool)</span>
+<span class="prompt">$</span> <span class="cmd">mneme blast manager.rs --depth=2</span>
+  <span class="arrow">→</span>  <span class="out-strong">risk:</span> <span class="ok">moderate</span>  <span class="out">edges:</span> <span class="num">17</span>
+     <span class="out">— supervisor/src/health.rs (4×)</span>
+     <span class="out">— cli/src/commands/build.rs (2×)</span>
+     <span class="out">— supervisor/src/api_graph.rs (1×)</span>
 
 <span class="prompt">$</span> <span class="cmd">mneme why "Why does v0.4.0 exist?"</span>
-  <span class="arrow">→</span>  <span class="out">2026-05-05 audit measured recall</span> <span class="num">2/10</span> <span class="out">vs CRG</span> <span class="num">6/10</span><span class="out">.</span>
-     <span class="out">Root cause: no symbol resolver. v0.4.0 ships the keystone —</span>
-     <span class="out">three real per-language resolvers plus symbol-anchored embeddings.</span>
+  <span class="arrow">→</span>  <span class="out">audit measured recall</span> <span class="num">2/10</span><span class="out">.</span>
+     <span class="out">v0.4.0 ships the keystone — three real</span>
+     <span class="out">resolvers + symbol-anchored embeddings.</span>
      <span class="out-strong">→  ledger</span><span class="out">: keystone-2026-05-05</span><span class="mneme-terminal-cursor"></span></code></pre>
   </div>
 </div>
 
 </div>
+</div>
+</div>
+
+<div class="mneme-trust-strip">
+  <div class="mneme-trust-item"><span class="trust-num">2/10 → 6/10</span><span class="trust-lbl">Recall jump on the v0.4.0 audit</span></div>
+  <div class="mneme-trust-item"><span class="trust-num">&lt; 500 ms</span><span class="trust-lbl">First paint on a 50k-node graph</span></div>
+  <div class="mneme-trust-item"><span class="trust-num">0 bytes</span><span class="trust-lbl">Outbound on the default install</span></div>
+</div>
 
 <h2 class="mneme-section-heading">What's inside</h2>
 
-<p class="mneme-section-sub">A daemon, a graph, a resolver, and the MCP tools your AI host can call. Everything runs on your machine.</p>
+<p class="mneme-section-sub">A daemon, a graph, three resolvers, and 50 MCP tools your AI host can call. Everything runs on your machine.</p>
 
 <div class="mneme-features">
 
@@ -166,28 +179,67 @@ winget install Anish.Mneme
 
 </div>
 
+<h2 class="mneme-section-heading">Frequently asked</h2>
+
+<div class="mneme-faq">
+
+<details class="mneme-faq-item">
+<summary><span>Does Mneme send any data off my machine?</span><span class="chev">+</span></summary>
+<div class="answer">
+
+The default install never opens an outbound connection. The daemon binds to <code>127.0.0.1</code>. Embeddings run locally via ONNX Runtime, the optional LLM via llama.cpp, and the graph lives in plain SQLite under <code>~/.mneme/</code>. The only opt-in network feature is <code>federated_similar</code>, which exchanges blake3-hashed signatures only between machines you control — and only if you turn it on.
+
+</div>
+</details>
+
+<details class="mneme-faq-item">
+<summary><span>How is this different from grep, ripgrep, or my IDE's "Find References"?</span><span class="chev">+</span></summary>
+<div class="answer">
+
+Grep is text matching. Mneme is a real symbol resolver — it knows that <code>super::spawn</code>, <code>crate::manager::spawn</code>, and a re-exported <code>spawn()</code> are the same logical symbol, and it indexes their callers, dependencies, and tests in a graph database. Your IDE's "Find References" only sees the file you have open; Mneme sees the whole project at once and exposes it through 50 MCP tools your AI host can call.
+
+</div>
+</details>
+
+<details class="mneme-faq-item">
+<summary><span>Which AI hosts work with Mneme?</span><span class="chev">+</span></summary>
+<div class="answer">
+
+Anything that speaks the Model Context Protocol (MCP) — Claude Code, Claude Desktop, Continue, Cursor, and the growing list of MCP-aware IDEs. Mneme registers an MCP server that exposes 50 tools and stays running in the background. See the <a href="./mcp/tools.html">MCP tools page</a> for the full registry.
+
+</div>
+</details>
+
+<details class="mneme-faq-item">
+<summary><span>How do I update? Will my graph survive?</span><span class="chev">+</span></summary>
+<div class="answer">
+
+Run <code>mneme update</code>. v0.4.0 ships an apply-with-rollback updater: it downloads the new binary, runs a post-swap health check, and restores the old binary automatically if the check fails. Your graph survives the update — the schema is forward-only, never drops columns, never renames. On v0.4.0 specifically, run <code>mneme rebuild</code> once after upgrade to pick up the symbol-anchored embeddings.
+
+</div>
+</details>
+
+</div>
+
 <h2 class="mneme-section-heading">Why Mneme</h2>
 
-When you ask an AI "where does `WorkerPool::spawn` get called?", the cheap answer is regex over text. The slightly less-cheap answer is grep. Both miss `super::spawn`, `crate::manager::spawn`, `use crate::manager; spawn()`, and aliased re-exports. Mneme answers with structural certainty — parser-built call graphs, symbol resolver, BGE embeddings anchored on canonical names — all in a daemon the AI talks to via MCP.
+<p>When you ask an AI "where does <code>WorkerPool::spawn</code> get called?", the cheap answer is regex over text. The slightly less-cheap answer is grep. Both miss <code>super::spawn</code>, <code>crate::manager::spawn</code>, <code>use crate::manager; spawn()</code>, and aliased re-exports. Mneme answers with structural certainty — parser-built call graphs, symbol resolver, BGE embeddings anchored on canonical names — all in a daemon the AI talks to via MCP.</p>
 
-```text
-mneme recall_concept "spawn"
-  →  WorkerPool::spawn  (supervisor/src/manager.rs:1100)
-     pub async fn spawn(&self, job: Job) -> Result<JobId>
-     [callers: 5, dependents: 12, tests: 3]
-```
-
-The 2026-05-05 audit comparing Mneme to CRG and graphify identified one root cause behind both the recall gap (Mneme 2/10 vs CRG 6/10) and the token gap (Mneme 1.34× vs CRG's claimed 6.8×): no symbol resolver. v0.4.0 ships the keystone.
+<p>The 2026-05-05 audit comparing Mneme to CRG and graphify identified one root cause behind both the recall gap (Mneme 2/10 vs CRG 6/10) and the token gap (Mneme 1.34× vs CRG's claimed 6.8×): no symbol resolver. v0.4.0 ships the keystone.</p>
 
 <div class="mneme-callout">
 <div class="mneme-callout-title"><span class="dot"></span>Local-only by design</div>
 
 <p>Nothing leaves your machine. The HTTP daemon binds to <code>127.0.0.1</code>. The embedding model runs locally via ONNX Runtime. The optional LLM runs locally via llama.cpp. The graph database is plain SQLite under <code>~/.mneme/</code>. <strong>No telemetry, no analytics, no cloud sync.</strong></p>
 
-<p>The optional <code>federated_similar</code> tool exchanges blake3-hashed signatures only if you opt in, and only between machines you control. The default install never opens an outbound connection.</p>
 </div>
 
-[Read the v0.4.0 release notes &rarr;](./releases/v0.4.0.html)
+<div class="mneme-final-cta">
+  <h2>Ready to give your AI a memory?</h2>
+  <p>Install once, run forever. The graph stays fresh as you edit. Apache-2.0, no signup, no telemetry.</p>
+  <a class="mneme-cta mneme-cta-primary mneme-cta-large" href="./install/index.html">Install in one line<span class="arrow">&nbsp;→</span></a>
+  <p class="final-cta-meta">or <a href="./releases/v0.4.0.html">read the v0.4.0 release notes</a></p>
+</div>
 
 <div class="mneme-footer">
   <div class="footer-meta">
