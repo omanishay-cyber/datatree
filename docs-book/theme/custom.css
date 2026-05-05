@@ -2402,44 +2402,59 @@ html, html.navy, html.coal, html.ayu {
 
 /* ----- Hero stagger entrance ------------------------------------------- */
 /* JS adds .hero-loaded to .mneme-hero on load; each child fades + slides up
-   with a cascading delay. */
+   with a cascading delay.
+   CRIT-16 fix (2026-05-05 audit): the fade-in is now wrapped in
+   @media (prefers-reduced-motion: no-preference) so the no-JS / slow-JS /
+   reduced-motion branches all see the final state immediately. The prior
+   approach started everything at opacity:0 unconditionally and relied on
+   a CSS keyframe that only mutated a custom property — which has zero
+   visible effect on children, so JS-blocked users saw a blank hero. */
 
-.mneme-hero .eyebrow,
-.mneme-hero h1.hero-title,
-.mneme-hero .lede,
-.mneme-hero .cta-row,
-.mneme-hero .mneme-stats,
-.mneme-hero .mneme-terminal {
-  opacity: 0;
-  transform: translateY(14px);
-  transition:
-    opacity 700ms cubic-bezier(.2, .7, .2, 1),
-    transform 700ms cubic-bezier(.2, .7, .2, 1);
-}
+@media (prefers-reduced-motion: no-preference) {
+  .mneme-hero .eyebrow,
+  .mneme-hero h1.hero-title,
+  .mneme-hero .lede,
+  .mneme-hero .cta-row,
+  .mneme-hero .mneme-stats,
+  .mneme-hero .mneme-terminal {
+    opacity: 0;
+    transform: translateY(14px);
+    transition:
+      opacity 700ms cubic-bezier(.2, .7, .2, 1),
+      transform 700ms cubic-bezier(.2, .7, .2, 1);
+  }
 
-.mneme-hero.hero-loaded .eyebrow            { opacity: 1; transform: translateY(0); transition-delay: 60ms;  }
-.mneme-hero.hero-loaded h1.hero-title       { opacity: 1; transform: translateY(0); transition-delay: 140ms; }
-.mneme-hero.hero-loaded .lede               { opacity: 1; transform: translateY(0); transition-delay: 260ms; }
-.mneme-hero.hero-loaded .cta-row            { opacity: 1; transform: translateY(0); transition-delay: 380ms; }
-.mneme-hero.hero-loaded .mneme-stats        { opacity: 1; transform: translateY(0); transition-delay: 480ms; }
-.mneme-hero.hero-loaded .mneme-terminal     { opacity: 1; transform: translateY(0) scale(1); transition-delay: 200ms; }
+  .mneme-hero.hero-loaded .eyebrow            { opacity: 1; transform: translateY(0); transition-delay: 60ms;  }
+  .mneme-hero.hero-loaded h1.hero-title       { opacity: 1; transform: translateY(0); transition-delay: 140ms; }
+  .mneme-hero.hero-loaded .lede               { opacity: 1; transform: translateY(0); transition-delay: 260ms; }
+  .mneme-hero.hero-loaded .cta-row            { opacity: 1; transform: translateY(0); transition-delay: 380ms; }
+  .mneme-hero.hero-loaded .mneme-stats        { opacity: 1; transform: translateY(0); transition-delay: 480ms; }
+  .mneme-hero.hero-loaded .mneme-terminal     { opacity: 1; transform: translateY(0) scale(1); transition-delay: 200ms; }
 
-.mneme-hero .mneme-terminal {
-  transform: translateY(20px) scale(.97);
-  transition:
-    opacity 800ms cubic-bezier(.2, .7, .2, 1),
-    transform 800ms cubic-bezier(.2, .7, .2, 1);
-}
+  .mneme-hero .mneme-terminal {
+    transform: translateY(20px) scale(.97);
+    transition:
+      opacity 800ms cubic-bezier(.2, .7, .2, 1),
+      transform 800ms cubic-bezier(.2, .7, .2, 1);
+  }
 
-/* If JS isn't loaded (or before it runs), still show the hero — we only
-   transition once .hero-loaded fires, but fallback to visible after 1.2s
-   so the page never looks broken. */
-.mneme-hero {
-  animation: mneme-hero-fallback 0s linear 1200ms forwards;
-}
-@keyframes mneme-hero-fallback {
-  to {
-    --_mneme-hero-fallback: 1;
+  /* Hard fallback: if JS is blocked or slower than 1.2s, force the hero
+     to the loaded state via CSS-only animation so the page never looks
+     blank to a sighted/keyboard user. The animation has no other side
+     effect — it just satisfies the @keyframes selector and completes. */
+  .mneme-hero:not(.hero-loaded) .eyebrow,
+  .mneme-hero:not(.hero-loaded) h1.hero-title,
+  .mneme-hero:not(.hero-loaded) .lede,
+  .mneme-hero:not(.hero-loaded) .cta-row,
+  .mneme-hero:not(.hero-loaded) .mneme-stats,
+  .mneme-hero:not(.hero-loaded) .mneme-terminal {
+    animation: mneme-hero-no-js-fallback 1ms linear 1500ms forwards;
+  }
+  @keyframes mneme-hero-no-js-fallback {
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 }
 
@@ -2490,36 +2505,57 @@ html, html.navy, html.coal, html.ayu {
 }
 
 /* ----- Scroll-triggered reveal ----------------------------------------- */
-/* JS adds .in-view on intersect; CSS does the lift. */
+/* JS adds .in-view on intersect; CSS does the lift.
+   CRIT-16 fix (2026-05-05 audit): the opacity:0 baseline is now scoped
+   to (prefers-reduced-motion: no-preference) AND defaults to visible
+   if the JS-set .in-view class never lands within 1.5s. Previously the
+   no-JS branch hid every feature card, install card, FAQ item, trust
+   strip, and final-CTA, producing a near-blank docs landing page. */
 
-.mneme-feature,
-.mneme-install-card,
-.mneme-read-card,
-.mneme-faq-item,
-.mneme-trust-item,
-.mneme-section-heading,
-.mneme-final-cta,
-.mneme-callout {
-  opacity: 0;
-  transform: translateY(28px);
-  transition:
-    opacity 600ms cubic-bezier(.2, .7, .2, 1),
-    transform 600ms cubic-bezier(.2, .7, .2, 1),
-    box-shadow 200ms ease,
-    border-color 200ms ease;
-  transition-delay: var(--mneme-stagger, 0ms);
-}
+@media (prefers-reduced-motion: no-preference) {
+  .mneme-feature,
+  .mneme-install-card,
+  .mneme-read-card,
+  .mneme-faq-item,
+  .mneme-trust-item,
+  .mneme-section-heading,
+  .mneme-final-cta,
+  .mneme-callout {
+    opacity: 0;
+    transform: translateY(28px);
+    transition:
+      opacity 600ms cubic-bezier(.2, .7, .2, 1),
+      transform 600ms cubic-bezier(.2, .7, .2, 1),
+      box-shadow 200ms ease,
+      border-color 200ms ease;
+    transition-delay: var(--mneme-stagger, 0ms);
+    /* Hard fallback for no-JS / slow-JS users: force visible after
+       1.5s so the page never looks broken if IntersectionObserver
+       never fires. */
+    animation: mneme-reveal-no-js-fallback 1ms linear 1500ms forwards;
+  }
 
-.mneme-feature.in-view,
-.mneme-install-card.in-view,
-.mneme-read-card.in-view,
-.mneme-faq-item.in-view,
-.mneme-trust-item.in-view,
-.mneme-section-heading.in-view,
-.mneme-final-cta.in-view,
-.mneme-callout.in-view {
-  opacity: 1;
-  transform: translateY(0);
+  @keyframes mneme-reveal-no-js-fallback {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .mneme-feature.in-view,
+  .mneme-install-card.in-view,
+  .mneme-read-card.in-view,
+  .mneme-faq-item.in-view,
+  .mneme-trust-item.in-view,
+  .mneme-section-heading.in-view,
+  .mneme-final-cta.in-view,
+  .mneme-callout.in-view {
+    opacity: 1;
+    transform: translateY(0);
+    /* Cancel the fallback once .in-view has fired so we don't fight
+       the smooth fade with an animation jump. */
+    animation: none;
+  }
 }
 
 /* ----- Beefier hover lift on cards ------------------------------------- */
