@@ -466,8 +466,26 @@ impl ChildManager {
         // Windows named-pipe stdio pieces make `Child` ambiguous across
         // awaits. Splitting via an mpsc boundary lets each side be Send
         // independently.
+        //
+        // CRIT-2 fix (2026-05-05 audit): observe ChildStatus::Dead before
+        // queueing. If respawn_one previously hit the lifetime cap and
+        // marked the child Dead, do NOT queue another restart — the
+        // child stays down until operator intervention. This prevents
+        // the "burn CPU forever queueing requests that always deny"
+        // pattern observed on the live PC (182-194 restarts/24h with
+        // 6/40 workers running).
         {
             let mut h = handle.lock().await;
+            if h.status == ChildStatus::Dead {
+                error!(
+                    child = %name,
+                    code = exit_code,
+                    restart_count = h.restart_count,
+                    "child exited but is marked Dead — refusing to queue restart \
+                     (manual intervention required; see `mneme doctor`)"
+                );
+                return;
+            }
             h.status = ChildStatus::Restarting;
         }
         // Bug J: unbounded channel. `send` cannot fail on `Full` —
@@ -583,6 +601,17 @@ impl ChildManager {
         info!("restart loop offline");
     }
 
+    /// CRIT-2 fix (2026-05-05 audit): terminal kill-switch. The rolling
+    /// `max_restarts_per_window` budget never trips at the observed
+    /// slow-drip cadence (182-194 restarts/24h ≈ 7.7/hr ≈ exactly
+    /// inside the 5/60s budget). Once a worker exceeds this hard
+    /// lifetime cap, mark it `Dead` and refuse further restart
+    /// requests until operator intervention. 200 is generous enough
+    /// that a transient boot-time crash sequence won't trip it but
+    /// strict enough that a chronically-failing worker stops burning
+    /// CPU/log/spawn-syscall budget forever.
+    const MAX_TOTAL_RESTARTS: u64 = 200;
+
     async fn respawn_one(self: &Arc<Self>, req: &RestartRequest) -> Result<(), SupervisorError> {
         let policy = self.config.default_restart_policy.clone();
         let handle = match self.handle_for(&req.name).await {
@@ -596,7 +625,40 @@ impl ChildManager {
         // Compute backoff + enforce budget under the handle lock.
         let (delay, spec) = {
             let mut h = handle.lock().await;
+
+            // CRIT-2 hard kill-switch: if this child is already Dead,
+            // bail before recording another restart attempt. monitor_child
+            // SHOULD have stopped queueing requests once Dead landed,
+            // but the request might already be in the channel by the
+            // time the status flip happened. Idempotent: returns Ok so
+            // the restart loop drains the request and moves on.
+            if h.status == ChildStatus::Dead {
+                return Ok(());
+            }
+
             h.record_restart(policy.budget_window);
+
+            // CRIT-2 hard kill-switch: lifetime cap. Independent of the
+            // rolling window. Once exceeded, mark Dead and refuse the
+            // restart. The watchdog's pid_alive_pass + monitor_child
+            // exit-handler will see Dead next time around and stop
+            // queueing.
+            if h.restart_count > Self::MAX_TOTAL_RESTARTS {
+                h.status = ChildStatus::Dead;
+                error!(
+                    child = %req.name,
+                    restart_count = h.restart_count,
+                    cap = Self::MAX_TOTAL_RESTARTS,
+                    "restart count exceeded lifetime cap; marking child Dead — \
+                     manual intervention required (mneme doctor for diagnostics)"
+                );
+                return Err(SupervisorError::RestartBudgetExceeded {
+                    name: req.name.clone(),
+                    restarts: h.restart_count.min(u32::MAX as u64) as u32,
+                    window_secs: 0,
+                });
+            }
+
             let in_window = h.restarts_in_window(policy.budget_window);
             if in_window > policy.max_restarts_per_window {
                 h.status = ChildStatus::Degraded;

@@ -89,6 +89,20 @@ pub enum ChildStatus {
     Degraded,
     /// Cleanly stopped by the supervisor.
     Stopped,
+    /// CRIT-2 fix (2026-05-05 audit): terminal state reached when a
+    /// worker has accumulated more than `MAX_TOTAL_RESTARTS` restarts
+    /// over the lifetime of the supervisor process. Once Dead, the
+    /// monitor task MUST NOT re-queue further restart requests; the
+    /// worker stays down until the operator intervenes (`mneme doctor`,
+    /// log inspection, manual restart of the daemon).
+    ///
+    /// Why this is necessary: the `Degraded` state is reset every time
+    /// the rolling 60s window slides past the last 5 crashes — so a
+    /// worker that crashes once every ~7 minutes (the live-PC pattern
+    /// of 182-194 restarts/24h) NEVER hits the budget gate and
+    /// restarts forever. `Dead` is a hard kill-switch that the rolling
+    /// window cannot reset.
+    Dead,
 }
 
 /// Runtime handle for a single child. Owned by the [`crate::ChildManager`].
