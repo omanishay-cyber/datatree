@@ -80,6 +80,21 @@ const SHIPPED_BINARIES: &[&str] = &[
 /// occasionally need the longer tail.
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// REL-3 fix (2026-05-05 audit): full-request budget. Once the TCP
+/// connection establishes, a slow GitHub edge or a stalled mid-stream
+/// chunk can hang `resp.chunk().await` indefinitely without this. 10
+/// minutes is generous enough for slow links to download the full
+/// release archive (currently ~55 MB) but bounded enough that a stall
+/// fails fast instead of hanging for hours.
+const HTTP_TOTAL_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// REL-3 fix: per-chunk read budget. If the body stalls mid-stream
+/// (network drop, slow CDN edge), this surfaces as a clear download
+/// failure within 30 s instead of hanging forever. Each successful
+/// chunk resets the timer, so a slow-but-progressing 1 KB/s connection
+/// completes successfully — only true stalls fail.
+const HTTP_CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Wall-clock budget for the daemon to exit after we send IPC `Stop`.
 /// 30 s mirrors the supervisor's own graceful-shutdown ceiling.
 const DAEMON_STOP_TIMEOUT: Duration = Duration::from_secs(30);
@@ -604,6 +619,7 @@ async fn fetch_latest_release() -> CliResult<GhRelease> {
     let client = reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .timeout(HTTP_TOTAL_TIMEOUT)
         .build()
         .map_err(|e| CliError::Other(format!("reqwest client init: {e}")))?;
     let resp = client
@@ -635,6 +651,7 @@ async fn download_asset(
     let client = reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .timeout(HTTP_TOTAL_TIMEOUT)
         .build()
         .map_err(|e| CliError::Other(format!("reqwest client init: {e}")))?;
     let mut resp = client
@@ -655,11 +672,26 @@ async fn download_asset(
     let mut downloaded: u64 = 0;
     let mut next_print: u64 = PROGRESS_INTERVAL_BYTES;
 
-    while let Some(chunk) = resp
-        .chunk()
-        .await
-        .map_err(|e| CliError::Other(format!("download chunk: {e}")))?
-    {
+    // REL-3 fix (2026-05-05 audit): wrap each chunk fetch in a per-chunk
+    // timeout so a stalled body (network drop, slow CDN edge) fails fast
+    // instead of hanging indefinitely. The 30s budget resets on every
+    // successful chunk, so genuinely-slow-but-progressing connections
+    // (mobile hotspot at 1 KB/s) still complete.
+    loop {
+        let chunk_result = tokio::time::timeout(HTTP_CHUNK_TIMEOUT, resp.chunk()).await;
+        let chunk = match chunk_result {
+            Ok(Ok(Some(c))) => c,
+            Ok(Ok(None)) => break, // stream end
+            Ok(Err(e)) => return Err(CliError::Other(format!("download chunk: {e}"))),
+            Err(_) => {
+                return Err(CliError::Other(format!(
+                    "download stalled: no bytes received for {}s. \
+                     Network connection may have dropped. \
+                     Last successful position: {downloaded} bytes.",
+                    HTTP_CHUNK_TIMEOUT.as_secs(),
+                )));
+            }
+        };
         file.write_all(&chunk)
             .map_err(|e| CliError::io(dest.to_path_buf(), e))?;
         downloaded = downloaded.saturating_add(chunk.len() as u64);
@@ -683,6 +715,7 @@ async fn fetch_sha256_sidecar(url: &str, archive_name: &str) -> CliResult<String
     let client = reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .timeout(HTTP_TOTAL_TIMEOUT)
         .build()
         .map_err(|e| CliError::Other(format!("reqwest client init: {e}")))?;
     let resp = client
