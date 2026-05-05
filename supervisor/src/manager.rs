@@ -619,15 +619,47 @@ impl ChildManager {
             (delay, h.spec.clone())
         };
 
-        // Sleep the backoff interval. No `Child` is in scope here, so the
-        // compiler can trivially prove the future is Send.
+        // CRIT-restart-jitter (2026-05-05 audit): full jitter on the
+        // backoff sleep so simultaneous-failure scenarios don't produce
+        // synchronized restart waves (textbook thundering herd). When a
+        // shared dependency fails (parser binary deleted, model file
+        // unreadable, embed worker crashes), every dependent worker's
+        // monitor task hits respawn_one within milliseconds of the
+        // others. Without jitter they all sleep the same `current_backoff`
+        // and respawn in lockstep, hammering the upstream that just
+        // failed. AWS Architecture Blog "Exponential Backoff and Jitter"
+        // recommends FULL jitter: sleep `random(0, delay)` instead of
+        // `delay`. We avoid pulling `rand` as a new dep by using a
+        // process-local, deterministic-but-spread pseudo-random source
+        // derived from the wall clock + child name; that's enough
+        // randomness to break herds since each worker has a distinct
+        // hash and is observed at a distinct nanosecond.
+        let jitter_seed = {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            req.name.hash(&mut hasher);
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.subsec_nanos())
+                .unwrap_or(0)
+                .hash(&mut hasher);
+            hasher.finish()
+        };
+        let max_ms = (delay.as_millis() as u64).max(1);
+        let jittered_ms = jitter_seed % max_ms;
+        let jittered = Duration::from_millis(jittered_ms);
+
+        // Sleep the (jittered) backoff interval. No `Child` is in scope
+        // here, so the compiler can trivially prove the future is Send.
         debug!(
             child = %req.name,
             delay_ms = delay.as_millis() as u64,
+            jitter_ms = jittered_ms,
             exit_code = req.exit_code,
-            "restart scheduled"
+            "restart scheduled (jittered)"
         );
-        tokio::time::sleep(delay).await;
+        tokio::time::sleep(jittered).await;
 
         if *self.shutdown_flag.lock().await {
             return Ok(());
