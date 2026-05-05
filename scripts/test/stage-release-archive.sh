@@ -40,7 +40,12 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 SOURCE_ROOT="."
 TARGET=""
-VERSION="0.3.2"
+# VERSION is auto-detected from the workspace Cargo.toml (workspace.package.version)
+# AFTER --source-root is parsed. The empty default forces the auto-detect path
+# unless the caller passes an explicit --version. This is what stops VERSION.txt
+# inside the staged archive from claiming a stale version when only the bumper
+# script has flipped Cargo.toml.
+VERSION=""
 OUT_ARCHIVE=""
 STAGE_DIR="./mneme-stage"
 FORCE=0
@@ -73,6 +78,34 @@ mkdir -p "$(dirname "$OUT_ARCHIVE")"
 OUT_ARCHIVE="$(cd "$(dirname "$OUT_ARCHIVE")" && pwd)/$(basename "$OUT_ARCHIVE")"
 mkdir -p "$(dirname "$STAGE_DIR")"
 STAGE_DIR="$(cd "$(dirname "$STAGE_DIR")" && pwd)/$(basename "$STAGE_DIR")"
+
+# ---------------------------------------------------------------------------
+# Auto-detect VERSION from Cargo.toml when the caller did not pass --version.
+# This keeps VERSION.txt inside the archive in lockstep with whatever the
+# bumper script flipped in Cargo.toml — without needing the workflow YAML
+# to know about the version. Match the first
+#   version = "X.Y.Z"
+# line under [workspace.package] (or the root [package] in single-crate
+# manifests). Falls back to "unknown" if grep finds nothing.
+# ---------------------------------------------------------------------------
+if [[ -z "$VERSION" ]]; then
+  CARGO_TOML="$SOURCE_ROOT/Cargo.toml"
+  if [[ -f "$CARGO_TOML" ]]; then
+    # First version = "..." line in the file (workspace.package.version sits
+    # at the top of mneme's root Cargo.toml).
+    detected=$(grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"' "$CARGO_TOML" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+    if [[ -n "$detected" ]]; then
+      VERSION="$detected"
+      echo "  -> auto-detected VERSION=$VERSION from $CARGO_TOML"
+    else
+      VERSION="unknown"
+      echo "  WARN: could not extract version from $CARGO_TOML — using 'unknown'"
+    fi
+  else
+    VERSION="unknown"
+    echo "  WARN: $CARGO_TOML missing — VERSION='unknown'"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Helpers

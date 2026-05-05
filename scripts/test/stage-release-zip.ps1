@@ -23,7 +23,10 @@
 [CmdletBinding()]
 param(
     [string]$SourceRoot = "$env:USERPROFILE\Desktop\mneme-source",
-    [string]$Version = "0.3.2",
+    # Empty default forces auto-detect from $SourceRoot/Cargo.toml so VERSION.txt
+    # tracks whatever the bumper script flipped — no need for the workflow YAML
+    # to know about the version. Caller can still override with -Version "x.y.z".
+    [string]$Version = "",
     [string]$OutZip = "$env:USERPROFILE\Desktop\mneme-v0.3.2-windows-x64.zip",
     [string]$StageDir = "$env:USERPROFILE\Desktop\mneme-stage",
     # Optional Rust target triple (e.g. x86_64-pc-windows-msvc). When set,
@@ -342,6 +345,27 @@ OK ("plugin/ complete: {0:N1} MB" -f $pluginSize)
 # ---------------------------------------------------------------------------
 
 Section "VERSION.txt"
+
+# Auto-detect $Version from Cargo.toml when caller passed empty -Version (default).
+# Same logic as scripts/test/stage-release-archive.sh — keeps VERSION.txt in
+# the staged archive locked to whatever the bumper flipped in Cargo.toml.
+if ([string]::IsNullOrEmpty($Version)) {
+    $cargoToml = Join-Path $SourceRoot 'Cargo.toml'
+    if (Test-Path $cargoToml) {
+        $line = Select-String -Path $cargoToml -Pattern '^version = "(\d+\.\d+\.\d+)"' | Select-Object -First 1
+        if ($line) {
+            $Version = $line.Matches[0].Groups[1].Value
+            Step ("auto-detected Version=$Version from " + $cargoToml)
+        } else {
+            $Version = "unknown"
+            Write-Warning "could not extract version from $cargoToml -- using 'unknown'"
+        }
+    } else {
+        $Version = "unknown"
+        WarnLine "$cargoToml missing -- Version='unknown'"
+    }
+}
+
 $gitCommit = "unknown"
 $gitBranch = "unknown"
 try {
