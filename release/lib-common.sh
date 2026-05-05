@@ -388,10 +388,10 @@ verify_sha256() {
 #
 # Manifest format (sidecar file):
 #   {
-#     "version": "v0.3.2",
+#     "version": "v0.4.0",
 #     "generated": "2026-05-04T05:00:00Z",
 #     "files": {
-#       "mneme-v0.3.2-linux-x64.tar.gz": "0123ABCD...",
+#       "mneme-v0.4.0-linux-x64.tar.gz": "0123ABCD...",
 #       "bge-small-en-v1.5.onnx":        "...",
 #       ...
 #     }

@@ -149,8 +149,26 @@ fn init_shard(paths: &PathManager, project: &ProjectId, layer: DbLayer) -> DtRes
     let pre_existed = path.exists();
     let conn = Connection::open(&path).map_err(DbError::from)?;
     apply_pragmas(&conn)?;
-    conn.execute_batch(schema_sql(layer))
-        .map_err(DbError::from)?;
+
+    // Some shards manage their own schema entirely (e.g. Concepts → owned
+    // by brain::ConceptStore which self-migrates on first open). For those
+    // layers `schema_sql` returns an empty string and we MUST skip the
+    // store-side schema_version bootstrap — otherwise `record_version`
+    // tries to INSERT into a table that was never created and the test
+    // suite (and every fresh build) explodes with
+    // `Db(Sqlite("no such table: schema_version"))`. The shard file is
+    // still created on disk by `Connection::open` above; brain takes over
+    // from there on first use.
+    let sql = schema_sql(layer);
+    if sql.is_empty() {
+        debug!(
+            layer = ?layer,
+            path = %path.display(),
+            "skipping store-side schema bootstrap (layer self-manages schema)"
+        );
+        return Ok(());
+    }
+    conn.execute_batch(sql).map_err(DbError::from)?;
     record_version(&conn)?;
     // Run pending column-additive migrations from `schema::MIGRATIONS`.
     // No-op when the table is empty (v0.3.2 ship state). Once v0.4 adds

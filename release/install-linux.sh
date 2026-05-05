@@ -16,7 +16,7 @@
 #   1. Auto-detects arch (x86_64 -> x64, aarch64 -> arm64).
 #   2. Detects WSL -- if running under WSL, points the user to the
 #      Windows installer to avoid double-install across the OS boundary.
-#   3. Picks a release version (default v0.3.2; override via $MNEME_VERSION).
+#   3. Picks a release version (default v0.4.0; override via $MNEME_VERSION).
 #   4. Pre-flight: disk space, OS, arch, runtime tooling, distro family.
 #   5. Downloads mneme-<ver>-linux-<arch>.tar.gz from the GitHub Release.
 #   6. Extracts to ~/.local/share/mneme/ (XDG Base Directory compliant).
@@ -57,7 +57,7 @@ set -euo pipefail
 # clobbered by `. /etc/os-release` later (which sets VERSION=22.04.5 LTS
 # on Ubuntu, mangling our download URL into spaces + parens). Internal-only
 # var; the user-facing env override MNEME_VERSION is unchanged.
-MNEME_REL_TAG="${MNEME_VERSION:-v0.3.2}"
+MNEME_REL_TAG="${MNEME_VERSION:-v0.4.0}"
 RELEASE_BASE="https://github.com/omanishay-cyber/mneme/releases/download/${MNEME_REL_TAG}"
 
 # Locate lib-common.sh:
@@ -374,7 +374,7 @@ if ! download_with_retry "${ASSET_URL}" "${LOCAL_TARBALL}" 3; then
     fail "could not download ${ASSET}
        URL: ${ASSET_URL}
        This usually means the linux-${ARCH} binary has not yet been
-       uploaded to the v0.3.2 release page. Check the release at:
+       uploaded to the v0.4.0 release page. Check the release at:
          https://github.com/omanishay-cyber/mneme/releases/tag/${MNEME_REL_TAG}
        If the asset is listed there, re-run this script. If not, the
        cross-compile workflow may still be building -- retry in ~15 min."

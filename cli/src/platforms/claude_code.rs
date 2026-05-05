@@ -391,9 +391,34 @@ pub fn inject_hooks_json(existing: &str, exe_path: &Path) -> CliResult<String> {
         .as_object_mut()
         .ok_or_else(|| CliError::Other("settings.json `hooks` is not a JSON object".into()))?;
 
-    // For each event mneme registers: drop any prior mneme-marked entry
-    // for that event, then append the freshly-built entry. User-owned
-    // entries (those without our marker) are preserved verbatim.
+    // Two-pass merge so events with MULTIPLE mneme registrations
+    // (UserPromptSubmit: self-ping + inject; PreToolUse: pre-tool +
+    // edit-write-gate + grep-read-skeleton) don't clobber each other.
+    //
+    // Bug discovered 2026-05-05 (Wave 1E aftermath): the original
+    // single-pass loop did `arr.retain(!is_mneme); arr.push(spec)` per
+    // spec. With three PreToolUse specs in HOOK_SPECS, each iteration
+    // dropped the just-pushed mneme entry from the previous iteration
+    // and pushed only its own spec — leaving exactly ONE PreToolUse
+    // mneme entry instead of three. Self-ping enforcement was silently
+    // disabled because the per-event clobber wiped the
+    // `pretool-edit-write` and `pretool-grep-read` hooks every install.
+    //
+    // Pass 1: collect the distinct events we'll touch and strip every
+    // existing mneme-marked entry from each. User-owned entries are
+    // preserved verbatim (their `is_mneme_marked_entry` returns false).
+    use std::collections::BTreeSet;
+    let unique_events: BTreeSet<&str> = HOOK_SPECS.iter().map(|h| h.event).collect();
+    for event in &unique_events {
+        if let Some(arr) = hooks_obj.get_mut(*event).and_then(|v| v.as_array_mut()) {
+            arr.retain(|v| !is_mneme_marked_entry(v));
+        }
+    }
+
+    // Pass 2: append every spec's freshly-built entry. Events with
+    // multiple specs end up with multiple appended entries, which is
+    // the correct (and only) way to register multiple PreToolUse /
+    // UserPromptSubmit handlers in a Claude Code settings.json.
     for spec in HOOK_SPECS {
         let arr_entry = hooks_obj
             .entry(spec.event.to_string())
@@ -404,11 +429,6 @@ pub fn inject_hooks_json(existing: &str, exe_path: &Path) -> CliResult<String> {
                 spec.event
             ))
         })?;
-
-        // Drop prior mneme entries for this event (idempotent re-install).
-        arr.retain(|v| !is_mneme_marked_entry(v));
-
-        // Append fresh entry.
         arr.push(build_hook_entry(spec, exe_path));
     }
 
@@ -734,30 +754,46 @@ mod tests {
         let merged = inject_hooks_json("", &exe).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&merged).unwrap();
         let hooks = parsed["hooks"].as_object().unwrap();
-        // All 8 events registered.
+
+        // Group HOOK_SPECS by event so events with multiple registrations
+        // (UserPromptSubmit, PreToolUse) are checked correctly. Each spec
+        // must end up as its OWN entry in the array — no collapsing /
+        // clobbering allowed (Wave 1E regression fix 2026-05-05).
+        use std::collections::BTreeMap;
+        let mut by_event: BTreeMap<&str, Vec<&HookSpec>> = BTreeMap::new();
         for spec in HOOK_SPECS {
-            assert!(
-                hooks.contains_key(spec.event),
-                "missing event {}",
-                spec.event
+            by_event.entry(spec.event).or_default().push(spec);
+        }
+
+        let exe_norm = exe.to_string_lossy().replace('\\', "/");
+        for (event, specs) in &by_event {
+            assert!(hooks.contains_key(*event), "missing event {}", event);
+            let arr = hooks[*event].as_array().unwrap();
+            assert_eq!(
+                arr.len(),
+                specs.len(),
+                "{} should have {} entries, got {}",
+                event,
+                specs.len(),
+                arr.len()
             );
-            let arr = hooks[spec.event].as_array().unwrap();
-            assert_eq!(arr.len(), 1, "exactly one entry per event");
-            assert!(is_mneme_marked_entry(&arr[0]));
-            // Command field must be the absolute exe path + args.
-            // K1+v0.3.2 fix: paths are emitted forward-slash for bash
-            // compatibility on Windows; compare against the normalised
-            // form rather than the raw OsStr.
-            let cmd = arr[0]["hooks"][0]["command"].as_str().unwrap();
-            let exe_norm = exe.to_string_lossy().replace('\\', "/");
-            assert!(
-                cmd.contains(&exe_norm),
-                "cmd `{}` missing exe `{}`",
-                cmd,
-                exe_norm
-            );
-            for a in spec.args {
-                assert!(cmd.contains(a), "{}'s command lost arg {}", spec.event, a);
+            // Every entry must be mneme-marked.
+            for entry in arr {
+                assert!(is_mneme_marked_entry(entry), "non-mneme entry in {}", event);
+            }
+            // Each spec's specific args must appear in at least one entry's
+            // command. Commands are normalised forward-slash for bash on
+            // Windows (K1 + v0.3.2 fix).
+            for spec in specs {
+                let found = arr.iter().any(|entry| {
+                    let cmd = entry["hooks"][0]["command"].as_str().unwrap_or("");
+                    cmd.contains(&exe_norm) && spec.args.iter().all(|a| cmd.contains(a))
+                });
+                assert!(
+                    found,
+                    "no entry in {} matches exe + args {:?}",
+                    event, spec.args
+                );
             }
         }
     }
@@ -780,12 +816,23 @@ mod tests {
         let merged = inject_hooks_json(starting, &exe).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&merged).unwrap();
         let pre = parsed["hooks"]["PreToolUse"].as_array().unwrap();
-        // User's hook must survive; mneme's hook must be appended.
-        assert_eq!(pre.len(), 2);
+
+        // PreToolUse-spec count is dynamic (3 in v0.4.0: pre-tool +
+        // pretool-edit-write + pretool-grep-read). User's hook survives,
+        // every mneme spec is appended.
+        let pretool_spec_count = HOOK_SPECS
+            .iter()
+            .filter(|s| s.event == "PreToolUse")
+            .count();
+        assert_eq!(pre.len(), 1 + pretool_spec_count);
+
+        // User's hook must survive verbatim.
         assert!(pre.iter().any(|v| {
             v.get("matcher").and_then(|m| m.as_str()) == Some("Bash") && !is_mneme_marked_entry(v)
         }));
-        assert!(pre.iter().any(is_mneme_marked_entry));
+        // Every mneme PreToolUse spec is present (count, not just at-least-one).
+        let mneme_count = pre.iter().filter(|v| is_mneme_marked_entry(v)).count();
+        assert_eq!(mneme_count, pretool_spec_count);
     }
 
     #[test]
@@ -794,14 +841,21 @@ mod tests {
         let once = inject_hooks_json("", &exe).unwrap();
         let twice = inject_hooks_json(&once, &exe).unwrap();
         // Re-injecting must not duplicate mneme entries.
-        let parsed: serde_json::Value = serde_json::from_str(&twice).unwrap();
+        // For events with N specs, the count after re-injection must
+        // still equal N (not N + N) — the strip-and-replace pass dedups.
+        use std::collections::BTreeMap;
+        let mut by_event: BTreeMap<&str, usize> = BTreeMap::new();
         for spec in HOOK_SPECS {
-            let arr = parsed["hooks"][spec.event].as_array().unwrap();
+            *by_event.entry(spec.event).or_insert(0) += 1;
+        }
+        let parsed: serde_json::Value = serde_json::from_str(&twice).unwrap();
+        for (event, expected) in &by_event {
+            let arr = parsed["hooks"][*event].as_array().unwrap();
             let mneme_count = arr.iter().filter(|v| is_mneme_marked_entry(v)).count();
             assert_eq!(
-                mneme_count, 1,
-                "double-injection must leave exactly one mneme entry for {}",
-                spec.event
+                mneme_count, *expected,
+                "double-injection must leave exactly {} mneme entries for {}",
+                expected, event
             );
         }
     }
@@ -990,23 +1044,42 @@ mod tests {
     }
 
     #[test]
-    fn hook_specs_match_the_eight_required_events() {
-        // The 8 events Claude Code's hook surface defines that mneme
-        // wires up. If this list grows we want the test to fail loudly
-        // so the install banner gets updated to match.
-        let events: Vec<&str> = HOOK_SPECS.iter().map(|h| h.event).collect();
+    fn hook_specs_cover_the_eight_required_events() {
+        // The 8 distinct Claude Code hook events that mneme wires up.
+        // Multiple HOOK_SPECS entries per event are allowed (and expected
+        // since v0.4.0 — Wave 1E added 3 self-ping hooks layered onto
+        // existing UserPromptSubmit + 2 PreToolUse handlers). The test
+        // verifies that EVERY required event has at least one registration
+        // and we don't accidentally register an unknown event. If you add
+        // a new event, add it to `expected` here.
+        use std::collections::BTreeSet;
+        let actual: BTreeSet<&str> = HOOK_SPECS.iter().map(|h| h.event).collect();
+        let expected: BTreeSet<&str> = [
+            "SessionStart",
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PostToolUse",
+            "Stop",
+            "PreCompact",
+            "SubagentStop",
+            "SessionEnd",
+        ]
+        .iter()
+        .copied()
+        .collect();
         assert_eq!(
-            events,
-            vec![
-                "SessionStart",
-                "UserPromptSubmit",
-                "PreToolUse",
-                "PostToolUse",
-                "Stop",
-                "PreCompact",
-                "SubagentStop",
-                "SessionEnd",
-            ]
+            actual, expected,
+            "HOOK_SPECS must cover exactly the 8 required Claude Code events"
+        );
+        // Sanity: HOOK_SPECS itself can have more entries than 8 because
+        // some events get multiple registrations (e.g. UserPromptSubmit:
+        // self-ping + inject; PreToolUse: pre-tool + edit-write-gate +
+        // grep-read-skeleton). Pin the current total so future additions
+        // are deliberate rather than accidental.
+        assert_eq!(
+            HOOK_SPECS.len(),
+            11,
+            "HOOK_SPECS length changed — update this assertion + the install banner"
         );
     }
 }

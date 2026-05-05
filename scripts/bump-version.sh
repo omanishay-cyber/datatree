@@ -135,6 +135,37 @@ INSTALL_DOC_FILES=(
 )
 
 # ---------------------------------------------------------------------------
+# INSTALL-SCRIPT FULL SWEEP — flips EVERY v$FROM occurrence inside the
+# four release/ install scripts (not just /releases/download/ URLs).
+#
+# WHY: BUG-NEW-K (2026-05-05). The user pasted the v0.4.0 bootstrap
+# one-liner and the script printed `version : v0.3.2` and downloaded
+# the v0.3.2 zip — because the script's INTERNAL `$Version` constant
+# default was hardcoded `'v0.3.2'`. Same pattern in install-linux.sh
+# (`MNEME_REL_TAG="${MNEME_VERSION:-v0.3.2}"`) and install-mac.sh.
+# These runtime-default constants drive every download URL the
+# script computes after fetch. A user-facing-URL-only flip (the
+# INSTALL_DOC_FILES section above) misses them.
+#
+# What's in this list is intentionally narrow: only the install scripts
+# under release/ that are uploaded to the GitHub Release page. Each one
+# has both the runtime default constant AND prose error messages
+# referencing the current shipping version — both should track every
+# bump together.
+#
+# We do NOT include scripts/install.{sh,ps1} here because those are the
+# in-archive installers run AFTER unzip; they receive the version via
+# the archive's VERSION.txt and don't have a hardcoded default of
+# their own.
+# ---------------------------------------------------------------------------
+INSTALL_SCRIPT_FILES=(
+  'release/bootstrap-install.ps1'
+  'release/install-linux.sh'
+  'release/install-mac.sh'
+  'release/lib-common.sh'
+)
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 section() { echo ""; echo "== $1 =="; }
@@ -238,6 +269,30 @@ apply_install_doc_replacement() {
   fi
 }
 
+apply_install_script_full_sweep() {
+  # Full v$FROM -> v$TO sweep within an install script in release/. These
+  # scripts have RUNTIME defaults (e.g. `MNEME_REL_TAG="${MNEME_VERSION:-v0.3.2}"`)
+  # that drive every download URL — a doc-only flip leaves the script
+  # silently downloading the OLD version. BUG-NEW-K (2026-05-05).
+  local file="$1"
+  if [[ ! -f "$file" ]]; then
+    fail "$file (file missing)"
+    return
+  fi
+  if ! grep -qF "v$FROM" "$file"; then
+    miss "$file (no v$FROM occurrences)"
+    return
+  fi
+  local count
+  count=$(grep -cF "v$FROM" "$file" || true)
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "  >>  $file ($count occurrences of v$FROM -> v$TO)"
+  else
+    sed "${SED_INPLACE[@]}" "s/v${FROM}/v${TO}/g" "$file"
+    ok "$file ($count occurrences swapped)"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Pre-flight
 # ---------------------------------------------------------------------------
@@ -265,6 +320,11 @@ done
 section "Update install-doc URLs"
 for doc in "${INSTALL_DOC_FILES[@]}"; do
   apply_install_doc_replacement "$doc"
+done
+
+section "Update release/ install scripts (full v-sweep)"
+for s in "${INSTALL_SCRIPT_FILES[@]}"; do
+  apply_install_script_full_sweep "$s"
 done
 
 # ---------------------------------------------------------------------------

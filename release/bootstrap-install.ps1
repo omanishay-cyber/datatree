@@ -11,7 +11,7 @@
 #   irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1 | iex
 #
 # What it does:
-#   1. Picks a release version (default: v0.3.2; override with $env:MNEME_VERSION)
+#   1. Picks a release version (default: v0.4.0; override with $env:MNEME_VERSION)
 #   2. Downloads mneme-<ver>-windows-x64.zip from the GitHub Release
 #   3. Expands it into ~/.mneme/
 #   4. Runs ~/.mneme/scripts/install.ps1 with -LocalZip + -WithMultimodal
@@ -53,7 +53,7 @@
 # Or pass flags via the scriptblock pattern (rare):
 #   $sb = [scriptblock]::Create((irm <url>))
 #   & $sb
-$Version = if ($env:MNEME_VERSION) { $env:MNEME_VERSION } else { 'v0.3.2' }
+$Version = if ($env:MNEME_VERSION) { $env:MNEME_VERSION } else { 'v0.4.0' }
 $NoToolchain   = [bool]$env:MNEME_NO_TOOLCHAIN
 $NoMultimodal  = [bool]$env:MNEME_NO_MULTIMODAL
 $NoModels      = [bool]$env:MNEME_NO_MODELS
@@ -119,7 +119,7 @@ $releaseBase = "https://github.com/omanishay-cyber/mneme/releases/download/$Vers
 # the binary zip. The maintainer's release pipeline now generates the
 # sidecar via `scripts/gen-release-checksums.ps1` after every re-upload,
 # eliminating the "edit two files in lockstep" failure mode that left
-# the original hashtable empty in shipped v0.3.2.
+# the original hashtable empty in shipped v0.4.0.
 #
 # Without integrity checking, a CDN compromise or interrupted download
 # silently delivers garbage that the installer copies to disk and the
@@ -130,7 +130,7 @@ $releaseBase = "https://github.com/omanishay-cyber/mneme/releases/download/$Vers
 #
 # Manifest format:
 #   {
-#     "version": "v0.3.2",
+#     "version": "v0.4.0",
 #     "generated": "2026-05-04T05:00:00Z",
 #     "files": { "<asset-name>": "<sha256-hex>", ... }
 #   }
@@ -432,13 +432,13 @@ if ($NoModels) {
     # which `Get-Phi3-PartsFallback` downloads + concatenates. The
     # Rust-side part-merge logic in
     # `cli/src/commands/models.rs::install_from_path_to_root` is
-    # retained for v0.3.2 backwards-compat (it gracefully no-ops when
+    # retained for v0.4.0 backwards-compat (it gracefully no-ops when
     # the input is already a single file).
     #
     # Why asymmetric (HF=single file, GitHub=parts) instead of using
     # parts on both? It saves a one-time 2.4 GB upload to HF, keeps
     # the HF code path identical to the other 4 assets, and matches
-    # how the v0.3.2 release was actually shipped.
+    # how the v0.4.0 release was actually shipped.
     # Bug Layer C (2026-05-04): HF-only single-source. Sizes are
     # exact byte counts from the HF mirror, used by Get-Asset's
     # skip-if-present guard (no redundant 3.5 GB re-download when

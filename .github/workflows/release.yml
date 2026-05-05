@@ -218,17 +218,33 @@ jobs:
             # workflow shipped the working one. Two release paths, two
             # binaries, recall quality silently degrades on whichever zip
             # the user happened to install. Single source of truth now.
+            #
+            # Path fix 2026-05-05 (BUG-NEW-L): the previous version used
+            # /tmp/ort.zip which Git Bash on Windows resolves to a path
+            # under C:\Users\runneradmin\AppData\Local\Temp\... that
+            # PowerShell *cannot* see when invoked via `pwsh -Command`
+            # (pwsh interprets /tmp/ort.zip literally as a Windows path
+            # and reports "either does not exist or is not a valid file
+            # system path"). Use $RUNNER_TEMP which both shells agree on
+            # (it's a real Windows path like D:\a\_temp).
             ORT_VERSION="1.24.4"
             ORT_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-win-x64-${ORT_VERSION}.zip"
-            curl -fsSL -o /tmp/ort.zip "$ORT_URL" || {
+            ORT_TMPDIR="${RUNNER_TEMP:-/tmp}"
+            ORT_ZIP="$ORT_TMPDIR/ort.zip"
+            ORT_EXTRACT="$ORT_TMPDIR/ort"
+            curl -fsSL -o "$ORT_ZIP" "$ORT_URL" || {
               echo "warning: ORT download failed; skipping DLL bundle (BGE will fall back to hashing-trick)"
               true
             }
-            if [ -f /tmp/ort.zip ]; then
-              # PowerShell Expand-Archive is available on every Windows runner.
-              pwsh -Command "Expand-Archive -Path /tmp/ort.zip -DestinationPath /tmp/ort -Force"
+            if [ -f "$ORT_ZIP" ]; then
+              # Convert to a Windows-style path for pwsh (cygpath is on
+              # every Git Bash for Windows install). pwsh on the runner
+              # rejects unix-style paths in -Path arguments.
+              ORT_ZIP_WIN="$(cygpath -w "$ORT_ZIP")"
+              ORT_EXTRACT_WIN="$(cygpath -w "$ORT_EXTRACT")"
+              pwsh -Command "Expand-Archive -Path '$ORT_ZIP_WIN' -DestinationPath '$ORT_EXTRACT_WIN' -Force"
               # Find onnxruntime.dll inside the extracted tree (path varies by version).
-              ORT_DLL=$(find /tmp/ort -name onnxruntime.dll | head -1)
+              ORT_DLL=$(find "$ORT_EXTRACT" -name onnxruntime.dll | head -1)
               if [ -n "$ORT_DLL" ]; then
                 cp "$ORT_DLL" release-staging/bin/
                 echo "ok: bundled $(basename $ORT_DLL) ($(wc -c < "$ORT_DLL") bytes)"

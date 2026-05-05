@@ -14,7 +14,7 @@
 #
 # What it does (mirrors bootstrap-install.ps1 design):
 #   1. Auto-detects arch (Intel x86_64 -> x64, Apple Silicon arm64 -> arm64).
-#   2. Picks a release version (default v0.3.2; override via $MNEME_VERSION).
+#   2. Picks a release version (default v0.4.0; override via $MNEME_VERSION).
 #   3. Pre-flight: disk space, OS, arch, runtime tooling.
 #   4. Downloads mneme-<ver>-macos-<arch>.tar.gz from the GitHub Release.
 #   5. Extracts to ~/Library/Application Support/mneme/.
@@ -39,7 +39,7 @@
 #   MNEME_SKIP_HASH_CHECK=1     skip SHA-256 verification (beta zips only)
 #
 # IMPORTANT: macOS Gatekeeper. The release binaries are NOT signed or
-# notarized (out of scope for v0.3.2). On first launch, macOS may show
+# notarized (out of scope for v0.4.0). On first launch, macOS may show
 # "mneme cannot be opened because the developer cannot be verified". To
 # unblock:
 #   1. Right-click mneme in Finder -> Open -> Open
@@ -60,7 +60,7 @@ set -euo pipefail
 
 # B-L01 (2026-05-03): renamed from VERSION to MNEME_REL_TAG for consistency
 # with install-linux.sh and to avoid future clobbering by sourced env files.
-MNEME_REL_TAG="${MNEME_VERSION:-v0.3.2}"
+MNEME_REL_TAG="${MNEME_VERSION:-v0.4.0}"
 RELEASE_BASE="https://github.com/omanishay-cyber/mneme/releases/download/${MNEME_REL_TAG}"
 
 # Locate lib-common.sh:
@@ -118,14 +118,14 @@ fi
 ARCH=$(detect_arch)
 
 # A9-002 (2026-05-04): Intel Mac (x86_64) refusal.
-# v0.3.2 ships only an aarch64-apple-darwin binary. The CI macos-13 leg was
+# v0.4.0 ships only an aarch64-apple-darwin binary. The CI macos-13 leg was
 # removed because GitHub-hosted Intel Mac runners are chronically queue-starved.
 # Without an explicit guard here, an Intel Mac user gets ARCH=x64, then a 404
 # downloading mneme-${MNEME_REL_TAG}-macos-x64.tar.gz -- confusing failure mode.
 # Refuse early with an actionable message instead.
 if [ "${ARCH}" = "x64" ]; then
     fail "Intel Mac (x86_64) is not supported in ${MNEME_REL_TAG}.\
-\n  v0.3.2 ships only an Apple Silicon (arm64) binary.\
+\n  v0.4.0 ships only an Apple Silicon (arm64) binary.\
 \n  Intel Mac users: build from source with\
 \n    git clone https://github.com/omanishay-cyber/mneme.git\
 \n    cd mneme && cargo build --release --workspace\
@@ -318,7 +318,7 @@ if ! download_with_retry "${ASSET_URL}" "${LOCAL_TARBALL}" 3; then
     fail "could not download ${ASSET}
        URL: ${ASSET_URL}
        This usually means the macOS-${ARCH} binary has not yet been
-       uploaded to the v0.3.2 release page. Check the release at:
+       uploaded to the v0.4.0 release page. Check the release at:
          https://github.com/omanishay-cyber/mneme/releases/tag/${MNEME_REL_TAG}
        If the asset is listed there, re-run this script. If not, the
        cross-compile workflow may still be building -- retry in ~15 min."
