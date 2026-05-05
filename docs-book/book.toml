@@ -1,0 +1,56 @@
+# mdBook config for the mneme documentation site.
+#
+# Built by `.github/workflows/pages.yml` on every push to main and
+# deployed to https://omanishay-cyber.github.io/mneme/. The output of
+# `mdbook build` (book/ directory) is what GitHub Pages serves; the
+# legacy `docs/index.html` lives on as a fallback during the rollout.
+
+[book]
+title = "Mneme — The AI Superbrain"
+description = "Persistent per-project memory + 14-view code graph + drift detector + 50 MCP tools. Local-only. Apache-2.0."
+authors = ["Anish Trivedi", "Kruti Trivedi"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "ayu"
+preferred-dark-theme = "ayu"
+git-repository-url = "https://github.com/omanishay-cyber/mneme"
+edit-url-template = "https://github.com/omanishay-cyber/mneme/edit/main/docs-book/{path}"
+additional-css = ["theme/custom.css"]
+additional-js = []
+no-section-label = false
+mathjax-support = false
+copy-fonts = true
+# Cargo/Rust syntax highlighting + the languages the corpus actually
+# parses. Tree-sitter does the heavy lifting at index time; mdBook
+# uses highlight.js for the docs themselves.
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.playground]
+editable = false
+copyable = true
+copy-js = true
+line-numbers = false
+
+[output.html.search]
+enable = true
+limit-results = 30
+teaser-word-count = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3
+copy-js = true
+
+[output.html.print]
+enable = true
+
+[preprocessor.links]
+# Built-in mdBook preprocessor that resolves `{{#include path}}`
+# directives, used by chapters that pull in CHANGELOG / README
+# snippets so the docs site stays in lockstep with repo state.

@@ -1,0 +1,416 @@
+/* ============================================================================
+   Mneme docs — premium custom theme
+   ----------------------------------------------------------------------------
+   Brand gradient: #4191E1 (blue) → #22D3EE (cyan) → #41E1B5 (mint)
+   Layered on top of mdBook's "ayu" base theme. Glassmorphism on the sidebar +
+   nav, gradient accents on the title + headings, soft shadows on code blocks,
+   and a refined Inter / JetBrains Mono typography stack.
+   ============================================================================ */
+
+/* ----------- 1. Brand tokens ------------------------------------------------ */
+
+:root {
+  /* Brand */
+  --mneme-blue: #4191E1;
+  --mneme-cyan: #22D3EE;
+  --mneme-mint: #41E1B5;
+  --mneme-grad: linear-gradient(135deg, #4191E1 0%, #22D3EE 50%, #41E1B5 100%);
+  --mneme-grad-soft: linear-gradient(135deg, rgba(65,145,225,.10), rgba(65,225,181,.10));
+
+  /* Type stack */
+  --mneme-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mneme-mono: "JetBrains Mono", "SF Mono", "Cascadia Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --mneme-display: "Inter", var(--mneme-sans);
+
+  /* Shadows */
+  --mneme-shadow-sm: 0 1px 2px rgba(0,0,0,.20);
+  --mneme-shadow-md: 0 4px 12px rgba(0,0,0,.28);
+  --mneme-shadow-lg: 0 12px 32px rgba(0,0,0,.40);
+  --mneme-shadow-glow: 0 0 24px rgba(34, 211, 238, .25);
+}
+
+/* Inter + JetBrains Mono via Google Fonts (preconnect handled in head). */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ----------- 2. Page chrome ------------------------------------------------- */
+
+html {
+  font-family: var(--mneme-sans);
+  font-feature-settings: "ss01", "cv02", "cv11";
+}
+
+body {
+  font-family: var(--mneme-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Top nav bar — subtle backdrop + brand-tinted bottom border. */
+#menu-bar {
+  background: rgba(15, 18, 22, 0.70);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border-bottom: 1px solid rgba(34, 211, 238, .14);
+  box-shadow: 0 1px 0 rgba(255,255,255,.04), 0 12px 32px -16px rgba(0,0,0,.45);
+}
+
+#menu-bar .left-buttons,
+#menu-bar .right-buttons {
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.4));
+}
+
+#menu-bar .menu-title {
+  font-family: var(--mneme-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  background: var(--mneme-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ----------- 3. Sidebar — glassmorphism ------------------------------------ */
+
+.sidebar {
+  background: rgba(20, 24, 30, 0.78);
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  border-right: 1px solid rgba(34, 211, 238, .10);
+}
+
+.sidebar .sidebar-scrollbox {
+  padding: 1rem 0.75rem;
+}
+
+.sidebar .chapter li {
+  padding: 0.18rem 0;
+}
+
+.sidebar .chapter li > a {
+  border-radius: 6px;
+  padding: 0.32rem 0.72rem;
+  transition: background 140ms ease, color 140ms ease, transform 80ms ease;
+}
+
+.sidebar .chapter li > a:hover {
+  background: rgba(34, 211, 238, .08);
+  color: var(--mneme-cyan);
+  transform: translateX(2px);
+}
+
+.sidebar .chapter li > a.active {
+  background: var(--mneme-grad-soft);
+  color: var(--mneme-cyan);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--mneme-cyan);
+}
+
+/* Section headers in the sidebar. */
+.sidebar .chapter > .part-title {
+  font-family: var(--mneme-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.42);
+  padding: 1.1rem 0.75rem 0.4rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid rgba(255,255,255,.04);
+}
+
+.sidebar .chapter > .part-title:first-child {
+  border-top: 0;
+  margin-top: 0;
+}
+
+/* ----------- 4. Content typography ----------------------------------------- */
+
+.content {
+  font-family: var(--mneme-sans);
+  font-size: 16.5px;
+  line-height: 1.68;
+}
+
+.content h1 {
+  font-family: var(--mneme-display);
+  font-weight: 800;
+  font-size: 2.4rem;
+  letter-spacing: -0.025em;
+  margin-top: 0.4rem;
+  margin-bottom: 1.2rem;
+  background: var(--mneme-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+}
+
+.content h2 {
+  font-family: var(--mneme-display);
+  font-weight: 700;
+  font-size: 1.55rem;
+  letter-spacing: -0.018em;
+  margin-top: 2.6rem;
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid rgba(34, 211, 238, .14);
+  position: relative;
+}
+
+.content h2::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 64px;
+  height: 2px;
+  background: var(--mneme-grad);
+  border-radius: 2px;
+}
+
+.content h3 {
+  font-family: var(--mneme-display);
+  font-weight: 700;
+  font-size: 1.18rem;
+  letter-spacing: -0.012em;
+  margin-top: 1.8rem;
+  margin-bottom: 0.6rem;
+  color: rgba(255,255,255,.92);
+}
+
+.content h4 {
+  font-family: var(--mneme-display);
+  font-weight: 600;
+  font-size: 1.02rem;
+  margin-top: 1.4rem;
+  margin-bottom: 0.4rem;
+  color: rgba(255,255,255,.85);
+}
+
+.content p {
+  margin: 0.85rem 0;
+  color: rgba(232, 236, 244, .92);
+}
+
+.content strong {
+  color: rgba(255,255,255,.99);
+  font-weight: 600;
+}
+
+.content a {
+  color: var(--mneme-cyan);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.content a:hover {
+  color: var(--mneme-mint);
+  border-bottom-color: var(--mneme-mint);
+}
+
+/* ----------- 5. Code blocks ------------------------------------------------- */
+
+.content pre,
+.content pre > code {
+  font-family: var(--mneme-mono);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.content pre {
+  background: rgba(11, 14, 18, .72);
+  border: 1px solid rgba(34, 211, 238, .12);
+  border-radius: 10px;
+  padding: 1.1rem 1.3rem;
+  margin: 1rem 0;
+  box-shadow: var(--mneme-shadow-md), inset 0 1px 0 rgba(255,255,255,.02);
+  position: relative;
+  overflow: auto;
+}
+
+.content pre::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--mneme-grad);
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+  opacity: 0.55;
+}
+
+.content code {
+  font-family: var(--mneme-mono);
+  font-size: 0.92em;
+  padding: 0.13rem 0.42rem;
+  border-radius: 5px;
+  background: rgba(34, 211, 238, .09);
+  color: rgba(232, 236, 244, .96);
+  border: 1px solid rgba(34, 211, 238, .14);
+}
+
+.content pre code {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+}
+
+/* Copy button on code blocks. */
+.content pre .buttons {
+  filter: opacity(0.4);
+  transition: filter 160ms ease;
+}
+
+.content pre:hover .buttons {
+  filter: opacity(0.9);
+}
+
+.content pre .buttons button {
+  border-radius: 6px;
+  border: 1px solid rgba(34, 211, 238, .18);
+  background: rgba(11, 14, 18, .9);
+  color: rgba(255,255,255,.78);
+}
+
+.content pre .buttons button:hover {
+  background: rgba(34, 211, 238, .12);
+  color: var(--mneme-cyan);
+}
+
+/* ----------- 6. Tables — clean rows, brand-tinted header ------------------- */
+
+.content table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  margin: 1.2rem 0;
+  background: rgba(20, 24, 30, .50);
+  border: 1px solid rgba(34, 211, 238, .12);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--mneme-shadow-sm);
+}
+
+.content table thead tr {
+  background: var(--mneme-grad-soft);
+}
+
+.content table thead th {
+  font-family: var(--mneme-display);
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--mneme-cyan);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(34, 211, 238, .20);
+  text-align: left;
+}
+
+.content table td {
+  padding: 0.65rem 1rem;
+  border-top: 1px solid rgba(255,255,255,.04);
+  vertical-align: top;
+}
+
+.content table tbody tr:hover {
+  background: rgba(34, 211, 238, .04);
+}
+
+.content table tbody tr:first-child td {
+  border-top: 0;
+}
+
+/* ----------- 7. Blockquotes + admonitions ---------------------------------- */
+
+.content blockquote {
+  margin: 1rem 0;
+  padding: 0.8rem 1.1rem;
+  background: var(--mneme-grad-soft);
+  border-left: 3px solid var(--mneme-cyan);
+  border-radius: 0 8px 8px 0;
+  color: rgba(255,255,255,.88);
+  font-style: normal;
+}
+
+.content blockquote p:first-child { margin-top: 0; }
+.content blockquote p:last-child  { margin-bottom: 0; }
+
+/* ----------- 8. Hero section on the intro page ----------------------------- */
+
+/* The first H1 + first paragraph on intro.md become a "hero". */
+.content > h1:first-child + p {
+  font-size: 1.18rem;
+  line-height: 1.5;
+  color: rgba(232, 236, 244, .92);
+  margin-bottom: 1.6rem;
+  max-width: 60ch;
+}
+
+/* ----------- 9. Search ---------------------------------------------------- */
+
+#searchresults {
+  background: rgba(20, 24, 30, .92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(34, 211, 238, .15);
+  border-radius: 10px;
+  box-shadow: var(--mneme-shadow-lg);
+  padding: 0.4rem 0;
+  margin-top: 0.6rem;
+}
+
+#searchresults li {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  margin: 0 0.4rem;
+}
+
+#searchresults li:hover {
+  background: rgba(34, 211, 238, .08);
+}
+
+#searchbar {
+  background: rgba(11, 14, 18, .80);
+  border: 1px solid rgba(34, 211, 238, .15);
+  border-radius: 8px;
+  font-family: var(--mneme-sans);
+  padding: 0.55rem 0.95rem;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+#searchbar:focus {
+  border-color: var(--mneme-cyan);
+  box-shadow: var(--mneme-shadow-glow);
+  outline: 0;
+}
+
+/* ----------- 10. Print ----------------------------------------------------- */
+
+@media print {
+  .sidebar, #menu-bar, .nav-chapters, .mobile-nav-chapters { display: none !important; }
+  .content { max-width: none; padding: 0 !important; }
+  .content h1 { color: #4191E1 !important; -webkit-text-fill-color: #4191E1; }
+  .content h2 { color: #22D3EE !important; }
+  .content pre { background: #f4f6fb; color: #0b0e12; border: 1px solid #d0d7e2; }
+  .content code { background: #eef2f8; color: #0b0e12; border: 1px solid #d0d7e2; }
+}
+
+/* ----------- 11. Subtle motion --------------------------------------------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  .content h1 {
+    animation: mneme-hero-in 460ms cubic-bezier(.22,.61,.36,1);
+  }
+  @keyframes mneme-hero-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+}
