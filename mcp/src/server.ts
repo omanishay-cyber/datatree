@@ -24,6 +24,7 @@ import { registry } from "./tools/index.ts";
 import type { ToolContext, ToolDescriptor } from "./types.ts";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { getLastIndexed, graphStats, shardDbPath } from "./store.ts";
+import { ToolCache, wrapCachedResult } from "./tool-cache.ts";
 // A5-001 (2026-05-04): SDK server `version` MUST stay in lockstep with
 // `mcp/package.json`. Bun supports the JSON import attribute natively, so
 // we read the published version directly from the manifest at module load.
@@ -214,9 +215,15 @@ export class MnemeMcpServer {
   private server: Server;
   private transport: StdioServerTransport | null = null;
   private ctx: ToolContext;
+  // Item #121 (2026-05-05): negative cache for read-only tool calls.
+  // Mutating tools (snapshot/rebuild/audit/etc.) are skipped via the
+  // NEVER_CACHE list inside ToolCache itself. Default 256 entries / 5
+  // minutes — see tool-cache.ts for the rationale.
+  private toolCache: ToolCache;
 
   constructor(ctx: ToolContext) {
     this.ctx = ctx;
+    this.toolCache = new ToolCache();
     this.server = new Server(
       {
         name: "mneme",
@@ -329,7 +336,32 @@ export class MnemeMcpServer {
       const { name, arguments: args } = req.params;
       const start = Date.now();
       try {
+        // Item #121 (2026-05-05): cache lookup before invoking the
+        // handler. Mutating tools (audit, snapshot, refactor_apply,
+        // step_*, etc.) bypass via the NEVER_CACHE list inside
+        // ToolCache. Cache hits return wrapped result with `_cache`
+        // metadata so the AI client can see the value is cached and
+        // how stale it is. Misses fall through to the registry as
+        // before, then the result is stored on success.
+        const cached = this.toolCache.get(name, args ?? {});
+        if (cached !== undefined) {
+          const wrapped = wrapCachedResult(cached.value, cached.ageMs);
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(wrapped),
+              },
+            ],
+            isError: false,
+            _meta: { duration_ms: Date.now() - start, cache_hit: true, cache_age_ms: cached.ageMs },
+          };
+        }
         const out = await registry.invoke(name, args ?? {}, this.ctx);
+        // Cache successful results only — the set call is a no-op for
+        // tools on the bypass list. Errors fall through to the catch
+        // branch below and never get stored.
+        this.toolCache.set(name, args ?? {}, out);
         return {
           content: [
             {
@@ -338,7 +370,7 @@ export class MnemeMcpServer {
             },
           ],
           isError: false,
-          _meta: { duration_ms: Date.now() - start },
+          _meta: { duration_ms: Date.now() - start, cache_hit: false },
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
