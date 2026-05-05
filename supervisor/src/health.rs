@@ -381,11 +381,47 @@ fn compose_app_router(
             // assets nest, otherwise axum's matcher would hand `/` to
             // ServeDir's directory-listing path. The fallback handler
             // uses the same closure for SPA-router URLs.
+            //
+            // BUG-NEW-O fix (2026-05-05): the previous fallback served
+            // the SPA HTML for EVERY unmatched URI, including
+            // `/api/communities`, `/api/perf`, `/api/agents` — paths
+            // the Vision SPA actually fetches. Browsers got back
+            // `<!doctype html>...` (858 bytes), `JSON.parse` threw, and
+            // every dashboard view rendered an error state. The
+            // working dashboards (e.g. `/api/graph/galaxy-3d`,
+            // `/api/graph/heatmap`) were silently masking the broken
+            // ones — the SPA only complained when a view called an
+            // endpoint that wasn't explicitly registered.
+            //
+            // Fix: split the fallback so `/api/*` returns a JSON 404
+            // (telling the SPA "no such endpoint") and only NON-API
+            // paths fall through to the SPA index. SPA history-router
+            // URLs (`/`, `/projects/x`, `/views/galaxy`, etc.) all stay
+            // on the index path because they don't start with `/api/`.
             let bytes_for_root = cached_index_bytes.clone();
             let bytes_for_fallback = cached_index_bytes.clone();
+            let smart_fallback = move |uri: axum::http::Uri| {
+                let bytes = bytes_for_fallback.clone();
+                async move {
+                    if uri.path().starts_with("/api/") {
+                        let body = format!(
+                            r#"{{"error":"not_found","path":"{}","hint":"no daemon endpoint at this path; either the SPA is calling a removed endpoint or the daemon has not implemented it yet"}}"#,
+                            uri.path().replace('"', "\\\"")
+                        );
+                        Response::builder()
+                            .status(StatusCode::NOT_FOUND)
+                            .header(header::CONTENT_TYPE, "application/json")
+                            .header(header::CACHE_CONTROL, "no-cache")
+                            .body(Body::from(body))
+                            .expect("api 404 response")
+                    } else {
+                        serve_index(bytes).await
+                    }
+                }
+            };
             app = app
                 .route("/", get(move || serve_index(bytes_for_root.clone())))
-                .fallback(get(move || serve_index(bytes_for_fallback.clone())));
+                .fallback(get(smart_fallback));
 
             // B-023 (2026-05-02): explicit /assets/<file> routes backed
             // by Arc<[u8]> bytes pre-loaded at router-build. Replaces the

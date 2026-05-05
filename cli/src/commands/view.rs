@@ -214,10 +214,49 @@ fn open_browser(url: &str) -> CliResult<()> {
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        Command::new("xdg-open")
-            .arg(url)
-            .spawn()
-            .map_err(CliError::io_pathless)?;
+        // BUG-NEW-N fix (2026-05-05): the previous one-line `xdg-open`
+        // spawn errored with `os error 2` on headless Linux installs
+        // (e.g. SSH-only servers, containers, the test VMs) where no
+        // xdg-utils package is present. `mneme view` exited non-zero
+        // and printed a confusing `io error at None` message, breaking
+        // automation that piggybacks on it (editor command palettes,
+        // CI smoke tests).
+        //
+        // Walk a list of common openers first; if none are on PATH,
+        // fall back to printing the URL on stdout so the user can
+        // copy-paste it into a browser on whatever machine they're
+        // SSH'd from. Exit 0 in that path because (a) the daemon IS
+        // serving the SPA at the URL, and (b) failing here would
+        // cascade non-zero exits through `claude /view`-style wrappers
+        // that just want to surface the URL.
+        let candidates = [
+            "xdg-open",
+            "gnome-open",
+            "kde-open",
+            "sensible-browser",
+            "wslview", // WSL convenience: launches the host browser
+        ];
+        let mut spawned = false;
+        for opener in &candidates {
+            match Command::new(opener).arg(url).spawn() {
+                Ok(_) => {
+                    spawned = true;
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                // Opener was found but couldn't actually launch (rare
+                // — permissions, broken DISPLAY, etc.). Surface that
+                // explicitly so the user knows the issue isn't us.
+                Err(e) => return Err(CliError::io_pathless(e)),
+            }
+        }
+        if !spawned {
+            eprintln!(
+                "no browser opener found on PATH (tried: {}). Open this URL manually:",
+                candidates.join(", ")
+            );
+            println!("{url}");
+        }
     }
     Ok(())
 }
