@@ -363,7 +363,20 @@ pub async fn run(args: SelfUpdateArgs, verbose_count: u8) -> CliResult<()> {
     if !target_bin_dir.exists() {
         fs::create_dir_all(&target_bin_dir).map_err(|e| CliError::io(target_bin_dir.clone(), e))?;
     }
-    let swapped = replace_binaries_atomically(&staging_bin, &target_bin_dir, verbose)?;
+    // CRIT-8 fix (2026-05-05 audit): the replace_binaries_atomically chain
+    // is synchronous and contains up to 10x 1-second sleeps in the
+    // Windows file-lock retry path. Calling it directly from an async
+    // function blocks a tokio worker for the entire swap (potentially
+    // 10+ seconds). Run it on the blocking pool so the runtime stays
+    // responsive (the daemon-stop poll, signal handlers, progress
+    // reporters all keep ticking).
+    let staging_bin_owned = staging_bin.clone();
+    let target_bin_dir_owned = target_bin_dir.clone();
+    let swapped = tokio::task::spawn_blocking(move || {
+        replace_binaries_atomically(&staging_bin_owned, &target_bin_dir_owned, verbose)
+    })
+    .await
+    .map_err(|e| CliError::Other(format!("self-update: swap task join: {e}")))??;
 
     // A1-020 (2026-05-04): hard-fail if no binary was actually replaced.
     // Previously, an archive whose layout drifted (e.g. wrapped in a
@@ -1076,27 +1089,53 @@ where
 
     let mut swaps: Vec<BinarySwap> = Vec::new();
 
-    for name in SHIPPED_BINARIES {
-        let candidates = if cfg!(windows) {
-            vec![format!("{name}.exe"), name.to_string()]
-        } else {
-            vec![name.to_string()]
-        };
-        for candidate in candidates {
-            let staged = staged_bin_dir.join(&candidate);
-            if !staged.exists() {
-                continue;
+    // CRIT-7 fix (2026-05-05 audit): wrap the swap loop in a closure
+    // so we can rollback any partial progress when an inner
+    // `swap_one_binary` fails. Previously the `?` propagated the Err
+    // upward immediately, leaving N-1 NEW + 1 OLD binaries — exactly
+    // the mixed-version postmortem condition (`probe_worker_versions`
+    // referenced at this file's line ~1057). Rollback was only called
+    // from the post-swap health-check branch, never from the
+    // mid-sequence failure branch.
+    let swap_loop = (|| -> CliResult<()> {
+        for name in SHIPPED_BINARIES {
+            let candidates = if cfg!(windows) {
+                vec![format!("{name}.exe"), name.to_string()]
+            } else {
+                vec![name.to_string()]
+            };
+            for candidate in candidates {
+                let staged = staged_bin_dir.join(&candidate);
+                if !staged.exists() {
+                    continue;
+                }
+                let current = target.join(&candidate);
+                let swap = swap_one_binary(&staged, &current, verbose)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = fs::set_permissions(&current, fs::Permissions::from_mode(0o755));
+                }
+                swaps.push(swap);
+                break;
             }
-            let current = target.join(&candidate);
-            let swap = swap_one_binary(&staged, &current, verbose)?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = fs::set_permissions(&current, fs::Permissions::from_mode(0o755));
-            }
-            swaps.push(swap);
-            break;
         }
+        Ok(())
+    })();
+
+    if let Err(loop_err) = swap_loop {
+        // Mid-sequence swap failure: roll back the swaps that already
+        // succeeded so the user is not left with a partial install.
+        if !swaps.is_empty() {
+            if verbose {
+                eprintln!(
+                    "self-update: swap failure mid-sequence — rolling back {} completed swap(s)",
+                    swaps.len(),
+                );
+            }
+            rollback_swaps(&swaps, verbose);
+        }
+        return Err(loop_err);
     }
 
     if swaps.is_empty() {
@@ -1162,8 +1201,39 @@ fn rollback_swaps(swaps: &[BinarySwap], verbose: bool) {
         let backup = match &swap.backup {
             Some(b) => b,
             None => {
-                // First-install case: just delete the new binary so
-                // the user is back to nothing-installed.
+                // CRIT-8 fix (2026-05-05 audit): the `backup: None`
+                // branch is two distinct cases:
+                //   (a) genuine first-install — no prior binary, so
+                //       deleting the new file is correct.
+                //   (b) Windows .deleteme fallback — `swap_one_binary`
+                //       renamed the live binary to `.deleteme` and
+                //       returned `backup: None`. Previously we just
+                //       deleted the new file here, leaving the user
+                //       with NO binary at the canonical path AND a
+                //       `.deleteme` file scheduled for cleanup.
+                //
+                // Distinguish the two by checking for `<current>.deleteme`
+                // on disk. If it exists, restore it back to `current`
+                // before deleting the new binary. If it doesn't, this
+                // really is first-install.
+                let deleteme = swap.current.with_extension("deleteme");
+                if deleteme.exists() {
+                    if verbose {
+                        eprintln!(
+                            "self-update: rollback: restoring {} from .deleteme leftover",
+                            swap.current.display()
+                        );
+                    }
+                    let _ = fs::remove_file(&swap.current);
+                    if let Err(e) = fs::rename(&deleteme, &swap.current) {
+                        eprintln!(
+                            "self-update: WARNING: failed to restore {} from .deleteme leftover {}: {e}",
+                            swap.current.display(),
+                            deleteme.display(),
+                        );
+                    }
+                    continue;
+                }
                 if verbose {
                     eprintln!(
                         "self-update: rollback: no .old for {} (first install) — deleting new file",
