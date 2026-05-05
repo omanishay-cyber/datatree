@@ -749,6 +749,26 @@ async fn api_graph_nodes(
 }
 
 /// `GET /api/graph/edges` — top N edges for the force-graph view.
+///
+/// Returns ONLY edges where both endpoints (source_qualified +
+/// target_qualified) appear in the first `limit` nodes by id —
+/// i.e. the same window the paired `/api/graph/nodes?limit=N` call
+/// returns. This guarantees the SPA's `g.hasNode(e.source)` guard
+/// matches every returned edge so ForceGalaxy actually shows links.
+///
+/// BUG-NEW-I + Item #111 fix (2026-05-05): the previous version
+/// returned the first N edges by id with no node-window check.
+/// Real-world VM smoke on the mneme repo (13,389 nodes, 80,529
+/// edges) showed only 30.6% of returned edges had both endpoints
+/// in the node window — the parser emits edges to qualified names
+/// not always in the indexed node set (e.g. cross-file calls to
+/// unresolved symbols). The SPA's hasNode guard correctly filtered
+/// them out, but the daemon serialized all 32K edges anyway →
+/// 70% wasted JSON bytes + a sparser-than-expected force graph.
+///
+/// Fix: INNER JOIN against the same node window the SPA fetches.
+/// Backed by `idx_nodes_qualified` so the cost stays in the
+/// 100-200ms range on 80K-edge corpora.
 async fn api_graph_edges(
     State(state): State<ApiGraphState>,
     Query(q): Query<ProjectQuery>,
@@ -758,10 +778,20 @@ async fn api_graph_edges(
     // same clamping policy so a paired call from ForceGalaxy returns
     // a balanced (nodes, edges) window with no silently-dropped edges.
     let limit = q.limit.unwrap_or(8000).min(MAX_GRAPH_LIMIT);
+    // Same node window the SPA's nodes call materialises. Using `limit`
+    // for both keeps the contract symmetric — fetch N nodes, fetch up
+    // to N edges contained within those N nodes.
     let sql = format!(
-        "SELECT id, source_qualified, target_qualified, kind \
-         FROM edges ORDER BY id LIMIT {}",
-        limit
+        "WITH visible_nodes AS ( \
+             SELECT qualified_name FROM nodes ORDER BY id LIMIT {limit} \
+         ) \
+         SELECT e.id, e.source_qualified, e.target_qualified, e.kind \
+         FROM edges e \
+         INNER JOIN visible_nodes vs ON vs.qualified_name = e.source_qualified \
+         INNER JOIN visible_nodes vt ON vt.qualified_name = e.target_qualified \
+         ORDER BY e.id \
+         LIMIT {limit}",
+        limit = limit
     );
     let edges: Vec<GraphEdgeOut> =
         with_layer_db_sync(&state, "graph", q.project.as_deref(), move |conn| {
