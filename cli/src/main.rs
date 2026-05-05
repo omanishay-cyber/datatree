@@ -177,6 +177,23 @@ enum Command {
     /// Hook entry: SessionEnd.
     #[command(name = "session-end")]
     SessionEnd(commands::session_end::SessionEndArgs),
+    /// Wave 1E Layer 1: UserPromptSubmit smart-context injection.
+    /// Mirrors `mcp/src/hooks/userprompt-submit.ts`. BUG-NEW-Q (2026-05-05)
+    /// fix — was registered in HOOK_SPECS but the CLI subcommand was
+    /// missing, so every prompt clap-errored.
+    #[command(name = "userprompt-submit")]
+    UserpromptSubmit(commands::userprompt_submit::UserPromptSubmitArgs),
+    /// Wave 1E Layer 2: PreToolUse blast_radius gate for Edit/Write/MultiEdit.
+    /// v0.4.0 skeleton (always-approve); real recency check in v0.4.x.
+    /// BUG-NEW-Q (2026-05-05) fix — same root cause as userprompt-submit.
+    #[command(name = "pretool-edit-write")]
+    PretoolEditWrite(commands::pretool_edit_write::PretoolEditWriteArgs),
+    /// Wave 1E Layer 3: PreToolUse Grep/Read redirect.
+    /// v0.4.0 skeleton (always-approve); redirect logic in v0.4.x once
+    /// the symbol resolver makes recall trustworthy.
+    /// BUG-NEW-Q (2026-05-05) fix.
+    #[command(name = "pretool-grep-read")]
+    PretoolGrepRead(commands::pretool_grep_read::PretoolGrepReadArgs),
     /// Daemon control: start | stop | restart | status | logs.
     Daemon(commands::daemon::DaemonArgs),
     /// Cache management: du | prune | gc | drop. (NEW-058)
@@ -307,6 +324,12 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
         Command::PostTool(args) => commands::post_tool::run(args, socket_override).await,
         Command::TurnEnd(args) => commands::turn_end::run(args, socket_override).await,
         Command::SessionEnd(args) => commands::session_end::run(args, socket_override).await,
+        // Wave 1E (BUG-NEW-Q fix, 2026-05-05): three new hook entries
+        // that HOOK_SPECS already registered but were missing from the
+        // dispatch.
+        Command::UserpromptSubmit(args) => commands::userprompt_submit::run(args).await,
+        Command::PretoolEditWrite(args) => commands::pretool_edit_write::run(args).await,
+        Command::PretoolGrepRead(args) => commands::pretool_grep_read::run(args).await,
         Command::Daemon(args) => commands::daemon::run(args, socket_override).await,
         Command::Cache(args) => commands::cache::run(args).await,
         Command::Abort(args) => commands::abort::run(args).await,
