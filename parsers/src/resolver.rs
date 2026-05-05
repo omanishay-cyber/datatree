@@ -447,21 +447,205 @@ fn parent_module(prefix: &str) -> String {
     }
 }
 
-/// Per-language resolver placeholder for TypeScript / JavaScript
-/// (v0.4.2 target).
+/// TypeScript / JavaScript symbol resolver — v0.4.0.
 ///
-/// The shape this WILL take:
-/// 1. Find and parse the nearest `tsconfig.json` for `paths` aliases.
-/// 2. Track barrel-file re-exports (`export * from './x'`,
-///    `export { X } from './y'`).
-/// 3. Resolve module specifiers through the configured path-alias
-///    map + Node resolution algorithm + ESM `package.json` `exports`.
-/// 4. Handle declaration merging (multiple `interface Foo` blocks
-///    in different files contributing to the same canonical type).
+/// Closes the same recall gap for TS/JS that [`RustResolver`] closes
+/// for Rust. TS has its own resolution rules, so the canonical-name
+/// shape differs:
+///
+///   `src/components/Foo.tsx::Bar`         — named export from a file
+///   `src/components/Foo.tsx::default`     — default export
+///   `react::useState`                     — bare module specifier
+///                                           (external crate-equivalent)
+///
+/// The `::` separator is the same one Rust uses, so cross-language
+/// queries like "where is the spawn function?" can match symbols
+/// across the project regardless of source language.
+///
+/// ## Coverage in this commit
+///
+/// - File prefix from relative path: `src/components/Foo.tsx` →
+///   `src/components/Foo.tsx`. Unlike Rust (which strips `lib`,
+///   `main`, `mod`), TS files aren't directory-as-module so the
+///   filename is meaningful.
+/// - Relative imports: `./Foo` from `src/components/index.ts`
+///   resolves to `src/components/Foo`. The resolver doesn't try
+///   to find the actual file extension — that's the extractor's
+///   job (it has the project root + the AST).
+/// - tsconfig.json `paths` aliases: `@/components/Foo` rewrites to
+///   `src/components/Foo` when the alias map has `@/*` → `src/*`.
+///   The [`TsPathAliases`] struct captures this from a parsed
+///   tsconfig.json — construction is the extractor's job.
+/// - Bare module specifiers (`react`, `lodash`, `@scope/pkg`):
+///   passed through verbatim — external packages can't be resolved
+///   to a file the project owns.
+///
+/// ## Out of scope (deferred)
+///
+/// - Barrel re-export chasing (`export * from './x'`): needs a
+///   second pass once all module exports are mapped.
+/// - Declaration merging across files (interface X in two places).
+/// - Implicit index resolution (`./components` → `./components/index.ts`).
+/// - ESM `package.json` `exports` field.
+/// - Type-only vs value imports — the resolver treats them
+///   identically since both contribute to the canonical surface.
 #[derive(Debug, Default)]
 pub struct TypeScriptResolver;
 
-impl SymbolResolver for TypeScriptResolver {}
+impl SymbolResolver for TypeScriptResolver {
+    fn resolve_definition(&self, syntactic_name: &str, ctx: &FileContext<'_>) -> CanonicalSymbol {
+        let prefix = ts_file_prefix(ctx.relative_path);
+        if syntactic_name.contains("::") {
+            CanonicalSymbol::new(syntactic_name)
+        } else if prefix.is_empty() {
+            CanonicalSymbol::new(syntactic_name)
+        } else {
+            CanonicalSymbol::new(format!("{prefix}::{syntactic_name}"))
+        }
+    }
+
+    fn resolve_reference(&self, syntactic_name: &str, ctx: &FileContext<'_>) -> CanonicalSymbol {
+        // Without an alias map we can still resolve relative imports
+        // (`./foo`, `../bar`) deterministically from the file path.
+        let aliases = TsPathAliases::default();
+        CanonicalSymbol::new(rewrite_ts_module_specifier(
+            syntactic_name,
+            ctx.relative_path,
+            &aliases,
+        ))
+    }
+}
+
+impl TypeScriptResolver {
+    /// Full algorithm — takes the project's tsconfig path aliases.
+    pub fn resolve_reference_with_aliases(
+        &self,
+        syntactic_name: &str,
+        ctx: &FileContext<'_>,
+        aliases: &TsPathAliases,
+    ) -> CanonicalSymbol {
+        CanonicalSymbol::new(rewrite_ts_module_specifier(
+            syntactic_name,
+            ctx.relative_path,
+            aliases,
+        ))
+    }
+}
+
+/// File-prefix for TS/JS canonical names. Unlike Rust we keep the
+/// extension because TS files aren't directory-as-module — `Foo.tsx`
+/// vs `Foo.ts` vs `Foo.js` are distinct files with potentially
+/// distinct exports. Path uses forward slashes always.
+pub fn ts_file_prefix(relative_path: &str) -> String {
+    relative_path.replace('\\', "/")
+}
+
+/// tsconfig.json `compilerOptions.paths` alias map. The extractor
+/// builds one per project from the parsed JSON; this struct is the
+/// consumer side. Each entry is a `(prefix_pattern, replacement)`
+/// pair — both can end with `*` for wildcard match.
+///
+/// Example tsconfig:
+/// ```json
+/// {
+///   "compilerOptions": {
+///     "paths": {
+///       "@/*": ["src/*"],
+///       "@components/*": ["src/components/*"],
+///       "~/utils": ["src/utils/index"]
+///     }
+///   }
+/// }
+/// ```
+#[derive(Debug, Default, Clone)]
+pub struct TsPathAliases {
+    rules: Vec<(String, String)>,
+}
+
+impl TsPathAliases {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a `pattern` → `replacement` rule. Patterns may end
+    /// with `*` for wildcard match; if so, replacement should also
+    /// end with `*` and the matched suffix is substituted.
+    pub fn insert(&mut self, pattern: impl Into<String>, replacement: impl Into<String>) {
+        self.rules.push((pattern.into(), replacement.into()));
+    }
+
+    /// Try to apply each rule in order; return the first match.
+    /// Wildcard rules end with `*`; suffix substitution preserves
+    /// the path beyond the prefix.
+    pub fn rewrite(&self, specifier: &str) -> Option<String> {
+        for (pattern, replacement) in &self.rules {
+            if let Some(p_prefix) = pattern.strip_suffix('*') {
+                if let Some(suffix) = specifier.strip_prefix(p_prefix) {
+                    let r_prefix = replacement.strip_suffix('*').unwrap_or(replacement);
+                    return Some(format!("{r_prefix}{suffix}"));
+                }
+            } else if specifier == pattern {
+                return Some(replacement.clone());
+            }
+        }
+        None
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rules.is_empty()
+    }
+}
+
+/// Pure rewrite for TS/JS module specifiers. Handles the four
+/// canonical shapes:
+///
+/// 1. tsconfig `paths` alias hit → use the rewritten target.
+/// 2. Bare specifier (`react`, `@scope/pkg`) → pass through verbatim.
+/// 3. Relative (`./x`, `../x`) → resolved against `from_file`.
+/// 4. Already absolute project-relative path (`src/foo`) → pass through.
+pub fn rewrite_ts_module_specifier(
+    specifier: &str,
+    from_file: &str,
+    aliases: &TsPathAliases,
+) -> String {
+    // 1. tsconfig path alias.
+    if let Some(rewritten) = aliases.rewrite(specifier) {
+        return rewritten;
+    }
+    // 2. Relative specifier — resolve against the importing file's
+    //    directory. Path semantics are forward-slash only.
+    if specifier.starts_with("./") || specifier.starts_with("../") {
+        let from = from_file.replace('\\', "/");
+        let from_dir = match from.rfind('/') {
+            Some(i) => &from[..i],
+            None => "",
+        };
+        return resolve_relative(from_dir, specifier);
+    }
+    // 3. Bare module / absolute project path / unknown — passthrough.
+    specifier.to_string()
+}
+
+/// Path-segment resolution for `./` and `../` specifiers. Walks
+/// the from_dir's segments and composes with the specifier's,
+/// canonicalising `.` and `..` along the way.
+fn resolve_relative(from_dir: &str, specifier: &str) -> String {
+    let mut segments: Vec<&str> = if from_dir.is_empty() {
+        Vec::new()
+    } else {
+        from_dir.split('/').collect()
+    };
+    for piece in specifier.split('/') {
+        match piece {
+            "." | "" => {}
+            ".." => {
+                segments.pop();
+            }
+            other => segments.push(other),
+        }
+    }
+    segments.join("/")
+}
 
 /// Per-language resolver placeholder for Python (v0.4.3 target).
 ///
@@ -724,12 +908,166 @@ mod tests {
     }
 
     #[test]
-    fn typescript_resolver_v040_is_still_passthrough() {
+    fn ts_definition_qualifies_with_file_prefix() {
         let r = TypeScriptResolver;
-        let c = ctx(Language::TypeScript);
+        let c = FileContext {
+            relative_path: "vision/src/views/ForceGalaxy.tsx",
+            language: Language::TypeScript,
+        };
+        assert_eq!(
+            r.resolve_definition("ForceGalaxy", &c).as_str(),
+            "vision/src/views/ForceGalaxy.tsx::ForceGalaxy"
+        );
+    }
+
+    #[test]
+    fn rewrite_ts_relative_imports_resolve_against_importing_file() {
+        let aliases = TsPathAliases::default();
+        // Same-dir sibling.
+        assert_eq!(
+            rewrite_ts_module_specifier("./Sidebar", "src/components/Layout.tsx", &aliases),
+            "src/components/Sidebar"
+        );
+        // One level up.
+        assert_eq!(
+            rewrite_ts_module_specifier("../api/graph", "src/views/ForceGalaxy.tsx", &aliases),
+            "src/api/graph"
+        );
+        // Two levels up.
+        assert_eq!(
+            rewrite_ts_module_specifier("../../utils/format", "src/views/sub/Inner.tsx", &aliases),
+            "src/utils/format"
+        );
+        // `./` no-op + dotted segment.
+        assert_eq!(
+            rewrite_ts_module_specifier("./", "src/components/Layout.tsx", &aliases),
+            "src/components"
+        );
+    }
+
+    #[test]
+    fn rewrite_ts_tsconfig_wildcard_alias() {
+        let mut aliases = TsPathAliases::new();
+        aliases.insert("@/*", "src/*");
+        // `@/components/Foo` rewrites via the wildcard.
+        assert_eq!(
+            rewrite_ts_module_specifier("@/components/Foo", "x.ts", &aliases),
+            "src/components/Foo"
+        );
+    }
+
+    #[test]
+    fn rewrite_ts_tsconfig_exact_alias() {
+        let mut aliases = TsPathAliases::new();
+        aliases.insert("~/utils", "src/utils/index");
+        // Exact match (no wildcard) replaces directly.
+        assert_eq!(
+            rewrite_ts_module_specifier("~/utils", "x.ts", &aliases),
+            "src/utils/index"
+        );
+        // Same alias prefix as a different specifier doesn't match.
+        assert_eq!(
+            rewrite_ts_module_specifier("~/utilities", "x.ts", &aliases),
+            "~/utilities"
+        );
+    }
+
+    #[test]
+    fn rewrite_ts_bare_module_specifier_passes_through() {
+        let aliases = TsPathAliases::default();
+        // External packages — can't resolve to a project file.
+        assert_eq!(
+            rewrite_ts_module_specifier("react", "src/Foo.tsx", &aliases),
+            "react"
+        );
+        assert_eq!(
+            rewrite_ts_module_specifier(
+                "@modelcontextprotocol/sdk/server/index.js",
+                "src/Foo.tsx",
+                &aliases
+            ),
+            "@modelcontextprotocol/sdk/server/index.js"
+        );
+    }
+
+    #[test]
+    fn rewrite_ts_alias_takes_precedence_over_relative_lookalike() {
+        // If the project mapped @/* → src/*, an "@/foo" specifier
+        // should hit the alias path FIRST. We confirm by registering
+        // the alias and asserting the alias wins.
+        let mut aliases = TsPathAliases::new();
+        aliases.insert("@/*", "src/*");
+        // Even if the importing file is in a deep dir, the alias
+        // resolves to the absolute project path.
+        assert_eq!(
+            rewrite_ts_module_specifier("@/components/Foo", "src/views/sub/inner/x.tsx", &aliases),
+            "src/components/Foo"
+        );
+    }
+
+    #[test]
+    fn ts_resolver_full_algorithm_end_to_end() {
+        let r = TypeScriptResolver;
+        let c = FileContext {
+            relative_path: "vision/src/views/ForceGalaxy.tsx",
+            language: Language::TypeScript,
+        };
+        let mut aliases = TsPathAliases::new();
+        aliases.insert("@/*", "vision/src/*");
+
+        // Relative import.
+        assert_eq!(
+            r.resolve_reference_with_aliases("../api/graph", &c, &aliases)
+                .as_str(),
+            "vision/src/api/graph"
+        );
+        // Alias.
+        assert_eq!(
+            r.resolve_reference_with_aliases("@/components/Legend", &c, &aliases)
+                .as_str(),
+            "vision/src/components/Legend"
+        );
+        // External.
+        assert_eq!(
+            r.resolve_reference_with_aliases("react", &c, &aliases)
+                .as_str(),
+            "react"
+        );
+    }
+
+    #[test]
+    fn ts_resolver_trait_method_handles_relative_without_aliases() {
+        let r = TypeScriptResolver;
+        let c = FileContext {
+            relative_path: "vision/src/views/ForceGalaxy.tsx",
+            language: Language::TypeScript,
+        };
+        // Relative imports work even without an alias map.
+        assert_eq!(
+            r.resolve_reference("./Legend", &c).as_str(),
+            "vision/src/views/Legend"
+        );
+        // Bare aliases without an alias map round-trip unchanged.
         assert_eq!(
             r.resolve_reference("@/components/Foo", &c).as_str(),
             "@/components/Foo"
+        );
+    }
+
+    #[test]
+    fn ts_path_aliases_first_match_wins() {
+        let mut aliases = TsPathAliases::new();
+        aliases.insert("@/components/*", "vision/src/components/*");
+        aliases.insert("@/*", "vision/src/*");
+        // The more-specific rule was registered first; we honor
+        // insertion order so callers get to express ordering.
+        assert_eq!(
+            aliases.rewrite("@/components/Foo"),
+            Some("vision/src/components/Foo".to_string())
+        );
+        assert_eq!(
+            aliases.rewrite("@/api/graph"),
+            Some("vision/src/api/graph".to_string())
         );
     }
 
