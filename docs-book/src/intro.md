@@ -61,8 +61,8 @@
 </div>
 
 <div class="mneme-trust-strip">
-  <div class="mneme-trust-item"><span class="trust-num">2/10 → 6/10</span><span class="trust-lbl">Recall jump on the v0.4.0 audit</span></div>
-  <div class="mneme-trust-item"><span class="trust-num">&lt; 500 ms</span><span class="trust-lbl">First paint on a 50k-node graph</span></div>
+  <div class="mneme-trust-item"><span class="trust-num">3 resolvers</span><span class="trust-lbl">Rust · TypeScript · Python (v0.4.0 audit)</span></div>
+  <div class="mneme-trust-item"><span class="trust-num">&lt; 500 ms</span><span class="trust-lbl">Server-rendered first paint on a 50k-node graph</span></div>
   <div class="mneme-trust-item"><span class="trust-num">0 bytes</span><span class="trust-lbl">Outbound on the default install</span></div>
 </div>
 
