@@ -1,416 +1,827 @@
 /* ============================================================================
-   Mneme docs — premium custom theme
+   Mneme docs — Minimalism / Swiss-Style theme
    ----------------------------------------------------------------------------
-   Brand gradient: #4191E1 (blue) → #22D3EE (cyan) → #41E1B5 (mint)
-   Layered on top of mdBook's "ayu" base theme. Glassmorphism on the sidebar +
-   nav, gradient accents on the title + headings, soft shadows on code blocks,
-   and a refined Inter / JetBrains Mono typography stack.
+   Built from the UI/UX Pro Max design-system pass (2026-05-05):
+     Pattern  : FAQ / Documentation Landing
+     Style    : Minimalism & Swiss Style (WCAG AAA target)
+     Palette  : Knowledge Base / Documentation (slate + accent blue)
+     Type     : IBM Plex Sans (body) + JetBrains Mono (display + code)
+
+   Brand gradient (green → cyan → blue) is layered on top of the neutral
+   palette for accents only — H1 hero, primary CTAs, hover states.
+   Body text is high-contrast slate-800 on slate-50 (≈ 14.6:1 — AAA).
    ============================================================================ */
 
-/* ----------- 1. Brand tokens ------------------------------------------------ */
+/* === 1. Tokens =========================================================== */
 
-:root {
-  /* Brand */
-  --mneme-blue: #4191E1;
-  --mneme-cyan: #22D3EE;
-  --mneme-mint: #41E1B5;
-  --mneme-grad: linear-gradient(135deg, #4191E1 0%, #22D3EE 50%, #41E1B5 100%);
-  --mneme-grad-soft: linear-gradient(135deg, rgba(65,145,225,.10), rgba(65,225,181,.10));
+:root,
+html.light,
+html.rust,
+html.no-js {
+  /* Surfaces (Knowledge Base / Documentation palette, light) */
+  --mneme-bg:           #F8FAFC;   /* slate-50  — page bg, AAA paired w/ fg */
+  --mneme-bg-band:      #F1F5F9;   /* slate-100 — section bands */
+  --mneme-card:         #FFFFFF;   /* card surface */
+  --mneme-card-2:       #FAFAFA;   /* secondary card */
+  --mneme-fg:           #1E293B;   /* slate-800 — body text  (≈14.6:1 AAA) */
+  --mneme-fg-strong:    #0F172A;   /* slate-900 — display/H1 text */
+  --mneme-muted:        #475569;   /* slate-600 — secondary text (~7.4:1 AAA) */
+  --mneme-muted-2:      #64748B;   /* slate-500 — tertiary  (~4.7:1 AA) */
+  --mneme-border:       #E2E8F0;   /* slate-200 — hairline */
+  --mneme-border-strong:#CBD5E1;   /* slate-300 — hover border */
 
-  /* Type stack */
-  --mneme-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --mneme-mono: "JetBrains Mono", "SF Mono", "Cascadia Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  --mneme-display: "Inter", var(--mneme-sans);
+  /* Brand gradient + accent tokens (used SPARINGLY — accents only) */
+  --mneme-green:        #16A34A;   /* green-600 — 4.55:1 on white (text-tier AA) */
+  --mneme-green-strong: #15803D;   /* green-700 — 5.04:1 white on color (CTA-tier AA) */
+  --mneme-cyan:         #0891B2;   /* cyan-600  — 4.50:1 on white */
+  --mneme-cyan-strong:  #0E7490;   /* cyan-700  — 5.69:1 white on color */
+  --mneme-blue:         #2563EB;   /* blue-600  — 6.59:1 links (AAA) */
+  --mneme-blue-strong:  #1D4ED8;   /* blue-700  — 8.59:1 white on color */
+  --mneme-magenta: #BE185D;
+  --mneme-amber:   #B45309;
+  --mneme-red:     #DC2626;
 
-  /* Shadows */
-  --mneme-shadow-sm: 0 1px 2px rgba(0,0,0,.20);
-  --mneme-shadow-md: 0 4px 12px rgba(0,0,0,.28);
-  --mneme-shadow-lg: 0 12px 32px rgba(0,0,0,.40);
-  --mneme-shadow-glow: 0 0 24px rgba(34, 211, 238, .25);
+  /* Brand gradient (light-mode tuned, AAA-contrast endpoints).
+     Two variants: `--mneme-grad` is for text gradient-clip (lighter
+     end-stops, fine on white because the gradient is the foreground).
+     `--mneme-grad-cta` is for solid-fill CTAs where we need white-on-
+     color contrast — every stop ≥ 5:1 against #fff. */
+  --mneme-grad:     linear-gradient(135deg, #16A34A 0%, #0891B2 50%, #2563EB 100%);
+  --mneme-grad-cta: linear-gradient(135deg, #15803D 0%, #0E7490 50%, #1D4ED8 100%);
+  --mneme-grad-soft: linear-gradient(135deg, rgba(22,163,74,.06), rgba(37,99,235,.06));
+
+  /* Soft shadows (Linear / Notion style) */
+  --mneme-shadow-1: 0 1px 2px rgba(15,23,42,.05);
+  --mneme-shadow-2: 0 1px 2px rgba(15,23,42,.04), 0 4px 14px rgba(15,23,42,.06);
+  --mneme-shadow-3: 0 2px 4px rgba(15,23,42,.05), 0 8px 28px rgba(15,23,42,.10);
+  --mneme-shadow-cta: 0 1px 2px rgba(37,99,235,.18), 0 6px 20px rgba(22,163,74,.20);
+
+  /* Radii (consistent scale — only 3 values) */
+  --mneme-radius-sm: 6px;
+  --mneme-radius:    10px;
+  --mneme-radius-lg: 16px;
+
+  /* Type stack (per design-system recommendation) */
+  --mneme-sans:    "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mneme-mono:    "JetBrains Mono", "SF Mono", "Cascadia Mono", Menlo, Monaco, Consolas, monospace;
+  --mneme-display: "JetBrains Mono", var(--mneme-mono);
+
+  /* Spacing scale (4/8 grid — Material foundation) */
+  --mneme-sp-1: 4px;
+  --mneme-sp-2: 8px;
+  --mneme-sp-3: 12px;
+  --mneme-sp-4: 16px;
+  --mneme-sp-5: 24px;
+  --mneme-sp-6: 32px;
+  --mneme-sp-7: 48px;
+  --mneme-sp-8: 64px;
 }
 
-/* Inter + JetBrains Mono via Google Fonts (preconnect handled in head). */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Webfonts: IBM Plex Sans + JetBrains Mono (recommended pairing) */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-/* ----------- 2. Page chrome ------------------------------------------------- */
+/* === 2. Page chrome ====================================================== */
 
-html {
+html.light, html.rust, html.no-js {
+  background: var(--mneme-bg) !important;
+  color: var(--mneme-fg);
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.light, html.rust, html.no-js { scroll-behavior: auto; }
+}
+
+html.light body, html.rust body, html.no-js body {
+  background: var(--mneme-bg) !important;
+  color: var(--mneme-fg);
   font-family: var(--mneme-sans);
   font-feature-settings: "ss01", "cv02", "cv11";
-}
-
-body {
-  font-family: var(--mneme-sans);
+  font-size: 16px;
+  line-height: 1.65;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
-/* Top nav bar — subtle backdrop + brand-tinted bottom border. */
-#menu-bar {
-  background: rgba(15, 18, 22, 0.70);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  border-bottom: 1px solid rgba(34, 211, 238, .14);
-  box-shadow: 0 1px 0 rgba(255,255,255,.04), 0 12px 32px -16px rgba(0,0,0,.45);
+/* === 3. Top nav ========================================================== */
+
+html.light #menu-bar,
+html.rust #menu-bar,
+html.no-js #menu-bar {
+  background: rgba(248, 250, 252, 0.92) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+  border-bottom: 1px solid var(--mneme-border);
+  box-shadow: 0 1px 0 rgba(255,255,255,.6);
+  color: var(--mneme-fg-strong);
 }
 
-#menu-bar .left-buttons,
-#menu-bar .right-buttons {
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,.4));
-}
-
-#menu-bar .menu-title {
+html.light #menu-bar .menu-title,
+html.rust #menu-bar .menu-title,
+html.no-js #menu-bar .menu-title {
   font-family: var(--mneme-display);
   font-weight: 700;
   letter-spacing: -0.01em;
-  background: var(--mneme-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  color: var(--mneme-fg-strong);
 }
 
-/* ----------- 3. Sidebar — glassmorphism ------------------------------------ */
-
-.sidebar {
-  background: rgba(20, 24, 30, 0.78);
-  backdrop-filter: blur(22px) saturate(170%);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
-  border-right: 1px solid rgba(34, 211, 238, .10);
+html.light #menu-bar i, html.rust #menu-bar i {
+  color: var(--mneme-muted);
+  transition: color 140ms ease;
 }
 
-.sidebar .sidebar-scrollbox {
-  padding: 1rem 0.75rem;
+html.light #menu-bar i:hover, html.rust #menu-bar i:hover {
+  color: var(--mneme-blue);
 }
 
-.sidebar .chapter li {
-  padding: 0.18rem 0;
+/* === 4. Sidebar ========================================================== */
+
+html.light .sidebar, html.rust .sidebar, html.no-js .sidebar {
+  background: var(--mneme-card) !important;
+  border-right: 1px solid var(--mneme-border);
 }
 
-.sidebar .chapter li > a {
-  border-radius: 6px;
-  padding: 0.32rem 0.72rem;
-  transition: background 140ms ease, color 140ms ease, transform 80ms ease;
+html.light .sidebar .sidebar-scrollbox, html.rust .sidebar .sidebar-scrollbox {
+  padding: var(--mneme-sp-4) var(--mneme-sp-3);
 }
 
-.sidebar .chapter li > a:hover {
-  background: rgba(34, 211, 238, .08);
-  color: var(--mneme-cyan);
-  transform: translateX(2px);
+html.light .sidebar .chapter li > a, html.rust .sidebar .chapter li > a {
+  color: var(--mneme-fg);
+  border-radius: var(--mneme-radius-sm);
+  padding: 6px 12px;
+  font-weight: 400;
+  transition: background 140ms ease, color 140ms ease;
 }
 
-.sidebar .chapter li > a.active {
-  background: var(--mneme-grad-soft);
-  color: var(--mneme-cyan);
+html.light .sidebar .chapter li > a:hover, html.rust .sidebar .chapter li > a:hover {
+  background: var(--mneme-bg-band);
+  color: var(--mneme-fg-strong);
+}
+
+html.light .sidebar .chapter li > a.active, html.rust .sidebar .chapter li > a.active {
+  background: rgba(37,99,235,0.08);
+  color: var(--mneme-blue);
   font-weight: 600;
-  box-shadow: inset 2px 0 0 var(--mneme-cyan);
+  box-shadow: inset 2px 0 0 var(--mneme-blue);
 }
 
-/* Section headers in the sidebar. */
-.sidebar .chapter > .part-title {
+html.light .sidebar .chapter > .part-title, html.rust .sidebar .chapter > .part-title {
   font-family: var(--mneme-display);
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.10em;
   text-transform: uppercase;
-  color: rgba(255,255,255,.42);
-  padding: 1.1rem 0.75rem 0.4rem;
-  margin-top: 0.5rem;
-  border-top: 1px solid rgba(255,255,255,.04);
+  color: var(--mneme-muted);
+  padding: var(--mneme-sp-5) var(--mneme-sp-3) var(--mneme-sp-2);
+  margin-top: var(--mneme-sp-3);
+  border-top: 1px solid var(--mneme-border);
 }
 
-.sidebar .chapter > .part-title:first-child {
+html.light .sidebar .chapter > .part-title:first-child,
+html.rust .sidebar .chapter > .part-title:first-child {
   border-top: 0;
   margin-top: 0;
+  padding-top: 0;
 }
 
-/* ----------- 4. Content typography ----------------------------------------- */
+/* === 5. Content typography (Swiss-style hierarchy) ======================== */
 
-.content {
+html.light .content, html.rust .content, html.no-js .content {
   font-family: var(--mneme-sans);
-  font-size: 16.5px;
-  line-height: 1.68;
+  font-size: 16px;
+  line-height: 1.66;
+  color: var(--mneme-fg);
+  max-width: 920px;
 }
 
-.content h1 {
-  font-family: var(--mneme-display);
-  font-weight: 800;
-  font-size: 2.4rem;
-  letter-spacing: -0.025em;
-  margin-top: 0.4rem;
-  margin-bottom: 1.2rem;
-  background: var(--mneme-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  display: inline-block;
-}
-
-.content h2 {
+html.light .content h1, html.rust .content h1, html.no-js .content h1 {
   font-family: var(--mneme-display);
   font-weight: 700;
-  font-size: 1.55rem;
-  letter-spacing: -0.018em;
-  margin-top: 2.6rem;
-  margin-bottom: 0.9rem;
-  padding-bottom: 0.4rem;
-  border-bottom: 1px solid rgba(34, 211, 238, .14);
+  font-size: 36px;
+  line-height: 1.15;
+  letter-spacing: -0.020em;
+  margin: var(--mneme-sp-2) 0 var(--mneme-sp-5);
+  color: var(--mneme-fg-strong);
+}
+
+html.light .content h2, html.rust .content h2, html.no-js .content h2 {
+  font-family: var(--mneme-display);
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 1.25;
+  letter-spacing: -0.014em;
+  margin: var(--mneme-sp-7) 0 var(--mneme-sp-4);
+  padding-bottom: var(--mneme-sp-2);
+  border-bottom: 1px solid var(--mneme-border);
+  color: var(--mneme-fg-strong);
   position: relative;
 }
 
-.content h2::before {
+html.light .content h2::after, html.rust .content h2::after, html.no-js .content h2::after {
   content: "";
   position: absolute;
   left: 0;
   bottom: -1px;
-  width: 64px;
+  width: 48px;
   height: 2px;
   background: var(--mneme-grad);
   border-radius: 2px;
 }
 
-.content h3 {
-  font-family: var(--mneme-display);
-  font-weight: 700;
-  font-size: 1.18rem;
-  letter-spacing: -0.012em;
-  margin-top: 1.8rem;
-  margin-bottom: 0.6rem;
-  color: rgba(255,255,255,.92);
-}
-
-.content h4 {
+html.light .content h3, html.rust .content h3, html.no-js .content h3 {
   font-family: var(--mneme-display);
   font-weight: 600;
-  font-size: 1.02rem;
-  margin-top: 1.4rem;
-  margin-bottom: 0.4rem;
-  color: rgba(255,255,255,.85);
+  font-size: 19px;
+  line-height: 1.30;
+  letter-spacing: -0.010em;
+  margin: var(--mneme-sp-6) 0 var(--mneme-sp-3);
+  color: var(--mneme-fg-strong);
 }
 
-.content p {
-  margin: 0.85rem 0;
-  color: rgba(232, 236, 244, .92);
+html.light .content h4, html.rust .content h4 {
+  font-family: var(--mneme-sans);
+  font-weight: 600;
+  font-size: 16px;
+  margin: var(--mneme-sp-5) 0 var(--mneme-sp-2);
+  color: var(--mneme-fg-strong);
 }
 
-.content strong {
-  color: rgba(255,255,255,.99);
+html.light .content p, html.rust .content p, html.no-js .content p {
+  margin: var(--mneme-sp-3) 0;
+  color: var(--mneme-fg);
+}
+
+html.light .content strong, html.rust .content strong {
+  color: var(--mneme-fg-strong);
   font-weight: 600;
 }
 
-.content a {
-  color: var(--mneme-cyan);
+html.light .content a, html.rust .content a, html.no-js .content a {
+  color: var(--mneme-blue);
   text-decoration: none;
   border-bottom: 1px solid transparent;
-  transition: border-color 120ms ease, color 120ms ease;
+  transition: border-color 120ms ease;
 }
 
-.content a:hover {
-  color: var(--mneme-mint);
-  border-bottom-color: var(--mneme-mint);
+html.light .content a:hover, html.rust .content a:hover {
+  border-bottom-color: var(--mneme-blue);
 }
 
-/* ----------- 5. Code blocks ------------------------------------------------- */
+html.light .content a:focus-visible, html.rust .content a:focus-visible {
+  outline: 2px solid var(--mneme-blue);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 
-.content pre,
-.content pre > code {
+/* Lede paragraph: first <p> after H1 */
+html.light .content > h1:first-child + p,
+html.rust .content > h1:first-child + p {
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--mneme-muted);
+  margin-bottom: var(--mneme-sp-6);
+  max-width: 64ch;
+}
+
+/* === 6. Code ============================================================= */
+
+html.light .content pre, html.rust .content pre, html.no-js .content pre {
   font-family: var(--mneme-mono);
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 1.65;
-}
-
-.content pre {
-  background: rgba(11, 14, 18, .72);
-  border: 1px solid rgba(34, 211, 238, .12);
-  border-radius: 10px;
-  padding: 1.1rem 1.3rem;
-  margin: 1rem 0;
-  box-shadow: var(--mneme-shadow-md), inset 0 1px 0 rgba(255,255,255,.02);
-  position: relative;
+  background: var(--mneme-card);
+  color: var(--mneme-fg-strong);
+  border: 1px solid var(--mneme-border);
+  border-radius: var(--mneme-radius);
+  padding: 16px 20px;
+  margin: var(--mneme-sp-4) 0;
+  box-shadow: var(--mneme-shadow-1);
   overflow: auto;
+  position: relative;
 }
 
-.content pre::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--mneme-grad);
-  border-top-left-radius: 10px;
-  border-top-right-radius: 10px;
-  opacity: 0.55;
-}
-
-.content code {
+html.light .content code, html.rust .content code, html.no-js .content code {
   font-family: var(--mneme-mono);
   font-size: 0.92em;
-  padding: 0.13rem 0.42rem;
-  border-radius: 5px;
-  background: rgba(34, 211, 238, .09);
-  color: rgba(232, 236, 244, .96);
-  border: 1px solid rgba(34, 211, 238, .14);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--mneme-bg-band);
+  color: var(--mneme-fg-strong);
+  border: 1px solid var(--mneme-border);
 }
 
-.content pre code {
+html.light .content pre code, html.rust .content pre code {
   padding: 0;
   background: transparent;
   border: 0;
   color: inherit;
+  font-size: inherit;
 }
 
-/* Copy button on code blocks. */
-.content pre .buttons {
-  filter: opacity(0.4);
+html.light .content pre .buttons, html.rust .content pre .buttons {
+  filter: opacity(0.5);
   transition: filter 160ms ease;
 }
 
-.content pre:hover .buttons {
-  filter: opacity(0.9);
+html.light .content pre:hover .buttons, html.rust .content pre:hover .buttons {
+  filter: opacity(1);
 }
 
-.content pre .buttons button {
-  border-radius: 6px;
-  border: 1px solid rgba(34, 211, 238, .18);
-  background: rgba(11, 14, 18, .9);
-  color: rgba(255,255,255,.78);
+html.light .content pre .buttons button, html.rust .content pre .buttons button {
+  border-radius: var(--mneme-radius-sm);
+  border: 1px solid var(--mneme-border);
+  background: var(--mneme-card);
+  color: var(--mneme-muted);
+  font-family: var(--mneme-mono);
+  font-size: 11px;
+  padding: 4px 8px;
 }
 
-.content pre .buttons button:hover {
-  background: rgba(34, 211, 238, .12);
-  color: var(--mneme-cyan);
+html.light .content pre .buttons button:hover, html.rust .content pre .buttons button:hover {
+  background: var(--mneme-bg-band);
+  color: var(--mneme-blue);
+  border-color: var(--mneme-blue);
 }
 
-/* ----------- 6. Tables — clean rows, brand-tinted header ------------------- */
+/* === 7. Tables (clean, Swiss) ============================================ */
 
-.content table {
+html.light .content table, html.rust .content table, html.no-js .content table {
   border-collapse: separate;
   border-spacing: 0;
   width: 100%;
-  margin: 1.2rem 0;
-  background: rgba(20, 24, 30, .50);
-  border: 1px solid rgba(34, 211, 238, .12);
-  border-radius: 10px;
+  margin: var(--mneme-sp-4) 0;
+  background: var(--mneme-card);
+  border: 1px solid var(--mneme-border);
+  border-radius: var(--mneme-radius);
   overflow: hidden;
-  box-shadow: var(--mneme-shadow-sm);
+  box-shadow: var(--mneme-shadow-1);
+  font-size: 15px;
 }
 
-.content table thead tr {
-  background: var(--mneme-grad-soft);
+html.light .content table thead tr, html.rust .content table thead tr {
+  background: var(--mneme-bg-band);
 }
 
-.content table thead th {
+html.light .content table thead th, html.rust .content table thead th {
   font-family: var(--mneme-display);
-  font-weight: 700;
-  font-size: 0.85rem;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--mneme-cyan);
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(34, 211, 238, .20);
+  color: var(--mneme-muted);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--mneme-border);
   text-align: left;
 }
 
-.content table td {
-  padding: 0.65rem 1rem;
-  border-top: 1px solid rgba(255,255,255,.04);
+html.light .content table td, html.rust .content table td {
+  padding: 12px 16px;
+  border-top: 1px solid var(--mneme-border);
   vertical-align: top;
+  color: var(--mneme-fg);
 }
 
-.content table tbody tr:hover {
-  background: rgba(34, 211, 238, .04);
+html.light .content table tbody tr:hover, html.rust .content table tbody tr:hover {
+  background: var(--mneme-bg-band);
 }
 
-.content table tbody tr:first-child td {
+html.light .content table tbody tr:first-child td, html.rust .content table tbody tr:first-child td {
   border-top: 0;
 }
 
-/* ----------- 7. Blockquotes + admonitions ---------------------------------- */
+/* === 8. Blockquotes ====================================================== */
 
-.content blockquote {
-  margin: 1rem 0;
-  padding: 0.8rem 1.1rem;
-  background: var(--mneme-grad-soft);
-  border-left: 3px solid var(--mneme-cyan);
-  border-radius: 0 8px 8px 0;
-  color: rgba(255,255,255,.88);
+html.light .content blockquote, html.rust .content blockquote, html.no-js .content blockquote {
+  margin: var(--mneme-sp-4) 0;
+  padding: var(--mneme-sp-3) var(--mneme-sp-5);
+  background: var(--mneme-bg-band);
+  border-left: 3px solid var(--mneme-blue);
+  border-radius: 0 var(--mneme-radius-sm) var(--mneme-radius-sm) 0;
+  color: var(--mneme-fg);
   font-style: normal;
 }
 
-.content blockquote p:first-child { margin-top: 0; }
-.content blockquote p:last-child  { margin-bottom: 0; }
+html.light .content blockquote p:first-child { margin-top: 0; }
+html.light .content blockquote p:last-child  { margin-bottom: 0; }
 
-/* ----------- 8. Hero section on the intro page ----------------------------- */
+/* === 9. Search =========================================================== */
 
-/* The first H1 + first paragraph on intro.md become a "hero". */
-.content > h1:first-child + p {
-  font-size: 1.18rem;
-  line-height: 1.5;
-  color: rgba(232, 236, 244, .92);
-  margin-bottom: 1.6rem;
-  max-width: 60ch;
-}
-
-/* ----------- 9. Search ---------------------------------------------------- */
-
-#searchresults {
-  background: rgba(20, 24, 30, .92);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(34, 211, 238, .15);
-  border-radius: 10px;
-  box-shadow: var(--mneme-shadow-lg);
-  padding: 0.4rem 0;
-  margin-top: 0.6rem;
-}
-
-#searchresults li {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  margin: 0 0.4rem;
-}
-
-#searchresults li:hover {
-  background: rgba(34, 211, 238, .08);
-}
-
-#searchbar {
-  background: rgba(11, 14, 18, .80);
-  border: 1px solid rgba(34, 211, 238, .15);
-  border-radius: 8px;
+html.light #searchbar, html.rust #searchbar, html.no-js #searchbar {
+  background: var(--mneme-card);
+  border: 1px solid var(--mneme-border);
+  border-radius: var(--mneme-radius);
   font-family: var(--mneme-sans);
-  padding: 0.55rem 0.95rem;
+  font-size: 15px;
+  padding: 10px 16px;
+  color: var(--mneme-fg-strong);
   transition: border-color 120ms ease, box-shadow 120ms ease;
+  box-shadow: var(--mneme-shadow-1);
 }
 
-#searchbar:focus {
-  border-color: var(--mneme-cyan);
-  box-shadow: var(--mneme-shadow-glow);
+html.light #searchbar::placeholder, html.rust #searchbar::placeholder {
+  color: var(--mneme-muted-2);
+}
+
+html.light #searchbar:focus, html.rust #searchbar:focus {
+  border-color: var(--mneme-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.20);
   outline: 0;
 }
 
-/* ----------- 10. Print ----------------------------------------------------- */
+html.light #searchresults, html.rust #searchresults, html.no-js #searchresults {
+  background: var(--mneme-card);
+  border: 1px solid var(--mneme-border);
+  border-radius: var(--mneme-radius);
+  box-shadow: var(--mneme-shadow-3);
+  padding: 6px 0;
+  margin-top: var(--mneme-sp-2);
+}
+
+html.light #searchresults li, html.rust #searchresults li {
+  padding: 8px 16px;
+  border-radius: var(--mneme-radius-sm);
+  margin: 0 6px;
+  color: var(--mneme-fg);
+}
+
+html.light #searchresults li:hover, html.rust #searchresults li:hover {
+  background: var(--mneme-bg-band);
+  color: var(--mneme-fg-strong);
+}
+
+html.light #searchresults mark, html.rust #searchresults mark {
+  background: rgba(22,163,74,0.18);
+  color: var(--mneme-fg-strong);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* === 10. mdBook page-nav arrows ========================================= */
+
+html.light .nav-chapters, html.rust .nav-chapters {
+  color: var(--mneme-muted);
+  border-radius: var(--mneme-radius);
+  transition: color 140ms ease, background 140ms ease;
+}
+
+html.light .nav-chapters:hover, html.rust .nav-chapters:hover {
+  color: var(--mneme-blue);
+  background: var(--mneme-bg-band);
+}
+
+/* === 11. Hero + landing-page custom components =========================== */
+
+.mneme-hero {
+  margin: var(--mneme-sp-4) 0 var(--mneme-sp-7);
+  padding: var(--mneme-sp-7) var(--mneme-sp-6) var(--mneme-sp-7);
+  background: var(--mneme-card);
+  border: 1px solid var(--mneme-border);
+  border-radius: var(--mneme-radius-lg);
+  box-shadow: var(--mneme-shadow-2);
+  position: relative;
+  overflow: hidden;
+}
+
+.mneme-hero::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(22,163,74,.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.mneme-hero::after {
+  content: "";
+  position: absolute;
+  bottom: -50%;
+  left: -10%;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(37,99,235,.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.mneme-hero > * { position: relative; z-index: 1; }
+
+.mneme-hero .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mneme-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mneme-green);
+  background: rgba(22, 163, 74, 0.08);
+  border: 1px solid rgba(22, 163, 74, 0.20);
+  padding: 6px 12px;
+  border-radius: 999px;
+  margin-bottom: var(--mneme-sp-4);
+}
+
+.mneme-hero .eyebrow::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mneme-green);
+  box-shadow: 0 0 0 3px rgba(22,163,74,.18);
+}
+
+.mneme-hero h1.hero-title {
+  font-family: var(--mneme-display);
+  font-weight: 700;
+  font-size: 48px;
+  line-height: 1.05;
+  letter-spacing: -0.024em;
+  margin: 0 0 var(--mneme-sp-3);
+  color: var(--mneme-fg-strong);
+  border: 0;
+}
+
+.mneme-hero h1.hero-title .grad {
+  background: var(--mneme-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.mneme-hero .lede {
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--mneme-muted);
+  margin: 0 0 var(--mneme-sp-5);
+  max-width: 60ch;
+}
+
+.mneme-hero .cta-row {
+  display: flex;
+  gap: var(--mneme-sp-3);
+  flex-wrap: wrap;
+}
+
+.mneme-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mneme-sp-2);
+  padding: 10px 18px;
+  border-radius: var(--mneme-radius);
+  font-family: var(--mneme-sans);
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none !important;
+  border: 1px solid transparent !important;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+  min-height: 44px;
+}
+
+.mneme-cta:focus-visible {
+  outline: 2px solid var(--mneme-blue);
+  outline-offset: 3px;
+}
+
+.mneme-cta-primary {
+  color: #fff !important;
+  /* Use the darker gradient variant (green-700 → cyan-700 → blue-700)
+     so white text passes WCAG AA (every stop ≥ 5:1 white-on-color). */
+  background: var(--mneme-grad-cta);
+  box-shadow: var(--mneme-shadow-cta);
+}
+
+.mneme-cta-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(22,163,74,.20), 0 12px 32px rgba(37,99,235,.24);
+}
+
+.mneme-cta-secondary {
+  color: var(--mneme-fg-strong) !important;
+  background: var(--mneme-card);
+  border: 1px solid var(--mneme-border) !important;
+  box-shadow: var(--mneme-shadow-1);
+}
+
+.mneme-cta-secondary:hover {
+  border-color: var(--mneme-blue) !important;
+  color: var(--mneme-blue) !important;
+  transform: translateY(-1px);
+}
+
+/* Feature card grid */
+
+.mneme-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--mneme-sp-3);
+  margin: var(--mneme-sp-5) 0;
+}
+
+.mneme-feature {
+  background: var(--mneme-card);
+  border: 1px solid var(--mneme-border);
+  border-radius: var(--mneme-radius);
+  padding: 20px 22px 22px;
+  box-shadow: var(--mneme-shadow-1);
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.mneme-feature:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--mneme-shadow-2);
+  border-color: var(--mneme-border-strong);
+}
+
+.mneme-feature .icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--mneme-radius-sm);
+  background: var(--mneme-grad-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mneme-blue);
+  margin-bottom: var(--mneme-sp-3);
+}
+
+.mneme-feature .icon-wrap svg { width: 20px; height: 20px; }
+
+.mneme-feature h3 {
+  font-family: var(--mneme-display);
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.012em;
+  margin: 0 0 6px !important;
+  color: var(--mneme-fg-strong) !important;
+}
+
+.mneme-feature p {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--mneme-muted);
+  margin: 0;
+}
+
+/* Install matrix */
+
+.mneme-install-matrix {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--mneme-sp-3);
+  margin: var(--mneme-sp-5) 0;
+}
+
+.mneme-install-card {
+  background: var(--mneme-card);
+  border: 1px solid var(--mneme-border);
+  border-radius: var(--mneme-radius);
+  padding: 18px 20px;
+  box-shadow: var(--mneme-shadow-1);
+  transition: border-color 140ms ease;
+}
+
+.mneme-install-card:hover { border-color: var(--mneme-border-strong); }
+
+.mneme-install-card .platform {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mneme-sp-2);
+  font-family: var(--mneme-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--mneme-fg-strong);
+  margin-bottom: var(--mneme-sp-3);
+}
+
+.mneme-install-card .badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(22, 163, 74, 0.10);
+  color: var(--mneme-green);
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(22, 163, 74, 0.20);
+}
+
+.mneme-install-card pre {
+  margin: 0 !important;
+  padding: 10px 12px !important;
+  background: var(--mneme-bg-band) !important;
+  border: 1px solid var(--mneme-border) !important;
+  font-size: 12.5px !important;
+  box-shadow: none !important;
+  overflow-x: auto;
+}
+
+/* Three-things-to-read links list */
+
+.mneme-readme-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--mneme-sp-3);
+  margin: var(--mneme-sp-4) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mneme-readme-list li {
+  margin: 0;
+}
+
+.mneme-readme-list a {
+  display: block;
+  background: var(--mneme-card);
+  border: 1px solid var(--mneme-border);
+  border-radius: var(--mneme-radius);
+  padding: 16px 18px;
+  box-shadow: var(--mneme-shadow-1);
+  text-decoration: none !important;
+  border-bottom: 1px solid var(--mneme-border) !important;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.mneme-readme-list a:hover {
+  border-color: var(--mneme-blue) !important;
+  transform: translateY(-1px);
+}
+
+.mneme-readme-list .num {
+  display: inline-block;
+  font-family: var(--mneme-display);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mneme-blue);
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+}
+
+.mneme-readme-list strong {
+  display: block;
+  font-family: var(--mneme-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--mneme-fg-strong);
+  margin-bottom: 4px;
+}
+
+.mneme-readme-list span {
+  font-size: 13.5px;
+  color: var(--mneme-muted);
+  line-height: 1.5;
+}
+
+/* Callout (used for "Local-only by design", "Coming soon", etc.) */
+
+.mneme-callout {
+  margin: var(--mneme-sp-5) 0;
+  padding: 18px 20px;
+  background: var(--mneme-bg-band);
+  border: 1px solid var(--mneme-border);
+  border-left: 3px solid var(--mneme-green);
+  border-radius: var(--mneme-radius);
+}
+
+.mneme-callout strong { color: var(--mneme-fg-strong); }
+
+.mneme-callout p:last-child { margin-bottom: 0; }
+.mneme-callout p:first-child { margin-top: 0; }
+
+/* === 12. Print =========================================================== */
 
 @media print {
   .sidebar, #menu-bar, .nav-chapters, .mobile-nav-chapters { display: none !important; }
-  .content { max-width: none; padding: 0 !important; }
-  .content h1 { color: #4191E1 !important; -webkit-text-fill-color: #4191E1; }
-  .content h2 { color: #22D3EE !important; }
-  .content pre { background: #f4f6fb; color: #0b0e12; border: 1px solid #d0d7e2; }
-  .content code { background: #eef2f8; color: #0b0e12; border: 1px solid #d0d7e2; }
+  .content { max-width: none !important; padding: 0 !important; }
+  .mneme-hero { box-shadow: none; border: 1px solid #d4d4d4; }
 }
 
-/* ----------- 11. Subtle motion --------------------------------------------- */
+/* === 13. Subtle motion ==================================================== */
 
 @media (prefers-reduced-motion: no-preference) {
-  .content h1 {
-    animation: mneme-hero-in 460ms cubic-bezier(.22,.61,.36,1);
+  html.light .content h1, html.rust .content h1 {
+    animation: mneme-hero-in 420ms cubic-bezier(.22, .61, .36, 1);
   }
   @keyframes mneme-hero-in {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+}
+
+/* === 14. Mobile ========================================================= */
+
+@media (max-width: 720px) {
+  html.light .content { font-size: 15.5px; }
+  html.light .content h1, html.rust .content h1 { font-size: 30px; }
+  html.light .content h2, html.rust .content h2 { font-size: 21px; }
+  .mneme-hero { padding: var(--mneme-sp-5) var(--mneme-sp-4); }
+  .mneme-hero h1.hero-title { font-size: 36px; }
+  .mneme-hero .lede { font-size: 17px; }
+  .mneme-hero .cta-row { flex-direction: column; }
+  .mneme-cta { width: 100%; justify-content: center; }
 }

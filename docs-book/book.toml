@@ -6,15 +6,19 @@
 # legacy `docs/index.html` lives on as a fallback during the rollout.
 
 [book]
-title = "Mneme — The AI Superbrain"
-description = "Persistent per-project memory + 14-view code graph + drift detector + 50 MCP tools. Local-only. Apache-2.0."
+title = "Mneme"
+description = "Persistent memory layer for AI coding. Survives context wipes. Runs entirely local. 50 MCP tools, 14 graph views, 22 storage layers. Apache-2.0."
 authors = ["Anish Trivedi", "Kruti Trivedi"]
 language = "en"
 src = "src"
 
 [output.html]
-default-theme = "ayu"
-preferred-dark-theme = "ayu"
+# v0.4.0 audit feedback (2026-05-05): Anish prefers the LIGHT theme.
+# Default to mdBook's "light" preset; the custom.css overrides land
+# the warm off-white palette + brand-gradient accents from the prior
+# hand-written docs/index.html landing page.
+default-theme = "light"
+preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/omanishay-cyber/mneme"
 edit-url-template = "https://github.com/omanishay-cyber/mneme/edit/main/docs-book/{path}"
 additional-css = ["theme/custom.css"]
@@ -22,9 +26,7 @@ additional-js = []
 no-section-label = false
 mathjax-support = false
 copy-fonts = true
-# Cargo/Rust syntax highlighting + the languages the corpus actually
-# parses. Tree-sitter does the heavy lifting at index time; mdBook
-# uses highlight.js for the docs themselves.
+
 [output.html.fold]
 enable = true
 level = 1
