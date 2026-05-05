@@ -19,7 +19,11 @@ src = "src"
 default-theme = "light"
 preferred-dark-theme = "light"
 git-repository-url = "https://github.com/omanishay-cyber/mneme"
-edit-url-template = "https://github.com/omanishay-cyber/mneme/edit/main/docs-book/{path}"
+# 2026-05-05 — `edit-url-template` removed by Anish's request. We don't
+# want public visitors seeing a "Suggest an edit" affordance pointing
+# at the repo. Outside contributions, when invited, will go through
+# explicit GitHub Issues / PR review, not a per-page edit link.
+# edit-url-template = "https://github.com/omanishay-cyber/mneme/edit/main/docs-book/{path}"
 additional-css = ["theme/custom.css"]
 additional-js = []
 no-section-label = false
