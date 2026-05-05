@@ -27,6 +27,12 @@ pub mod job;
 pub mod language;
 pub mod parser_pool;
 pub mod query_cache;
+// v0.4.0 keystone scaffold — symbol resolver trait + per-language
+// skeletons. v0.4.1 fills in Rust resolution, v0.4.2 TS, v0.4.3 Python.
+// The integration call site in `extractor` runs through the trait now
+// so each resolver lands as an isolated PR rather than a big-bang
+// rewrite.
+pub mod resolver;
 pub mod worker;
 
 #[cfg(test)]
@@ -39,4 +45,8 @@ pub use job::{Confidence, Edge, EdgeKind, Node, NodeKind, ParseJob, ParseResult,
 pub use language::Language;
 pub use parser_pool::{ParserLease, ParserPool};
 pub use query_cache::{get_query, QueryKind};
+pub use resolver::{
+    resolver_for, CanonicalSymbol, FileContext, PassthroughResolver, PythonResolver, RustResolver,
+    SymbolResolver, TypeScriptResolver,
+};
 pub use worker::Worker;
