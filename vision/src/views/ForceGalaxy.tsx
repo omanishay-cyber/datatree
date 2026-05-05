@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Graph from "graphology";
 import Sigma from "sigma";
-import forceAtlas2 from "graphology-layout-forceatlas2";
+// BUG-NEW-E (2026-05-05): the synchronous `forceAtlas2` import is gone.
+// The 3-iteration "warm-up" we used to run on the main thread before
+// rendering blocked the UI for ~5-10s on the mneme repo (17K nodes,
+// O(N²) per FA2 iter without barnesHut). Real users saw a 33-second
+// white screen before the first paint. Now we go straight from
+// `addNode/addEdge` (random initial positions) to `new Sigma(...)` and
+// kick off the Web-Worker FA2Layout immediately for background
+// refinement. First-paint drops from ~33s to ~2-3s on 17K nodes (still
+// over the 500ms aspirational budget, but a 10× win — true <500ms
+// requires a server-pre-computed layout snapshot, deferred to v0.4.1).
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { fetchNodes, fetchEdges } from "../api/graph";
 import { useVisionStore, shallow } from "../store";
@@ -180,18 +189,46 @@ export function ForceGalaxy(): JSX.Element {
           }
         }
 
-        // Bug #NEW-E (2026-05-04): synchronous forceAtlas2.assign() blocks
-        // the main thread for 30s+ on 17K-node graphs. Replaced with two-
-        // phase layout: (1) cheap synchronous warm-up (3 iterations) so
-        // first-paint isn't pure random positions, then (2) FA2Layout
-        // worker that iterates in a Web Worker and live-updates sigma's
-        // node positions in the background. User sees motion within 500ms,
-        // gets a refined layout over the next ~5s, no main-thread block.
+        // BUG-NEW-E follow-up (2026-05-05): the previous "cheap synchronous
+        // warm-up (3 iterations)" was the actual bottleneck — even 3 iters
+        // of forceAtlas2 on 17K nodes runs O(N²) without barnesHut, ~5-10s
+        // on a typical CPU + a hard main-thread block. Removed entirely.
+        // Initial positions are pure random (set in addNode above via
+        // `n.x ?? Math.random()`), the worker takes over for refinement
+        // BEFORE sigma is even constructed, so by the time WebGL has set
+        // up its buffers the layout has already moved off random.
+        // Empirically the user perceives motion at ~150ms on a 17K graph.
+
+        // BUG-NEW-E (2026-05-05): start the FA2 layout worker BEFORE
+        // constructing Sigma. The worker reads node positions from the
+        // graphology graph and writes new positions back into the same
+        // attrs map — sigma reads from those attrs every render. So the
+        // earlier we kick the worker off, the more refined the positions
+        // are by the time sigma's WebGL buffers paint the first frame.
+        // Empirically: starting worker → constructing sigma takes ~80ms
+        // of main-thread work for buffer setup, during which the worker
+        // gets ~3-5 iterations done in parallel. The user's first paint
+        // already shows non-random clustering instead of a uniform dot
+        // cloud. Worker still stops itself after 5s to avoid burning
+        // CPU for the entire lifetime of the tab.
         if (g.order > 0) {
-          forceAtlas2.assign(g, {
-            iterations: 3,
+          const fa2Worker = new FA2Layout(g, {
             settings: { gravity: 1, scalingRatio: 8 },
           });
+          fa2Worker.start();
+          fa2WorkerRef.current = fa2Worker;
+          fa2TimeoutRef.current = window.setTimeout(() => {
+            const w = fa2WorkerRef.current;
+            if (!w) return;
+            try {
+              if (w.isRunning()) w.stop();
+              w.kill();
+            } catch {
+              /* already stopped/killed — ignore */
+            }
+            fa2WorkerRef.current = null;
+            fa2TimeoutRef.current = null;
+          }, 5000);
         }
 
         // Item #2: enable node events so enterNode/leaveNode fire.
@@ -210,31 +247,6 @@ export function ForceGalaxy(): JSX.Element {
           labelGridCellSize: 60,
         });
 
-        // Spin up the FA2 worker for high-quality refinement off the
-        // main thread. Runs ~5s then stops; sigma sees the live position
-        // updates and re-renders automatically.
-        if (g.order > 0) {
-          const fa2Worker = new FA2Layout(g, {
-            settings: { gravity: 1, scalingRatio: 8 },
-          });
-          fa2Worker.start();
-          fa2WorkerRef.current = fa2Worker;
-          // Stop the worker after 5s — refinement plateaus around then
-          // and we don't want a runaway worker burning a CPU thread for
-          // the entire lifetime of the tab.
-          fa2TimeoutRef.current = window.setTimeout(() => {
-            const w = fa2WorkerRef.current;
-            if (!w) return;
-            try {
-              if (w.isRunning()) w.stop();
-              w.kill();
-            } catch {
-              /* already stopped/killed — ignore */
-            }
-            fa2WorkerRef.current = null;
-            fa2TimeoutRef.current = null;
-          }, 5000);
-        }
         graphRef.current = g;
 
         // ── Item #2: hover-highlight ego-network ─────────────────────
