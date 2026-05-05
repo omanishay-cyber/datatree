@@ -34,7 +34,17 @@ interface HooksConfig {
 
 const DEFAULT_HOOKS_CONFIG: HooksConfig = {
   enforce_blast_radius_before_edit: true,
-  enforce_recall_before_grep: false,
+  // REL-002 fix (v0.4.0 audit, 2026-05-05): aligned with the Rust
+  // sibling at cli/src/commands/pretool_grep_read.rs::
+  // hooks_enforce_recall_before_grep, which defaults to true. The
+  // soft-redirect ships ON because Items #114-#116 + #117 made
+  // recall good enough to substitute for grep on symbol queries.
+  // Three audit agents (cross-cutting, hook-reliability, simplicity)
+  // independently flagged the prior false-vs-true mismatch as a
+  // bug factory — same config.toml, opposite decisions across the
+  // two binaries. Fixed by setting both defaults to true; users
+  // who want the legacy behaviour set the key to false explicitly.
+  enforce_recall_before_grep: true,
   inject_user_prompt_reminder: true,
   blast_radius_freshness_seconds: 600,
 } as const;

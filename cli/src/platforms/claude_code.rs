@@ -129,9 +129,13 @@ pub struct HookSpec {
 ///     last 10 minutes, and auto-runs blast_radius inline so the AI has context
 ///     immediately. Configured by `[hooks] enforce_blast_radius_before_edit` in
 ///     ~/.mneme/config.toml (default ON).
-///   Layer 3: `pretool-grep-read` — fires on PreToolUse for Grep/Read/Glob,
-///     skeleton only in v0.4.0 (always approve). Full redirect logic deferred
-///     to v0.4.1. Controlled by `[hooks] enforce_recall_before_grep` (default OFF).
+///   Layer 3: `pretool-grep-read` — fires on PreToolUse for Grep/Read/Glob.
+///     v0.4.0 ships the soft-redirect (Item #122): when the input looks
+///     symbol-shaped or points at a source file, the hook injects a
+///     `mcp__mneme__find_references` / `blast_radius` hint via
+///     `additionalContext` — never blocks. Controlled by
+///     `[hooks] enforce_recall_before_grep` (default ON; aligned across
+///     Rust + TS bindings per the v0.4.0 audit fix).
 ///
 /// All three new hooks are fail-open: any internal error returns approve/empty
 /// so a broken mneme daemon can never block the user's editing workflow.
