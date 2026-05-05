@@ -269,14 +269,14 @@ export function App(): JSX.Element {
     };
   }, [projectHash]);
 
-  if (route.route === "command-center") {
-    return (
-      <ErrorBoundary region="command-center">
-        <CommandCenter />
-      </ErrorBoundary>
-    );
-  }
-
+  // CRIT-FE-1 fix (2026-05-05 audit): hooks MUST execute on every render in
+  // the same order. Previously the early return for command-center (added
+  // when the route was introduced) ran BEFORE the useMemo below, which made
+  // the hook count differ between renders. The first navigation between /
+  // and /command-center produced React's "Rendered fewer/more hooks than
+  // during the previous render" error and crashed the entire SPA — and
+  // ErrorBoundary cannot catch hook-order errors above its mount point.
+  // Run all hooks first, then return conditionally.
   const grouped = useMemo(() => {
     const groups: Record<string, typeof VIEWS> = {};
     for (const v of VIEWS) {
@@ -286,6 +286,14 @@ export function App(): JSX.Element {
     }
     return groups;
   }, []);
+
+  if (route.route === "command-center") {
+    return (
+      <ErrorBoundary region="command-center">
+        <CommandCenter />
+      </ErrorBoundary>
+    );
+  }
 
   const ActiveView = getView(activeView).component;
 
