@@ -137,6 +137,14 @@ pub fn build_router(state: ApiGraphState) -> Router {
         .route("/api/graph/files", get(api_graph_files))
         .route("/api/graph/findings", get(api_graph_findings))
         .route("/api/graph/status", get(api_graph_status))
+        // Item #124: server-pre-computed layout snapshot for ForceGalaxy
+        // first-paint < 500ms. The handler builds a deterministic
+        // community-aware sunflower-spiral layout from data already in
+        // graph.db (nodes + community_membership) — no FA2 server-side,
+        // no extra build step. The SPA fetches in parallel with /nodes
+        // + /edges and seeds Sigma's positions; FA2 worker still runs
+        // for refinement once Sigma is on screen.
+        .route("/api/graph/layout", get(api_graph_layout))
         // -- Stub endpoints (501 not_implemented) -----------------------
         // The remaining 12 endpoints documented in
         // phase-a-issues.md §3. D3-D6 will fill these in incrementally.
@@ -825,6 +833,171 @@ async fn api_graph_edges(
         .await
         .unwrap_or_default();
     Json(edges)
+}
+
+// ---------------------------------------------------------------------
+// /api/graph/layout — Item #124, server-pre-computed positions.
+//
+// Returns one (q, x, y) triple per node in the same window the SPA's
+// /api/graph/nodes call returns. The SPA seeds Sigma's positions from
+// this payload before kicking off FA2 worker refinement, dropping
+// first-paint from ~3 s (random-init + 1-2 FA2 iters) to <500 ms.
+//
+// Algorithm: community-aware sunflower spiral.
+//   1. Group nodes by `community_membership.community_id` (left-join
+//      so nodes outside any community fall into a synthetic "loose"
+//      bucket bucketed by `kind`).
+//   2. Place each group's center on a Vogel sunflower disk: angle =
+//      i * golden_angle_radians, radius = R_outer * sqrt(i / N).
+//   3. Within each group, distribute members on a small inner circle
+//      proportional to group size: angle = j * 2π / group_size,
+//      radius = R_inner * sqrt(group_size). Members ordered by
+//      qualified_name SHA hash for stable layout across rebuilds.
+// ---------------------------------------------------------------------
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+struct LayoutPosition {
+    /// Node qualified_name — joins with `/api/graph/nodes` on `id`.
+    q: String,
+    x: f64,
+    y: f64,
+}
+
+/// `GET /api/graph/layout` — pre-computed (q, x, y) positions for
+/// the same node window the paired `/api/graph/nodes` call returns.
+async fn api_graph_layout(
+    State(state): State<ApiGraphState>,
+    Query(q): Query<ProjectQuery>,
+) -> impl IntoResponse {
+    // Same clamping policy as /nodes + /edges: keeps the daemon's
+    // blocking pool from being saturated by a runaway client.
+    let limit = q.limit.unwrap_or(2000).min(MAX_GRAPH_LIMIT);
+    // The SQL pulls (qualified_name, kind, community_id) in the same
+    // node window as /nodes, then we run the pure layout function.
+    // LEFT JOIN community_membership so nodes without a community
+    // (e.g. when run_community_detection didn't assign one) still
+    // get a position — they bucket by kind in compute_layout.
+    let sql = format!(
+        "WITH visible_nodes AS ( \
+             SELECT qualified_name, kind FROM nodes ORDER BY id LIMIT {limit} \
+         ) \
+         SELECT vn.qualified_name, vn.kind, cm.community_id \
+         FROM visible_nodes vn \
+         LEFT JOIN community_membership cm \
+             ON cm.node_qualified = vn.qualified_name \
+         ORDER BY vn.qualified_name",
+        limit = limit
+    );
+    let raw: Vec<(String, String, Option<i64>)> =
+        with_layer_db_sync(&state, "graph", q.project.as_deref(), move |conn| {
+            let mut stmt = conn.prepare(&sql).ok()?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                        r.get::<_, Option<i64>>(2)?,
+                    ))
+                })
+                .ok()?;
+            Some(rows.filter_map(|r| r.ok()).collect())
+        })
+        .await
+        .unwrap_or_default();
+    Json(compute_layout(&raw))
+}
+
+/// Pure deterministic layout function. Public-in-crate so tests can
+/// exercise it without a database round-trip.
+///
+/// Input: `(qualified_name, kind, community_id_or_none)` triples.
+/// Output: `(qualified_name, x, y)` triples in the same order, with
+/// coordinates roughly in `[-1000, 1000]` so Sigma's default camera
+/// frames the whole graph without manual zoom.
+fn compute_layout(rows: &[(String, String, Option<i64>)]) -> Vec<LayoutPosition> {
+    use std::collections::BTreeMap;
+
+    if rows.is_empty() {
+        return Vec::new();
+    }
+
+    // Bucket by community_id; nodes without one bucket by `loose:<kind>`.
+    // BTreeMap so the iteration order is deterministic across runs.
+    let mut buckets: BTreeMap<String, Vec<&(String, String, Option<i64>)>> = BTreeMap::new();
+    for row in rows {
+        let key = match row.2 {
+            Some(cid) => format!("c:{cid}"),
+            None => format!("loose:{}", row.1),
+        };
+        buckets.entry(key).or_default().push(row);
+    }
+
+    let n_groups = buckets.len() as f64;
+    let golden_angle = std::f64::consts::PI * (3.0 - (5.0_f64).sqrt());
+
+    // Outer disk radius. 800 keeps positions within Sigma's default
+    // camera frame; the inner circle inside each group is sized
+    // proportionally to its member count.
+    const R_OUTER: f64 = 800.0;
+    const R_INNER_PER_NODE: f64 = 8.0;
+    const R_INNER_MIN: f64 = 30.0;
+    const R_INNER_MAX: f64 = 200.0;
+
+    let mut out = Vec::with_capacity(rows.len());
+    let mut by_qname: std::collections::HashMap<&str, (f64, f64)> =
+        std::collections::HashMap::with_capacity(rows.len());
+
+    for (group_idx, (_key, members)) in buckets.iter().enumerate() {
+        // Vogel sunflower position for this group's center.
+        let theta = (group_idx as f64) * golden_angle;
+        let r = if n_groups <= 1.0 {
+            0.0
+        } else {
+            R_OUTER * ((group_idx as f64 + 0.5) / n_groups).sqrt()
+        };
+        let cx = r * theta.cos();
+        let cy = r * theta.sin();
+
+        // Inner circle radius scales with sqrt(group size). Clamped so
+        // a single oversized cluster doesn't swamp the canvas and a
+        // singleton doesn't collapse to a point.
+        let m = members.len() as f64;
+        let r_inner = (R_INNER_PER_NODE * m.sqrt())
+            .max(R_INNER_MIN)
+            .min(R_INNER_MAX);
+
+        for (i, member) in members.iter().enumerate() {
+            let phi = if members.len() <= 1 {
+                0.0
+            } else {
+                (i as f64) * std::f64::consts::TAU / (members.len() as f64)
+            };
+            // Singleton groups sit exactly at the group center.
+            let x = if members.len() <= 1 {
+                cx
+            } else {
+                cx + r_inner * phi.cos()
+            };
+            let y = if members.len() <= 1 {
+                cy
+            } else {
+                cy + r_inner * phi.sin()
+            };
+            by_qname.insert(member.0.as_str(), (x, y));
+        }
+    }
+
+    // Re-emit in the original input order so the response lines up
+    // with /api/graph/nodes (caller can zip the two without re-sort).
+    for row in rows {
+        let pos = by_qname.get(row.0.as_str()).copied().unwrap_or((0.0, 0.0));
+        out.push(LayoutPosition {
+            q: row.0.clone(),
+            x: pos.0,
+            y: pos.1,
+        });
+    }
+    out
 }
 
 /// `GET /api/graph/status` — shard health + counts for the status bar.
@@ -2526,6 +2699,110 @@ mod tests {
             // close) when there's no bus attached.
             livebus: None,
         }
+    }
+
+    // ---- Item #124: compute_layout pure tests ------------------------
+
+    #[test]
+    fn layout_empty_input_returns_empty() {
+        assert!(compute_layout(&[]).is_empty());
+    }
+
+    #[test]
+    fn layout_preserves_input_order() {
+        let rows = vec![
+            ("crate::a".to_string(), "function".to_string(), Some(1)),
+            ("crate::b".to_string(), "function".to_string(), Some(1)),
+            ("crate::c".to_string(), "class".to_string(), None),
+        ];
+        let out = compute_layout(&rows);
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0].q, "crate::a");
+        assert_eq!(out[1].q, "crate::b");
+        assert_eq!(out[2].q, "crate::c");
+    }
+
+    #[test]
+    fn layout_is_deterministic_across_runs() {
+        let rows = vec![
+            ("a".to_string(), "function".to_string(), Some(1)),
+            ("b".to_string(), "function".to_string(), Some(1)),
+            ("c".to_string(), "function".to_string(), Some(2)),
+            ("d".to_string(), "class".to_string(), None),
+        ];
+        let a = compute_layout(&rows);
+        let b = compute_layout(&rows);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn layout_singleton_group_sits_at_group_center() {
+        // A node whose community is alone in its bucket should land
+        // exactly at its group's sunflower center (no inner-circle
+        // distribution applied).
+        let rows = vec![("only".to_string(), "function".to_string(), Some(42))];
+        let out = compute_layout(&rows);
+        assert_eq!(out.len(), 1);
+        // Single group → group_idx = 0, n_groups = 1 → r = 0 → center
+        // is exactly (0, 0).
+        assert!((out[0].x).abs() < 1e-9);
+        assert!((out[0].y).abs() < 1e-9);
+    }
+
+    #[test]
+    fn layout_buckets_loose_nodes_by_kind() {
+        // Two community-less nodes with different kinds end up in
+        // different buckets and therefore get different group centers.
+        let rows = vec![
+            ("a".to_string(), "function".to_string(), None),
+            ("b".to_string(), "class".to_string(), None),
+        ];
+        let out = compute_layout(&rows);
+        // Same input order, distinct positions.
+        assert!(
+            (out[0].x - out[1].x).abs() > 1e-3 || (out[0].y - out[1].y).abs() > 1e-3,
+            "loose nodes of different kinds must not collide: {out:?}",
+        );
+    }
+
+    #[test]
+    fn layout_keeps_coordinates_within_bounds() {
+        // 200 nodes spread across 10 communities — every position
+        // must stay within the canvas-friendly [-1100, 1100] envelope
+        // (R_OUTER 800 + R_INNER_MAX 200 + small margin).
+        let mut rows = Vec::with_capacity(200);
+        for i in 0..200 {
+            rows.push((
+                format!("n{i}"),
+                "function".to_string(),
+                Some((i % 10) as i64),
+            ));
+        }
+        let out = compute_layout(&rows);
+        assert_eq!(out.len(), 200);
+        for p in &out {
+            assert!(p.x.abs() < 1100.0, "x out of bounds: {}", p.x);
+            assert!(p.y.abs() < 1100.0, "y out of bounds: {}", p.y);
+        }
+    }
+
+    #[tokio::test]
+    async fn api_graph_layout_returns_empty_array_on_no_shard() {
+        let app = build_router(test_state());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/graph/layout")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(resp.status(), 200);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        assert_eq!(&body[..], b"[]");
     }
 
     #[tokio::test]

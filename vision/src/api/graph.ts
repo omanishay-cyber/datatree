@@ -388,6 +388,39 @@ export async function fetchEdges(signal?: AbortSignal, limit = 8000): Promise<Ed
   }
 }
 
+/**
+ * Item #124: server-pre-computed (q, x, y) positions for the same
+ * node window the paired `fetchNodes(limit)` call returns. The SPA
+ * fetches this in parallel with /nodes + /edges and seeds Sigma's
+ * positions before the FA2 worker kicks off, dropping ForceGalaxy
+ * first-paint from ~3 s to <500 ms on the mneme repo (17 K nodes).
+ *
+ * Falls back to an empty array on transport/parse errors so the
+ * caller can use random initial positions and still render — the
+ * layout snapshot is a *speed-up*, not a correctness requirement.
+ */
+export interface LayoutPosition {
+  q: string;
+  x: number;
+  y: number;
+}
+export interface LayoutResponse {
+  positions: LayoutPosition[];
+  error?: string;
+}
+export async function fetchLayout(
+  signal?: AbortSignal,
+  limit = 2000,
+): Promise<LayoutResponse> {
+  try {
+    const raw = await getJsonRaw(`/api/graph/layout?limit=${limit}`, signal);
+    const { items, error } = asArrayEnvelope<LayoutPosition>(raw, "positions");
+    return error ? { positions: items, error } : { positions: items };
+  } catch (err) {
+    return { positions: [], error: describeFetchErr(err) };
+  }
+}
+
 export async function fetchFiles(signal?: AbortSignal, limit = 2000): Promise<FilesResponse> {
   try {
     const raw = await getJsonRaw(`/api/graph/files?limit=${limit}`, signal);

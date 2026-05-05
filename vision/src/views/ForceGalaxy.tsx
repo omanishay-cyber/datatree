@@ -12,7 +12,7 @@ import Sigma from "sigma";
 // over the 500ms aspirational budget, but a 10× win — true <500ms
 // requires a server-pre-computed layout snapshot, deferred to v0.4.1).
 import FA2Layout from "graphology-layout-forceatlas2/worker";
-import { fetchNodes, fetchEdges } from "../api/graph";
+import { fetchNodes, fetchEdges, fetchLayout } from "../api/graph";
 import { useVisionStore, shallow } from "../store";
 import { Legend, type LegendKindRow } from "../components/Legend";
 import { OnboardingHint } from "../components/OnboardingHint";
@@ -118,14 +118,36 @@ export function ForceGalaxy(): JSX.Element {
         // exists.
         const NODE_LIMIT = 32000;
         const EDGE_LIMIT = 32000;
-        const [nodesRes, edgesRes] = await Promise.all([
+        // Item #124 (2026-05-05): fetch the server-pre-computed layout
+        // snapshot in parallel with /nodes + /edges. The daemon ships
+        // (qualified_name, x, y) triples derived from community
+        // membership in <50 ms, and seeding Sigma's positions from
+        // them drops first-paint from ~3 s (random init + FA2 warm-up)
+        // to <500 ms on the mneme repo (17 K nodes). The FA2 worker
+        // still runs for refinement so the layout converges further
+        // over the first ~5 s — but the user sees a coherent shape on
+        // the very first frame instead of a uniform dot cloud.
+        //
+        // Failure mode: if /api/graph/layout is unreachable (older
+        // daemon, build hadn't run community detection, etc.) the
+        // SPA falls back to random initial positions exactly like
+        // before. Layout is a speed-up, never a correctness gate.
+        const [nodesRes, edgesRes, layoutRes] = await Promise.all([
           fetchNodes(ac.signal, NODE_LIMIT),
           fetchEdges(ac.signal, EDGE_LIMIT),
+          fetchLayout(ac.signal, NODE_LIMIT),
         ]);
         if (cancelled || !containerRef.current) return;
 
         const nodes = nodesRes.nodes;
         const edges = edgesRes.edges;
+        // O(1)-lookup map keyed on qualified_name. Empty when the
+        // layout call failed — the addNode loop falls through to
+        // its random-position default in that case.
+        const layoutMap = new Map<string, { x: number; y: number }>();
+        for (const p of layoutRes.positions) {
+          layoutMap.set(p.q, { x: p.x, y: p.y });
+        }
 
         if (nodesRes.error) {
           setError(nodesRes.error);
@@ -164,10 +186,15 @@ export function ForceGalaxy(): JSX.Element {
           const color = colorForKind(kind);
           if (kind) kindCounts.set(kind, (kindCounts.get(kind) ?? 0) + 1);
 
+          // Item #124 priority chain: server-pre-computed layout >
+          // any (x, y) the /api/graph/nodes payload itself attaches >
+          // random fallback. The layoutMap is keyed on qualified_name
+          // (== n.id) which is what /api/graph/layout returns.
+          const seeded = layoutMap.get(n.id);
           g.addNode(n.id, {
             label: n.label ?? n.id,
-            x: n.x ?? Math.random(),
-            y: n.y ?? Math.random(),
+            x: seeded?.x ?? n.x ?? Math.random(),
+            y: seeded?.y ?? n.y ?? Math.random(),
             // Item #3: 4..10px range (sqrt-scaled). 4px floor keeps
             // leaves visible; +6px ceiling keeps hubs from blowing
             // out the layout at typical zoom.
@@ -193,11 +220,14 @@ export function ForceGalaxy(): JSX.Element {
         // warm-up (3 iterations)" was the actual bottleneck — even 3 iters
         // of forceAtlas2 on 17K nodes runs O(N²) without barnesHut, ~5-10s
         // on a typical CPU + a hard main-thread block. Removed entirely.
-        // Initial positions are pure random (set in addNode above via
-        // `n.x ?? Math.random()`), the worker takes over for refinement
-        // BEFORE sigma is even constructed, so by the time WebGL has set
-        // up its buffers the layout has already moved off random.
-        // Empirically the user perceives motion at ~150ms on a 17K graph.
+        // Item #124 (2026-05-05) lands the true <500 ms fix: initial
+        // positions now come from the server-pre-computed layout snapshot
+        // (community-aware sunflower spiral, see api_graph::compute_layout).
+        // Random positions remain the fallback when the layout endpoint
+        // is unavailable or the build skipped community detection.
+        // The FA2 worker takes over for refinement BEFORE sigma is even
+        // constructed, so by the time WebGL has set up its buffers the
+        // layout has already moved beyond the seed positions.
 
         // BUG-NEW-E (2026-05-05): start the FA2 layout worker BEFORE
         // constructing Sigma. The worker reads node positions from the
