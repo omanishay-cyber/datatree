@@ -801,16 +801,186 @@ html.light .nav-chapters:hover, html.rust .nav-chapters:hover {
   .mneme-hero { box-shadow: none; border: 1px solid #d4d4d4; }
 }
 
-/* === 13. Subtle motion ==================================================== */
+/* === 13. Motion + Marketing Polish ======================================= */
+/*
+   Premium motion system. Respects prefers-reduced-motion. All keyframes
+   here are intentionally short (<450ms) and layered so the page feels
+   alive on first view but doesn't fatigue the reader on subsequent
+   scrolls. Inspired by Linear / Vercel / Stripe landing pages.
+*/
 
 @media (prefers-reduced-motion: no-preference) {
-  html.light .content h1, html.rust .content h1 {
-    animation: mneme-hero-in 420ms cubic-bezier(.22, .61, .36, 1);
-  }
-  @keyframes mneme-hero-in {
-    from { opacity: 0; transform: translateY(4px); }
+
+  /* Hero entry — eyebrow → title → lede → CTAs in staggered cascade */
+  .mneme-hero .eyebrow         { animation: mneme-rise 500ms cubic-bezier(.22,.61,.36,1) both;     animation-delay:  0ms; }
+  .mneme-hero .hero-title      { animation: mneme-rise 600ms cubic-bezier(.22,.61,.36,1) both;     animation-delay: 80ms; }
+  .mneme-hero .lede            { animation: mneme-rise 600ms cubic-bezier(.22,.61,.36,1) both;     animation-delay: 160ms; }
+  .mneme-hero .cta-row         { animation: mneme-rise 600ms cubic-bezier(.22,.61,.36,1) both;     animation-delay: 240ms; }
+
+  @keyframes mneme-rise {
+    from { opacity: 0; transform: translateY(12px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+
+  /* Animated gradient on the hero title — shifts position over 8 s for
+     a subtle alive-feel without being distracting. */
+  .mneme-hero h1.hero-title .grad {
+    background: linear-gradient(135deg,
+      #16A34A 0%,
+      #0891B2 30%,
+      #2563EB 60%,
+      #0891B2 80%,
+      #16A34A 100%);
+    background-size: 250% 250%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: mneme-grad-shift 8s ease-in-out infinite;
+  }
+  @keyframes mneme-grad-shift {
+    0%, 100% { background-position: 0% 50%; }
+    50%      { background-position: 100% 50%; }
+  }
+
+  /* Hero blob orbs — float gently */
+  .mneme-hero::before { animation: mneme-float-a 12s ease-in-out infinite; }
+  .mneme-hero::after  { animation: mneme-float-b 14s ease-in-out infinite; }
+  @keyframes mneme-float-a {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50%      { transform: translate(-20px, 30px) scale(1.05); }
+  }
+  @keyframes mneme-float-b {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50%      { transform: translate(30px, -20px) scale(1.08); }
+  }
+
+  /* Eyebrow dot — pulse */
+  .mneme-hero .eyebrow::before {
+    animation: mneme-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes mneme-pulse {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(22,163,74,.18); }
+    50%      { box-shadow: 0 0 0 6px rgba(22,163,74,.05); }
+  }
+
+  /* Feature cards: stagger fade-in via IntersectionObserver class hook
+     (the .in-view class is added by a tiny inline script on the page). */
+  .mneme-feature       { opacity: 0; transform: translateY(16px); transition: opacity 480ms ease, transform 480ms cubic-bezier(.22,.61,.36,1), border-color 140ms ease, box-shadow 140ms ease; }
+  .mneme-feature.in-view { opacity: 1; transform: translateY(0); }
+  .mneme-feature:nth-child(2).in-view { transition-delay:  60ms; }
+  .mneme-feature:nth-child(3).in-view { transition-delay: 120ms; }
+  .mneme-feature:nth-child(4).in-view { transition-delay: 180ms; }
+  .mneme-feature:nth-child(5).in-view { transition-delay: 240ms; }
+  .mneme-feature:nth-child(6).in-view { transition-delay: 300ms; }
+
+  /* Feature icon-wrap glows on card hover */
+  .mneme-feature:hover .icon-wrap {
+    transform: scale(1.08);
+    background: var(--mneme-grad);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(22,163,74,.25);
+  }
+  .mneme-feature .icon-wrap {
+    transition: transform 200ms cubic-bezier(.22,.61,.36,1), background 200ms ease, color 200ms ease, box-shadow 200ms ease;
+  }
+
+  /* Install card: same scroll-reveal stagger */
+  .mneme-install-card { opacity: 0; transform: translateY(12px); transition: opacity 460ms ease, transform 460ms cubic-bezier(.22,.61,.36,1), border-color 140ms ease; }
+  .mneme-install-card.in-view { opacity: 1; transform: translateY(0); }
+  .mneme-install-card:nth-child(2).in-view { transition-delay:  60ms; }
+  .mneme-install-card:nth-child(3).in-view { transition-delay: 120ms; }
+  .mneme-install-card:nth-child(4).in-view { transition-delay: 180ms; }
+  .mneme-install-card:nth-child(5).in-view { transition-delay: 240ms; }
+
+  /* CTA primary — subtle gradient shift on hover */
+  .mneme-cta-primary {
+    background-size: 200% 100%;
+    transition: transform 200ms cubic-bezier(.22,.61,.36,1), box-shadow 200ms ease, background-position 400ms ease;
+  }
+  .mneme-cta-primary:hover {
+    background-position: 100% 0;
+  }
+  .mneme-cta-primary:active {
+    transform: translateY(0);
+  }
+
+  /* Read-list cards lift on hover with chevron slide */
+  .mneme-readme-list a::after {
+    content: "→";
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%) translateX(0);
+    color: var(--mneme-blue);
+    font-size: 18px;
+    opacity: 0;
+    transition: opacity 200ms ease, transform 200ms cubic-bezier(.22,.61,.36,1);
+  }
+  .mneme-readme-list a { position: relative; padding-right: 44px; }
+  .mneme-readme-list a:hover::after { opacity: 1; transform: translateY(-50%) translateX(4px); }
+
+  /* Stat row counter pulse on view */
+  .mneme-stat .num.in-view { animation: mneme-stat-pop 600ms cubic-bezier(.22,.61,.36,1); }
+  @keyframes mneme-stat-pop {
+    0%   { opacity: 0; transform: scale(0.92); }
+    60%  { opacity: 1; transform: scale(1.04); }
+    100% { transform: scale(1); }
+  }
+}
+
+/* === Stat row =========================================================== */
+
+.mneme-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--mneme-sp-3);
+  margin: var(--mneme-sp-7) 0 var(--mneme-sp-6);
+  padding: var(--mneme-sp-5) 0;
+  border-top: 1px solid var(--mneme-border);
+  border-bottom: 1px solid var(--mneme-border);
+}
+
+.mneme-stat {
+  text-align: center;
+}
+
+.mneme-stat .num {
+  display: block;
+  font-family: var(--mneme-display);
+  font-weight: 700;
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  background: var(--mneme-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.mneme-stat .label {
+  display: block;
+  margin-top: var(--mneme-sp-2);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--mneme-muted);
+  letter-spacing: 0.02em;
+}
+
+/* === Code-block chrome ================================================== */
+
+html.light .content pre::before, html.rust .content pre::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--mneme-grad);
+  border-top-left-radius: var(--mneme-radius);
+  border-top-right-radius: var(--mneme-radius);
+  opacity: 0.6;
 }
 
 /* === 14. Mobile ========================================================= */

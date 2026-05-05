@@ -13,6 +13,14 @@
 
 </div>
 
+<div class="mneme-stats">
+  <div class="mneme-stat"><span class="num">50</span><span class="label">MCP tools</span></div>
+  <div class="mneme-stat"><span class="num">14</span><span class="label">graph views</span></div>
+  <div class="mneme-stat"><span class="num">22</span><span class="label">storage layers</span></div>
+  <div class="mneme-stat"><span class="num">747</span><span class="label">tests passing</span></div>
+  <div class="mneme-stat"><span class="num">100%</span><span class="label">local-only</span></div>
+</div>
+
 ## Why Mneme
 
 When you ask an AI "where does `WorkerPool::spawn` get called?", the cheap answer is regex over text. The slightly less-cheap answer is grep. Both miss `super::spawn`, `crate::manager::spawn`, `use crate::manager; spawn()`, and aliased re-exports. Mneme answers with structural certainty: parser-built call graphs, a per-language symbol resolver, BGE embeddings anchored on canonical names, all in a daemon your AI talks to via MCP.
@@ -160,3 +168,31 @@ pip install mnemeos
 ## License
 
 [Apache-2.0](https://github.com/omanishay-cyber/mneme/blob/main/LICENSE) — free to use, modify, and ship inside commercial products. Built by Anish & Kruti Trivedi.
+
+<script>
+/* Tiny IntersectionObserver — adds .in-view to feature cards, install
+   cards, and stat numbers as they scroll into the viewport so the CSS
+   transition kicks in. ~30 LOC, no framework. Respects reduced motion
+   by checking the media query and applying .in-view immediately when
+   it's set so users who don't want animation see all elements
+   instantly. */
+(function () {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var sel = '.mneme-feature, .mneme-install-card, .mneme-stat .num';
+  var els = document.querySelectorAll(sel);
+  if (reduce || !('IntersectionObserver' in window)) {
+    els.forEach(function (el) { el.classList.add('in-view'); });
+    return;
+  }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in-view');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: '0px 0px -10% 0px', threshold: 0.12 });
+  els.forEach(function (el) { io.observe(el); });
+})();
+</script>
