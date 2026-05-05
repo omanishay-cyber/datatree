@@ -139,15 +139,48 @@ function runLocal(cmd: string): Promise<{
   }
   const bunGlobal = (globalThis as { Bun?: BunGlobal }).Bun;
 
-  // Bun provides a spawnSync; we fall back to Node's child_process when
-  // the global isn't available (keeps the type-checker happy under
-  // plain Node).
+  // CRIT-5 fix (2026-05-05 audit): switch to no-shell argv execution.
+  //
+  // The old path piped cmd verbatim into `cmd.exe /c <cmd>` (Windows)
+  // or `sh -c <cmd>` (Unix). Anyone who could write `tasks.db` (any
+  // same-user process) could plant arbitrary shell commands. The
+  // denyPatterns regex list above is a tripwire, NOT a sandbox — it
+  // misses powershell -enc <base64>, bash -c $'...', node -e "...",
+  // certutil download primitives, and any composition involving
+  // chaining or substitution.
+  //
+  // New path: try to parse `cmd` as an argv array (either JSON
+  // ["python", "x.py"] OR a strict whitespace tokenization with NO
+  // shell metacharacters). If we get a clean argv, spawn the binary
+  // directly without a shell — no $(), no ;, no &, no |, no
+  // redirection, no expansion. If parsing fails, refuse rather than
+  // fall back to shell exec.
+
+  const argv = parseAcceptanceArgv(cmd);
+  if (!argv) {
+    return Promise.resolve({
+      passed: false,
+      proof:
+        "step_verify: refusing to execute acceptance_cmd — must be either " +
+        "a JSON argv array (e.g. [\"python\", \"-m\", \"pytest\"]) or " +
+        "a plain command with NO shell metacharacters " +
+        "($, `, |, &, ;, <, >, (, ), {, }, [, ], *, ?, ~). " +
+        "This is the CRIT-5 hardening from the 2026-05-05 audit.",
+      exit_code: 126,
+    });
+  }
+  const [argv0, ...argvRest] = argv;
+  // The unused `exe` and `flag` are kept (return type compatible) but
+  // intentionally NOT used in spawn. The shell is gone.
+  void exe;
+  void flag;
+
   return new Promise((resolve) => {
     try {
       // Prefer Bun.spawn if present.
       if (bunGlobal && typeof bunGlobal.spawnSync === "function") {
         const res = bunGlobal.spawnSync({
-          cmd: [exe, flag, cmd],
+          cmd: [argv0!, ...argvRest],
           stdout: "pipe",
           stderr: "pipe",
         });
@@ -158,10 +191,14 @@ function runLocal(cmd: string): Promise<{
         resolve({ passed: exit === 0, proof, exit_code: exit });
         return;
       }
-      // Node fallback.
+      // Node fallback. shell:false is the default for spawnSync but
+      // we set it explicitly to make the security guarantee visible.
       import("node:child_process")
         .then(({ spawnSync }) => {
-          const res = spawnSync(exe, [flag, cmd], { encoding: "utf8" });
+          const res = spawnSync(argv0!, argvRest, {
+            encoding: "utf8",
+            shell: false,
+          });
           const exit = res.status ?? 127;
           const proof = (res.stdout ?? "") + (res.stderr ?? "");
           resolve({ passed: exit === 0, proof, exit_code: exit });
@@ -181,6 +218,52 @@ function runLocal(cmd: string): Promise<{
       });
     }
   });
+}
+
+/**
+ * CRIT-5 helper: parse acceptance_cmd into an argv array suitable for
+ * shell-less spawn. Returns null if the input contains any character
+ * that would require shell interpretation.
+ *
+ * Two accepted forms:
+ *   1. JSON array of strings: `["python", "-m", "pytest"]` — used as
+ *      argv directly. Most explicit and recommended for new tasks.
+ *   2. Plain whitespace-separated argv: `python -m pytest` — split on
+ *      ASCII whitespace, ONLY when the input contains no shell
+ *      metacharacters. Quoted strings are NOT supported in this mode
+ *      (use form 1 for arguments containing spaces).
+ *
+ * Anything else returns null and the caller refuses to execute.
+ */
+function parseAcceptanceArgv(cmd: string): string[] | null {
+  const trimmed = cmd.trim();
+  if (trimmed.length === 0) return null;
+
+  // Form 1: JSON argv array.
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed.every((x): x is string => typeof x === "string" && x.length > 0)
+      ) {
+        return parsed;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Form 2: plain whitespace tokenization with no shell metacharacters.
+  // Reject anything that would change meaning under a shell.
+  const SHELL_META = /[$`|&;<>(){}\[\]*?~"\\']/;
+  if (SHELL_META.test(trimmed)) {
+    return null;
+  }
+  const tokens = trimmed.split(/\s+/).filter((t) => t.length > 0);
+  return tokens.length > 0 ? tokens : null;
 }
 
 export const tool: ToolDescriptor<
