@@ -772,27 +772,34 @@ async fn verify_signature(
             Ok(())
         }
         (Some(sig), Some(_pubkey), _) => {
-            // Real verification path: download .minisig, run minisign verify
-            // against MNEME_RELEASE_PUBKEY. Wire in `rsign2` or `minisign-verify`
-            // crate when MNEME_RELEASE_PUBKEY is populated.
+            // CRIT-9 fix (2026-05-05 audit): this branch was previously a
+            // silent Ok(()) "placeholder". The audit caught that the moment
+            // MNEME_RELEASE_PUBKEY is populated WITHOUT the crypto verifier
+            // being wired, every signed binary is accepted unverified —
+            // defeating the entire supply-chain hardening that motivates
+            // signed releases in the first place.
             //
-            // Until then, the maintainer should treat this branch as "should
-            // never execute" -- if a release ships .minisig, the binary
-            // verifying it should also have a non-None MNEME_RELEASE_PUBKEY.
-            // Hitting this branch with `Some(pubkey)` means the maintainer
-            // populated the constant but never wired the crypto verifier.
+            // Refuse explicitly until rsign2 / minisign-verify is wired.
+            // Operators who genuinely need to skip can pass --allow-unsigned
+            // (the prior arm), making the trust decision deliberate.
+            //
+            // Future patch wires up `minisign_verify::PublicKey::from_base64`
+            // + `verify_data(&signature, &archive_bytes)` here.
             if verbose {
                 eprintln!(
-                    "self-update: signature {} present + pubkey embedded; \
-                     crypto verification not yet wired (placeholder).",
+                    "self-update: refusing — signature {} present + pubkey embedded but verifier not wired",
                     sig.name,
                 );
             }
-            // Placeholder: future patch wires up `minisign_verify::PublicKey::from_base64`
-            // + `verify_data(&signature, &archive_bytes)` here, returning
-            // CliError::Other on mismatch.
             let _ = archive_path;
-            Ok(())
+            Err(CliError::Other(format!(
+                "self-update: refusing to install — signature `{}` present \
+                 and MNEME_RELEASE_PUBKEY is embedded, but the crypto \
+                 verifier is not yet wired. Either update mneme to a \
+                 build that wires verification, or pass --allow-unsigned \
+                 to bypass deliberately.",
+                sig.name,
+            )))
         }
     }
 }
