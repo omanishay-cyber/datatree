@@ -85,7 +85,7 @@ pip install mnemeos && mnemeos
 
 Compared against the two closest projects in the AI-code-context space:
 [Code Review Graph (CRG)](https://github.com/tirth8205/code-review-graph),
-[Graphify](https://github.com/tirth8205/graphify), and
+[Graphify](https://github.com/safishamsi/graphify), and
 [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) for the parsing layer.
 
 | Capability | **Mneme v0.3.2** | Code Review Graph | Graphify | Tree-sitter |
@@ -96,8 +96,8 @@ Compared against the two closest projects in the AI-code-context space:
 | **MCP tools (live, all wired to real data)** | ✅ **48** | 24 | n/a (not an MCP server) | n/a |
 | **Built-in scanners** | ✅ **11** (theme * security * perf * a11y * drift * ipc * md-drift * secrets * refactor * architecture * types) | 1 (review-oriented) | ❌ | ❌ |
 | **Tree-sitter grammars** | ✅ 27 (18 Tier-1 + 8 Tier-2 + extensible) | 23 | 5-ish (per-input) | 200+ (community) |
-| **Drift detector enforcing CLAUDE.md rules live** | ✅ 11 scanners incl. drift + md-drift + secrets | partial (lint-style) | ❌ | ❌ |
-| **Storage layers (SQLite shards)** | ✅ **22 sharded DBs** + global meta.db (graph * semantic * git * deps * tests * multimodal * wiki * architecture * federated * history * tasks * agents * tool_cache * livestate * errors * perf * refactors * contracts * insights * telemetry * corpus * audit * memory * findings) | 1 | 1-2 JSON + HTML | n/a |
+| **Drift detector enforcing CLAUDE.md rules live** | ✅ 12 scanners incl. drift + md-drift + secrets | partial (lint-style) | ❌ | ❌ |
+| **Storage layers (SQLite shards)** | ✅ **27 sharded DBs** + global meta.db (graph * semantic * git * deps * tests * multimodal * wiki * architecture * federated * history * tasks * agents * tool_cache * livestate * errors * perf * refactors * contracts * insights * telemetry * corpus * audit * memory * findings * concepts * meta) | 1 | 1-2 JSON + HTML | n/a |
 | **Real local embeddings** | ✅ BGE-small-en-v1.5 (384-dim, ONNX, ORT 1.24.4, Cloudflare-hosted via HF) + Qwen 2.5 Coder/Embed 0.5B + Phi-3-mini-4k local LLMs (3.4 GB total, all GGUF) | ❌ | partial (sentence-transformers, network-pullable) | n/a |
 | **Visualization surface** | ✅ **14 WebGL views** + Command Center (Tauri SvelteKit app, served from daemon at `:7777`) | 1 (D3 force graph) | 1 (static HTML) | n/a |
 | **Multi-process Rust supervisor (watchdog + WAL + restart + health)** | ✅ HTTP `/health` on `:7777`, per-worker uptime + restart count + dropped count, ProcessRefreshKind PID-liveness via sysinfo | ❌ (single-process Python) | ❌ (single-process Python) | n/a |
@@ -261,7 +261,7 @@ mneme daemon start                 # spin up the supervisor (1 store + N parsers
 mneme build .                      # index the project -> ~/.mneme/projects/<sha>/
 mneme recall "where is auth?"      # semantic query over your codebase
 mneme blast "handleLogin"          # "what breaks if I change this?"
-mneme doctor                       # verify everything's wired (prints all 48 MCP tools live)
+mneme doctor                       # verify everything's wired (prints all 50 MCP tools live)
 ```
 
 **That's it.** Claude Code auto-discovers Mneme on its next invocation. No configuration, no API keys, no cloud. Tested on **Windows 11**, **macOS 14+ (Apple Silicon)**, **Ubuntu 22.04+**.
@@ -363,18 +363,28 @@ The **Step Ledger** is a numbered, verification-gated plan that lives in SQLite.
 
 Measured against [code-review-graph](https://github.com/tirth8205/code-review-graph). Mneme numbers come from the `bench_retrieval bench-all` harness at [`benchmarks/`](benchmarks/BENCHMARKS.md); CRG numbers are from their public README. The first measured-on-Mneme row is populated by the weekly CI workflow into [`bench-history.csv`](bench-history.csv); rows not yet measurable are marked `TBD (v0.3)`.
 
-| | CRG (the current SoTA) | **mneme (measured)** | What it means |
+> **Note (2026-05-05):** mneme rows below were measured at **v0.3.2**.
+> v0.4.0 ships the install matrix + 17 features + 9 critical bug fixes
+> but does **not yet** re-run the bench harness against the new
+> binaries — that re-bench is the v0.4.0 ship gate. The token-reduction
+> rows in particular are honest about CRG being ahead today (~4× ahead
+> at typical query, ~2× ahead at p95) because mneme has no symbol
+> resolver yet — the keystone work that closes the gap is the v0.4.0
+> roadmap item that lifts retrieval from 2/10 → 6/10+ on golden queries.
+
+| | CRG (the current SoTA) | **mneme (measured at v0.3.2)** | What it means |
 |---|---|---|---|
-| AI context size for code review | 6.8× smaller | **typical query saves ~34%, best 5% save 71%** | mneme hand-picks what AI sees instead of dumping every file - fewer tokens means cheaper + faster AI responses |
-| AI context size for live coding | 14.1× smaller | **measurement coming in v0.4** | Per-turn corpus harness still in development |
+| AI context size for code review | 6.8× reduction (CRG public bench) | **1.5× reduction typical (~34% saved), 3.5× at p95 (71% saved)** | CRG narrows context further today. mneme hand-picks what the AI sees instead of dumping every file; the gap is the symbol-resolution layer CRG has and mneme doesn't yet. |
+| AI context size for live coding | 14.1× reduction (CRG public bench) | **not yet measured separately** — `mneme_recall` is the closest proxy and tracks the 1.5×/3.5× numbers above | Per-turn corpus harness lands with v0.4.0 re-bench. |
 | First time indexing a project | 10 seconds for 500 files | **under 5 seconds for 359 files** (with 11k nodes + 27k edges in the graph) | Cold-start build of the full code graph |
 | Updating after you save a file | under 2 seconds | **finishes faster than you can blink - never more than 2 milliseconds** | Roughly **1000× faster than CRG** at staying in sync with your edits |
 | Visualization ceiling | ~5 000 nodes | **100 000+** (design, not yet benchmarked) | Tauri WebGL renderer |
-| Storage layers | 1 | **22** | Sharded SQLite, see [`docs/architecture.md`](docs/architecture.md) |
-| MCP tools | 24 | **48** | 48 wired to real data; counted from `mcp/src/tools/*.ts` at HEAD |
+| Storage layers | 1 | **27** | Sharded SQLite (counted from `common/src/layer.rs::DbLayer` enum at HEAD), see [`docs/architecture.md`](docs/architecture.md) |
+| MCP tools | 24 | **50** | 50 wired to real data; counted from `mcp/src/tools/*.ts` at HEAD |
 | Visualization views | 1 (D3 force) | **14** (WebGL) | `vision/src/views/*.tsx` |
-| Languages | 23 | **27** | counted from `parsers/src/language.rs` Language enum |
-| Platforms supported | 10 | **19** | counted from `cli/src/platforms/mod.rs` Platform enum |
+| Languages (enum coverage) | 23 | **27** hand-listed grammars (see caveat below) | counted from `parsers/src/language.rs` Language enum |
+| Languages (file extensions actually parsed) | **49** (CRG's `tree_sitter_language_pack` dynamic resolution) | 27 | CRG covers more file types in practice via `tree_sitter_language_pack`; mneme trades breadth for tighter quality control on each grammar |
+| Platforms supported | 10 | **20** | counted from `cli/src/platforms/mod.rs` Platform enum |
 | Compaction survival | ❌ | ✅ | Step Ledger, §7 design doc |
 | Multimodal (PDF/audio/video) | ❌ | ✅ | `workers/multimodal/` Python sidecar |
 | Live push updates | ❌ | ✅ | `livebus/` SSE+WebSocket |
