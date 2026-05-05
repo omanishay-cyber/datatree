@@ -10,8 +10,14 @@ license.workspace = true
 [lib]
 # cdylib = Python extension module (.so / .pyd)
 # rlib   = allows `cargo test` to test the Rust wrapper logic directly
+#
+# IMPORTANT: name = "mneme_parsers_py" (not "mneme_parsers") so the cargo
+# artifact filename does not collide with sdk/js's lib target inside the
+# shared workspace `target/release/` dir on macOS / Linux. Maturin renames
+# the wheel's .so to match the `#[pymodule]` function name (`mneme_parsers`)
+# at wheel-build time, so Python users still `import mneme_parsers`.
 crate-type = ["cdylib", "rlib"]
-name = "mneme_parsers"
+name = "mneme_parsers_py"
 
 [dependencies]
 # PyO3 — Python / Rust bridge

@@ -9,8 +9,15 @@ license.workspace = true
 
 [lib]
 # cdylib = Node.js native addon (.node)
+#
+# IMPORTANT: name = "mneme_parsers_node" (not "mneme_parsers") so the cargo
+# artifact filename does not collide with sdk/python's lib target inside
+# the shared workspace `target/release/` dir on macOS / Linux. napi-rs
+# renames the .node file to match the `napi.name` field in package.json
+# (`mneme-parsers`) at the `napi build` step, so JS consumers still see
+# the conventional binding name.
 crate-type = ["cdylib"]
-name = "mneme_parsers"
+name = "mneme_parsers_node"
 
 [dependencies]
 # napi-rs — Node-API binding framework
