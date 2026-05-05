@@ -19,6 +19,31 @@
   <div class="mneme-stat"><span class="num">100%</span><span class="lbl">Local-only</span></div>
 </div>
 
+<div class="mneme-terminal">
+  <div class="mneme-terminal-bar">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <span class="title">~/code/your-project — mneme</span>
+  </div>
+  <div class="mneme-terminal-body">
+<pre><code><span class="prompt">$</span> <span class="cmd">mneme recall_concept "spawn"</span>
+  <span class="arrow">→</span>  <span class="out-strong">crate::manager::WorkerPool::spawn</span>  <span class="path">supervisor/src/manager.rs:1100</span>
+     <span class="out">pub async fn spawn(&amp;self, job: Job) -&gt; Result&lt;JobId&gt;</span>
+     <span class="out">callers:</span> <span class="num">12</span>  <span class="out">dependents:</span> <span class="num">5</span>  <span class="out">tests:</span> <span class="num">3</span>
+
+<span class="prompt">$</span> <span class="cmd">mneme blast supervisor/src/manager.rs --depth=2</span>
+  <span class="arrow">→</span>  <span class="out-strong">risk:</span> <span class="ok">moderate</span>  <span class="out">  edges to refactor:</span> <span class="num">17</span>
+     <span class="out">— supervisor/src/health.rs    (calls spawn 4×)</span>
+     <span class="out">— cli/src/commands/build.rs   (calls spawn 2× in run_dispatched)</span>
+     <span class="out">— supervisor/src/api_graph.rs (1 indirect through worker pool)</span>
+
+<span class="prompt">$</span> <span class="cmd">mneme why "Why does v0.4.0 exist?"</span>
+  <span class="arrow">→</span>  <span class="out">2026-05-05 audit measured recall</span> <span class="num">2/10</span> <span class="out">vs CRG</span> <span class="num">6/10</span><span class="out">.</span>
+     <span class="out">Root cause: no symbol resolver. v0.4.0 ships the keystone —</span>
+     <span class="out">three real per-language resolvers plus symbol-anchored embeddings.</span>
+     <span class="out-strong">→  ledger</span><span class="out">: keystone-2026-05-05</span><span class="mneme-terminal-cursor"></span></code></pre>
+  </div>
+</div>
+
 </div>
 
 <h2 class="mneme-section-heading">What's inside</h2>

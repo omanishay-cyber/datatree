@@ -1,24 +1,23 @@
 # mdBook config for the mneme documentation site.
 #
 # Built by `.github/workflows/pages.yml` on every push to main and
-# deployed to https://omanishay-cyber.github.io/mneme/. The output of
-# `mdbook build` (book/ directory) is what GitHub Pages serves; the
-# legacy `docs/index.html` lives on as a fallback during the rollout.
+# deployed to https://omanishay-cyber.github.io/mneme/.
 
 [book]
 title = "Mneme"
-description = "Persistent memory layer for AI coding. Survives context wipes. Runs entirely local. 50 MCP tools, 14 graph views, 22 storage layers. Apache-2.0."
+description = "Local-only memory layer for AI coding. 50 MCP tools, 14 graph views, 22 storage layers, three real symbol resolvers. Apache-2.0."
 authors = ["Anish Trivedi", "Kruti Trivedi"]
 language = "en"
 src = "src"
 
 [output.html]
-# v0.4.0 audit feedback (2026-05-05): Anish prefers the LIGHT theme.
-# Default to mdBook's "light" preset; the custom.css overrides land
-# the warm off-white palette + brand-gradient accents from the prior
-# hand-written docs/index.html landing page.
+# v0.4.0 docs (2026-05-05): LIGHT ONLY. User explicit: "do not make
+# dark theme at all". `default-theme = "light"` locks the initial
+# load; `preferred-dark-theme = "light"` makes prefers-color-scheme:
+# dark also resolve to light. The theme picker UI is hidden via CSS
+# in theme/custom.css so users can't toggle out of light.
 default-theme = "light"
-preferred-dark-theme = "navy"
+preferred-dark-theme = "light"
 git-repository-url = "https://github.com/omanishay-cyber/mneme"
 edit-url-template = "https://github.com/omanishay-cyber/mneme/edit/main/docs-book/{path}"
 additional-css = ["theme/custom.css"]
@@ -53,6 +52,3 @@ copy-js = true
 enable = true
 
 [preprocessor.links]
-# Built-in mdBook preprocessor that resolves `{{#include path}}`
-# directives, used by chapters that pull in CHANGELOG / README
-# snippets so the docs site stays in lockstep with repo state.

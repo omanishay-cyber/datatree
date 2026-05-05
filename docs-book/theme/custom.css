@@ -1660,3 +1660,434 @@ html.rust ::selection {
     to   { opacity: 1; transform: translateY(0); }
   }
 }
+
+/* ============================================================================
+   v4 (2026-05-05) — ATTRACTIVE pass + LIGHT-ONLY lockdown
+   --------------------------------------------------------------------------
+   User feedback: "good not attractive and do not make dark theme at all".
+   - Hide the mdBook theme picker
+   - Lock every html.* class to light tokens
+   - Bigger hero (40-64px clamp), brand-tinted bg, larger orbs
+   - New `.mneme-terminal` component for a fake-terminal demo
+   - Bolder feature cards with animated gradient borders
+   - Animated gradient on numbers
+   ============================================================================ */
+
+/* Light-only lockdown — hide mdBook theme picker */
+#theme-toggle,
+.icon-button#theme-toggle,
+#theme-list { display: none !important; }
+
+html, html.navy, html.coal, html.ayu {
+  background: #fafaf7 !important;
+  color-scheme: light !important;
+}
+
+/* Hero v4 — bigger, brand-tinted bg, larger orbs */
+.mneme-hero {
+  background:
+    linear-gradient(135deg, rgba(22,163,124,.06) 0%, rgba(42,126,211,.06) 100%),
+    var(--mneme-card) !important;
+  padding: 56px 56px 60px !important;
+  border-radius: 24px !important;
+  border: 1px solid var(--mneme-line) !important;
+  box-shadow:
+    0 1px 2px rgba(15,15,15,.04),
+    0 12px 32px rgba(15,15,15,.08),
+    0 0 0 1px rgba(255,255,255,.6) inset !important;
+}
+
+.mneme-hero::before {
+  width: 520px !important;
+  height: 520px !important;
+  top: -45% !important;
+  right: -8% !important;
+  background: radial-gradient(circle, rgba(22,163,124,.18) 0%, transparent 70%) !important;
+}
+
+.mneme-hero::after {
+  width: 480px !important;
+  height: 480px !important;
+  bottom: -40% !important;
+  left: -8% !important;
+  background: radial-gradient(circle, rgba(42,126,211,.16) 0%, transparent 70%) !important;
+}
+
+.mneme-hero .hero-title,
+.mneme-hero h1.hero-title {
+  font-family: var(--mneme-display) !important;
+  font-weight: 800 !important;
+  font-size: clamp(40px, 5.4vw, 64px) !important;
+  line-height: 1.05 !important;
+  letter-spacing: -0.030em !important;
+  margin: 0 0 18px !important;
+  color: var(--mneme-text-strong) !important;
+  border: 0 !important;
+  max-width: 18ch;
+}
+
+.mneme-hero .hero-title::after { display: none !important; }
+
+.mneme-hero .lede {
+  font-size: clamp(17px, 1.4vw, 21px) !important;
+  line-height: 1.5 !important;
+  color: var(--mneme-muted) !important;
+  margin: 0 0 28px !important;
+  max-width: 60ch;
+  font-weight: 400 !important;
+}
+
+.mneme-hero .eyebrow {
+  font-size: 12px !important;
+  padding: 6px 14px !important;
+  background: rgba(22,163,124,.10) !important;
+  border-color: rgba(22,163,124,.25) !important;
+  color: #0e7a5b !important;
+  margin-bottom: 20px !important;
+}
+
+.mneme-hero .mneme-cta {
+  font-size: 16px !important;
+  padding: 13px 22px !important;
+  min-height: 48px !important;
+  border-radius: 12px !important;
+}
+
+.mneme-hero .mneme-cta-primary {
+  background: linear-gradient(135deg, #0e7a5b 0%, #0578a0 50%, #1d63b0 100%) !important;
+  box-shadow:
+    0 1px 2px rgba(13,99,176,.30),
+    0 8px 24px rgba(13,99,176,.30),
+    inset 0 1px 0 rgba(255,255,255,.20) !important;
+}
+
+.mneme-hero .mneme-cta-primary:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 2px 4px rgba(13,99,176,.35),
+    0 16px 36px rgba(13,99,176,.34),
+    inset 0 1px 0 rgba(255,255,255,.25) !important;
+}
+
+/* Terminal demo card — the visual centerpiece of the new hero */
+.mneme-terminal {
+  margin: 40px 0 0;
+  background: #0f1419;
+  border-radius: 14px;
+  box-shadow:
+    0 1px 2px rgba(15,15,15,.10),
+    0 12px 36px rgba(15,15,15,.18),
+    0 0 0 1px rgba(15,15,15,.06);
+  overflow: hidden;
+  font-family: var(--mneme-mono);
+  font-size: 14px;
+  line-height: 1.6;
+  color: #d4dae2;
+  position: relative;
+}
+
+.mneme-terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, #1a2028 0%, #161b22 100%);
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+
+.mneme-terminal-bar .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+}
+.mneme-terminal-bar .dot:nth-child(2) { background: #febc2e; }
+.mneme-terminal-bar .dot:nth-child(3) { background: #28c840; }
+.mneme-terminal-bar .title {
+  margin-left: 12px;
+  font-family: var(--mneme-sans);
+  font-size: 12px;
+  color: #9ba3ad;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.mneme-terminal-body {
+  padding: 18px 22px 22px;
+  background: transparent;
+}
+
+.mneme-terminal-body .prompt { color: #41e1b5; font-weight: 600; }
+.mneme-terminal-body .cmd    { color: #e8edf3; }
+.mneme-terminal-body .out    { color: #9ba3ad; }
+.mneme-terminal-body .out-strong { color: #d4dae2; font-weight: 500; }
+.mneme-terminal-body .arrow  { color: #22d3ee; }
+.mneme-terminal-body .path   { color: #b5d3ff; }
+.mneme-terminal-body .num    { color: #f59e0b; font-weight: 600; }
+.mneme-terminal-body .ok     { color: #41e1b5; font-weight: 600; }
+
+.mneme-terminal-body code {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  color: inherit !important;
+  font-size: inherit !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mneme-terminal-cursor {
+    display: inline-block;
+    width: 8px;
+    height: 14px;
+    background: #41e1b5;
+    margin-left: 4px;
+    vertical-align: middle;
+    animation: mneme-blink 1.1s steps(2) infinite;
+  }
+  @keyframes mneme-blink { 50% { opacity: 0; } }
+}
+
+/* Stats row v4 — left-aligned with brand gradient numbers */
+.mneme-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 36px 0 0;
+  padding: 22px 0 0;
+  border-top: 1px solid var(--mneme-line);
+}
+
+.mneme-stat { text-align: left; padding: 0 4px; }
+
+.mneme-stat .num {
+  display: block;
+  font-family: var(--mneme-display);
+  font-weight: 800;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #16a37c 0%, #0698b8 50%, #2a7ed3 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.mneme-stat .lbl,
+.mneme-stat .label {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--mneme-muted-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mneme-stat .num {
+    animation: mneme-grad-shift 6s ease-in-out infinite;
+  }
+}
+
+/* Feature card v4 — animated gradient border on hover */
+.mneme-feature {
+  position: relative;
+  background: var(--mneme-card) !important;
+  border: 1px solid var(--mneme-line) !important;
+  border-radius: 14px !important;
+  padding: 24px 22px 22px !important;
+  overflow: hidden;
+  transition:
+    transform 220ms cubic-bezier(.22,.61,.36,1),
+    box-shadow 220ms ease,
+    border-color 220ms ease;
+}
+
+.mneme-feature::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  padding: 1px;
+  background: var(--mneme-grad);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 220ms ease;
+  pointer-events: none;
+}
+
+.mneme-feature:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--mneme-shadow-card-hover);
+  border-color: transparent !important;
+}
+
+.mneme-feature:hover::before { opacity: 1; }
+
+.mneme-feature .icon,
+.mneme-feature .icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(22,163,124,.14) 0%, rgba(42,126,211,.14) 100%);
+  color: var(--mneme-blue);
+  font-family: var(--mneme-display);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  margin-bottom: 16px;
+  border: 1px solid rgba(22,163,124,.22);
+  transition:
+    transform 220ms cubic-bezier(.22,.61,.36,1),
+    background 220ms ease,
+    color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.mneme-feature:hover .icon,
+.mneme-feature:hover .icon-wrap {
+  transform: scale(1.06) rotate(-3deg);
+  background: linear-gradient(135deg, #16a37c 0%, #0698b8 50%, #2a7ed3 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(22,163,124,.28);
+}
+
+.mneme-feature h3 {
+  font-family: var(--mneme-display) !important;
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.012em;
+  margin: 0 0 8px !important;
+  color: var(--mneme-text-strong) !important;
+}
+
+.mneme-feature p {
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+  color: var(--mneme-muted) !important;
+  margin: 0 !important;
+}
+
+/* Section headings v4 */
+.mneme-section-heading {
+  font-family: var(--mneme-display) !important;
+  font-size: 32px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.020em !important;
+  margin: 64px 0 8px !important;
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  color: var(--mneme-text-strong) !important;
+}
+
+.mneme-section-heading::before,
+.mneme-section-heading::after { display: none !important; }
+
+.mneme-section-sub {
+  font-size: 17px !important;
+  line-height: 1.55 !important;
+  color: var(--mneme-muted) !important;
+  margin: 0 0 28px !important;
+  max-width: 60ch;
+}
+
+/* Install matrix v4 */
+.mneme-install-card { border-radius: 14px !important; }
+
+.mneme-install-card .platform { font-size: 16px !important; }
+
+.mneme-install-card .platform .badge {
+  background: linear-gradient(135deg, rgba(22,163,124,.10), rgba(42,126,211,.10)) !important;
+  color: #0e7a5b !important;
+  border-color: rgba(22,163,124,.25) !important;
+  font-size: 10px !important;
+  padding: 3px 8px !important;
+}
+
+/* Read-first cards v4 */
+.mneme-read-card {
+  position: relative;
+  display: block !important;
+  border-radius: 14px !important;
+  padding: 22px !important;
+  background: var(--mneme-card) !important;
+  border: 1px solid var(--mneme-line) !important;
+  box-shadow: var(--mneme-shadow-card) !important;
+  text-decoration: none !important;
+  transition:
+    transform 220ms cubic-bezier(.22,.61,.36,1),
+    box-shadow 220ms ease,
+    border-color 220ms ease;
+}
+
+.mneme-read-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--mneme-blue) !important;
+  box-shadow: var(--mneme-shadow-card-hover) !important;
+}
+
+.mneme-read-card .step {
+  display: block;
+  font-family: var(--mneme-display);
+  font-size: 28px !important;
+  font-weight: 800 !important;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  background: var(--mneme-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  margin-bottom: 8px !important;
+}
+
+.mneme-read-card .step-title {
+  display: block;
+  font-family: var(--mneme-display);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--mneme-text-strong);
+  margin-bottom: 4px;
+}
+
+.mneme-read-card .step-desc {
+  display: block;
+  font-size: 14px;
+  color: var(--mneme-muted);
+  line-height: 1.5;
+}
+
+.mneme-read-card .arrow {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  color: var(--mneme-blue);
+  font-size: 18px;
+  font-weight: 600;
+  transition: transform 220ms cubic-bezier(.22,.61,.36,1);
+}
+
+.mneme-read-card:hover .arrow {
+  transform: translateX(4px);
+}
+
+@media (max-width: 760px) {
+  .mneme-hero {
+    padding: 32px 24px 36px !important;
+    border-radius: 18px !important;
+  }
+  .mneme-hero .hero-title { font-size: clamp(32px, 9vw, 42px) !important; }
+  .mneme-section-heading { font-size: 26px !important; margin-top: 48px !important; }
+  .mneme-terminal { font-size: 12.5px; }
+  .mneme-terminal-body { padding: 14px 16px 16px; }
+}
