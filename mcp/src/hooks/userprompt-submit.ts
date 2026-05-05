@@ -24,6 +24,132 @@ import { getHooksConfig } from "./lib/recent-tool-calls.ts";
 import { errMsg } from "../errors.ts";
 
 // ---------------------------------------------------------------------------
+// Item #119 (2026-05-05) — smart context injection.
+//
+// The pre-fix hook fired the FULL reminder block (~200 tokens) on
+// EVERY UserPromptSubmit, including simple acks ("ok", "continue",
+// "thanks"). Across a 50-turn session that's ~10K tokens of pure
+// overhead. Bench harness confirmed mneme was NOT saving tokens net
+// (1.34× measured vs CRG's 6.8× claimed) — partly because the
+// reminder added more than the tool savings recouped.
+//
+// Three-tier classification:
+//   - "simple"  — small-talk / acks / planning chat. Inject nothing.
+//   - "code"    — code-related question. Inject the LIGHT block:
+//                 top-3 tools only, no trespass log unless real
+//                 trespasses exist. ~100-150 tokens.
+//   - "resume"  — continuation cue ("continue", "where was i", etc.)
+//                 with the implicit assumption that a compact may
+//                 have wiped earlier context. Inject the HEAVY
+//                 block: top-3 tools + trespass log + cue to call
+//                 mneme_resume / step_status. ~400-500 tokens.
+//
+// Distribution across a real session (eyeballed): ~30% simple, ~60%
+// code, ~10% resume. Expected average ≈ 140 tokens vs the prior 200,
+// a ~30% reduction that compounds with the 0-token simple case
+// dominating short turns.
+// ---------------------------------------------------------------------------
+
+type PromptIntent = "simple" | "code" | "resume";
+
+/**
+ * Quick keyword classifier. Heuristic-only; no LLM. Order matters:
+ * resume cues are checked BEFORE code cues so "continue editing X"
+ * gets resume-class treatment (which is a superset of the code
+ * reminder anyway).
+ */
+function classifyPromptIntent(prompt: string): PromptIntent {
+  const lower = prompt.toLowerCase().trim();
+
+  // Resume signals: short prompts implying continuation. Generic
+  // acks like "ok" / "next" are deliberately NOT in this list —
+  // they're more often "ok thanks" / "what's next on the list" than
+  // a real continuation cue. We anchor on phrases that genuinely
+  // imply "pick up where we left off".
+  const resumeSignals = [
+    "continue",
+    "resume",
+    "where was i",
+    "where were we",
+    "carry on",
+    "keep going",
+    "proceed",
+  ];
+  if (lower.length <= 40 && resumeSignals.some((s) => lower === s || lower.startsWith(`${s} `) || lower.startsWith(`${s},`))) {
+    return "resume";
+  }
+
+  // Code signals: any token from the broad code-vocabulary list. We
+  // keep this list narrow enough that "code" doesn't swallow casual
+  // chat but wide enough that real engineering questions hit it.
+  const codeSignals = [
+    "function",
+    "method",
+    "class",
+    "module",
+    "package",
+    "interface",
+    "type ",
+    "struct",
+    "enum",
+    "trait",
+    "impl",
+    "import",
+    "export",
+    "edit",
+    " write ",
+    "rewrite",
+    "implement",
+    "refactor",
+    "rename",
+    "delete",
+    "fix",
+    " bug",
+    "debug",
+    "trace",
+    "caller",
+    "callee",
+    "callers",
+    "callees",
+    "callsite",
+    "where is",
+    "who calls",
+    "find ",
+    "search",
+    "lookup",
+    "blast",
+    "audit",
+    "test",
+    "compile",
+    "build",
+    "deploy",
+    "commit",
+    "push",
+    "merge",
+    "rebase",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".rs",
+    ".py",
+    ".go",
+    ".java",
+    ".cpp",
+    ".c ",
+    ".cs",
+    ".rb",
+    "src/",
+    "/src",
+  ];
+  if (codeSignals.some((s) => lower.includes(s))) {
+    return "code";
+  }
+
+  return "simple";
+}
+
+// ---------------------------------------------------------------------------
 // Prompt → tool relevance mapping
 // ---------------------------------------------------------------------------
 
@@ -174,12 +300,28 @@ export async function runUserPromptSubmit(
       return empty;
     }
 
+    // Item #119 (2026-05-05): three-tier intent classification.
+    // Simple acks pay zero tokens. Code questions get the light
+    // block (top-3 tools, trespass log only if real trespasses).
+    // Resume cues get the heavy block (full reminder + cue to call
+    // mneme_resume / step_status — the headline compaction-recovery
+    // story).
+    const intent = classifyPromptIntent(args.prompt);
+
+    if (intent === "simple") {
+      // No code-related work in flight. Stay quiet.
+      return empty;
+    }
+
     const [topTools, trespasses] = await Promise.all([
       Promise.resolve(pickTopTools(args.prompt, 3)),
       getSessionTrespasses(args.sessionId, 5),
     ]);
 
-    const additionalContext = buildReminderBlock(topTools, trespasses);
+    const additionalContext =
+      intent === "resume"
+        ? buildReminderBlock(topTools, trespasses, /* heavy */ true)
+        : buildReminderBlock(topTools, trespasses, /* heavy */ false);
 
     return {
       hook_specific: { additionalContext },
@@ -189,6 +331,9 @@ export async function runUserPromptSubmit(
     return empty;
   }
 }
+
+/** Exposed for testing — see __tests__/userprompt-submit.test.ts. */
+export { classifyPromptIntent };
 
 // ---------------------------------------------------------------------------
 // Block builder
@@ -202,10 +347,26 @@ export async function runUserPromptSubmit(
 function buildReminderBlock(
   tools: ReadonlyArray<ToolRecommendation>,
   trespasses: ReadonlyArray<{ tool: string; path: string; calledAt: string }>,
+  heavy: boolean,
 ): string {
   const lines: string[] = [];
 
   lines.push("<mneme-self-ping>");
+
+  if (heavy) {
+    // Item #119 (2026-05-05): heavy block fires on resume cues —
+    // the headline compaction-recovery story. We assume the prior
+    // turn's context may have been wiped and re-prime the AI with
+    // the resume tools first, then the regular reminder.
+    lines.push("Resume cue detected. Likely post-compact — these tools rebuild context fast:");
+    lines.push("  • mcp__mneme__mneme_resume   — full session brief (decisions + open questions + timeline)");
+    lines.push("  • mcp__mneme__step_status    — current step + acceptance criteria");
+    lines.push("  • mcp__mneme__step_show      — last completed step's output");
+    lines.push("");
+    lines.push("If state was preserved across the compact, the step ledger has it.");
+    lines.push("");
+  }
+
   lines.push("IMPORTANT: Use mneme MCP tools BEFORE grep/read/bash for code exploration.");
   lines.push("");
   lines.push("Top 3 mneme tools for this prompt:");
@@ -214,6 +375,9 @@ function buildReminderBlock(
     lines.push(`    Why: ${t.why}`);
   }
 
+  // Trespass log only emitted when real trespasses exist (light) OR
+  // unconditionally during resume (heavy — the post-compact AI may
+  // not even remember the trespasses happened).
   if (trespasses.length > 0) {
     lines.push("");
     lines.push("Trespass log — grep/read calls this session that skipped mneme:");
