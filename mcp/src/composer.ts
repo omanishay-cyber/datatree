@@ -369,7 +369,7 @@ export async function buildPrimer(opts: ComposeOptions): Promise<string> {
 
   const baseline = composePrimer({
     ctx: { cwd: opts.cwd, sessionId: opts.sessionId },
-    goal: goal ?? undefined,
+    ...(goal != null ? { goal } : {}),
     decisions,
     constraints,
     todos,

@@ -130,7 +130,9 @@ async function fetchHttpExtras(): Promise<HttpHealthExtra | null> {
     return {
       cache_hit_rate: typeof h.cache_hit_rate === "number" ? h.cache_hit_rate : 0,
       disk_usage_mb: diskMb,
-      supervisor_uptime_s: h.supervisor_uptime_s,
+      ...(typeof h.supervisor_uptime_s === "number"
+        ? { supervisor_uptime_s: h.supervisor_uptime_s }
+        : {}),
     };
   } catch {
     return null;

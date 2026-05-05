@@ -61,8 +61,8 @@ export const tool: ToolDescriptor<
           query: input.query,
           kinds: input.kinds,
           limit: input.limit,
-          sinceMillis,
-          sessionId,
+          ...(sinceMillis !== undefined ? { sinceMillis } : {}),
+          ...(sessionId !== undefined ? { sessionId } : {}),
         },
         ctx.cwd,
       );

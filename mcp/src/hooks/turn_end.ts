@@ -52,8 +52,8 @@ export async function runTurnEnd(args: TurnEndArgs): Promise<HookOutput> {
           sessionId: args.sessionId,
           userMsg: args.userMsg,
           assistantMsg: args.assistantMsg,
-          turnIndex: args.turnIndex,
-          messageId: args.messageId,
+          ...(args.turnIndex !== undefined ? { turnIndex: args.turnIndex } : {}),
+          ...(args.messageId !== undefined ? { messageId: args.messageId } : {}),
         });
         return Promise.resolve(entry);
       } catch (err) {
