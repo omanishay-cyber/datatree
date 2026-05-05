@@ -647,20 +647,288 @@ fn resolve_relative(from_dir: &str, specifier: &str) -> String {
     segments.join("/")
 }
 
-/// Per-language resolver placeholder for Python (v0.4.3 target).
+/// Python symbol resolver — v0.4.0.
 ///
-/// The shape this WILL take:
-/// 1. jedi-style scoping: walk module-level / class-level / function-level
-///    namespaces to figure out which `foo` a reference resolves to.
-/// 2. Relative imports: `from .x import y` resolves through the
-///    package's `__init__.py` chain.
-/// 3. Namespace packages (PEP 420) where `__init__.py` is absent.
-/// 4. `__all__` exports as the canonical surface for downstream
-///    `from x import *` resolution.
+/// Closes the same recall gap [`RustResolver`] / [`TypeScriptResolver`]
+/// close, adapted for Python's import semantics. Canonical names use
+/// the dot-separator convention Python tooling already speaks (jedi,
+/// mypy, pylint, sphinx) so a stored symbol like
+/// `pkg.subpkg.module.foo` matches what a user types when searching.
+///
+/// ## Why dots, not `::`
+///
+/// Rust and TS share `::` as their canonical separator because the
+/// resolver-side string is ours to choose, but Python's ecosystem
+/// already canonicalises on dots: `import pkg.sub.mod`,
+/// `pkg.sub.mod.foo`, `__all__ = ['foo']`. Forcing `::` here would
+/// break round-tripping with every Python tool downstream of mneme.
+/// The cross-language match is unaffected: queries like "where is
+/// `spawn`?" still hit because the leaf segment is the same — only
+/// the separator differs, and the embedder anchors on the leaf.
+///
+/// ## Coverage in this commit
+///
+/// - File path → canonical module path
+///   (`pkg/sub/mod.py` → `pkg.sub.mod`,
+///    `pkg/sub/__init__.py` → `pkg.sub`,
+///    `pkg/__main__.py` → `pkg.__main__`,
+///    `cli.py` → `cli`,
+///    `src/pkg/foo.py` → `pkg.foo` — leading `src/` is dropped).
+/// - Relative imports: `.x` and `..pkg.y` resolve against the file's
+///   canonical prefix (one parent walk per leading dot).
+/// - Absolute imports: `pkg.sub.mod` left verbatim (already canonical).
+/// - Aliased imports via [`PythonImportMap`]: `import x.y as z` →
+///   `z` resolves to `x.y`, `from x import foo as bar` → `bar`
+///   resolves to `x.foo`. Built by the extractor when it walks the
+///   file's `import_statement` / `import_from_statement` nodes.
+/// - Star imports (`from x import *`): the wildcard itself isn't a
+///   real symbol; references that show up as bare names against a
+///   star-imported module fall through to the bare-name path. The
+///   downstream `__all__` chasing that would resolve `foo()` back to
+///   `x.foo` is deferred to v0.4.2.
+///
+/// ## Out of scope (deferred)
+///
+/// - `__all__` re-export chasing across `from x import *`.
+/// - Namespace packages (PEP 420) where `__init__.py` is absent —
+///   the file-prefix builder treats every directory the same way,
+///   so this works in the common case but doesn't model the full
+///   PEP 420 multi-portion semantics.
+/// - Class-scoped name resolution (jedi-style scope walking) —
+///   Tree-sitter can't carry runtime scope without a second pass,
+///   and v0.4.0 does not add one.
+/// - Implicit relative imports (Python 2 style) — Python 3 only.
 #[derive(Debug, Default)]
 pub struct PythonResolver;
 
-impl SymbolResolver for PythonResolver {}
+impl SymbolResolver for PythonResolver {
+    fn resolve_definition(&self, syntactic_name: &str, ctx: &FileContext<'_>) -> CanonicalSymbol {
+        // Definition: `<file_prefix>.<name>` unless the syntactic name
+        // is already a dotted path (e.g. extractor emits `Class.method`
+        // for class methods).
+        let prefix = python_file_prefix(ctx.relative_path);
+        if syntactic_name.contains('.') {
+            CanonicalSymbol::new(syntactic_name)
+        } else if prefix.is_empty() {
+            CanonicalSymbol::new(syntactic_name)
+        } else {
+            CanonicalSymbol::new(format!("{prefix}.{syntactic_name}"))
+        }
+    }
+
+    fn resolve_reference(&self, syntactic_name: &str, ctx: &FileContext<'_>) -> CanonicalSymbol {
+        // Without an import-map we can still rewrite leading-dot
+        // relative imports deterministically from the file path.
+        let prefix = python_file_prefix(ctx.relative_path);
+        CanonicalSymbol::new(rewrite_python_path(
+            syntactic_name,
+            &prefix,
+            &PythonImportMap::default(),
+        ))
+    }
+}
+
+impl PythonResolver {
+    /// Full algorithm — takes the file's import-map alongside the
+    /// reference. Use sites in the extractor walk should call this
+    /// rather than the trait method to get the lookup-driven rewrite.
+    pub fn resolve_reference_with_imports(
+        &self,
+        syntactic_name: &str,
+        ctx: &FileContext<'_>,
+        imports: &PythonImportMap,
+    ) -> CanonicalSymbol {
+        let prefix = python_file_prefix(ctx.relative_path);
+        CanonicalSymbol::new(rewrite_python_path(syntactic_name, &prefix, imports))
+    }
+}
+
+/// Build the canonical Python module path for a source file given its
+/// project-relative path. Public so the extractor can call it without
+/// having to redo the same logic.
+///
+/// Examples:
+/// - `cli.py` → `cli`
+/// - `pkg/__init__.py` → `pkg`
+/// - `pkg/sub/mod.py` → `pkg.sub.mod`
+/// - `pkg/sub/__init__.py` → `pkg.sub`
+/// - `pkg/__main__.py` → `pkg.__main__` (unlike `__init__`, the
+///   `__main__` entry point is itself a module name)
+/// - `src/pkg/foo.py` → `pkg.foo` — a leading `src/` segment is
+///   dropped (mirrors the Rust resolver, which strips the workspace
+///   `src/` prefix). Same for `lib/`.
+/// - non-`.py` paths → empty string (caller decides how to handle
+///   them — typically these are out-of-scope for resolution).
+pub fn python_file_prefix(relative_path: &str) -> String {
+    let normalised = relative_path.replace('\\', "/");
+    // Only resolve `.py` source files.
+    let trimmed = match normalised.strip_suffix(".py") {
+        Some(t) => t,
+        None => return String::new(),
+    };
+    // Strip a leading `src/` or `lib/` segment so `src/pkg/foo.py`
+    // and `pkg/foo.py` both canonicalise to `pkg.foo`. This matches
+    // common Python project layouts (`src/`-style and flat).
+    let stripped = trimmed
+        .strip_prefix("src/")
+        .or_else(|| trimmed.strip_prefix("lib/"))
+        .unwrap_or(trimmed);
+    let segments: Vec<&str> = stripped.split('/').filter(|s| !s.is_empty()).collect();
+    if segments.is_empty() {
+        return String::new();
+    }
+    let mut parts: Vec<&str> = Vec::with_capacity(segments.len());
+    for (i, seg) in segments.iter().enumerate() {
+        let is_last = i + 1 == segments.len();
+        // `__init__.py` IS the package's module — its filename is
+        // dropped, the directory name takes over. Everything else
+        // (including `__main__`) is a real module name.
+        if is_last && *seg == "__init__" {
+            continue;
+        }
+        parts.push(seg);
+    }
+    parts.join(".")
+}
+
+/// A flattened map from `local_name` → `fully_qualified_path` derived
+/// from a Python file's `import` and `from ... import ...` statements.
+/// Construction is the responsibility of the extractor (it has the
+/// parsed AST); this struct is the consumer side.
+///
+/// Examples of what the extractor flattens into entries:
+///
+/// ```text
+/// import collections                  →  collections        → collections
+/// import os.path as osp               →  osp                → os.path
+/// from .baz import qux                →  qux                → <pkg>.baz.qux  (already absolute)
+/// from .baz import qux as kick        →  kick               → <pkg>.baz.qux
+/// from x.y import a, b as c           →  a → x.y.a, c → x.y.b
+/// ```
+///
+/// Relative-import resolution (`.baz` → `<pkg>.baz`) is the
+/// extractor's responsibility — it has the file path and can call
+/// [`resolve_python_relative`] before inserting into the map. By the
+/// time entries arrive here, every `full` value is absolute.
+#[derive(Debug, Default, Clone)]
+pub struct PythonImportMap {
+    inner: std::collections::HashMap<String, String>,
+}
+
+impl PythonImportMap {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a `local_name` → `fully_qualified` mapping. If the
+    /// same local name is registered twice, the later registration
+    /// wins (matches Python's "last `import` shadows" rule).
+    pub fn insert(&mut self, local: impl Into<String>, full: impl Into<String>) {
+        self.inner.insert(local.into(), full.into());
+    }
+
+    /// Look up a local name. Returns `None` if not registered.
+    pub fn get(&self, local: &str) -> Option<&str> {
+        self.inner.get(local).map(String::as_str)
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+}
+
+/// Resolve a relative Python import string against the importing
+/// file's canonical module prefix.
+///
+/// Python's relative-import grammar:
+/// - one leading dot = the importing file's own package
+/// - each additional leading dot = one parent level
+/// - the rest of the string (after the dots) is the path within
+///   that level
+///
+/// Examples:
+/// - file `pkg.sub.mod`, import `.x`     → `pkg.sub.x`
+/// - file `pkg.sub.mod`, import `..foo`  → `pkg.foo`
+/// - file `pkg.sub.mod`, import `.`      → `pkg.sub`
+/// - file `pkg.sub.mod`, import `...top` → `top`  (walked all the way up)
+///
+/// If the walk-up exceeds the available levels (e.g. four dots from
+/// `pkg.sub.mod`), the surplus dots are absorbed and the result is
+/// just the after-dot remainder — Python would raise
+/// `ImportError` at runtime, but for canonical-name purposes the
+/// best-effort resolution is preferable to dropping the symbol.
+pub fn resolve_python_relative(import: &str, file_prefix: &str) -> String {
+    if !import.starts_with('.') {
+        return import.to_string();
+    }
+    // Count leading dots.
+    let dots = import.chars().take_while(|c| *c == '.').count();
+    let remainder = &import[dots..];
+    // First dot anchors at the file's own package; each additional
+    // dot walks one parent up. So a file at `pkg.sub.mod` with `.x`
+    // (1 dot) anchors at `pkg.sub`; with `..x` (2 dots) walks up
+    // once to `pkg`; with `...x` (3 dots) walks up twice to `` (root).
+    let mut anchor = parent_python_module(file_prefix);
+    for _ in 1..dots {
+        anchor = parent_python_module(&anchor);
+    }
+    if remainder.is_empty() {
+        anchor
+    } else if anchor.is_empty() {
+        remainder.to_string()
+    } else {
+        format!("{anchor}.{remainder}")
+    }
+}
+
+/// Pure rewrite for Python references. Given a syntactic Python name,
+/// the file's canonical prefix, and the file's import-map, return the
+/// canonical form. Public so the extractor can call it directly after
+/// building the import-map without going through the trait.
+pub fn rewrite_python_path(
+    syntactic: &str,
+    file_prefix: &str,
+    imports: &PythonImportMap,
+) -> String {
+    let trimmed = syntactic.trim();
+
+    // Leading-dot relative import: resolve against file prefix.
+    if trimmed.starts_with('.') {
+        return resolve_python_relative(trimmed, file_prefix);
+    }
+
+    // Dotted reference: look up the head in the import-map. If found,
+    // splice in the canonical path; tail is preserved.
+    if let Some((head, tail)) = trimmed.split_once('.') {
+        if let Some(full) = imports.get(head) {
+            return format!("{full}.{tail}");
+        }
+        // Head wasn't aliased — could be a stdlib / third-party
+        // reference (`os.path.join`, `numpy.array`) or a self-rooted
+        // dotted name. Pass through verbatim.
+        return trimmed.to_string();
+    }
+
+    // Bare single-segment name. Look up directly.
+    if let Some(full) = imports.get(trimmed) {
+        return full.to_string();
+    }
+    // No import entry — could be a builtin (`int`, `len`, `range`)
+    // or a local definition. Pass through unchanged.
+    trimmed.to_string()
+}
+
+/// Drop the rightmost dot-separated segment of a Python module path.
+fn parent_python_module(prefix: &str) -> String {
+    match prefix.rsplit_once('.') {
+        Some((parent, _)) => parent.to_string(),
+        None => String::new(), // already at root
+    }
+}
 
 /// Dispatch entry point. Picks the per-language resolver and runs
 /// reference + definition resolution. v0.4.0 always uses the
@@ -1072,13 +1340,197 @@ mod tests {
     }
 
     #[test]
-    fn python_resolver_v040_is_still_passthrough() {
+    fn python_file_prefix_handles_canonical_paths() {
+        // Top-level module file.
+        assert_eq!(python_file_prefix("cli.py"), "cli");
+        // Package init: the directory IS the module.
+        assert_eq!(python_file_prefix("pkg/__init__.py"), "pkg");
+        // Nested module.
+        assert_eq!(python_file_prefix("pkg/sub/mod.py"), "pkg.sub.mod");
+        // Nested package init.
+        assert_eq!(python_file_prefix("pkg/sub/__init__.py"), "pkg.sub");
+        // `__main__` entry point — a real module name, NOT dropped.
+        assert_eq!(python_file_prefix("pkg/__main__.py"), "pkg.__main__");
+        // Leading `src/` is dropped (common Python project layout).
+        assert_eq!(python_file_prefix("src/pkg/foo.py"), "pkg.foo");
+        // Leading `lib/` is also dropped.
+        assert_eq!(python_file_prefix("lib/mypkg/util.py"), "mypkg.util");
+        // Windows-style path.
+        assert_eq!(python_file_prefix(r"pkg\sub\mod.py"), "pkg.sub.mod");
+        // Non-`.py` paths are out of scope — return empty.
+        assert_eq!(python_file_prefix("README.md"), "");
+        assert_eq!(python_file_prefix("pkg/sub"), "");
+    }
+
+    #[test]
+    fn python_definition_qualifies_with_file_prefix() {
         let r = PythonResolver;
-        let c = ctx(Language::Python);
+        let c = FileContext {
+            relative_path: "pkg/sub/mod.py",
+            language: Language::Python,
+        };
+        assert_eq!(r.resolve_definition("foo", &c).as_str(), "pkg.sub.mod.foo");
+        // Class method already has a dot — left as-is.
         assert_eq!(
-            r.resolve_reference("..pkg.mod.foo", &c).as_str(),
-            "..pkg.mod.foo"
+            r.resolve_definition("MyClass.method", &c).as_str(),
+            "MyClass.method"
         );
+    }
+
+    #[test]
+    fn resolve_python_relative_walks_parents() {
+        // 1 dot: anchor at file's own package.
+        assert_eq!(resolve_python_relative(".x", "pkg.sub.mod"), "pkg.sub.x");
+        // 2 dots: one parent up.
+        assert_eq!(resolve_python_relative("..foo", "pkg.sub.mod"), "pkg.foo");
+        // 3 dots: two parents up — ends at root, joined with remainder.
+        assert_eq!(resolve_python_relative("...top", "pkg.sub.mod"), "top");
+        // Bare dot (`.`): the package itself, no remainder.
+        assert_eq!(resolve_python_relative(".", "pkg.sub.mod"), "pkg.sub");
+        // Surplus dots beyond the available depth — absorbs and emits
+        // remainder. Python would raise ImportError; we prefer
+        // best-effort to dropping the symbol entirely.
+        assert_eq!(resolve_python_relative("....x", "pkg.sub.mod"), "x");
+        // Non-relative: passthrough.
+        assert_eq!(
+            resolve_python_relative("absolute.pkg.mod", "pkg.sub.mod"),
+            "absolute.pkg.mod"
+        );
+    }
+
+    #[test]
+    fn rewrite_python_relative_imports_resolve_against_file_prefix() {
+        let imports = PythonImportMap::default();
+        // Sibling module.
+        assert_eq!(
+            rewrite_python_path(".sibling", "pkg.sub.mod", &imports),
+            "pkg.sub.sibling"
+        );
+        // Parent package member.
+        assert_eq!(
+            rewrite_python_path("..foo.bar", "pkg.sub.mod", &imports),
+            "pkg.foo.bar"
+        );
+    }
+
+    #[test]
+    fn rewrite_python_absolute_path_passes_through() {
+        let imports = PythonImportMap::default();
+        // Absolute imports without an alias hit are left verbatim;
+        // they're already canonical.
+        assert_eq!(
+            rewrite_python_path("os.path.join", "pkg.sub.mod", &imports),
+            "os.path.join"
+        );
+        assert_eq!(
+            rewrite_python_path("collections.OrderedDict", "pkg.sub.mod", &imports),
+            "collections.OrderedDict"
+        );
+    }
+
+    #[test]
+    fn rewrite_python_alias_substitutes_head() {
+        let mut imports = PythonImportMap::new();
+        // `import os.path as osp` — alias `osp` → `os.path`.
+        imports.insert("osp", "os.path");
+        assert_eq!(
+            rewrite_python_path("osp.join", "pkg.sub.mod", &imports),
+            "os.path.join"
+        );
+        // `from collections import deque` — bare name `deque` →
+        // `collections.deque`.
+        imports.insert("deque", "collections.deque");
+        assert_eq!(
+            rewrite_python_path("deque", "pkg.sub.mod", &imports),
+            "collections.deque"
+        );
+        // `from collections import deque as dq` — aliased.
+        imports.insert("dq", "collections.deque");
+        assert_eq!(
+            rewrite_python_path("dq", "pkg.sub.mod", &imports),
+            "collections.deque"
+        );
+    }
+
+    #[test]
+    fn rewrite_python_unknown_head_passes_through() {
+        let imports = PythonImportMap::default();
+        // No alias hit — could be a builtin, local, or stdlib
+        // reference. Pass through unchanged.
+        assert_eq!(rewrite_python_path("len", "pkg.sub.mod", &imports), "len");
+        assert_eq!(
+            rewrite_python_path("MyLocalClass", "pkg.sub.mod", &imports),
+            "MyLocalClass"
+        );
+    }
+
+    #[test]
+    fn python_resolver_full_algorithm_end_to_end() {
+        let r = PythonResolver;
+        let c = FileContext {
+            relative_path: "pkg/sub/mod.py",
+            language: Language::Python,
+        };
+        let mut imports = PythonImportMap::new();
+        imports.insert("osp", "os.path");
+        imports.insert("deque", "collections.deque");
+
+        // Relative import (1 dot).
+        assert_eq!(
+            r.resolve_reference_with_imports(".helper", &c, &imports)
+                .as_str(),
+            "pkg.sub.helper"
+        );
+        // Relative import (2 dots).
+        assert_eq!(
+            r.resolve_reference_with_imports("..foo.bar", &c, &imports)
+                .as_str(),
+            "pkg.foo.bar"
+        );
+        // Bare alias — looked up.
+        assert_eq!(
+            r.resolve_reference_with_imports("deque", &c, &imports)
+                .as_str(),
+            "collections.deque"
+        );
+        // Aliased dotted call — head substituted.
+        assert_eq!(
+            r.resolve_reference_with_imports("osp.join", &c, &imports)
+                .as_str(),
+            "os.path.join"
+        );
+        // Already absolute, no alias hit — passthrough.
+        assert_eq!(
+            r.resolve_reference_with_imports("numpy.array", &c, &imports)
+                .as_str(),
+            "numpy.array"
+        );
+    }
+
+    #[test]
+    fn python_resolver_trait_method_handles_relative_without_imports() {
+        // The plain trait method (no import-map) still resolves
+        // relative imports from path alone.
+        let r = PythonResolver;
+        let c = FileContext {
+            relative_path: "pkg/sub/mod.py",
+            language: Language::Python,
+        };
+        assert_eq!(
+            r.resolve_reference(".helper", &c).as_str(),
+            "pkg.sub.helper"
+        );
+        assert_eq!(r.resolve_reference("..foo", &c).as_str(), "pkg.foo");
+        // Bare names without an import-map are untouched.
+        assert_eq!(r.resolve_reference("deque", &c).as_str(), "deque");
+    }
+
+    #[test]
+    fn python_import_map_last_insert_wins() {
+        let mut imports = PythonImportMap::new();
+        imports.insert("Foo", "pkg.a.Foo");
+        imports.insert("Foo", "pkg.b.Foo");
+        assert_eq!(imports.get("Foo"), Some("pkg.b.Foo"));
     }
 
     #[test]
