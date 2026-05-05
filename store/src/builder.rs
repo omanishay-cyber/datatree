@@ -259,6 +259,14 @@ fn init_meta(paths: &PathManager) -> DtResult<()> {
 }
 
 fn apply_pragmas(conn: &Connection) -> DtResult<()> {
+    // CRIT-13 fix (2026-05-05 audit): set busy_timeout BEFORE any other
+    // pragma so that subsequent pragma writes themselves get the retry
+    // budget. SQLite's default is 0 — without this, any moment a second
+    // writer or a reader races a checkpoint surfaces as immediate
+    // SQLITE_BUSY with no retry. 5000ms matches the canonical pattern in
+    // brain/src/concept_store.rs.
+    conn.busy_timeout(std::time::Duration::from_millis(5000))
+        .map_err(DbError::from)?;
     conn.pragma_update(None, "journal_mode", "WAL")
         .map_err(DbError::from)?;
     conn.pragma_update(None, "synchronous", "NORMAL")

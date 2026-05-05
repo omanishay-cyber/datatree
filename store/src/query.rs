@@ -352,6 +352,11 @@ fn spawn_writer_task(path: PathBuf, mut rx: mpsc::Receiver<WriteCmd>) {
                 return;
             }
         };
+        // CRIT-13 fix (2026-05-05 audit): writer task gets the same
+        // busy_timeout as the read pool / per-shard connections. Without
+        // this the default 0ms budget surfaces as instant SQLITE_BUSY any
+        // time a checkpoint takes the exclusive lock.
+        let _ = conn.busy_timeout(std::time::Duration::from_millis(5000));
         let _ = conn.pragma_update(None, "journal_mode", "WAL");
         let _ = conn.pragma_update(None, "synchronous", "NORMAL");
         let _ = conn.pragma_update(None, "foreign_keys", "ON");

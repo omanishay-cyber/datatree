@@ -240,6 +240,17 @@ impl SqliteLedger {
             std::fs::create_dir_all(parent)?;
         }
         let conn = Connection::open(&path)?;
+        // CRIT-13 / REL-4 fix (2026-05-05 audit): apply the canonical
+        // sqlite-on-multiple-processes pragma block. Without journal_mode
+        // = WAL + busy_timeout = 5000ms, concurrent supervisor + CLI
+        // writers race the lock and the loser sees instant SQLITE_BUSY,
+        // which the caller's `?` then swallows — observed empty ledger
+        // DBs mid-session were caused by this gap. Mirrors the pattern
+        // in brain/src/concept_store.rs:107-116.
+        conn.busy_timeout(std::time::Duration::from_millis(5000))?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.execute_batch(LEDGER_INIT_SQL)?;
         Ok(Self { conn, path })
     }
