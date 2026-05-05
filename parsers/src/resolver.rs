@@ -178,25 +178,274 @@ pub struct PassthroughResolver;
 
 impl SymbolResolver for PassthroughResolver {}
 
-/// Per-language resolver placeholder for Rust (v0.4.1 target).
+/// Rust symbol resolver — v0.4.0 keystone.
 ///
-/// The shape this WILL take:
-/// 1. Walk up from the source file to the nearest `Cargo.toml`
-///    to find the crate root.
-/// 2. Build the file's own canonical prefix from the path
-///    (`src/foo/bar.rs` → `crate::foo::bar`).
-/// 3. For each `use` statement parsed by the extractor, build a
-///    `prefix → fully_qualified` rewrite map.
-/// 4. For each reference to a symbol, look it up in the rewrite
-///    map (try the longest prefix first).
-/// 5. Resolve `pub use` re-exports by following the chain.
+/// Implements the resolution algorithm CRG ships in `jedi_resolver.py`
+/// (for Python) but for Rust source: turns syntactic names like
+/// `WorkerPool`, `super::spawn`, `crate::manager::WorkerPool`, and
+/// `use crate::manager; spawn()` into a single canonical string per
+/// logical symbol — the foundation for closing the recall gap that
+/// the CRG comparison (2026-05-05) flagged as the keystone issue.
 ///
-/// Currently inherits the passthrough behaviour from the trait
-/// default impls.
+/// ## Coverage in this commit
+///
+/// - File path → canonical module prefix (`src/manager.rs` →
+///   `crate::manager`; `src/foo/bar.rs` → `crate::foo::bar`;
+///   `src/foo/mod.rs` → `crate::foo`; `src/lib.rs` and `src/main.rs`
+///   → `crate`).
+/// - `crate::X::Y` references — left as-is; the path is already
+///   canonical.
+/// - `super::X` — walks one level up the file's prefix and prepends.
+/// - `self::X` — replaces with the file's prefix.
+/// - Bare names looked up in a [`UseMap`] derived from the file's
+///   `use` statements; multi-step aliasing (`use a::b as c`) and
+///   group imports (`use a::{b, c::d}`) are flattened on construction.
+/// - Cross-crate references (`std::collections::HashMap`) — left
+///   verbatim (we don't try to resolve external crates; their
+///   canonical form is already what the source spelled).
+///
+/// ## Out of scope (deferred)
+///
+/// - `pub use` re-export chasing (v0.4.2): if module A does
+///   `pub use crate::B::Foo`, references to `A::Foo` in other files
+///   currently resolve to `A::Foo` rather than `crate::B::Foo`.
+/// - Trait impl resolution: `<Foo as Bar>::method` stays verbatim.
+/// - Generic monomorphization: `Vec<Foo>::new` is left as
+///   `Vec::new` (the type parameter is dropped at the syntactic
+///   level anyway).
+///
+/// These need either deeper AST walks (Tree-sitter doesn't carry
+/// the cross-file information by itself) or a second pass after all
+/// `use` maps are built. v0.4.2 wires that pass; v0.4.1 ships the
+/// 80%-case algorithm here.
 #[derive(Debug, Default)]
 pub struct RustResolver;
 
-impl SymbolResolver for RustResolver {}
+impl SymbolResolver for RustResolver {
+    fn resolve_definition(&self, syntactic_name: &str, ctx: &FileContext<'_>) -> CanonicalSymbol {
+        // A definition site already says "this thing is named X here";
+        // the canonical form is `<file_prefix>::<syntactic_name>`
+        // unless the syntactic name is already a path (e.g. an `impl
+        // Trait for Foo` would emit `Foo::method` with a `::`).
+        let prefix = rust_file_prefix(ctx.relative_path);
+        if syntactic_name.contains("::") {
+            // Already qualified — assume the caller meant it.
+            CanonicalSymbol::new(syntactic_name)
+        } else if prefix.is_empty() {
+            CanonicalSymbol::new(syntactic_name)
+        } else {
+            CanonicalSymbol::new(format!("{prefix}::{syntactic_name}"))
+        }
+    }
+
+    fn resolve_reference(&self, syntactic_name: &str, ctx: &FileContext<'_>) -> CanonicalSymbol {
+        // Without a use-map we can still rewrite `super::*` and
+        // `self::*` deterministically from the file path. Bare names
+        // round-trip unchanged (they NEED a use-map to be lifted to
+        // canonical) — so callers that have one should use
+        // [`Self::resolve_reference_with_uses`] for the full
+        // algorithm.
+        let prefix = rust_file_prefix(ctx.relative_path);
+        CanonicalSymbol::new(rewrite_rust_path(
+            syntactic_name,
+            &prefix,
+            &UseMap::default(),
+        ))
+    }
+}
+
+impl RustResolver {
+    /// The full algorithm — takes the file's `use`-map alongside the
+    /// reference. Use sites in the extractor walk should call this
+    /// rather than the trait method to get the lookup-driven rewrite.
+    pub fn resolve_reference_with_uses(
+        &self,
+        syntactic_name: &str,
+        ctx: &FileContext<'_>,
+        uses: &UseMap,
+    ) -> CanonicalSymbol {
+        let prefix = rust_file_prefix(ctx.relative_path);
+        CanonicalSymbol::new(rewrite_rust_path(syntactic_name, &prefix, uses))
+    }
+}
+
+/// Build the canonical module prefix for a Rust source file given
+/// its project-relative path. Public so the extractor can call it
+/// without having to redo the same logic.
+///
+/// Examples:
+/// - `src/lib.rs` → `crate`
+/// - `src/main.rs` → `crate`
+/// - `src/manager.rs` → `crate::manager`
+/// - `src/foo/mod.rs` → `crate::foo`
+/// - `src/foo/bar.rs` → `crate::foo::bar`
+/// - `cli/src/commands/build.rs` → `crate::commands::build`
+///   (we only consume the part FROM `src/` onward; pre-`src/` is
+///   the workspace-member prefix and gets dropped)
+/// - non-`src/`-rooted paths → empty string (caller decides how to
+///   handle workspace-test fixtures, examples/, benches/, etc.)
+pub fn rust_file_prefix(relative_path: &str) -> String {
+    // Normalise separators — Windows callers may pass backslashes.
+    let normalised = relative_path.replace('\\', "/");
+    // Find the last `src/` in the path and treat everything after
+    // it as the module path. This handles workspace members
+    // (`cli/src/commands/build.rs` → `commands/build.rs`) and the
+    // single-crate case (`src/manager.rs` → `manager.rs`)
+    // identically.
+    let after_src = match normalised.rfind("src/") {
+        Some(i) => &normalised[i + 4..],
+        None => return String::new(),
+    };
+    // Strip the .rs extension.
+    let trimmed = after_src.strip_suffix(".rs").unwrap_or(after_src);
+    // `lib`, `main`, and `mod` are the canonical "this IS the
+    // module's root" filenames. Rust doesn't include them in the
+    // module path.
+    let segments: Vec<&str> = trimmed.split('/').collect();
+    let mut prefix_parts: Vec<&str> = Vec::with_capacity(segments.len() + 1);
+    prefix_parts.push("crate");
+    for (i, seg) in segments.iter().enumerate() {
+        // The LAST segment "lib" / "main" / "mod" is dropped (it's
+        // the module's own file); intermediate segments named the
+        // same way are still real modules and stay.
+        let is_last = i + 1 == segments.len();
+        if is_last && (*seg == "lib" || *seg == "main" || *seg == "mod") {
+            continue;
+        }
+        prefix_parts.push(seg);
+    }
+    prefix_parts.join("::")
+}
+
+/// A flattened map from `local_alias` → `fully_qualified_path`
+/// derived from a Rust file's `use` statements. Construction is
+/// the responsibility of the extractor (it has the parsed AST);
+/// this struct is the consumer side.
+///
+/// Multi-segment use paths get one entry per leaf:
+///
+/// ```text
+/// use crate::manager::{WorkerPool, spawn as kick};
+/// →  WorkerPool → crate::manager::WorkerPool
+///    kick       → crate::manager::spawn
+/// ```
+#[derive(Debug, Default, Clone)]
+pub struct UseMap {
+    inner: std::collections::HashMap<String, String>,
+}
+
+impl UseMap {
+    /// Empty map — used when a file has no `use` statements or when
+    /// the extractor hasn't built one yet. References to bare names
+    /// then round-trip unchanged.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a `local_alias` → `fully_qualified` mapping. If the
+    /// same alias is registered twice, the later registration wins
+    /// (matches Rust's "last `use` wins" shadowing rule within a
+    /// scope).
+    pub fn insert(&mut self, local: impl Into<String>, full: impl Into<String>) {
+        self.inner.insert(local.into(), full.into());
+    }
+
+    /// Look up an alias. Returns `None` if not registered.
+    pub fn get(&self, local: &str) -> Option<&str> {
+        self.inner.get(local).map(String::as_str)
+    }
+
+    /// Number of entries — used by tests and diagnostics.
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// True when no entries have been registered.
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+}
+
+/// The pure rewrite function. Given a syntactic Rust path, the
+/// file's canonical prefix, and the file's use-map, return the
+/// canonical form. Public so the extractor can call it directly
+/// after building the use-map without going through the trait.
+pub fn rewrite_rust_path(syntactic: &str, file_prefix: &str, uses: &UseMap) -> String {
+    let trimmed = syntactic.trim();
+
+    // Already-canonical paths: `crate::*`, `::*` (absolute path).
+    if let Some(rest) = trimmed.strip_prefix("crate::") {
+        return format!("crate::{rest}");
+    }
+    if let Some(rest) = trimmed.strip_prefix("::") {
+        // Absolute extern path (e.g. `::std::collections::HashMap`).
+        // Drop the leading `::` so the canonical form is
+        // `std::collections::HashMap`.
+        return rest.to_string();
+    }
+
+    // `super::*` — count consecutive `super::` and walk up that many
+    // levels in one go. Recursive substitution would prepend the
+    // parent each pass and end up with `crate::a::b::super::foo`
+    // (super:: is no longer at the start, so the next pass falls
+    // through). Counting + collapsing is the only correct rewrite.
+    if trimmed.starts_with("super::") {
+        let mut after_super = trimmed;
+        let mut levels = 0usize;
+        while let Some(rest) = after_super.strip_prefix("super::") {
+            levels += 1;
+            after_super = rest;
+        }
+        let mut prefix = file_prefix.to_string();
+        for _ in 0..levels {
+            prefix = parent_module(&prefix);
+        }
+        return if prefix.is_empty() {
+            after_super.to_string()
+        } else {
+            format!("{prefix}::{after_super}")
+        };
+    }
+
+    // `self::*` — current module.
+    if let Some(rest) = trimmed.strip_prefix("self::") {
+        return if file_prefix.is_empty() {
+            rest.to_string()
+        } else {
+            format!("{file_prefix}::{rest}")
+        };
+    }
+
+    // Bare name or `head::tail::leaf`. Look up the head segment in
+    // the use-map; if found, replace.
+    if let Some((head, tail)) = trimmed.split_once("::") {
+        if let Some(full) = uses.get(head) {
+            return format!("{full}::{tail}");
+        }
+        // Head wasn't in the use-map. Could still be an external
+        // crate (`std::*`, `tokio::*`) or a top-level module the
+        // file imports implicitly. Leave verbatim — the embedder
+        // can still match on the leaf.
+        return trimmed.to_string();
+    }
+
+    // Single-segment: `WorkerPool`. Look up directly.
+    if let Some(full) = uses.get(trimmed) {
+        return full.to_string();
+    }
+    // No use entry — could be a primitive (`i32`, `bool`) or a
+    // local definition. Return unchanged — the canonical form is
+    // the bare name itself.
+    trimmed.to_string()
+}
+
+/// Helper: drop the rightmost segment of a `crate::a::b::c` path.
+fn parent_module(prefix: &str) -> String {
+    match prefix.rsplit_once("::") {
+        Some((parent, _)) => parent.to_string(),
+        None => prefix.to_string(), // already at root
+    }
+}
 
 /// Per-language resolver placeholder for TypeScript / JavaScript
 /// (v0.4.2 target).
@@ -273,14 +522,205 @@ mod tests {
     }
 
     #[test]
-    fn rust_resolver_v040_is_still_passthrough() {
+    fn rust_file_prefix_handles_canonical_paths() {
+        // Single-crate: `src/lib.rs` is the crate root.
+        assert_eq!(rust_file_prefix("src/lib.rs"), "crate");
+        assert_eq!(rust_file_prefix("src/main.rs"), "crate");
+        // Top-level module file.
+        assert_eq!(rust_file_prefix("src/manager.rs"), "crate::manager");
+        // Module via mod.rs.
+        assert_eq!(rust_file_prefix("src/foo/mod.rs"), "crate::foo");
+        // Nested module.
+        assert_eq!(rust_file_prefix("src/foo/bar.rs"), "crate::foo::bar");
+        // Workspace member: only the part FROM `src/` is kept.
+        assert_eq!(
+            rust_file_prefix("cli/src/commands/build.rs"),
+            "crate::commands::build"
+        );
+        // Workspace member with mod.rs.
+        assert_eq!(
+            rust_file_prefix("supervisor/src/manager/mod.rs"),
+            "crate::manager"
+        );
+        // Windows-style path.
+        assert_eq!(
+            rust_file_prefix(r"cli\src\commands\build.rs"),
+            "crate::commands::build"
+        );
+        // Path without a `src/` segment — outside scope, returns empty.
+        assert_eq!(rust_file_prefix("examples/hello.rs"), "");
+        assert_eq!(rust_file_prefix("benches/bench.rs"), "");
+    }
+
+    #[test]
+    fn rust_definition_qualifies_with_file_prefix() {
         let r = RustResolver;
-        let c = ctx(Language::Rust);
+        let c = FileContext {
+            relative_path: "supervisor/src/manager.rs",
+            language: Language::Rust,
+        };
         assert_eq!(
             r.resolve_definition("WorkerPool", &c).as_str(),
-            "WorkerPool",
-            "v0.4.0 ships the skeleton — real resolution lands v0.4.1"
+            "crate::manager::WorkerPool"
         );
+        // Method-style def: already has `::` — left as-is.
+        assert_eq!(
+            r.resolve_definition("WorkerPool::spawn", &c).as_str(),
+            "WorkerPool::spawn"
+        );
+    }
+
+    #[test]
+    fn rewrite_rust_super_walks_up_one_level() {
+        let uses = UseMap::default();
+        // From manager/health.rs, `super::spawn` resolves to
+        // crate::manager::spawn.
+        assert_eq!(
+            rewrite_rust_path("super::spawn", "crate::manager::health", &uses),
+            "crate::manager::spawn"
+        );
+        // Two-level super::super:: walks up twice.
+        assert_eq!(
+            rewrite_rust_path("super::super::foo", "crate::a::b::c", &uses),
+            "crate::a::foo"
+        );
+    }
+
+    #[test]
+    fn rewrite_rust_self_uses_current_module() {
+        let uses = UseMap::default();
+        assert_eq!(
+            rewrite_rust_path("self::helper", "crate::manager", &uses),
+            "crate::manager::helper"
+        );
+    }
+
+    #[test]
+    fn rewrite_rust_crate_path_passes_through() {
+        let uses = UseMap::default();
+        assert_eq!(
+            rewrite_rust_path("crate::manager::WorkerPool", "crate::supervisor", &uses),
+            "crate::manager::WorkerPool"
+        );
+    }
+
+    #[test]
+    fn rewrite_rust_extern_absolute_path_drops_leading_colons() {
+        let uses = UseMap::default();
+        assert_eq!(
+            rewrite_rust_path("::std::collections::HashMap", "crate", &uses),
+            "std::collections::HashMap"
+        );
+    }
+
+    #[test]
+    fn rewrite_rust_use_alias_substitutes_head() {
+        let mut uses = UseMap::new();
+        // `use crate::manager::WorkerPool;` → bare `WorkerPool`
+        // resolves to the full path.
+        uses.insert("WorkerPool", "crate::manager::WorkerPool");
+        assert_eq!(
+            rewrite_rust_path("WorkerPool", "crate::supervisor", &uses),
+            "crate::manager::WorkerPool"
+        );
+        // `use crate::manager::spawn as kick;` → `kick(...)` resolves
+        // to `crate::manager::spawn`.
+        uses.insert("kick", "crate::manager::spawn");
+        assert_eq!(
+            rewrite_rust_path("kick", "crate::supervisor", &uses),
+            "crate::manager::spawn"
+        );
+    }
+
+    #[test]
+    fn rewrite_rust_use_with_method_call_keeps_tail() {
+        let mut uses = UseMap::new();
+        uses.insert("WorkerPool", "crate::manager::WorkerPool");
+        // `WorkerPool::spawn` → head substituted, tail preserved.
+        assert_eq!(
+            rewrite_rust_path("WorkerPool::spawn", "crate::supervisor", &uses),
+            "crate::manager::WorkerPool::spawn"
+        );
+    }
+
+    #[test]
+    fn rewrite_rust_unknown_head_passes_through() {
+        let uses = UseMap::default();
+        // Not in use-map and not super/self/crate/:: — could be an
+        // external crate or a primitive. Pass through verbatim.
+        assert_eq!(
+            rewrite_rust_path("std::collections::HashMap", "crate::supervisor", &uses),
+            "std::collections::HashMap"
+        );
+        assert_eq!(rewrite_rust_path("i32", "crate::supervisor", &uses), "i32");
+    }
+
+    #[test]
+    fn rust_resolver_full_algorithm_end_to_end() {
+        let r = RustResolver;
+        let c = FileContext {
+            relative_path: "supervisor/src/manager/health.rs",
+            language: Language::Rust,
+        };
+        let mut uses = UseMap::new();
+        uses.insert("WorkerPool", "crate::manager::WorkerPool");
+        uses.insert("Result", "std::result::Result"); // external
+
+        // super::spawn — walks up from crate::manager::health.
+        assert_eq!(
+            r.resolve_reference_with_uses("super::spawn", &c, &uses)
+                .as_str(),
+            "crate::manager::spawn"
+        );
+        // self::sub_helper — current module.
+        assert_eq!(
+            r.resolve_reference_with_uses("self::sub_helper", &c, &uses)
+                .as_str(),
+            "crate::manager::health::sub_helper"
+        );
+        // Bare alias — looked up.
+        assert_eq!(
+            r.resolve_reference_with_uses("WorkerPool", &c, &uses)
+                .as_str(),
+            "crate::manager::WorkerPool"
+        );
+        // Aliased method call — head substituted.
+        assert_eq!(
+            r.resolve_reference_with_uses("WorkerPool::spawn", &c, &uses)
+                .as_str(),
+            "crate::manager::WorkerPool::spawn"
+        );
+        // Already canonical — passes through.
+        assert_eq!(
+            r.resolve_reference_with_uses("crate::supervisor::run", &c, &uses,)
+                .as_str(),
+            "crate::supervisor::run"
+        );
+    }
+
+    #[test]
+    fn rust_resolver_trait_method_handles_super_without_use_map() {
+        // The plain trait method (no use-map) still resolves
+        // super::* / self::* / crate::* from path alone.
+        let r = RustResolver;
+        let c = FileContext {
+            relative_path: "supervisor/src/manager/health.rs",
+            language: Language::Rust,
+        };
+        assert_eq!(
+            r.resolve_reference("super::spawn", &c).as_str(),
+            "crate::manager::spawn"
+        );
+        // Bare names without a use-map are untouched.
+        assert_eq!(r.resolve_reference("WorkerPool", &c).as_str(), "WorkerPool");
+    }
+
+    #[test]
+    fn use_map_last_insert_wins() {
+        let mut uses = UseMap::new();
+        uses.insert("Foo", "crate::a::Foo");
+        uses.insert("Foo", "crate::b::Foo");
+        assert_eq!(uses.get("Foo"), Some("crate::b::Foo"));
     }
 
     #[test]
