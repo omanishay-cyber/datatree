@@ -417,3 +417,349 @@ mod call_resolver_tests {
         assert_eq!(resolved2.as_deref(), Some("n_helper"));
     }
 }
+
+// ---------------------------------------------------------------------------
+// ConceptStore -- persistence tests (Wave 3.3)
+// ---------------------------------------------------------------------------
+
+mod concept_store_tests {
+    use crate::concept_store::{stable_id, ConceptStore, StoredConcept};
+    use std::sync::Arc;
+    use std::thread;
+
+    fn temp_store() -> (tempfile::TempDir, ConceptStore) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = ConceptStore::new(dir.path().join("concepts.db").as_path())
+            .expect("open concept store");
+        (dir, store)
+    }
+
+    fn make_concept(project: &str, name: &str) -> StoredConcept {
+        StoredConcept::new(project, name, "pattern")
+            .with_score(0.7)
+            .with_description(format!("test concept: {name}"))
+    }
+
+    // Test 1: upsert persists across reopen
+    #[test]
+    fn concept_store_upsert_persists_across_reopen() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("concepts.db");
+
+        {
+            let store = ConceptStore::new(&db_path).expect("open store");
+            let c = make_concept("proj-abc", "cache invalidation");
+            store.upsert(&c).expect("upsert");
+        }
+
+        {
+            let store = ConceptStore::new(&db_path).expect("reopen store");
+            let got = store
+                .get("proj-abc", "cache invalidation")
+                .expect("get")
+                .expect("should be present after reopen");
+
+            assert_eq!(got.name, "cache invalidation");
+            assert_eq!(got.kind, "pattern");
+            assert!(
+                (got.score - 0.7).abs() < 1e-9,
+                "score should be 0.7 but was {}",
+                got.score
+            );
+            assert_eq!(
+                got.description.as_deref(),
+                Some("test concept: cache invalidation")
+            );
+        }
+    }
+
+    // Test 2: list_for_project returns all concepts for that project
+    #[test]
+    fn concept_store_list_for_project_returns_all() {
+        let (_dir, store) = temp_store();
+
+        let names = ["ownership", "borrowing", "lifetimes", "traits", "closures"];
+        for name in &names {
+            store
+                .upsert(&make_concept("proj-rust", name))
+                .expect("upsert");
+        }
+        store
+            .upsert(&make_concept("proj-other", "unrelated"))
+            .expect("upsert other project");
+
+        let listed = store
+            .list_for_project("proj-rust", 100)
+            .expect("list_for_project");
+
+        assert_eq!(
+            listed.len(),
+            names.len(),
+            "should list exactly the 5 concepts for proj-rust, got: {listed:?}"
+        );
+        for c in &listed {
+            assert_eq!(c.project_id, "proj-rust");
+        }
+    }
+
+    // Test 3: boost increments use_count
+    #[test]
+    fn concept_store_boost_increments_use_count() {
+        let (_dir, store) = temp_store();
+        let c = make_concept("proj-boost", "zero-copy");
+        store.upsert(&c).expect("upsert");
+
+        let before = store
+            .get("proj-boost", "zero-copy")
+            .expect("get before boost")
+            .expect("present");
+
+        store.boost("proj-boost", "zero-copy").expect("boost");
+
+        let after = store
+            .get("proj-boost", "zero-copy")
+            .expect("get after boost")
+            .expect("present");
+
+        assert_eq!(
+            after.use_count,
+            before.use_count + 1,
+            "boost must increment use_count by exactly 1"
+        );
+        assert!(
+            after.last_used >= before.last_used,
+            "last_used must be >= previous value after boost"
+        );
+    }
+
+    // Test 4: decay_stale lowers scores for old concepts
+    #[test]
+    fn concept_store_decay_stale_lowers_old_scores() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("concepts.db");
+        let store = ConceptStore::new(&db_path).expect("open store");
+
+        let forty_days_ago = crate::concept_store::unix_now() - 40 * 86_400;
+        let id = stable_id("proj-decay", "ancient pattern");
+        store
+            .conn
+            .lock()
+            .expect("lock")
+            .execute(
+                "INSERT INTO concepts
+                     (id, project_id, name, kind, score, first_seen, last_used, use_count)
+                 VALUES (?1, 'proj-decay', 'ancient pattern', 'pattern', 0.8, ?2, ?2, 1)",
+                rusqlite::params![id, forty_days_ago],
+            )
+            .expect("direct insert for test setup");
+
+        let fresh = make_concept("proj-decay", "fresh pattern");
+        store.upsert(&fresh).expect("upsert fresh");
+
+        let changed = store.decay_stale(30).expect("decay_stale");
+        assert_eq!(changed, 1, "exactly one concept should be decayed");
+
+        let ancient = store
+            .get("proj-decay", "ancient pattern")
+            .expect("get")
+            .expect("present");
+        assert!(
+            ancient.score < 0.8,
+            "score must decrease after decay: got {}",
+            ancient.score
+        );
+        assert!(
+            (ancient.score - 0.8 * 0.95).abs() < 1e-9,
+            "score must be 0.8 * 0.95 = 0.76, got {}",
+            ancient.score
+        );
+
+        let fresh_after = store
+            .get("proj-decay", "fresh pattern")
+            .expect("get")
+            .expect("present");
+        assert!(
+            (fresh_after.score - 0.7).abs() < 1e-9,
+            "fresh concept score must be unchanged: {}",
+            fresh_after.score
+        );
+    }
+
+    // Test 5: concurrent writes via WAL do not corrupt data
+    #[test]
+    fn concept_store_concurrent_writes_via_wal() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("concepts.db");
+
+        let store = Arc::new(ConceptStore::new(&db_path).expect("open store"));
+        let thread_count = 4usize;
+        let concepts_per_thread = 25usize;
+
+        let handles: Vec<_> = (0..thread_count)
+            .map(|t| {
+                let store = Arc::clone(&store);
+                thread::spawn(move || {
+                    for i in 0..concepts_per_thread {
+                        let name = format!("concept-t{t}-{i}");
+                        let c = StoredConcept::new("proj-concurrent", &name, "convention")
+                            .with_score(0.6);
+                        store.upsert(&c).expect("concurrent upsert must not fail");
+                    }
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().expect("thread must not panic");
+        }
+
+        let total = store
+            .list_for_project("proj-concurrent", 1_000)
+            .expect("list after concurrent writes");
+
+        assert_eq!(
+            total.len(),
+            thread_count * concepts_per_thread,
+            "all {} concepts must be persisted after concurrent writes, got {}",
+            thread_count * concepts_per_thread,
+            total.len()
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Smart questions — Wave 3.2
+// ---------------------------------------------------------------------------
+
+mod smart_questions_tests {
+    use crate::smart_questions::{generate_questions, GraphEdge, GraphNode, QuestionKind};
+
+    fn make_node(name: &str, kind: &str, ls: Option<i64>, le: Option<i64>) -> GraphNode {
+        GraphNode {
+            qualified_name: name.to_owned(),
+            name: name.split("::").last().unwrap_or(name).to_owned(),
+            kind: kind.to_owned(),
+            file_path: Some(format!("src/{name}.rs")),
+            line_start: ls,
+            line_end: le,
+        }
+    }
+
+    fn make_edge(src: &str, tgt: &str) -> GraphEdge {
+        GraphEdge {
+            source: src.to_owned(),
+            target: tgt.to_owned(),
+            kind: "calls".to_owned(),
+        }
+    }
+
+    #[test]
+    fn smart_questions_returns_top_n_by_centrality() {
+        // Star topology: `hub` is called by 5 peripherals.
+        // Hub must appear first; only `limit` questions returned.
+        let nodes = vec![
+            make_node("hub", "function", Some(1), Some(50)),
+            make_node("a", "function", Some(1), Some(5)),
+            make_node("b", "function", Some(1), Some(5)),
+            make_node("c", "function", Some(1), Some(5)),
+            make_node("d", "function", Some(1), Some(5)),
+            make_node("e", "function", Some(1), Some(5)),
+        ];
+        let edges = vec![
+            make_edge("a", "hub"),
+            make_edge("b", "hub"),
+            make_edge("c", "hub"),
+            make_edge("d", "hub"),
+            make_edge("e", "hub"),
+        ];
+
+        let results = generate_questions(&nodes, &edges, 3, QuestionKind::All);
+
+        assert!(
+            results.len() <= 3,
+            "must not exceed limit={}, got {}",
+            3,
+            results.len()
+        );
+        assert!(
+            !results.is_empty(),
+            "non-trivial graph must produce at least one question"
+        );
+
+        let top = &results[0];
+        assert!(
+            top.related_nodes.iter().any(|n| n == "hub"),
+            "top question must reference hub; got: {:?}",
+            top.related_nodes
+        );
+
+        for i in 1..results.len() {
+            assert!(
+                results[i - 1].score >= results[i].score,
+                "scores must be non-increasing: [{}]={} > [{}]={}",
+                i - 1,
+                results[i - 1].score,
+                i,
+                results[i].score
+            );
+        }
+    }
+
+    #[test]
+    fn smart_questions_includes_anomaly_questions_for_god_nodes() {
+        // Star with 20 callers: `god` exceeds the 95th-percentile threshold.
+        let mut nodes = vec![make_node("god", "function", Some(1), Some(30))];
+        let mut edges = Vec::new();
+        for i in 0..20usize {
+            let name = format!("caller_{i}");
+            nodes.push(make_node(&name, "function", Some(1), Some(5)));
+            edges.push(make_edge(&name, "god"));
+        }
+        edges.push(make_edge("caller_0", "caller_1"));
+
+        let results = generate_questions(&nodes, &edges, 5, QuestionKind::Anomaly);
+
+        assert!(
+            !results.is_empty(),
+            "anomaly pass must surface at least one question"
+        );
+        let mentions_god = results
+            .iter()
+            .any(|q| q.related_nodes.iter().any(|n| n == "god"));
+        assert!(
+            mentions_god,
+            "expected a question about the god node; got: {results:#?}"
+        );
+
+        let god_q = results
+            .iter()
+            .find(|q| q.related_nodes.iter().any(|n| n == "god"))
+            .unwrap();
+        assert!(
+            god_q.score > 0.25,
+            "god node question score must be > 0.25; got {}",
+            god_q.score
+        );
+    }
+
+    #[test]
+    fn smart_questions_handles_empty_graph() {
+        let results = generate_questions(&[], &[], 10, QuestionKind::All);
+        assert!(
+            results.is_empty(),
+            "empty graph must return empty vec; got: {results:?}"
+        );
+
+        for kind in [
+            QuestionKind::Starter,
+            QuestionKind::DeepDive,
+            QuestionKind::Anomaly,
+        ] {
+            let r = generate_questions(&[], &[], 10, kind);
+            assert!(
+                r.is_empty(),
+                "empty graph must return empty vec for {kind:?}"
+            );
+        }
+    }
+}

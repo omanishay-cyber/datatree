@@ -736,6 +736,72 @@ export function godNodesTopN(
   );
 }
 
+// -- Smart Questions graph data (Wave 3.2) -----------------------------------
+
+/**
+ * Load all nodes + edges for a project from `graph.db` for the smart
+ * questions algorithm.
+ *
+ * Design notes:
+ * - We read ALL nodes and edges in a single pass (no limit). On a typical
+ *   mneme corpus the node count is ≤ 50k and edges ≤ 200k; SQLite WAL reads
+ *   at ~1 GB/s so this completes in well under 100 ms.
+ * - The caller (smart-questions.ts) runs the scoring in pure TypeScript on
+ *   the returned arrays — no Rust IPC is required.
+ * - Missing shard → `{ nodes: [], edges: [] }` (graceful degrade).
+ */
+export function smartQuestionsData(cwdOverride?: string): {
+  nodes: Array<{
+    qualified_name: string;
+    name: string;
+    kind: string;
+    file_path: string | null;
+    line_start: number | null;
+    line_end: number | null;
+  }>;
+  edges: Array<{
+    source: string;
+    target: string;
+    kind: string;
+  }>;
+} {
+  type NodeRow = {
+    qualified_name: string;
+    name: string;
+    kind: string;
+    file_path: string | null;
+    line_start: number | null;
+    line_end: number | null;
+  };
+  type EdgeRow = { source: string; target: string; kind: string };
+  type Result = { nodes: NodeRow[]; edges: EdgeRow[] };
+
+  const empty: Result = { nodes: [], edges: [] };
+  return withShard<Result>(
+    "graph",
+    (db) => {
+      const nodes = db
+        .prepare(
+          `SELECT qualified_name, name, kind, file_path, line_start, line_end
+           FROM nodes
+           ORDER BY qualified_name`,
+        )
+        .all() as NodeRow[];
+
+      const edges = db
+        .prepare(
+          `SELECT source_qualified AS source, target_qualified AS target, kind
+           FROM edges`,
+        )
+        .all() as EdgeRow[];
+
+      return { nodes, edges };
+    },
+    empty,
+    cwdOverride,
+  );
+}
+
 // -- history shard ---------------------------------------------------------
 
 /** FTS5 search over decisions.(topic + problem + chosen + reasoning). */

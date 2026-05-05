@@ -151,6 +151,12 @@ pub fn schema_sql(layer: DbLayer) -> &'static str {
         DbLayer::Conventions => CONVENTIONS_SQL,
         DbLayer::Federated => FEDERATED_SQL,
         DbLayer::Meta => META_SQL,
+        // Concepts shard: schema is owned by brain::ConceptStore which
+        // runs CREATE TABLE IF NOT EXISTS on open. The store crate never
+        // needs to bootstrap this shard, so we return an empty string
+        // (no-op) here. schema_sql is only called during store-side
+        // migrations; concept_store.rs self-migrates on first open.
+        DbLayer::Concepts => "",
     }
 }
 

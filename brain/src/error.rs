@@ -52,6 +52,9 @@ pub enum BrainError {
     #[error("worker shut down")]
     WorkerDown,
 
+    #[error("concept store error: {0}")]
+    ConceptStore(String),
+
     #[error("other: {0}")]
     Other(#[from] anyhow::Error),
 }
@@ -62,5 +65,11 @@ pub type BrainResult<T> = std::result::Result<T, BrainError>;
 impl From<tokenizers::Error> for BrainError {
     fn from(e: tokenizers::Error) -> Self {
         BrainError::Tokenizer(e.to_string())
+    }
+}
+
+impl From<rusqlite::Error> for BrainError {
+    fn from(e: rusqlite::Error) -> Self {
+        BrainError::ConceptStore(e.to_string())
     }
 }

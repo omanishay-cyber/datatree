@@ -107,6 +107,13 @@ uuid = { workspace = true }
 # Using the workspace-pinned regex version keeps every crate on the
 # same engine (lock-file dedup; no extra binary size).
 regex = { workspace = true }
+# Wave 2.4: the CLI needs read access to update_check.rs helpers
+# (read_cached_result, should_show_banner, mark_notice_seen,
+# is_disabled_by_env) for `mneme doctor` and the on-launch banner.
+# The supervisor crate does NOT depend on the CLI, so no cycle exists.
+# We use the `lib` target only — no supervisor binary is pulled in.
+mneme-daemon = { path = "../supervisor", package = "mneme-daemon" }
+
 # `mneme self-update`: HTTP client for the GitHub Releases API + asset
 # stream download. `rustls-tls` keeps the dep tree off the system
 # OpenSSL on Linux/musl builds while staying compatible with native-tls

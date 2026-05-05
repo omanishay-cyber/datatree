@@ -112,6 +112,13 @@ export function ProjectGalaxy3D(): JSX.Element {
           pickable: true,
         });
 
+        // Bug #NEW-G (2026-05-04): user-reported "round map globe should
+        // zoom in/out and drag should rotate, instead it moves 1D, so
+        // it's not 3D." The fix is making drag-to-rotate the primary
+        // interaction (Google-Earth style) instead of deck.gl's default
+        // OrbitView controller which panned on left-drag. Explicit
+        // controller config: dragRotate enabled, dragPan disabled,
+        // scrollZoom + touchRotate on, with inertia for smoothness.
         deckRef.current = new Deck<OrbitView>({
           parent: containerRef.current,
           views: new OrbitView({ orbitAxis: "Y", fovy: 50 }),
@@ -120,8 +127,18 @@ export function ProjectGalaxy3D(): JSX.Element {
             rotationX: 25,
             rotationOrbit: 30,
             zoom: 1.5,
+            minZoom: -3,
+            maxZoom: 8,
           },
-          controller: true,
+          controller: {
+            dragRotate: true,
+            dragPan: false,
+            scrollZoom: { speed: 0.01, smooth: true },
+            touchRotate: true,
+            touchZoom: true,
+            doubleClickZoom: true,
+            inertia: 300,
+          },
           layers: [layer],
         });
 

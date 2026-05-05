@@ -1,0 +1,32 @@
+[package]
+name = "mneme-parsers-py"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Python bindings for mneme's tree-sitter-based code graph extractor"
+license.workspace = true
+# publish = false — PyPI distribution is handled via pyproject.toml / maturin
+
+[lib]
+# cdylib = Python extension module (.so / .pyd)
+# rlib   = allows `cargo test` to test the Rust wrapper logic directly
+crate-type = ["cdylib", "rlib"]
+name = "mneme_parsers"
+
+[dependencies]
+# PyO3 — Python / Rust bridge
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py39"] }
+
+# Bridge to the core parsers crate
+mneme-parsers = { path = "../../parsers" }
+
+# Tokio runtime — pyo3 tasks run in a dedicated single-threaded runtime
+# to avoid entangling Python's GIL with Tokio's async executor.
+tokio = { version = "1.40", features = ["rt", "macros"] }
+
+# Error display
+thiserror = "1.0"
+
+[dev-dependencies]
+# Used by `cargo test` to exercise the Rust wrappers without a Python runtime
+tokio = { version = "1.40", features = ["rt", "macros", "test-util"] }

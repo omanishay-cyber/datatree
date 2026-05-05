@@ -1,6 +1,7 @@
 //! IPC entry point: the store-worker binary listens on a local socket
 //! and serves DB ops issued by other workers and the MCP server.
 
+use interprocess::local_socket::traits::tokio::Listener as _;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -83,23 +84,36 @@ pub async fn run_listener(store: Arc<Store>) -> DtResult<()> {
     // respawn hits EADDRINUSE on the worker's *own* prior file because
     // the file persists across process exit. Matches the supervisor's
     // own bind-site pattern in supervisor/src/ipc.rs.
+    //
+    // NEW-B (2026-05-04): the original B-L06.5 fix worked on Linux but
+    // was broken on Windows. `to_fs_name::<GenericFilePath>` requires the
+    // path to start with `\\.\pipe\` (two leading backslashes), but
+    // `PathBuf::from(r"\\.\pipe\...")` normalises that to `\.\pipe\...`
+    // (one leading backslash) via Windows UNC path canonicalisation.
+    // The bind therefore failed with `os error 5 / "Access is denied"`
+    // (or `"not a named pipe path"` depending on the input form), the
+    // worker exited cleanly with code 0, the supervisor's Permanent
+    // restart strategy respawned it, and the loop hit the 6-restarts-in-
+    // 60s budget within milliseconds — surfacing as `status=degraded`
+    // in `mneme doctor --strict`.
+    //
+    // The fix mirrors supervisor::ipc::build_listener's pattern: on
+    // Windows the file_name component (e.g. "mneme-store") is fed to
+    // `to_ns_name::<GenericNamespaced>()`, which is the platform-correct
+    // API for Windows named pipes. On Unix the existing path-based bind
+    // is preserved (along with the stale-socket unlink).
     let socket_path = store.paths.store_socket();
     info!(socket = %socket_path.display(), "store IPC listening");
 
-    #[cfg(unix)]
-    {
-        let _ = std::fs::remove_file(&socket_path);
-    }
-
-    use interprocess::local_socket::tokio::prelude::*;
-    use interprocess::local_socket::{GenericFilePath, ListenerOptions, ToFsName};
-    let name = socket_path
-        .to_fs_name::<GenericFilePath>()
-        .map_err(|e| common::error::DtError::Internal(e.to_string()))?;
-    let listener = ListenerOptions::new()
-        .name(name)
-        .create_tokio()
-        .map_err(|e| common::error::DtError::Internal(e.to_string()))?;
+    let listener = build_listener(&socket_path).map_err(|e| {
+        // Surface the actual bind failure loudly. Pre-fix this error was
+        // wrapped silently into the listener-exit warn and the worker
+        // looked like it had "shut down cleanly" — degraded with no
+        // detail. Now the doctor / supervisor logs include the real
+        // cause on the very first restart.
+        error!(socket = %socket_path.display(), error = %e, "store IPC bind failed");
+        e
+    })?;
 
     loop {
         let conn = match listener.accept().await {
@@ -115,6 +129,70 @@ pub async fn run_listener(store: Arc<Store>) -> DtResult<()> {
                 error!(error = ?e, "conn handler");
             }
         });
+    }
+}
+
+/// Build the local-socket listener for the store-worker IPC endpoint.
+///
+/// Public so integration tests can drive the bind path directly without
+/// spinning up `run_listener`'s accept loop. The returned `Listener` is
+/// dropped at the end of the test which releases the pipe / removes the
+/// socket file.
+///
+/// **Platform contract** (mirrors `supervisor::ipc::build_listener`):
+///
+/// - **Unix**: treats `path` as a filesystem socket. Unlinks any stale
+///   socket file at that path first (idempotent — `remove_file` on a
+///   non-existent path is silently ignored), then binds via
+///   `to_fs_name::<GenericFilePath>()`. Required because Linux/macOS
+///   `bind()` returns `EADDRINUSE` when the inode survives a previous
+///   process's crash.
+///
+/// - **Windows**: extracts `path.file_name()` (e.g. `mneme-store`) and
+///   binds via `to_ns_name::<GenericNamespaced>()`. The interprocess crate
+///   prepends `\\.\pipe\` to produce a valid named-pipe address. Using
+///   `to_fs_name` here would fail because Windows path normalisation in
+///   `PathBuf::from(r"\\.\pipe\...")` strips one of the leading
+///   backslashes, leaving a string that no longer starts with `\\.\pipe\`
+///   (a hard requirement of `GenericFilePath` per its docs).
+pub fn build_listener(
+    path: &std::path::Path,
+) -> DtResult<interprocess::local_socket::tokio::Listener> {
+    use interprocess::local_socket::ListenerOptions;
+
+    #[cfg(unix)]
+    {
+        use interprocess::local_socket::{GenericFilePath, ToFsName};
+        let _ = std::fs::remove_file(path);
+        let name = path
+            .to_fs_name::<GenericFilePath>()
+            .map_err(|e| common::error::DtError::Internal(format!("name conversion: {e}")))?;
+        ListenerOptions::new()
+            .name(name)
+            .create_tokio()
+            .map_err(|e| common::error::DtError::Internal(format!("listener create: {e}")))
+    }
+
+    #[cfg(windows)]
+    {
+        use interprocess::local_socket::{GenericNamespaced, ToNsName};
+        let pipe_name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("mneme-store")
+            .to_string();
+        let name = pipe_name
+            .as_str()
+            .to_ns_name::<GenericNamespaced>()
+            .map_err(|e| {
+                common::error::DtError::Internal(format!("name conversion ({pipe_name}): {e}"))
+            })?;
+        ListenerOptions::new()
+            .name(name)
+            .create_tokio()
+            .map_err(|e| {
+                common::error::DtError::Internal(format!("listener create ({pipe_name}): {e}"))
+            })
     }
 }
 

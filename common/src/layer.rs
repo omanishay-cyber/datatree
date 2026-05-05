@@ -41,6 +41,13 @@ pub enum DbLayer {
     /// strictly opt-in (see `brain::federated`). `source_file` is present
     /// locally but is NEVER included in any upload payload.
     Federated,
+    /// Concept memory (v0.4 Wave 3.3). Persists recalled / extracted
+    /// concepts across daemon restarts. One row per (project_id, name)
+    /// pair; scores decay over time; use_count drives re-ranking.
+    /// Previous storage was in-memory only; v0.4.0 first run creates
+    /// this shard fresh (no data migration — ephemeral data is gone on
+    /// every restart anyway).
+    Concepts,
     /// Cross-project meta-database (singleton, not per-project).
     Meta,
 }
@@ -74,6 +81,7 @@ impl DbLayer {
             Self::Architecture => "architecture.db",
             Self::Conventions => "conventions.db",
             Self::Federated => "federated.db",
+            Self::Concepts => "concepts.db",
             Self::Meta => "meta.db",
         }
     }
@@ -105,6 +113,7 @@ impl DbLayer {
             Self::Architecture,
             Self::Conventions,
             Self::Federated,
+            Self::Concepts,
         ]
     }
 }

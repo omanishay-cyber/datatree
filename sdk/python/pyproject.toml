@@ -1,0 +1,42 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "mneme-parsers"
+version = "0.3.2"
+description = "Parse source files into a typed code graph — no daemon required"
+readme = "README.md"
+license = { file = "../../LICENSE" }
+requires-python = ">=3.9"
+keywords = ["code-graph", "tree-sitter", "ast", "static-analysis", "parsing"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+[project.urls]
+Homepage = "https://github.com/omanishay-cyber/mneme"
+Repository = "https://github.com/omanishay-cyber/mneme"
+
+[tool.maturin]
+# The Rust crate to build
+manifest-path = "Cargo.toml"
+# The Python package to ship alongside the .so
+python-source = "python"
+# ABI3 wheels: one wheel for Python >=3.9, not per-minor-version
+features = ["pyo3/extension-module"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

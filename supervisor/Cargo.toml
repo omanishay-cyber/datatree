@@ -116,6 +116,14 @@ parsers = { path = "../parsers", package = "mneme-parsers" }
 # with SQLITE_OPEN_READ_WRITE.
 rusqlite = { workspace = true }
 
+# Wave 2.4: background update-check task polls GitHub Releases once every
+# 24 h and writes ~/.mneme/run/update_check.json for `mneme doctor` and
+# the CLI on-launch banner. `rustls-tls` avoids a system-OpenSSL dep on
+# Linux/musl (matches the CLI's existing reqwest feature set). `json`
+# enables `resp.json::<T>()`. No `stream` needed — the update check only
+# reads a small JSON payload, not an asset download.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
 # I2 fix (phase-a-issues.md): the watcher needs to write `files.sha256`
 # every time it reindexes a file so the vision treemap / heatmap /
 # file-tree queries get rows. SHA-256 is the column the schema names,

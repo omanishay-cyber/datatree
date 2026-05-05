@@ -28,7 +28,12 @@ Mneme keeps what Claude learned about your project - survives context wipes, doe
 </div>
 
 ```powershell
-# Windows * one command * no admin * auto-detects x64 / ARM64
+# Windows (preferred) * winget package * built into Windows 10 1809+ / 11
+winget install Anish.Mneme       # also available as Anish.Mnemeos
+```
+
+```powershell
+# Windows (no winget) * one command * no admin * auto-detects x64 / ARM64
 iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)
 ```
 
@@ -47,7 +52,7 @@ curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/ins
 pip install mnemeos && mnemeos
 ```
 
-> One command per OS - the script auto-detects your architecture and downloads the right binary archive. The `pip install mnemeos` path is a Python wrapper that fetches the same bootstrap script for your platform. Restart Claude after install. Verify with `mneme doctor` and `claude mcp list`.
+> Pick whichever route matches your environment - all five end up at the same `~/.mneme` install. Restart Claude after install. Verify with `mneme doctor` and `claude mcp list`.
 >
 > **Branding note:** the project is **Mneme OS**. The pip distribution is `mnemeos` (the bare name `mneme` was claimed on PyPI in 2014 by an unrelated package). The CLI binary is `mneme` with `mnemeos` as a parallel alias - both names work everywhere.
 >

@@ -81,6 +81,8 @@ const STATIC_TOOL_FILES = [
   "suggest_skill",
   // J7 (Phase A intent layer) — per-file intent annotations.
   "file_intent",
+  // Wave 3.2 — auto-ranked question generation from graph topology.
+  "smart-questions",
 ];
 
 // ---------------------------------------------------------------------------

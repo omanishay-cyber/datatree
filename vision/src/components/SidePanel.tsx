@@ -32,20 +32,19 @@ export function SidePanel(): JSX.Element {
   const [tab, setTab] = useState<"summary" | "tests" | "history" | "preview">("summary");
 
   useEffect(() => {
-    const ac = new AbortController();
     if (selected.length === 0) {
       setDetail(null);
       return;
     }
     const target = selected[0];
     if (!target) return;
-    fetch(withProject(API_BASE + `/api/graph?view=file-detail&id=${encodeURIComponent(target.id)}`), { signal: ac.signal })
-      .then((r) => r.json())
-      .then((json: { detail?: FileDetail }) => {
-        setDetail(json.detail ?? placeholderDetail(target.label ?? target.id));
-      })
-      .catch(() => setDetail(placeholderDetail(target.label ?? target.id)));
-    return () => ac.abort();
+    // Bug #NEW-J (2026-05-04): the previous code fetched
+    // `/api/graph?view=file-detail&id=...` which is a stub returning
+    // 501. That spammed the console with 501 errors on every node click.
+    // No server endpoint exists today for per-node detail, so use the
+    // placeholder synchronously. v0.5.0 should add /api/graph/files/:id
+    // and switch this back to a real fetch with proper error handling.
+    setDetail(placeholderDetail(target.label ?? target.id));
   }, [selected]);
 
   if (selected.length === 0) {

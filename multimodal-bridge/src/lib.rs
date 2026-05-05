@@ -30,10 +30,15 @@ pub mod pdf;
 pub mod registry;
 pub mod types;
 pub mod video;
+pub mod whisper;
 
 pub use extractor::Extractor;
 pub use registry::Registry;
 pub use types::{ExtractError, ExtractResult, ExtractedDoc, PageText, TranscriptSegment};
+pub use whisper::{
+    best_model_path, locate_whisper_cli, model_path as whisper_model_path, whisper_model_dir,
+    whisper_runtime_available, WhisperModel, WHISPER_FEATURE_ENABLED,
+};
 
 /// Canonical extractor version. Written to `media.extractor_version`.
 pub const VERSION: &str = concat!("mneme-multimodal@", env!("CARGO_PKG_VERSION"));
@@ -83,6 +88,16 @@ pub fn check_size(path: &std::path::Path) -> ExtractResult<u64> {
     }
     Ok(len)
 }
+
+/// True iff the binary was compiled with the `whisper` Cargo feature AND
+/// a Whisper model is present on disk. For the full runtime check (which
+/// also probes the `whisper-cli` shellout fallback) use
+/// [`whisper_runtime_available`] (re-exported from [`whisper`]).
+///
+/// Following the same design as [`OCR_ENABLED`]: use
+/// [`whisper_runtime_available`] in all new code; this const is for
+/// compile-time gates only.
+pub const WHISPER_ENABLED: bool = cfg!(feature = "whisper");
 
 /// True iff the binary was compiled with the `tesseract` Cargo feature.
 /// When `false`, image extractors only emit width/height/EXIF and the

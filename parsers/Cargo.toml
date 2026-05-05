@@ -5,6 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Mneme PARSERS — Tree-sitter worker pool: 27 languages, incremental, parser-per-worker"
 license.workspace = true
+keywords = ["code-graph", "tree-sitter", "ast", "parsing", "static-analysis"]
+categories = ["development-tools", "parser-implementations"]
+repository.workspace = true
+homepage.workspace = true
+# publish = true   ← maintainer enables before `cargo publish`
 publish = false
 
 [[bin]]

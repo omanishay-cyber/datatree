@@ -13,6 +13,11 @@ members = [
 
     "brain",
     "benchmarks",
+
+    # Wave 3.5 — standalone SDK bindings (no daemon required)
+    "sdk/rust",    # mneme-parsers-rs  — re-export crate for crates.io
+    "sdk/python",  # mneme-parsers-py  — PyO3 extension module for PyPI
+    "sdk/js",      # mneme-parsers-js  — napi-rs addon for npm
 ]
 exclude = [
     "vision/tauri",

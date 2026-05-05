@@ -1078,3 +1078,241 @@ fn parse_semver_via_boot_probe_consistency() {
         "missing exe must not fail boot — probe is advisory; got {result:?}"
     );
 }
+
+// ---------------------------------------------------------------------
+// Bug #233 regression (2026-05-04): worker IPC stdin-wedge under load.
+//
+// Symptom under heavy IPC traffic (Claude Code tool use, ~1KB+ payloads):
+//   "child stdin write timed out after 10s (wedged worker?)"
+//   "heartbeat missed past deadline; force-kill"
+//   "restart scheduled, child=parser-worker-N delay_ms=10000"
+// observed as 40+ orphan parser procs and 100+ supervisor restarts
+// in `mneme doctor`.
+//
+// Root cause: BUG-A4-003 (commit a8b97ba) set `heartbeat_deadline =
+// Some(60s)` on every worker spec in `default_layout()`. The supervisor
+// watchdog enforces that deadline against `last_heartbeat`, which is
+// initialised to spawn-time in `manager.rs::spawn_child` (line 267)
+// and is ONLY ever advanced by the `ControlCommand::Heartbeat` IPC
+// handler (`record_heartbeat`). NO worker binary in this repo ever
+// sends that command — `common::worker_ipc` only exposes
+// `report_complete`, never `heartbeat`. Result: every worker is
+// guaranteed to be force-killed exactly 60 s after spawn, dispatches
+// in flight see the dying stdin pipe and time out at 10 s, the
+// monitor task respawns the worker, the cycle repeats forever.
+//
+// Contract: workers that DO NOT emit heartbeats MUST have
+// `heartbeat_deadline = None` (the documented S-PHASE NEW-055 opt-out
+// path in `watchdog.rs::heartbeat_pass`). When a worker class is
+// later refactored to call `worker_ipc::heartbeat()` periodically,
+// this test must be updated to allow `Some(...)` for THAT worker
+// only — and a paired heartbeat-emit test must accompany the change.
+//
+// This test is intentionally tied to the canonical default layout, so
+// the next contributor who flips `None → Some(60s)` on a
+// heartbeat-less worker without a paired emit-side change gets a hard
+// red CI failure pointing at this comment.
+#[test]
+fn default_layout_workers_have_no_heartbeat_deadline_until_emit_is_wired() {
+    let cfg = SupervisorConfig::default_layout();
+    let offenders: Vec<(String, Duration)> = cfg
+        .children
+        .iter()
+        .filter_map(|c| c.heartbeat_deadline.map(|d| (c.name.clone(), d)))
+        .collect();
+    assert!(
+        offenders.is_empty(),
+        "Bug #233: default-layout workers MUST set `heartbeat_deadline = None` \
+         until they wire a periodic `worker_ipc::heartbeat()` send. \
+         Without a heartbeat sender, the watchdog kills every worker \
+         60s after spawn, causing the stdin-wedge restart loop. \
+         Offenders (name, deadline): {offenders:?}. \
+         When you wire heartbeat-emit for a worker class, update this test \
+         to whitelist THAT worker only — the rest must stay None."
+    );
+}
+
+// ---------------------------------------------------------------------
+// Wave 2.4: update_check integration tests (supervisor-level)
+// ---------------------------------------------------------------------
+//
+// These tests exercise the supervisor-side plumbing:
+//   * AutoUpdateConfig deserialization and defaults
+//   * compare_semver edge cases via the re-export in lib.rs
+//   * update_check_path / update_notice_seen_path helpers
+//   * The config's default_layout includes a sensible AutoUpdateConfig
+//
+// Network-hitting tests (fetch_latest_release) live ONLY in
+// update_check.rs itself and are gated with an opt-out env var.
+// No test in this suite ever calls the real GitHub API.
+
+#[test]
+fn auto_update_config_default_is_enabled() {
+    use crate::config::AutoUpdateConfig;
+    let cfg = AutoUpdateConfig::default();
+    assert!(cfg.enabled, "auto_update must be ON by default in v0.4.0");
+    assert_eq!(cfg.check_interval_hours, 24);
+    assert!(!cfg.apply, "apply mode must be OFF by default (Wave 2.5)");
+    assert!(!cfg.include_prerelease);
+}
+
+#[test]
+fn default_layout_includes_auto_update_config() {
+    let cfg = SupervisorConfig::default_layout();
+    assert!(
+        cfg.auto_update.enabled,
+        "default_layout must carry an enabled AutoUpdateConfig"
+    );
+    assert_eq!(cfg.auto_update.check_interval_hours, 24);
+}
+
+#[test]
+fn auto_update_config_roundtrips_toml() {
+    use crate::config::AutoUpdateConfig;
+    let cfg = AutoUpdateConfig {
+        enabled: false,
+        check_interval_hours: 12,
+        apply: false,
+        include_prerelease: true,
+    };
+    let s = toml::to_string(&cfg).expect("serialize");
+    let back: AutoUpdateConfig = toml::from_str(&s).expect("deserialize");
+    assert!(!back.enabled);
+    assert_eq!(back.check_interval_hours, 12);
+    assert!(back.include_prerelease);
+}
+
+#[test]
+fn auto_update_config_missing_section_uses_defaults() {
+    // A TOML string that has NO [auto_update] section — the serde(default)
+    // attribute on the field must kick in and produce the default struct.
+    let toml_str = r#"
+        root_dir = "/tmp/mneme"
+        bin_dir  = "/tmp/mneme/bin"
+        log_dir  = "/tmp/mneme/logs"
+        ipc_socket_path = "/tmp/mneme/supervisor.sock"
+        health_port = 7777
+        health_check_interval = 60
+
+        [default_restart_policy]
+        initial_backoff = 100
+        max_backoff = 10000
+        backoff_multiplier = 5.0
+        max_restarts_per_window = 5
+        budget_window = 60
+
+        [[children]]
+        name    = "store-worker"
+        command = "/tmp/mneme/bin/mneme-store"
+        args    = []
+        env     = []
+        restart = "permanent"
+    "#;
+    let cfg: SupervisorConfig = toml::from_str(toml_str).expect("deserialize");
+    assert!(cfg.auto_update.enabled, "missing section → default ON");
+    assert_eq!(cfg.auto_update.check_interval_hours, 24);
+    assert!(!cfg.auto_update.apply);
+}
+
+#[test]
+fn update_check_paths_are_under_run_dir() {
+    use crate::update_check::{update_check_path, update_notice_seen_path};
+    let run_dir = std::path::PathBuf::from("/tmp/mneme/run");
+    let check = update_check_path(&run_dir);
+    let seen = update_notice_seen_path(&run_dir);
+    assert_eq!(check.file_name().unwrap(), "update_check.json");
+    assert_eq!(seen.file_name().unwrap(), "update_notice_seen.json");
+    assert_eq!(check.parent().unwrap(), run_dir.as_path());
+    assert_eq!(seen.parent().unwrap(), run_dir.as_path());
+}
+
+#[test]
+fn supervisor_compare_semver_covers_all_cases() {
+    use crate::update_check::compare_semver;
+    use std::cmp::Ordering;
+    // Older minor
+    assert_eq!(compare_semver("0.3.99", "0.4.0"), Ordering::Less);
+    // Equal
+    assert_eq!(compare_semver("0.4.0", "0.4.0"), Ordering::Equal);
+    // Newer patch (the 0.4.10 > 0.4.9 case that broke lexical sort)
+    assert_eq!(compare_semver("0.4.10", "0.4.9"), Ordering::Greater);
+    // Major beats everything
+    assert_eq!(compare_semver("1.0.0", "0.99.99"), Ordering::Greater);
+    // GitHub includes `v` prefix
+    assert_eq!(compare_semver("0.4.0", "v0.4.1"), Ordering::Less);
+    assert_eq!(compare_semver("0.4.1", "v0.4.1"), Ordering::Equal);
+}
+
+#[test]
+fn write_and_read_update_check_roundtrip_supervisor() {
+    use crate::update_check::{read_cached_result, write_result_atomic, UpdateCheckResult};
+    use chrono::Utc;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let run_dir = dir.path();
+
+    let result = UpdateCheckResult {
+        current_version: "0.4.0".to_string(),
+        latest_version: Some("0.4.2".to_string()),
+        update_available: Some(true),
+        last_checked_at: Some(Utc::now()),
+        last_attempt_at: Utc::now(),
+        last_error: None,
+    };
+
+    write_result_atomic(run_dir, &result);
+    let back = read_cached_result(run_dir).expect("round-trip read");
+
+    assert_eq!(back.current_version, "0.4.0");
+    assert_eq!(back.latest_version.as_deref(), Some("0.4.2"));
+    assert_eq!(back.update_available, Some(true));
+}
+
+#[test]
+fn banner_shown_supervisor_level() {
+    use crate::update_check::{
+        mark_notice_seen, read_cached_result, should_show_banner, write_result_atomic,
+        UpdateCheckResult,
+    };
+    use chrono::Utc;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let run_dir = dir.path();
+
+    let cached = UpdateCheckResult {
+        current_version: "0.4.0".to_string(),
+        latest_version: Some("0.4.1".to_string()),
+        update_available: Some(true),
+        last_checked_at: Some(Utc::now()),
+        last_attempt_at: Utc::now(),
+        last_error: None,
+    };
+    write_result_atomic(run_dir, &cached);
+    let cached = read_cached_result(run_dir).unwrap();
+
+    // No seen file → should show.
+    assert!(should_show_banner(&cached, "0.4.1", run_dir));
+
+    // After marking seen within 24h → should NOT show.
+    mark_notice_seen(run_dir, "0.4.1");
+    assert!(!should_show_banner(&cached, "0.4.1", run_dir));
+}
+
+#[test]
+fn banner_not_shown_when_up_to_date_supervisor() {
+    use crate::update_check::{should_show_banner, UpdateCheckResult};
+    use chrono::Utc;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let run_dir = dir.path();
+
+    let cached = UpdateCheckResult {
+        current_version: "0.4.1".to_string(),
+        latest_version: Some("0.4.1".to_string()),
+        update_available: Some(false),
+        last_checked_at: Some(Utc::now()),
+        last_attempt_at: Utc::now(),
+        last_error: None,
+    };
+    assert!(!should_show_banner(&cached, "0.4.1", run_dir));
+}

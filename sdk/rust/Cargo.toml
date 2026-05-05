@@ -1,0 +1,27 @@
+[package]
+name = "mneme-parsers-rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Rust SDK — parse source files into a typed code graph using mneme's tree-sitter engine"
+license.workspace = true
+keywords = ["code-graph", "tree-sitter", "ast", "parsing", "static-analysis"]
+categories = ["development-tools", "parser-implementations"]
+repository.workspace = true
+homepage.workspace = true
+# publish = true   ← maintainer enables before `cargo publish`
+
+[lib]
+name = "mneme_parsers_rs"
+path = "src/lib.rs"
+
+[dependencies]
+mneme-parsers = { path = "../../parsers" }
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros"] }
+thiserror = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "test-util"] }
+tempfile = "3.10"

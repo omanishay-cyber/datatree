@@ -249,6 +249,31 @@ async fn main() -> ExitCode {
 
 async fn dispatch(cli: Cli) -> CliResult<()> {
     let socket_override = cli.socket.clone();
+    // Bug NEW-A (2026-05-04): hold the parent's global `--verbose`
+    // count locally so we can pass it to subcommands that need it
+    // (today: `self-update`). The `cli.cmd` move below would otherwise
+    // partially-move `cli` and forbid subsequent `cli.verbose` reads.
+    let verbose_count = cli.verbose;
+
+    // Wave 2.4: on-launch update banner.
+    //
+    // Prints at most one line per 24 h when a new version is available.
+    // Rules (ALL must hold):
+    //   1. MNEME_NO_UPDATE_CHECK is not set.
+    //   2. The cached update_check.json shows update_available = true.
+    //   3. The user has not been notified about this version in the last 24h
+    //      (tracked in update_notice_seen.json).
+    //   4. The current subcommand is NOT a hook entry point (inject,
+    //      pre-tool, post-tool, session-prime, session-end, turn-end)
+    //      — hook outputs are consumed by Claude Code as JSON and an
+    //      extra prose line would corrupt the structured output.
+    //   5. The current subcommand is NOT `mneme mcp stdio` (stdout is a
+    //      JSON-RPC transport — any extra bytes break the protocol).
+    //
+    // Failures (file missing, parse error, …) are silently swallowed.
+    // The banner is never shown for hook / MCP commands.
+    maybe_print_update_banner(&cli.cmd);
+
     match cli.cmd {
         Command::Install(args) => commands::install::run(args).await,
         Command::Uninstall(args) => commands::uninstall::run(args).await,
@@ -258,7 +283,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
         Command::Models(args) => commands::models::run(args).await,
         Command::Build(args) => commands::build::run(args, socket_override).await,
         Command::Update(args) => commands::update::run(args, socket_override).await,
-        Command::SelfUpdate(args) => commands::self_update::run(args).await,
+        Command::SelfUpdate(args) => commands::self_update::run(args, verbose_count).await,
         Command::Status(args) => commands::status::run(args, socket_override).await,
         Command::View(args) => commands::view::run(args).await,
         Command::Audit(args) => commands::audit::run(args, socket_override).await,
@@ -349,6 +374,69 @@ async fn launch_mcp(transport: String) -> CliResult<()> {
             status.code().unwrap_or(-1)
         )))
     }
+}
+
+/// Wave 2.4: print "INFO: mneme vX.Y.Z available — run `mneme self-update`"
+/// to stderr when all five conditions in the dispatch() doc comment hold.
+///
+/// Uses `eprintln!` (not `println!`) so the banner:
+///   1. Never corrupts stdout (JSON-RPC for MCP, JSON hook payloads).
+///   2. Is visible in interactive terminal sessions even when stdout is
+///      piped (e.g. `mneme recall "…" | jq`).
+///
+/// Returns immediately and silently on any error (missing file, parse
+/// failure, I/O error) — a broken update check must never prevent the
+/// user from using mneme.
+fn maybe_print_update_banner(cmd: &Command) {
+    use mneme_daemon::update_check::{
+        is_disabled_by_env, mark_notice_seen, read_cached_result, should_show_banner,
+    };
+
+    // Gate 4+5: never print for hook/MCP entry points (output is
+    // structured and a prose line would corrupt it).
+    let is_structured_output_cmd = matches!(
+        cmd,
+        Command::Inject(_)
+            | Command::SessionPrime(_)
+            | Command::PreTool(_)
+            | Command::PostTool(_)
+            | Command::TurnEnd(_)
+            | Command::SessionEnd(_)
+            | Command::Mcp { .. }
+    );
+    if is_structured_output_cmd {
+        return;
+    }
+
+    // Gate 1: env opt-out.
+    if is_disabled_by_env() {
+        return;
+    }
+
+    let run_dir = mneme_cli::runtime_dir();
+    let current = env!("CARGO_PKG_VERSION");
+
+    // Gate 2+3: check cached result and 24-h throttle.
+    let cached = match read_cached_result(&run_dir) {
+        Some(c) => c,
+        None => return, // Daemon hasn't written a check yet.
+    };
+
+    let latest = match &cached.latest_version {
+        Some(v) => v.trim_start_matches('v').to_string(),
+        None => return, // Last check failed.
+    };
+
+    if !should_show_banner(&cached, &latest, &run_dir) {
+        return;
+    }
+
+    // All gates passed — print the banner to stderr and record the notice.
+    eprintln!("INFO: mneme v{latest} available — run `mneme self-update`");
+    mark_notice_seen(&run_dir, &latest);
+
+    // Suppress an unused-variable warning in non-debug builds.
+    let _ = current;
 }
 
 fn which_bun() -> String {

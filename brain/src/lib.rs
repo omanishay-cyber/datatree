@@ -22,6 +22,7 @@ pub mod blast;
 pub mod call_resolver;
 pub mod cluster_runner;
 pub mod concept;
+pub mod concept_store;
 pub mod conventions;
 pub mod embed_store;
 pub mod embeddings;
@@ -33,6 +34,7 @@ pub mod ledger;
 pub mod leiden;
 pub mod reranker;
 pub mod retrieve;
+pub mod smart_questions;
 pub mod summarize;
 pub mod wiki;
 pub mod worker;
@@ -95,6 +97,7 @@ pub use call_resolver::{
 };
 pub use cluster_runner::ClusterRunner;
 pub use concept::{Concept, ConceptExtractor};
+pub use concept_store::{stable_id as concept_stable_id, ConceptStore, StoredConcept};
 pub use conventions::{
     Convention, ConventionLearner, ConventionPattern, DefaultLearner, NamingScope, NamingStyle,
     Violation,
@@ -117,6 +120,10 @@ pub use reranker::Reranker;
 pub use retrieve::{
     estimate_tokens, BM25Index, GraphIndex, RetrievalEngine, RetrievalResult, RetrievalSource,
     ScoredHit,
+};
+pub use smart_questions::{
+    generate_questions, GraphEdge as SmartGraphEdge, GraphNode as SmartGraphNode, QuestionKind,
+    SmartQuestion,
 };
 pub use summarize::Summarizer;
 pub use wiki::{CommunityInput, WikiBuilder, WikiPage, WikiSymbol};

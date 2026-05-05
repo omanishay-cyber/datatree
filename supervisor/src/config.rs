@@ -31,6 +31,75 @@ pub struct SupervisorConfig {
     pub default_restart_policy: RestartPolicy,
     /// All children to spawn at boot.
     pub children: Vec<ChildSpec>,
+    /// Auto-update notification settings (Wave 2.4).
+    #[serde(default)]
+    pub auto_update: AutoUpdateConfig,
+}
+
+/// Configuration for the background update-check task (Wave 2.4).
+///
+/// Written to / read from `~/.mneme/config.toml` under the
+/// `[auto_update]` section. Every field has a sane default so a missing
+/// section behaves identically to an explicit all-defaults section.
+///
+/// ```toml
+/// [auto_update]
+/// enabled = true            # default ON in v0.4.0 — opt-out only
+/// check_interval_hours = 24
+/// apply = false             # default OFF — apply mode is Wave 2.5
+/// include_prerelease = false
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoUpdateConfig {
+    /// Whether the daemon should poll GitHub for new releases at all.
+    ///
+    /// Default `true`. Set to `false` to disable all update-check network
+    /// activity. The `MNEME_NO_UPDATE_CHECK=1` environment variable is an
+    /// equivalent opt-out that does not require editing the config file.
+    #[serde(default = "default_update_enabled")]
+    pub enabled: bool,
+
+    /// How many hours to sleep between checks.
+    ///
+    /// Default 24. Minimum enforced at runtime to 1 to avoid hammering the
+    /// GitHub API from a test environment with a very short interval.
+    #[serde(default = "default_check_interval_hours")]
+    pub check_interval_hours: u64,
+
+    /// Whether to automatically apply updates (download + replace binaries).
+    ///
+    /// Default `false` — notify-only in v0.4.0. Wave 2.5 will flip this to
+    /// an opt-in `true` once the apply path is hardened and SHA-256-verified.
+    #[serde(default)]
+    pub apply: bool,
+
+    /// Include pre-release tags when determining "latest".
+    ///
+    /// Default `false`. Set to `true` to track release candidates and betas.
+    /// GitHub's `/releases/latest` endpoint never returns a pre-release as
+    /// "latest" anyway, but this gate is respected when iterating
+    /// `/releases` in future apply-mode work.
+    #[serde(default)]
+    pub include_prerelease: bool,
+}
+
+fn default_update_enabled() -> bool {
+    true
+}
+
+fn default_check_interval_hours() -> u64 {
+    24
+}
+
+impl Default for AutoUpdateConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            check_interval_hours: 24,
+            apply: false,
+            include_prerelease: false,
+        }
+    }
 }
 
 /// Backoff + budget configuration shared by every child unless overridden.
@@ -112,17 +181,40 @@ impl SupervisorConfig {
 
         let mut children = Vec::new();
 
-        // BUG-A4-003 fix (2026-05-04): every worker now declares a
-        // heartbeat deadline so the watchdog can flag wedged workers
-        // (deadlocked, infinite parser loop, blocked on disk I/O) that
-        // the existing pid_alive_pass cannot catch. 60 s is generous
-        // enough that legitimately slow work (large semantic build,
-        // first-run model download) does not trip it but tight enough
-        // that a hung parser-worker is restarted within the same minute.
-        // If a worker class does not yet emit `worker_ipc::heartbeat()`
-        // ticks the watchdog will trip on first pass -- by design: a
-        // worker that never says "alive" is a worker we cannot trust,
-        // and the restart is the desired effect (Bug F-2 root cause).
+        // Bug #233 (2026-05-04): every worker spec MUST keep
+        // `heartbeat_deadline = None` until that worker class actually
+        // wires a periodic `worker_ipc::heartbeat()` send. Workers in
+        // this repo (parsers, scanners, brain, md-ingest, livebus,
+        // store) currently emit ZERO heartbeats — `common::worker_ipc`
+        // only exposes `report_complete`, no heartbeat helper exists.
+        // The watchdog initialises `last_heartbeat` to spawn-time
+        // (manager.rs:267) and only advances it when the
+        // `ControlCommand::Heartbeat` IPC handler fires (manager.rs:867)
+        // — and nothing in this repo sends that command. With a
+        // `Some(60s)` deadline the watchdog's `heartbeat_pass` is
+        // guaranteed to fire `force-kill` 60 s after every worker
+        // spawns, dispatches in flight time out at the 10 s
+        // STDIN_WRITE_TIMEOUT, and the monitor + restart loop drag
+        // every worker through a perpetual kill→respawn cycle. Visible
+        // as 40+ orphan parser-worker procs and 100+ supervisor
+        // restarts in `mneme doctor` under sustained Claude Code tool
+        // traffic.
+        //
+        // The S-PHASE NEW-055 contract on `watchdog::heartbeat_pass`
+        // already documents `None` as the explicit "opt-out until
+        // heartbeat-send is wired" path, and `pid_alive_pass`
+        // (Bug F-9) provides genuine "process actually dead"
+        // detection that does not depend on worker-side cooperation.
+        // Re-enabling per-worker heartbeat enforcement is a v0.3.3
+        // refactor that lands a `worker_ipc::heartbeat()` helper +
+        // a tokio interval task in each worker's `main.rs` BEFORE the
+        // matching spec flips its deadline back to `Some(...)`.
+        //
+        // The regression test
+        // `tests::default_layout_workers_have_no_heartbeat_deadline_until_emit_is_wired`
+        // pins this contract — flipping any of these to `Some(...)`
+        // without a paired heartbeat-emit change will fail CI with a
+        // pointer back here.
         children.push(ChildSpec {
             name: "store-worker".into(),
             command: bin.join("mneme-store").to_string_lossy().into(),
@@ -132,7 +224,7 @@ impl SupervisorConfig {
             rss_limit_mb: Some(512),
             cpu_limit_percent: Some(80),
             health_endpoint: Some("/health".into()),
-            heartbeat_deadline: Some(Duration::from_secs(60)),
+            heartbeat_deadline: None,
         });
 
         for i in 0..parser_pool_size {
@@ -145,7 +237,7 @@ impl SupervisorConfig {
                 rss_limit_mb: Some(384),
                 cpu_limit_percent: Some(75),
                 health_endpoint: Some("/health".into()),
-                heartbeat_deadline: Some(Duration::from_secs(60)),
+                heartbeat_deadline: None,
             });
         }
 
@@ -159,7 +251,7 @@ impl SupervisorConfig {
                 rss_limit_mb: Some(256),
                 cpu_limit_percent: Some(60),
                 health_endpoint: Some("/health".into()),
-                heartbeat_deadline: Some(Duration::from_secs(60)),
+                heartbeat_deadline: None,
             });
         }
 
@@ -172,7 +264,7 @@ impl SupervisorConfig {
             rss_limit_mb: Some(192),
             cpu_limit_percent: Some(40),
             health_endpoint: Some("/health".into()),
-            heartbeat_deadline: Some(Duration::from_secs(60)),
+            heartbeat_deadline: None,
         });
 
         // v0.2: multimodal extraction moved fully in-process. The
@@ -189,7 +281,7 @@ impl SupervisorConfig {
             rss_limit_mb: Some(2048),
             cpu_limit_percent: Some(90),
             health_endpoint: Some("/health".into()),
-            heartbeat_deadline: Some(Duration::from_secs(60)),
+            heartbeat_deadline: None,
         });
 
         children.push(ChildSpec {
@@ -201,7 +293,7 @@ impl SupervisorConfig {
             rss_limit_mb: Some(128),
             cpu_limit_percent: Some(40),
             health_endpoint: Some("/health".into()),
-            heartbeat_deadline: Some(Duration::from_secs(60)),
+            heartbeat_deadline: None,
         });
 
         // v0.1: mcp-server and vision-server are SPAWNED ON DEMAND, not
@@ -226,6 +318,7 @@ impl SupervisorConfig {
             health_check_interval: Duration::from_secs(60),
             default_restart_policy: RestartPolicy::default(),
             children,
+            auto_update: AutoUpdateConfig::default(),
         }
     }
 }

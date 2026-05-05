@@ -108,6 +108,22 @@ const PROGRESS_INTERVAL_BYTES: u64 = 5 * 1024 * 1024;
 const MNEME_RELEASE_PUBKEY: Option<&str> = None;
 
 /// CLI args for `mneme self-update`.
+///
+/// Bug NEW-A (2026-05-04): the subcommand previously defined its own
+/// `--verbose: bool` flag here. The parent `Cli` struct in `main.rs`
+/// already registers `--verbose` as a `clap::ArgAction::Count` (u8)
+/// global argument that propagates to every subcommand. Defining a
+/// second `--verbose` here with a different type registered the same
+/// arg name twice with conflicting `TypeId`s; at parse time clap
+/// panicked with "Mismatch between definition and access of `verbose`"
+/// the moment any code path called `get_one::<u8>("verbose")` on the
+/// merged matches. Self-update was 100% broken on every invocation
+/// (`--check-only`, `--force`, bare). The fix is to drop the duplicate
+/// field entirely and read `Cli::verbose` (count, u8) via the
+/// dispatcher in `main.rs`. `mneme self-update --verbose`,
+/// `mneme self-update -v`, and `mneme self-update -vv` continue to
+/// work because the parent's `global = true` flag is accepted on every
+/// subcommand.
 #[derive(Debug, Args)]
 pub struct SelfUpdateArgs {
     /// Skip the version check and reinstall current latest.
@@ -119,9 +135,6 @@ pub struct SelfUpdateArgs {
     /// Skip stopping the daemon (for advanced users).
     #[arg(long)]
     pub no_stop_daemon: bool,
-    /// Verbose progress output.
-    #[arg(short, long)]
-    pub verbose: bool,
     /// A1-018 (2026-05-04): allow self-update to proceed when the release
     /// ships no signature (`.minisig`) sidecar. Without this flag, missing
     /// signature is a hard error -- preventing supply-chain attacks where
@@ -162,15 +175,25 @@ pub struct GhRelease {
 /// Entry point used by `main.rs`. Async because the dispatcher awaits
 /// every `commands::*::run`; the heavy I/O (reqwest, fs copies) runs on
 /// the multi-thread runtime.
-pub async fn run(args: SelfUpdateArgs) -> CliResult<()> {
+///
+/// `verbose_count` is the parent `Cli`'s global `--verbose` count
+/// (`-v` = 1, `-vv` = 2, etc.). Any non-zero value enables the chatty
+/// progress prints.
+pub async fn run(args: SelfUpdateArgs, verbose_count: u8) -> CliResult<()> {
+    // Bug NEW-A (2026-05-04): the subcommand no longer owns its own
+    // `--verbose` flag (see SelfUpdateArgs doc-comment). Collapse the
+    // count into a bool so the rest of this function and its helpers
+    // (which take `verbose: bool`) stay byte-for-byte the same.
+    let verbose = verbose_count > 0;
+
     let installed_version = env!("CARGO_PKG_VERSION");
-    if args.verbose {
+    if verbose {
         eprintln!("self-update: installed version = v{installed_version}");
     }
 
     let release = fetch_latest_release().await?;
     let latest_version = tag_to_version(&release.tag_name);
-    if args.verbose {
+    if verbose {
         eprintln!(
             "self-update: latest published    = v{latest_version} (tag {})",
             release.tag_name
@@ -267,7 +290,7 @@ pub async fn run(args: SelfUpdateArgs) -> CliResult<()> {
         &asset.browser_download_url,
         &archive_path,
         asset.size,
-        args.verbose,
+        verbose,
     )
     .await;
     if let Err(e) = download_result {
@@ -281,7 +304,7 @@ pub async fn run(args: SelfUpdateArgs) -> CliResult<()> {
         .iter()
         .find(|a| a.name == format!("{}.sha256", asset.name))
     {
-        if args.verbose {
+        if verbose {
             eprintln!("self-update: verifying sha256 against {}", sha_asset.name);
         }
         let expected = fetch_sha256_sidecar(&sha_asset.browser_download_url, &asset.name).await?;
@@ -292,7 +315,7 @@ pub async fn run(args: SelfUpdateArgs) -> CliResult<()> {
                 asset.name, expected, actual
             )));
         }
-    } else if args.verbose {
+    } else if verbose {
         eprintln!(
             "self-update: no .sha256 sidecar published for {}; skipping verification",
             asset.name
@@ -303,12 +326,12 @@ pub async fn run(args: SelfUpdateArgs) -> CliResult<()> {
     // SHA-256 alone proves nothing about origin -- attacker controlling the
     // release replaces both binary and sidecar. Signature verification with
     // an embedded public key closes that gap. See verify_signature().
-    verify_signature(&release, &asset, &archive_path, &args).await?;
+    verify_signature(&release, &asset, &archive_path, &args, verbose).await?;
 
     // Stop the daemon so Windows can release file locks on its binary.
     if !args.no_stop_daemon {
-        stop_daemon_best_effort(args.verbose).await;
-    } else if args.verbose {
+        stop_daemon_best_effort(verbose).await;
+    } else if verbose {
         eprintln!("self-update: --no-stop-daemon set; leaving supervisor running");
     }
 
@@ -325,7 +348,7 @@ pub async fn run(args: SelfUpdateArgs) -> CliResult<()> {
     if !target_bin_dir.exists() {
         fs::create_dir_all(&target_bin_dir).map_err(|e| CliError::io(target_bin_dir.clone(), e))?;
     }
-    let swapped = replace_binaries_atomically(&staging_bin, &target_bin_dir, args.verbose)?;
+    let swapped = replace_binaries_atomically(&staging_bin, &target_bin_dir, verbose)?;
 
     // A1-020 (2026-05-04): hard-fail if no binary was actually replaced.
     // Previously, an archive whose layout drifted (e.g. wrapped in a
@@ -355,7 +378,7 @@ pub async fn run(args: SelfUpdateArgs) -> CliResult<()> {
     println!("Updated mneme: v{installed_version} -> v{latest_version}");
     println!("Restart Claude Code (or your MCP host) to pick up the new tools.");
 
-    if args.verbose {
+    if verbose {
         eprintln!(
             "self-update: replaced {} binaries under {}",
             swapped,
@@ -714,6 +737,7 @@ async fn verify_signature(
     asset: &GhAsset,
     archive_path: &Path,
     args: &SelfUpdateArgs,
+    verbose: bool,
 ) -> CliResult<()> {
     let sig_name = format!("{}.minisig", asset.name);
     let sig_asset = release.assets.iter().find(|a| a.name == sig_name);
@@ -757,7 +781,7 @@ async fn verify_signature(
             // verifying it should also have a non-None MNEME_RELEASE_PUBKEY.
             // Hitting this branch with `Some(pubkey)` means the maintainer
             // populated the constant but never wired the crypto verifier.
-            if args.verbose {
+            if verbose {
                 eprintln!(
                     "self-update: signature {} present + pubkey embedded; \
                      crypto verification not yet wired (placeholder).",
@@ -1078,21 +1102,46 @@ fn clear_macos_quarantine(_target: &Path) {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
+    use clap::{Parser, Subcommand};
 
-    /// Smoke clap harness — verify the args parser without spinning up
-    /// the full binary.
+    /// Smoke clap harness for the bare subcommand arg struct (no parent
+    /// `--verbose` flag) — exercises the field-level definitions in
+    /// `SelfUpdateArgs` without the global-flag merge.
     #[derive(Debug, Parser)]
     struct Harness {
         #[command(flatten)]
         args: SelfUpdateArgs,
     }
 
+    /// Bug NEW-A (2026-05-04): mirror of `crate::Cli` from `main.rs`,
+    /// reproduced here so tests can drive the FULL parse (parent global
+    /// `--verbose` count + subcommand) without depending on the binary
+    /// crate. The shape MUST match `main.rs::Cli` for the regression
+    /// test to be meaningful — specifically:
+    ///   - `verbose: u8` with `ArgAction::Count` and `global = true`
+    ///   - `SelfUpdate(SelfUpdateArgs)` as one of the subcommand variants
+    /// The failing invocation pre-fix was `mneme self-update --check-only`
+    /// which panicked at parse time inside clap with a TypeId mismatch
+    /// because the subcommand owned a duplicate `verbose: bool`.
+    #[derive(Debug, Parser)]
+    #[command(name = "mneme")]
+    struct CliHarness {
+        #[arg(short, long, action = clap::ArgAction::Count, global = true)]
+        verbose: u8,
+        #[command(subcommand)]
+        cmd: CliHarnessCmd,
+    }
+
+    #[derive(Debug, Subcommand)]
+    enum CliHarnessCmd {
+        #[command(name = "self-update")]
+        SelfUpdate(SelfUpdateArgs),
+    }
+
     #[test]
     fn parses_clap_args() {
-        let h = Harness::try_parse_from(["x", "--force", "--verbose"]).unwrap();
+        let h = Harness::try_parse_from(["x", "--force"]).unwrap();
         assert!(h.args.force);
-        assert!(h.args.verbose);
         assert!(!h.args.check_only);
         assert!(!h.args.no_stop_daemon);
 
@@ -1102,6 +1151,75 @@ mod tests {
         // --dry-run alias of --check-only.
         let h = Harness::try_parse_from(["x", "--dry-run"]).unwrap();
         assert!(h.args.check_only, "--dry-run must alias --check-only");
+
+        // --allow-unsigned propagates.
+        let h = Harness::try_parse_from(["x", "--check-only", "--allow-unsigned"]).unwrap();
+        assert!(h.args.check_only);
+        assert!(h.args.allow_unsigned);
+    }
+
+    /// Bug NEW-A regression: `mneme self-update --check-only` MUST
+    /// parse without a clap TypeId panic. Pre-fix, parsing this exact
+    /// invocation panicked inside clap_builder/parser/error.rs with
+    /// "Mismatch between definition and access of `verbose`" because
+    /// the subcommand defined its own `--verbose: bool` shadowing the
+    /// parent's global `--verbose: u8 (Count)`. After the fix,
+    /// `SelfUpdateArgs` no longer owns a `verbose` field; the parent's
+    /// global flag is the single source of truth.
+    #[test]
+    fn self_update_check_only_does_not_panic() {
+        let cli = CliHarness::try_parse_from(["mneme", "self-update", "--check-only"]);
+        assert!(
+            cli.is_ok(),
+            "self-update --check-only must parse without clap TypeId panic; got {cli:?}",
+        );
+        let cli = cli.unwrap();
+        assert_eq!(cli.verbose, 0, "no -v passed -> count is 0");
+        match cli.cmd {
+            CliHarnessCmd::SelfUpdate(args) => {
+                assert!(args.check_only);
+                assert!(!args.force);
+                assert!(!args.no_stop_daemon);
+                assert!(!args.allow_unsigned);
+            }
+        }
+    }
+
+    /// Bug NEW-A regression: the parent's global `--verbose` count
+    /// flag (registered on `CliHarness`) must accept `-vvv` when the
+    /// invocation includes the `self-update` subcommand. Pre-fix this
+    /// either panicked or silently capped at 1 because the subcommand
+    /// shadowed the parent flag with a bool.
+    #[test]
+    fn self_update_verbose_flag_count() {
+        let cli = CliHarness::try_parse_from(["mneme", "-vvv", "self-update", "--check-only"])
+            .expect("parse with -vvv before subcommand must succeed");
+        assert_eq!(cli.verbose, 3, "-vvv must produce count=3");
+
+        // Global flag also accepted AFTER the subcommand thanks to
+        // `global = true`. This is the exact invocation a user would
+        // type as a habit (`mneme self-update -v`).
+        let cli = CliHarness::try_parse_from(["mneme", "self-update", "-v", "--check-only"])
+            .expect("parse with -v after subcommand must succeed");
+        assert_eq!(cli.verbose, 1, "-v after subcommand must produce count=1");
+    }
+
+    /// Bug NEW-A regression: when no `--verbose` is passed at all, the
+    /// parent's count defaults to 0. Pre-fix, the parsing path never
+    /// reached this assertion (the panic happened during parse).
+    #[test]
+    fn self_update_no_verbose_default_zero() {
+        let cli = CliHarness::try_parse_from(["mneme", "self-update", "--check-only"])
+            .expect("parse without --verbose must succeed");
+        assert_eq!(cli.verbose, 0);
+
+        let cli = CliHarness::try_parse_from(["mneme", "self-update", "--force"])
+            .expect("parse `--force` alone must succeed");
+        assert_eq!(cli.verbose, 0);
+
+        let cli = CliHarness::try_parse_from(["mneme", "self-update"])
+            .expect("bare `self-update` must succeed");
+        assert_eq!(cli.verbose, 0);
     }
 
     #[test]

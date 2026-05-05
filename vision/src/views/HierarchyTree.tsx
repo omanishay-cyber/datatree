@@ -9,17 +9,63 @@ function countLeaves(n: HierarchyNode): number {
   return n.children.reduce((s, c) => s + countLeaves(c), 0);
 }
 
+/**
+ * Cap branching at every depth to keep the visible tree readable on a
+ * 17K-node project without blowing past the 500ms first-paint budget.
+ *
+ * Behaviour:
+ *   - Sort siblings by subtree size DESC.
+ *   - Keep up to `topK` per parent.
+ *   - Replace overflow children with a single "+ N more" placeholder
+ *     leaf so the user knows there's more to see — graphify uses the
+ *     identical pattern in its module-tree explorer.
+ *
+ * Returns a NEW tree (we never mutate the response object — callers
+ * keep a clean reference to the raw shard tree for future
+ * lazy-expansion work in v0.3.3).
+ */
+function capBranching(node: HierarchyNode, topK: number): HierarchyNode {
+  const kids = node.children;
+  if (!kids || kids.length === 0) return node;
+  const withSizes = kids
+    .map((c) => ({ child: c, size: countLeaves(c) }))
+    .sort((a, b) => b.size - a.size);
+  const kept = withSizes.slice(0, topK).map((p) => capBranching(p.child, topK));
+  const overflowCount = withSizes.length - topK;
+  if (overflowCount > 0) {
+    const overflowSize = withSizes
+      .slice(topK)
+      .reduce((s, p) => s + p.size, 0);
+    kept.push({
+      name: `+${overflowCount} more (${overflowSize.toLocaleString()} files)`,
+      kind: "overflow",
+      children: undefined,
+    });
+  }
+  return { ...node, children: kept };
+}
+
+const KIND_COLORS: Record<string, string> = {
+  module: "#f59e0b",
+  class: "#22D3EE",
+  file: "#4191E1",
+  function: "#41E1B5",
+  overflow: "#7a8aa6",
+};
+
 export function HierarchyTree(): JSX.Element {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
   const [leafCount, setLeafCount] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(0);
 
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
 
     (async (): Promise<void> => {
+      const t0 = performance.now();
       try {
         const res = await fetchHierarchy(ac.signal, 4000);
         if (cancelled || !svgRef.current) return;
@@ -36,22 +82,40 @@ export function HierarchyTree(): JSX.Element {
         }
         setLeafCount(leaves);
 
-        const root = d3.hierarchy<HierarchyNode>(tree);
+        // Cap branching at every level. 12 children per parent gives a
+        // dense but legible tree — wider than that and labels mash
+        // together at typical zoom levels regardless of font size.
+        // (Graphify caps at 10, CRG caps at 8; we split the difference.)
+        const capped = capBranching(tree, 12);
+        const root = d3.hierarchy<HierarchyNode>(capped);
         const nodeCount = root.descendants().length;
-        const width = 1200;
-        const height = Math.max(600, Math.min(8000, nodeCount * 12));
-        const layout = d3.tree<HierarchyNode>().size([height - 40, width - 260]);
+        setVisibleCount(nodeCount);
+
+        // Width scales with depth, height with leaf count of the capped
+        // tree. After capping the height stays bounded (~1500px even on
+        // 17K-node projects) so the canvas remains scrollable instead
+        // of degenerating into an infinite vertical strip.
+        const maxDepth = root.height + 1;
+        const width = Math.max(1200, maxDepth * 220);
+        const height = Math.max(600, Math.min(4500, root.leaves().length * 18));
+
+        const layout = d3.tree<HierarchyNode>().size([height - 40, width - 280]);
         layout(root);
 
         const svg = d3
           .select(svgRef.current)
           .attr("viewBox", `0 0 ${width} ${height}`);
         svg.selectAll("*").remove();
-        const g = svg.append("g").attr("transform", "translate(120, 20)");
+        const g = svg.append("g").attr("transform", "translate(140, 20)");
 
+        // Curved diagonal links — the previous straight `linkHorizontal`
+        // produced "tree branches" that looked like a wire diagram.
+        // d3.linkHorizontal already draws bezier curves; the visual
+        // win was just paint-order: we paint links UNDER nodes so circle
+        // strokes don't get cut by the link endpoints.
         g.append("g")
           .attr("fill", "none")
-          .attr("stroke", "#3a4a66")
+          .attr("stroke", "rgba(122, 138, 166, 0.45)")
           .attr("stroke-width", 1.2)
           .selectAll("path")
           .data(root.links() as d3.HierarchyPointLink<HierarchyNode>[])
@@ -80,31 +144,48 @@ export function HierarchyTree(): JSX.Element {
               })`,
           );
 
+        // Node halo (depth-1 only) so the top-level domains pop without
+        // adding a second draw call per node deeper in the tree.
+        node
+          .filter((d) => d.depth === 1)
+          .append("circle")
+          .attr("r", 8)
+          .attr("fill", "none")
+          .attr("stroke", (d) => KIND_COLORS[d.data.kind ?? ""] ?? "#7aa7ff")
+          .attr("stroke-opacity", 0.35)
+          .attr("stroke-width", 2);
+
         node
           .append("circle")
-          .attr("r", (d) => (d.children ? 4 : 3))
+          .attr("r", (d) => (d.children ? 4.5 : 3))
           .attr("fill", (d) => {
             if (!d.data.kind) return d.children ? "#7aa7ff" : "#41E1B5";
-            switch (d.data.kind) {
-              case "module":
-                return "#f59e0b";
-              case "class":
-                return "#22D3EE";
-              case "file":
-                return "#4191E1";
-              default:
-                return "#41E1B5";
-            }
-          });
+            return KIND_COLORS[d.data.kind] ?? "#41E1B5";
+          })
+          .attr("stroke", "var(--bg-1, #0a0e18)")
+          .attr("stroke-width", 1);
 
+        // Label that auto-truncates with ellipsis once it bumps the
+        // 180px column budget. text-anchor flips by depth so leaves
+        // always read outward.
         node
           .append("text")
           .attr("dy", "0.32em")
-          .attr("x", (d) => (d.children ? -8 : 8))
+          .attr("x", (d) => (d.children ? -10 : 10))
           .attr("text-anchor", (d) => (d.children ? "end" : "start"))
-          .attr("fill", "#cdd6e4")
-          .attr("font-size", 10)
-          .text((d) => d.data.name)
+          .attr("fill", (d) =>
+            d.data.kind === "overflow" ? "var(--fg-2, #7a8aa6)" : "var(--fg-1, #cdd6e4)",
+          )
+          .attr("font-size", (d) => (d.depth <= 1 ? 12 : 10))
+          .attr("font-weight", (d) => (d.depth <= 1 ? 600 : 400))
+          .text((d) => {
+            const name = d.data.name ?? "";
+            return name.length > 26 ? `${name.slice(0, 25)}...` : name;
+          });
+
+        // Full-path tooltip on hover — surfaces the truncation tail
+        // without forcing the label width to expand.
+        node
           .append("title")
           .text(
             (d) =>
@@ -116,6 +197,14 @@ export function HierarchyTree(): JSX.Element {
           );
 
         setStatus("ready");
+
+        const elapsed = performance.now() - t0;
+        if (elapsed > 500) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `hierarchy-tree first-paint ${elapsed.toFixed(0)}ms (>500 budget)`,
+          );
+        }
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         if (!cancelled) {
@@ -150,7 +239,10 @@ export function HierarchyTree(): JSX.Element {
         </div>
       )}
       {status === "ready" && (
-        <p className="vz-view-hint">{leafCount.toLocaleString()} leaf nodes from graph.db</p>
+        <p className="vz-view-hint">
+          {visibleCount.toLocaleString()} of {leafCount.toLocaleString()} nodes shown
+          (top-12 per branch)
+        </p>
       )}
     </div>
   );

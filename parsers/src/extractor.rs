@@ -9,6 +9,7 @@ use crate::error::ParserError;
 use crate::job::{Confidence, Edge, EdgeKind, Node, NodeKind, SyntaxIssue, SyntaxIssueKind};
 use crate::language::Language;
 use crate::query_cache::{get_query, QueryKind};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node as TsNode, QueryCursor, Range, Tree};
@@ -138,7 +139,24 @@ impl Extractor {
         // 5. Calls → Edge(enclosing_fn --calls--> callee). The callee target
         //    is left as `unresolved_target` for the brain crate to resolve
         //    cross-file.
-        self.collect_calls(tree, bytes, file_path, confidence, &mut out)?;
+        //
+        //    Wave 3.7 (v0.4.0): for Rust we ALSO resolve same-file callees
+        //    eagerly so `blast_radius` / `call_graph` / `find_references`
+        //    work without depending on the post-parse resolver pass. The
+        //    in-file fn-by-name index is rebuilt from `out.nodes` once and
+        //    threaded through to `collect_calls`. Cross-file / external
+        //    callees (built-in macros, dependency fns) keep emitting the
+        //    legacy `call::<file>::<callee_text>` placeholder for
+        //    `brain::call_resolver::run_resolve_calls_pass` to fix up later.
+        let same_file_fn_index = build_same_file_fn_index(&out.nodes, file_path);
+        self.collect_calls(
+            tree,
+            bytes,
+            file_path,
+            confidence,
+            &same_file_fn_index,
+            &mut out,
+        )?;
 
         // 6. Inheritance / decoration relationships — best-effort per language.
         self.collect_inheritance(tree, bytes, file_path, confidence, &mut out)?;
@@ -379,6 +397,7 @@ impl Extractor {
         bytes: &[u8],
         file_path: &Path,
         confidence: Confidence,
+        same_file_fn_index: &HashMap<String, String>,
         out: &mut ExtractedGraph,
     ) -> Result<(), ParserError> {
         let q = get_query(self.language, QueryKind::Calls)?;
@@ -406,13 +425,42 @@ impl Extractor {
                 Some(n) => stable_id(file_path, n.range().start_byte, NodeKind::Function),
                 None => stable_id(file_path, 0, NodeKind::File),
             };
-            let to_id = format!("call::{}::{}", file_path.display(), callee_text);
+
+            // Wave 3.7 (v0.4.0): for Rust, attempt eager same-file
+            // resolution. Strip `b.put` / `crate::foo::bar` / `Foo::new`
+            // down to the bare identifier and look it up in the in-file
+            // index of Function nodes. On hit → real resolved edge whose
+            // `to` is the callee fn's stable_id; on miss → keep the
+            // `call::<file>::<callee_text>` placeholder so the brain
+            // resolver can finish the job at link time. Other languages
+            // keep the legacy single-path behaviour to avoid scope creep.
+            let (to_id, unresolved_target) = if matches!(self.language, Language::Rust) {
+                let bare = bare_callee_name(&callee_text);
+                if let Some(callee_id) = same_file_fn_index.get(bare) {
+                    // Resolved: point at the real Function node id.
+                    // `unresolved_target` stays populated so downstream
+                    // observability tools can still see the original
+                    // textual callee, but the placeholder is gone.
+                    (callee_id.clone(), Some(callee_text))
+                } else {
+                    (
+                        format!("call::{}::{}", file_path.display(), callee_text),
+                        Some(callee_text),
+                    )
+                }
+            } else {
+                (
+                    format!("call::{}::{}", file_path.display(), callee_text),
+                    Some(callee_text),
+                )
+            };
+
             out.edges.push(Edge {
                 from: from_id,
                 to: to_id,
                 kind: EdgeKind::Calls,
                 confidence,
-                unresolved_target: Some(callee_text),
+                unresolved_target,
             });
         }
         Ok(())
@@ -818,6 +866,68 @@ pub fn looks_like_test_path(path: &Path) -> bool {
 #[allow(dead_code)]
 fn range_to_tuple(r: Range) -> (usize, usize) {
     (r.start_byte, r.end_byte)
+}
+
+/// Build a `name -> stable_id` lookup for every Function node already
+/// extracted from `file_path`. Used by [`Extractor::collect_calls`] to
+/// resolve same-file Rust callees eagerly (Wave 3.7, v0.4.0).
+///
+/// The map keeps the FIRST id we see for any given name. Rust does
+/// allow same-named fns when they live in different `impl` blocks
+/// (`Foo::new` vs `Bar::new`), but the parser-side resolver is
+/// deliberately bare-name only — collisions are rare in real code and
+/// the brain crate's resolver (which has access to the cross-file
+/// graph + file-of-caller preference) is the place where ambiguity
+/// gets broken correctly. Eager same-file resolution here is a strict
+/// improvement over the legacy `call::<file>::<callee>` placeholder
+/// (which was un-queryable until `run_resolve_calls_pass` ran), even
+/// when collisions force us to pick one of N candidates.
+///
+/// Empty names (anonymous closures, arrow fns without a binding) are
+/// skipped — they aren't callable by name.
+fn build_same_file_fn_index(nodes: &[Node], file_path: &Path) -> HashMap<String, String> {
+    let mut map: HashMap<String, String> = HashMap::new();
+    for n in nodes {
+        if n.kind != NodeKind::Function {
+            continue;
+        }
+        if n.file != file_path {
+            continue;
+        }
+        if n.name.is_empty() {
+            continue;
+        }
+        // First-write-wins: an `impl Foo { fn new() {} }` declared
+        // before `impl Bar { fn new() {} }` in the same file wins. The
+        // brain resolver gets the second-pass opportunity to correct
+        // ambiguous picks across files.
+        map.entry(n.name.clone()).or_insert_with(|| n.id.clone());
+    }
+    map
+}
+
+/// Reduce a raw Rust callee text to the bare identifier used as a
+/// `name` lookup key. Mirrors the logic in
+/// `brain::call_resolver::extract_callee_name` so parser-side eager
+/// resolution stays consistent with the post-parse cross-file pass.
+///
+/// - `helper`            → `helper`
+/// - `b.put`             → `put`             (method receiver dropped)
+/// - `crate::foo::bar`   → `bar`             (path → last segment)
+/// - `Foo::new`          → `new`             (type-qualified)
+/// - `self.method`       → `method`
+/// - `vec` (macro)       → `vec`
+/// - `   helper  `       → `helper`          (whitespace trimmed)
+///
+/// Returns the trimmed input unchanged when no `.` or `::` is found.
+fn bare_callee_name(callee_text: &str) -> &str {
+    let trimmed = callee_text.trim();
+    // Path syntax (`a::b::c`) takes precedence over `.` because in
+    // Rust a method call's receiver could itself be a path
+    // (`crate::foo.bar`) — we still want the rightmost identifier
+    // after both kinds of separators.
+    let after_path = trimmed.rsplit("::").next().unwrap_or(trimmed);
+    after_path.rsplit('.').next().unwrap_or(after_path)
 }
 
 // Re-export for downstream type stability.

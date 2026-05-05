@@ -25,7 +25,7 @@ impl PathManager {
     ///      * Windows: `%PROGRAMDATA%\mneme` (then `C:\ProgramData\mneme`).
     ///
     /// Returns the final `PathBuf` so callers can handle the (extremely
-    /// unlikely) case where every fallback fails — for example, a fully
+    /// unlikely) case where every fallback fails - for example, a fully
     /// stripped sandbox with no `HOME`, no `MNEME_HOME`, and no
     /// `%PROGRAMDATA%`. In that case [`DtError::Internal`] is returned.
     #[allow(clippy::needless_return)]
@@ -67,7 +67,7 @@ impl PathManager {
 
     /// Default install root: tries `MNEME_HOME`, then `~/.mneme`, then
     /// an OS default (`/var/lib/mneme` on Unix, `%PROGRAMDATA%\mneme` on
-    /// Windows). Infallible — the OS fallback always succeeds on a
+    /// Windows). Infallible - the OS fallback always succeeds on a
     /// supported target so this function never panics.
     ///
     /// Prefer [`PathManager::try_default_root`] when you want to surface
@@ -77,9 +77,9 @@ impl PathManager {
         // `./mneme`. Previously, if `MNEME_HOME` was unset AND
         // `dirs::home_dir()` returned None AND the OS-default lookup
         // failed (extreme edge case: headless service, stripped
-        // sandbox), we'd land at `PathBuf::from(".mneme")` — a
-        // RELATIVE path inside whatever the daemon's cwd happens to
-        // be. That's undefined behavior: shards land in random
+        // sandbox), we would land at `PathBuf::from(".mneme")` - a
+        // RELATIVE path inside whatever the daemon cwd happens to
+        // be. That is undefined behavior: shards land in random
         // places, upgrade detection breaks, two daemons started from
         // different cwds see different state. Panic with an
         // actionable message instead.
@@ -88,7 +88,7 @@ impl PathManager {
             Err(e) => panic!(
                 "fatal: could not resolve a usable mneme root: {e}. \
                  Set MNEME_HOME to an absolute path \
-                 (e.g. C:\\mneme on Windows or /var/lib/mneme on Unix) and retry."
+                 (e.g. C:\\\\mneme on Windows or /var/lib/mneme on Unix) and retry."
             ),
         }
     }
@@ -123,10 +123,6 @@ impl PathManager {
 
     pub fn wal_path(&self, p: &ProjectId, layer: DbLayer) -> PathBuf {
         let mut p = self.shard_db(p, layer);
-        // SAFETY: `shard_db` always returns a path of the form
-        // `<root>/projects/<id>/<layer-file>`; `<layer-file>` is a non-empty
-        // constant from `DbLayer::file_name()`, so `file_name()` is always
-        // `Some(_)`. Programmer-impossible None.
         let stem = p
             .file_name()
             .expect("shard_db result always has a file_name")
@@ -182,8 +178,7 @@ impl PathManager {
     pub fn supervisor_socket(&self) -> PathBuf {
         #[cfg(windows)]
         {
-            // Named pipe path; interprocess crate maps appropriately.
-            PathBuf::from(r"\\.\pipe\mneme-supervisor")
+            PathBuf::from(r"\.\pipe\mneme-supervisor")
         }
         #[cfg(not(windows))]
         {
@@ -194,7 +189,7 @@ impl PathManager {
     pub fn livebus_socket(&self) -> PathBuf {
         #[cfg(windows)]
         {
-            PathBuf::from(r"\\.\pipe\mneme-livebus")
+            PathBuf::from(r"\.\pipe\mneme-livebus")
         }
         #[cfg(not(windows))]
         {
@@ -203,8 +198,8 @@ impl PathManager {
     }
 
     /// B-L06 (2026-05-03): the store-worker child needs its OWN socket,
-    /// distinct from the supervisor's. Pre-fix, store/src/ipc.rs called
-    /// supervisor_socket() and tried to bind it — but the supervisor
+    /// distinct from the supervisor. Pre-fix, store/src/ipc.rs called
+    /// supervisor_socket() and tried to bind it -- but the supervisor
     /// (mneme-daemon) was already listening there, so the store crashed
     /// in <50ms with EADDRINUSE. Restart loop hit budget (6 in 60s),
     /// store marked degraded, write IPC broken (read still worked via
@@ -212,12 +207,26 @@ impl PathManager {
     pub fn store_socket(&self) -> PathBuf {
         #[cfg(windows)]
         {
-            PathBuf::from(r"\\.\pipe\mneme-store")
+            PathBuf::from(r"\.\pipe\mneme-store")
         }
         #[cfg(not(windows))]
         {
             self.root.join("store.sock")
         }
+    }
+
+    /// Path to the per-project `concepts.db` shard (v0.4 Wave 3.3).
+    ///
+    /// Mirrors `shard_db` for every other layer but is surfaced as a
+    /// first-class helper so callers never hard-code the file name. The
+    /// shard lives at:
+    ///
+    ///   `~/.mneme/projects/<project-hash>/concepts.db`
+    ///
+    /// On a v0.4.0 first run this file does not exist yet; `ConceptStore::new`
+    /// creates it via `CREATE TABLE IF NOT EXISTS` so no migration is needed.
+    pub fn concepts_db(&self, p: &ProjectId) -> PathBuf {
+        self.shard_db(p, DbLayer::Concepts)
     }
 }
 

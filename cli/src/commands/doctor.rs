@@ -136,6 +136,9 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         render_hooks_registered_box();
         // Bug C: filesystem-only too — works offline.
         render_models_box();
+        render_concepts_persistence_box();
+        // Wave 2.4: update channel box is filesystem-only (reads cached JSON).
+        render_update_channel_box();
         return Ok(());
     }
 
@@ -205,10 +208,13 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         render_hooks_registered_box();
         // Bug C: filesystem-only — works without the daemon.
         render_models_box();
+        render_concepts_persistence_box();
         if !args.skip_mcp_probe {
             render_mcp_tool_probe_box();
             render_mcp_integrations_box();
         }
+        // Wave 2.4: update channel box — filesystem-only, works without daemon.
+        render_update_channel_box();
         println!();
         println!("start the daemon with:  mneme daemon start");
         return Ok(());
@@ -361,6 +367,7 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         // bundled GGUFs per kind, so users see the full bundle, not
         // just BGE.
         render_models_box();
+        render_concepts_persistence_box();
 
         // Per-MCP-tool probe — spawn a fresh `mneme mcp stdio` child,
         // run the JSON-RPC handshake, and list every tool the server
@@ -372,6 +379,9 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         }
 
         print_build_toolchain_section();
+        // Wave 2.4: update channel box — always at the very bottom so
+        // operators see the notification without noise from worker rows.
+        render_update_channel_box();
         if args.json {
             println!();
             println!("raw status:");
@@ -380,6 +390,7 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
     } else {
         println!("└─────────────────────────────────────────────────────────┘");
         print_build_toolchain_section();
+        render_update_channel_box();
         warn!(?resp, "supervisor returned non-status response");
     }
     Ok(())
@@ -732,6 +743,91 @@ fn render_hooks_registered_box() {
         None => {
             line("✗ hooks_registered", "could not resolve home dir");
         }
+    }
+    println!("└─────────────────────────────────────────────────────────┘");
+}
+
+/// Render the "concept memory" persistence box (v0.4 Wave 3.3).
+///
+/// Opens `~/.mneme/projects/<active-project>/concepts.db` (if it exists)
+/// and shows the total row count so operators can confirm that concept
+/// memory is being populated and surviving daemon restarts.
+///
+/// Gracefully degrades: if no project is active, if the shard has never
+/// been created, or if SQLite fails, this renders a single informational
+/// line rather than crashing or omitting the box entirely.
+fn render_concepts_persistence_box() {
+    use common::paths::PathManager;
+    use rusqlite::Connection;
+
+    println!();
+    println!("┌─────────────────────────────────────────────────────────┐");
+    println!("│ concept memory (~/.mneme/projects/*/concepts.db)        │");
+    println!("├─────────────────────────────────────────────────────────┤");
+
+    let pm = PathManager::default_root();
+    let projects_dir = pm.root().join("projects");
+
+    if !projects_dir.exists() {
+        line("status", "no projects indexed yet");
+        println!("└─────────────────────────────────────────────────────────┘");
+        return;
+    }
+
+    // Walk all per-project shards and sum up concept rows.
+    let mut total_rows: i64 = 0;
+    let mut shards_found: usize = 0;
+    let mut shards_ok: usize = 0;
+
+    let read_dir = match std::fs::read_dir(&projects_dir) {
+        Ok(rd) => rd,
+        Err(e) => {
+            line("status", &format!("cannot read projects dir: {e}"));
+            println!("└─────────────────────────────────────────────────────────┘");
+            return;
+        }
+    };
+
+    for entry in read_dir.flatten() {
+        let concepts_db = entry.path().join("concepts.db");
+        if !concepts_db.exists() {
+            continue;
+        }
+        shards_found += 1;
+        match Connection::open(&concepts_db) {
+            Ok(conn) => {
+                match conn.query_row("SELECT COUNT(*) FROM concepts", [], |row| {
+                    row.get::<_, i64>(0)
+                }) {
+                    Ok(n) => {
+                        total_rows += n;
+                        shards_ok += 1;
+                    }
+                    Err(e) => {
+                        tracing::warn!(?concepts_db, error = %e, "concepts.db row count failed");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(?concepts_db, error = %e, "cannot open concepts.db");
+            }
+        }
+    }
+
+    if shards_found == 0 {
+        line(
+            "status",
+            "concepts.db not yet created (first recall_concept call will create it)",
+        );
+    } else {
+        line(
+            if shards_ok == shards_found {
+                "✓ concepts"
+            } else {
+                "~ concepts"
+            },
+            &format!("{total_rows} rows across {shards_ok}/{shards_found} shards"),
+        );
     }
     println!("└─────────────────────────────────────────────────────────┘");
 }
@@ -1134,6 +1230,112 @@ fn print_banner_line(content: &str) {
     } else {
         let pad = " ".repeat(BANNER_WIDTH - visible);
         println!("║{content}{pad}║");
+    }
+}
+
+/// Wave 2.4: render the "update channel" box.
+///
+/// Reads `~/.mneme/run/update_check.json` (written by the daemon's
+/// background update-check task) and displays the current / available
+/// version. Never makes a network call.
+///
+/// Box layout:
+/// ```text
+/// ┌─ update channel ─────────────────────────────────────────┐
+/// │ current         : v0.4.0                                  │
+/// │ available       : v0.4.1                                  │
+/// │ action          : run `mneme self-update` to apply        │
+/// │ last checked    : 2026-05-04 23:15 UTC                    │
+/// └───────────────────────────────────────────────────────────┘
+/// ```
+fn render_update_channel_box() {
+    use mneme_daemon::update_check::{is_disabled_by_env, read_cached_result};
+
+    println!();
+    println!("┌─ update channel ──────────────────────────────────────────┐");
+    println!("├───────────────────────────────────────────────────────────┤");
+
+    // Opt-out check — if the env var is set, say so and stop.
+    if is_disabled_by_env() {
+        line("status", "disabled (MNEME_NO_UPDATE_CHECK is set)");
+        println!("└───────────────────────────────────────────────────────────┘");
+        return;
+    }
+
+    let run_dir = crate::runtime_dir();
+    let current = env!("CARGO_PKG_VERSION");
+
+    line("current", &format!("v{current}"));
+
+    match read_cached_result(&run_dir) {
+        None => {
+            // Daemon has not yet written a check result (first 24h after
+            // install, or the run dir doesn't exist yet).
+            line("available", "unknown — daemon hasn't checked yet");
+            line("action", "start the daemon to enable background checks");
+            line("last checked", "never");
+        }
+        Some(result) => {
+            // "available" row
+            match (&result.latest_version, result.update_available) {
+                (Some(v), Some(true)) => {
+                    line("available", &format!("v{v}  (update ready)"));
+                    line("action", "run `mneme self-update` to apply");
+                }
+                (Some(v), Some(false)) => {
+                    line("available", &format!("v{v}  (up to date)"));
+                }
+                (Some(v), None) => {
+                    line("available", &format!("v{v}  (comparison inconclusive)"));
+                }
+                (None, _) => {
+                    if let Some(ref err) = result.last_error {
+                        line("available", &format!("check failed — {err}"));
+                    } else {
+                        line("available", "unknown");
+                    }
+                }
+            }
+
+            // "last checked" row — prefer the last successful check time,
+            // fall back to the last attempt.
+            let ts = result.last_checked_at.unwrap_or(result.last_attempt_at);
+            let ts_str = ts.format("%Y-%m-%d %H:%M UTC").to_string();
+            line(
+                "last checked",
+                &if result.last_checked_at.is_some() {
+                    ts_str
+                } else {
+                    format!("{ts_str} (attempt — check failed)")
+                },
+            );
+        }
+    }
+
+    println!("└───────────────────────────────────────────────────────────┘");
+}
+
+/// Unit-testable: compose the rendered value string for the "available"
+/// row of the update channel box. Pure function — no I/O.
+///
+/// Used by `render_update_channel_box` and directly tested below.
+#[allow(dead_code)]
+pub(crate) fn format_available_row(
+    latest: Option<&str>,
+    update_available: Option<bool>,
+    last_error: Option<&str>,
+) -> String {
+    match (latest, update_available) {
+        (Some(v), Some(true)) => format!("v{v}  (update ready)"),
+        (Some(v), Some(false)) => format!("v{v}  (up to date)"),
+        (Some(v), None) => format!("v{v}  (comparison inconclusive)"),
+        (None, _) => {
+            if let Some(err) = last_error {
+                format!("check failed — {err}")
+            } else {
+                "unknown".to_string()
+            }
+        }
     }
 }
 
@@ -1632,12 +1834,19 @@ pub struct ToolchainEntry {
 
 /// Canonical list of every dev-toolchain dependency mneme cares about.
 /// Order = display order in `mneme doctor --strict` and the install
-/// capability summary. Closes G1-G10 from `phase-a-issues.md` §G.
+/// capability summary. Closes G1-G12 from `phase-a-issues.md` §G.
 ///
 /// IMPORTANT: this list is the single source of truth. Both
 /// `scripts/install.ps1` and `scripts/install.sh` mirror these entries
 /// in their probe blocks — keep all three in sync if you add / remove a
 /// tool here.
+///
+/// G12 (Whisper model) is a special case: `probe_tool` is used for the
+/// whisper-cli binary probe (PATH), but model-file availability is checked
+/// separately by [`probe_whisper_model`], which reads the
+/// `~/.mneme/models/whisper/` directory. The `render_toolchain_box`
+/// call-site in `run` / `run_strict` appends the whisper model probe row
+/// after the binary rows so the box stays uniform.
 pub const KNOWN_TOOLCHAIN: &[ToolchainEntry] = &[
     ToolchainEntry {
         display: "Rust toolchain (rustc + cargo)",
@@ -1764,22 +1973,31 @@ pub const KNOWN_TOOLCHAIN: &[ToolchainEntry] = &[
         hint_windows: "winget install Gyan.FFmpeg",
         hint_unix: "brew install ffmpeg (macOS) | sudo apt install ffmpeg (Debian/Ubuntu)",
     },
-    // Whisper model is a file probe, not a binary. We list the GGML
-    // base model path here; probe_tool will surface "missing" when the
-    // file isn't present. (The probe machinery treats this as a binary
-    // that lives at the configured path; if no whisper feature is built
-    // in, the absence is non-fatal -- audio extraction simply degrades
-    // to "skipped, install <path> to enable".)
+    // G12: Whisper CLI binary probe (whisper-cli / main from whisper.cpp).
+    // This entry covers the whisper.cpp shellout fallback path; the GGML
+    // model-file probe is handled separately by `probe_whisper_model()`.
+    // When the binary is missing AND the model is missing AND the binary
+    // was NOT compiled with `--features whisper`, audio transcription is
+    // fully unavailable and we emit a combined hint.
     ToolchainEntry {
-        display: "Whisper model",
-        probes: &["ggml-base.en.bin"],
+        display: "Whisper CLI (whisper-cli / multilingual)",
+        // whisper.cpp ≥ 1.7.x installs as `whisper-cli`; older builds use
+        // `main`. Some distro packages use `whisper`. First hit wins.
+        probes: &["whisper-cli", "whisper"],
         cargo_subcommand: None,
         severity: ToolSeverity::Low,
         issue_id: "G12",
-        purpose: "audio transcription via multimodal sidecar (--features whisper). \
-                  Place ggml-base.en.bin in ~/.mneme/models/whisper/ to enable.",
-        hint_windows: "Download from https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-base.en.bin and place in %USERPROFILE%\\.mneme\\models\\whisper\\",
-        hint_unix: "Download from https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-base.en.bin and place in ~/.mneme/models/whisper/",
+        purpose: "audio/video transcription via whisper.cpp shellout fallback \
+                  (used when mneme binary was NOT compiled with --features whisper). \
+                  Also requires ggml-tiny.en.bin in ~/.mneme/models/whisper/.",
+        hint_windows: "Build whisper.cpp from source (cmake) or download a pre-built \
+                       whisper-cli.exe from https://github.com/ggerganov/whisper.cpp/releases \
+                       and add to PATH. Then place ggml-tiny.en.bin in \
+                       %USERPROFILE%\\.mneme\\models\\whisper\\",
+        hint_unix: "brew install whisper-cpp (macOS) | build from source: \
+                    git clone https://github.com/ggerganov/whisper.cpp && cd whisper.cpp && \
+                    cmake -B build && cmake --build build -j. \
+                    Then place ggml-tiny.en.bin in ~/.mneme/models/whisper/",
     },
 ];
 
@@ -1891,6 +2109,73 @@ pub fn probe_all_toolchain() -> Vec<ToolProbe> {
     KNOWN_TOOLCHAIN.iter().map(probe_tool).collect()
 }
 
+/// G12 model-file probe: check whether a Whisper GGML model is present in
+/// `~/.mneme/models/whisper/` and report as a [`DoctorRow`].
+///
+/// This is a *file-presence* probe, not a binary-on-PATH probe. The
+/// `probe_tool` machinery is unsuitable because `.bin` files are not
+/// executables on PATH. This function is called by the doctor render path
+/// after `render_toolchain_box` to append an additional G12 model row.
+///
+/// Returns a [`DoctorRow`] whose value is either:
+///   - `"present (multilingual ✓)"` — `ggml-tiny.multilingual.bin` found
+///   - `"present (English-only)"` — `ggml-tiny.en.bin` or `ggml-base.en.bin`
+///   - `"absent — audio ingestion disabled"` — no model file found
+pub fn probe_whisper_model() -> DoctorRow {
+    use multimodal::whisper::{best_model_path, WhisperModel};
+
+    let label = "  [LOW ] G12 Whisper model (file)".to_string();
+    match best_model_path() {
+        Some((path, WhisperModel::TinyMultilingual)) => DoctorRow::new(
+            label,
+            format!("present (multilingual ✓) — {}", path.display()),
+        ),
+        Some((path, WhisperModel::TinyEn)) => DoctorRow::new(
+            label,
+            format!("present (English-only) — {}", path.display()),
+        ),
+        None => {
+            // Distinguish "model dir exists but no model" from "no dir at all".
+            let dir_hint = multimodal::whisper::whisper_model_dir()
+                .map(|d| d.display().to_string())
+                .unwrap_or_else(|| "~/.mneme/models/whisper/".into());
+            DoctorRow::new(
+                label,
+                format!(
+                    "absent — audio ingestion disabled. \
+                     Place ggml-tiny.en.bin in {dir_hint} to enable."
+                ),
+            )
+        }
+    }
+}
+
+/// G12 combined row: whisper runtime availability (binary + model + feature).
+///
+/// Single summary row that covers ALL three enablement paths:
+///   1. Compiled-in `--features whisper` + model on disk
+///   2. `whisper-cli` on PATH + model on disk
+///   3. Neither — disabled
+///
+/// Printed as a standalone row beneath the toolchain box.
+pub fn probe_whisper_runtime_summary() -> DoctorRow {
+    use multimodal::{whisper_runtime_available, WHISPER_FEATURE_ENABLED};
+
+    let label = "  [LOW ] G12 Whisper transcription (runtime)".to_string();
+    let value = if whisper_runtime_available() {
+        if WHISPER_FEATURE_ENABLED {
+            "present (compiled FFI ✓ + model ✓)".to_string()
+        } else {
+            "present (shellout fallback ✓ + model ✓)".to_string()
+        }
+    } else if WHISPER_FEATURE_ENABLED {
+        "feature compiled in but model MISSING — audio ingestion disabled".to_string()
+    } else {
+        "absent (no --features whisper and no whisper-cli on PATH)".to_string()
+    };
+    DoctorRow::new(label, value)
+}
+
 /// Choose the platform-appropriate install hint for a tool.
 pub fn install_hint_for(entry: &ToolchainEntry) -> &'static str {
     if cfg!(windows) {
@@ -1907,7 +2192,7 @@ pub fn install_hint_for(entry: &ToolchainEntry) -> &'static str {
 pub fn render_toolchain_box(probes: &[ToolProbe]) -> bool {
     println!();
     println!("┌─────────────────────────────────────────────────────────┐");
-    println!("│ developer toolchain (G1-G10)                            │");
+    println!("│ developer toolchain (G1-G12)                            │");
     println!("├─────────────────────────────────────────────────────────┤");
     let mut all_high_present = true;
     for probe in probes {
@@ -2497,11 +2782,15 @@ mod tests {
     }
 
     #[test]
-    fn known_toolchain_covers_g1_through_g10() {
-        // G1-G10 from phase-a-issues.md §G. Pin the canonical set so
+    fn known_toolchain_covers_g1_through_g12() {
+        // G1-G12 from phase-a-issues.md §G. Pin the canonical set so
         // future edits don't accidentally drop a tool.
+        // G12 = Whisper CLI binary (model-file probe is a separate DoctorRow
+        // emitted by probe_whisper_model(), not a KNOWN_TOOLCHAIN entry).
         let ids: Vec<&str> = KNOWN_TOOLCHAIN.iter().map(|t| t.issue_id).collect();
-        for expected in &["G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10"] {
+        for expected in &[
+            "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10", "G11", "G12",
+        ] {
             assert!(
                 ids.contains(expected),
                 "KNOWN_TOOLCHAIN missing entry for {expected}"
@@ -2539,6 +2828,57 @@ mod tests {
         assert_eq!(by_id("G8"), ToolSeverity::Low);
         assert_eq!(by_id("G9"), ToolSeverity::Medium);
         assert_eq!(by_id("G10"), ToolSeverity::Low);
+        // Wave 3.4 additions:
+        //   G11 FFmpeg          LOW (optional, video frame extraction)
+        //   G12 Whisper CLI     LOW (optional, audio transcription shellout)
+        assert_eq!(by_id("G11"), ToolSeverity::Low);
+        assert_eq!(by_id("G12"), ToolSeverity::Low);
+    }
+
+    #[test]
+    fn g12_whisper_probes_are_whisper_cli_names() {
+        // G12 must probe whisper-cli / whisper binary names, NOT a .bin file.
+        // Probing a .bin filename via which_on_path never matches anything
+        // and silently renders G12 as permanently MISSING for every user.
+        let g12 = KNOWN_TOOLCHAIN
+            .iter()
+            .find(|t| t.issue_id == "G12")
+            .unwrap();
+        for probe in g12.probes {
+            assert!(
+                !probe.ends_with(".bin"),
+                "G12 probe '{probe}' must not be a .bin filename; \
+                 model-file presence is handled by probe_whisper_model()"
+            );
+        }
+        // At least one probe name must be whisper-cli (canonical new name).
+        assert!(
+            g12.probes.contains(&"whisper-cli"),
+            "G12 probes must include 'whisper-cli'"
+        );
+    }
+
+    #[test]
+    fn probe_whisper_model_returns_a_row_without_panicking() {
+        // We cannot control whether a Whisper model is actually on disk, but
+        // the probe must always return a DoctorRow with a non-empty label
+        // and value — never panic.
+        let row = probe_whisper_model();
+        assert!(
+            !row.label.is_empty(),
+            "probe_whisper_model must return a non-empty label"
+        );
+        assert!(
+            !row.value.is_empty(),
+            "probe_whisper_model must return a non-empty value"
+        );
+    }
+
+    #[test]
+    fn probe_whisper_runtime_summary_returns_a_row_without_panicking() {
+        let row = probe_whisper_runtime_summary();
+        assert!(!row.label.is_empty());
+        assert!(!row.value.is_empty());
     }
 
     #[test]

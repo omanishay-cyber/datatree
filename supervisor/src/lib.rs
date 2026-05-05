@@ -18,6 +18,7 @@ pub mod job_queue_db;
 pub mod log_ring;
 pub mod manager;
 pub mod service;
+pub mod update_check;
 pub mod watchdog;
 pub mod watcher;
 pub mod ws;
@@ -40,7 +41,7 @@ pub mod test_hooks;
 mod tests;
 
 pub use child::{ChildHandle, ChildSpec, ChildStatus, RestartStrategy};
-pub use config::{RestartPolicy, SupervisorConfig};
+pub use config::{AutoUpdateConfig, RestartPolicy, SupervisorConfig};
 pub use error::SupervisorError;
 pub use health::{HealthServer, SlaSnapshot};
 pub use ipc::{ControlCommand, ControlResponse, IpcServer};
@@ -48,6 +49,10 @@ pub use job_queue::{JobQueue, JobQueueSnapshot};
 pub use job_queue_db::{DurableJobQueue, RecoveredJob};
 pub use log_ring::{LogEntry, LogLevel, LogRing};
 pub use manager::ChildManager;
+pub use update_check::{
+    compare_semver, is_disabled_by_env, mark_notice_seen, read_cached_result, read_notice_seen,
+    should_show_banner, UpdateCheckResult, UpdateNoticeSeen,
+};
 pub use watchdog::Watchdog;
 pub use watcher::{run_watcher, WatcherStats, WatcherStatsHandle, DEFAULT_DEBOUNCE};
 
@@ -460,6 +465,30 @@ pub async fn run(config: SupervisorConfig) -> Result<()> {
         tokio::spawn(async move { run_recovery_logger(mgr, sd).await })
     };
 
+    // 3a-pre-3. Wave 2.4: background update-check task.
+    //
+    // Polls api.github.com/repos/omanishay-cyber/mneme/releases/latest
+    // every `auto_update.check_interval_hours` (default 24 h) and writes
+    // the result to `~/.mneme/run/update_check.json`. The task is fully
+    // fail-open: network errors, rate limits, and filesystem errors are
+    // logged at WARN and swallowed. The daemon never breaks because of a
+    // failed update check.
+    //
+    // Only spawned when `auto_update.enabled = true` (the default) AND
+    // `MNEME_NO_UPDATE_CHECK` is not set. The task exits cleanly when
+    // `shutdown` is notified.
+    let update_check_run_dir = common::paths::PathManager::default_root()
+        .root()
+        .join("run");
+    let update_check_handle = {
+        let cfg = config.auto_update.clone();
+        let run_dir = update_check_run_dir.clone();
+        let sd = shutdown.clone();
+        tokio::spawn(async move {
+            update_check::run_update_check_loop(cfg, run_dir, sd).await;
+        })
+    };
+
     // 3a. Router task: drains the job queue and dispatches each job to
     // the matching worker pool. Runs in its own task so the IPC server
     // never blocks on stdin writes and so router panics cannot take
@@ -534,6 +563,8 @@ pub async fn run(config: SupervisorConfig) -> Result<()> {
     log_join("rss_refresher", rss_handle.await);
     recovery_handle.abort();
     log_join("crash_recovery_logger", recovery_handle.await);
+    update_check_handle.abort();
+    log_join("update_check", update_check_handle.await);
     bus_bridge_handle.abort();
     log_join("livebus_bridge", bus_bridge_handle.await);
     if let Some(h) = restart_handle {

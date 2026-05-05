@@ -907,6 +907,54 @@ export interface ToolContext {
   hook?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Tool I/O — Smart Questions (Wave 3.2)
+// ---------------------------------------------------------------------------
+
+export const SmartQuestionsInput = z.object({
+  /**
+   * Project hash (SHA-256 of canonical project path). When omitted the MCP
+   * server falls back to the current working directory exactly the same way
+   * every other graph tool does via `resolveShardRoot`.
+   */
+  project: z.string().optional(),
+  /**
+   * Maximum number of questions to return. Defaults to 10, capped at 50.
+   * Use a small limit (5-10) for orientation; a larger one for deep audits.
+   */
+  limit: z.number().int().positive().max(50).default(10),
+  /**
+   * Flavour of questions:
+   *   - "starter"   — broad orientation (what is this thing?)
+   *   - "deep-dive" — complexity outliers (should this be split?)
+   *   - "anomaly"   — structural issues (god nodes, cycles, orphans)
+   *   - omit / any  — mix of all three (default)
+   */
+  kind: z.enum(["starter", "deep-dive", "anomaly"]).optional(),
+});
+export type SmartQuestionsInput = z.infer<typeof SmartQuestionsInput>;
+
+export const SmartQuestion = z.object({
+  /** Natural-language question for the AI to answer. */
+  question: z.string(),
+  /**
+   * Composite score in [0, 1]. Higher = more important to ask.
+   * Derived from centrality z-score (40%), complexity z-score (30%),
+   * and anomaly classification (30%).
+   */
+  score: z.number().min(0).max(1),
+  /** Why this question was surfaced — cites the signal that triggered it. */
+  justification: z.string(),
+  /** Qualified names of the graph nodes this question targets. */
+  related_nodes: z.array(z.string()),
+});
+export type SmartQuestion = z.infer<typeof SmartQuestion>;
+
+export const SmartQuestionsOutput = z.object({
+  questions: z.array(SmartQuestion),
+});
+export type SmartQuestionsOutput = z.infer<typeof SmartQuestionsOutput>;
+
 export const TokenBudgets = {
   primer: 1500,
   smart_inject: 2500,

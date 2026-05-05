@@ -5,6 +5,62 @@ All notable changes to mneme will be recorded here.
 Format loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.0] - Unreleased
+
+v0.4.0 is the first release where mneme actively enforces its own use in AI hosts (Claude Code, Cursor, Codex) rather than just suggesting it. Bundles all v0.3.3 cocktail features into a single ship, plus 5 critical bug-tail fixes and the 4-route install matrix.
+
+### Added — install matrix (4 routes, all paths same `~/.mneme` install)
+
+- `winget install Anish.Mneme` (Windows) — manifest in microsoft/winget-pkgs after maintainer PR
+- `winget install Anish.Mnemeos` (Windows, brand alias) — parallel manifest
+- `pip install mneme-mcp` (any OS with Python) — wrapper that delegates to the bootstrap installer
+- `curl -fsSL .../install-linux.sh | bash` — Linux (unchanged)
+- `curl -fsSL .../install-mac.sh | bash` — macOS (unchanged)
+
+### Added — features
+
+- **Self-ping enforcement** — 3-layer hook system. `UserPromptSubmit` injects a top-3-tools reminder + grep/read trespass log on every prompt. `PreToolUse Edit/Write` blocks edits without recent `mcp__mneme__blast_radius` and auto-runs it inline so the AI can retry immediately. `PreToolUse Grep/Read` skeleton (full redirect deferred to v0.4.1). All hooks fail-open: if mneme is down, edits go through unchanged. Configurable via `~/.mneme/config.toml [hooks]`.
+- **Auto-rebuild guard** — MCP queries (`file_intent`, `blast_radius`) on out-of-shard paths now spawn a background `mneme build` and return a structured `{ error: "path_not_indexed", auto_rebuild_started: true, suggestion: "..." }` response instead of silently empty hits. Fixes Bug #224.
+- **`mneme graph-export`** — new CLI subcommand exporting the project graph in 5 portable formats: GraphML (Gephi/yEd/Cytoscape), Obsidian vault, Cypher (Neo4j), SVG, JSON-LD (schema.org).
+- **Smart questions MCP tool** — `mcp__mneme__smart_questions` auto-ranks "what should I ask about this codebase?" queries from graph topology (centrality + complexity + anomaly score).
+- **Concept memory persisted** — `recall_concept` now writes to `~/.mneme/projects/<hash>/concepts.db` instead of in-memory; concepts survive daemon restarts. Decay function for stale concepts.
+- **Multilingual Whisper** — audio/video files (.mp3/.wav/.m4a/.mp4/.mov) ingest via Whisper transcription into the multimodal pipeline. Auto-language-detected.
+- **SDK bindings** — `sdk/python` (pyo3 → PyPI `mneme-parsers`), `sdk/js` (napi-rs → npm `@mneme/parsers`), `sdk/rust` (crate). Standalone use of mneme-parsers without a daemon.
+- **Rust call edges** — parser now emits `calls` edges for Rust function calls (was `contains` only). Lifts `blast_radius`/`call_graph`/`find_references` from "useless on Rust workspaces" to working. Bench Q3 expected 0/10 → 8-9/10, overall 7.0 → 8.5+.
+
+### Fixed — critical bug tail (this session)
+
+- **Bug #233 / NEW-D worker restart storm** — `BUG-A4-003` had set `heartbeat_deadline: Some(60s)` on every worker spec without wiring `worker_ipc::heartbeat()` emit, so every worker was force-killed at the 60s mark and respawned forever (visible as 40+ orphan procs and 100+ supervisor restarts in `mneme doctor`). Reverted to `None` per the documented S-PHASE NEW-055 opt-out contract; `pid_alive_pass` continues to handle real "process dead" detection. Regression test pins the contract.
+- **Bug #234 release-checksums.json bash parser** — `lib-common.sh::load_hash_manifest` was reporting "0 pinned files" against an 11-entry manifest because BSD grep on macOS treats `\s` as literal `s`, and PowerShell-generated JSON had UTF-8 BOM + CRLF that defeated the `,?$` anchor. Now prefers `jq` when available, falls back to a CRLF/BOM-tolerant bash 3.2 parser. 11/11 entries load.
+- **Bug #224 auto-rebuild on path change** — see "Added" section above.
+- **Bug #223 META mneme self-ping** — see "Added" section above.
+
+### Carried from v0.3.2 hotfix chain (commits eea9f54..29a16d5, 8 commits)
+
+- 222 forensic-audit bugs fixed (regex bombs, thread-safety, test coverage, etc.)
+- Windows `bootstrap-install.ps1` — `curl.exe` replaces `Invoke-WebRequest` (was failing on >2 GB phi-3 download with "Stream was too long" .NET MemoryStream cap)
+- Skip-if-present check on FINAL `~/.mneme/models` dir (not TEMP staging) — saves ~3.5 GB redundant download on re-installs across all 3 platforms
+- Manifest merge in `mneme models install --from-path` (preserves existing entries on partial install)
+- Adaptive disk pre-flight (1 GB threshold when models already present, 8 GB otherwise)
+- IFS-tab whitespace-collapse fix in `MODEL_LIST` parsing (skip-if-present now fires correctly on Linux/macOS)
+- HF-only download (dropped GitHub split-part fallback — was DOA on Windows anyway)
+- Vision SPA `TimelineScrubber` 501 → uses `/api/graph/commits` correctly
+- MCP `zod/v3` module-not-found fixed by pinning `zod-to-json-schema ~3.24.5`
+- Self-copy guard in `models install --from-path X` when X is the model root
+
+### Breaking changes
+
+- None for end users.
+- Internal: `SupervisorConfig::default_layout()` now returns `heartbeat_deadline: None` for all workers. Operators who customised `~/.mneme/config.toml` to set explicit deadlines are unaffected (file-load path passes user values through unchanged).
+
+### Maintainer action items before tag
+
+- Submit `Anish.Mneme` + `Anish.Mnemeos` PRs to microsoft/winget-pkgs (1-3 day Microsoft review)
+- `python -m twine upload pip/dist/*` to PyPI (`mneme-mcp` package)
+- Tag `v0.4.0` after Side 2 retest passes on all 3 surfaces
+
+---
+
 ## [v0.3.2 hotfix] - 2026-05-04 - Mneme OS branding + install hardening
 
 ### Added (2026-05-04)

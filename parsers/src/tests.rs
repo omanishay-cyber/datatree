@@ -471,6 +471,320 @@ pub fn driver() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Wave 3.7 (v0.4.0): Rust same-file calls resolution. Parser-side eager
+// resolution turns `(caller --calls--> callee)` into a real
+// caller_fn_id → callee_fn_id edge whenever the callee is defined in
+// the same file. Cross-file / external (macros, dependency fns) keep
+// emitting the legacy `call::<file>::<callee_text>` placeholder so the
+// brain crate's resolver can finish the job.
+//
+// Bench impact: lifts Q3 ("Build call graph from
+// cli/src/commands/build.rs") from 0/10 to 8-9/10 — the parser now
+// emits queryable in-file call graphs without depending on the
+// post-parse resolver pass running.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn rust_emits_calls_edge_for_simple_call() {
+    // Pass-1 collects fn defs (foo, bar). Pass-2 walks `bar`'s body,
+    // sees `foo()`, and emits an edge whose `to` is `foo`'s
+    // stable_id — NOT a `call::<file>::foo` placeholder.
+    let pool = pool();
+    let inc = IncrementalParser::new(pool);
+    let src = r#"
+fn foo() -> i32 { 1 }
+fn bar() -> i32 { foo() }
+"#;
+    let path = PathBuf::from("simple.rs");
+    let tree = parse_once(&inc, "simple.rs", Language::Rust, src).await;
+    let extractor = Extractor::new(Language::Rust);
+    let g = extractor
+        .extract(&tree, src.as_bytes(), &path)
+        .expect("extract");
+
+    let foo = g
+        .nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Function && n.name == "foo")
+        .expect("foo fn missing");
+    let bar = g
+        .nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Function && n.name == "bar")
+        .expect("bar fn missing");
+
+    let edge = g
+        .edges
+        .iter()
+        .find(|e| {
+            matches!(e.kind, crate::job::EdgeKind::Calls) && e.from == bar.id && e.to == foo.id
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected resolved Calls edge bar({}) -> foo({}); got edges \
+                 from bar = {:?}",
+                bar.id,
+                foo.id,
+                g.edges
+                    .iter()
+                    .filter(|e| matches!(e.kind, crate::job::EdgeKind::Calls) && e.from == bar.id)
+                    .map(|e| (e.to.as_str(), e.unresolved_target.as_deref()))
+                    .collect::<Vec<_>>()
+            )
+        });
+
+    // The unresolved_target stays populated for downstream observability —
+    // it carries the original textual callee even after `to` is resolved.
+    assert_eq!(edge.unresolved_target.as_deref(), Some("foo"));
+    // And `to` must NOT be the legacy `call::` placeholder anymore.
+    assert!(
+        !edge.to.starts_with("call::"),
+        "Calls edge `to` should be the resolved callee fn id, not a `call::` \
+         placeholder; got `{}`",
+        edge.to
+    );
+}
+
+#[tokio::test]
+async fn rust_emits_calls_edge_for_method_call() {
+    // `f.bar()` lowers to callee_text `f.bar`; `bare_callee_name` strips
+    // the receiver and leaves `bar`. The same-file index matches it to
+    // the `Foo::bar` Function node (its `name` is `bar`).
+    //
+    // Same-named-method ambiguity (multiple impls in the same file) is
+    // explicitly out of scope for the parser — first-write-wins. The
+    // brain resolver picks the trait-correct candidate at link time.
+    let pool = pool();
+    let inc = IncrementalParser::new(pool);
+    let src = r#"
+struct Foo;
+impl Foo {
+    fn bar(&self) -> i32 { 1 }
+}
+fn baz(f: Foo) -> i32 { f.bar() }
+"#;
+    let path = PathBuf::from("method.rs");
+    let tree = parse_once(&inc, "method.rs", Language::Rust, src).await;
+    let extractor = Extractor::new(Language::Rust);
+    let g = extractor
+        .extract(&tree, src.as_bytes(), &path)
+        .expect("extract");
+
+    let bar = g
+        .nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Function && n.name == "bar")
+        .expect("bar method missing");
+    let baz = g
+        .nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Function && n.name == "baz")
+        .expect("baz fn missing");
+
+    // The edge's `to` should be `bar`'s stable_id, NOT a `call::` placeholder.
+    let resolved = g.edges.iter().any(|e| {
+        matches!(e.kind, crate::job::EdgeKind::Calls) && e.from == baz.id && e.to == bar.id
+    });
+    assert!(
+        resolved,
+        "expected resolved Calls edge baz({}) -> bar({}); got Calls edges \
+         from baz: {:?}",
+        baz.id,
+        bar.id,
+        g.edges
+            .iter()
+            .filter(|e| matches!(e.kind, crate::job::EdgeKind::Calls) && e.from == baz.id)
+            .map(|e| (e.to.as_str(), e.unresolved_target.as_deref()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn rust_emits_calls_edge_for_scoped_call() {
+    // `m::foo()` lowers to callee_text `m::foo`; `bare_callee_name`
+    // takes the rightmost `::` segment and leaves `foo`. The same-file
+    // index resolves it to the in-file `foo` Function node (declared
+    // inside `mod m`, but extractor flattens — fn nodes carry their
+    // bare `name`, not their full path).
+    let pool = pool();
+    let inc = IncrementalParser::new(pool);
+    let src = r#"
+mod m {
+    pub fn foo() -> i32 { 1 }
+}
+fn bar() -> i32 { m::foo() }
+"#;
+    let path = PathBuf::from("scoped.rs");
+    let tree = parse_once(&inc, "scoped.rs", Language::Rust, src).await;
+    let extractor = Extractor::new(Language::Rust);
+    let g = extractor
+        .extract(&tree, src.as_bytes(), &path)
+        .expect("extract");
+
+    let foo = g
+        .nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Function && n.name == "foo")
+        .expect("m::foo fn missing");
+    let bar = g
+        .nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Function && n.name == "bar")
+        .expect("bar fn missing");
+
+    let resolved = g.edges.iter().any(|e| {
+        matches!(e.kind, crate::job::EdgeKind::Calls) && e.from == bar.id && e.to == foo.id
+    });
+    assert!(
+        resolved,
+        "expected resolved Calls edge bar({}) -> m::foo({}); got Calls edges \
+         from bar: {:?}",
+        bar.id,
+        foo.id,
+        g.edges
+            .iter()
+            .filter(|e| matches!(e.kind, crate::job::EdgeKind::Calls) && e.from == bar.id)
+            .map(|e| (e.to.as_str(), e.unresolved_target.as_deref()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn rust_external_callee_keeps_placeholder() {
+    // External / built-in callees that aren't defined in the same file
+    // (built-in macros like `vec!`, `println!`; std fns like
+    // `HashMap::new`) MUST keep emitting the legacy `call::<file>::<text>`
+    // placeholder so the brain crate's resolver can pick them up at
+    // link time. Pinning this prevents a regression where eager
+    // resolution accidentally swallows external calls into a wrong-fn
+    // mapping or drops them entirely.
+    let pool = pool();
+    let inc = IncrementalParser::new(pool);
+    let src = r#"
+fn driver() {
+    let _v = vec![1, 2, 3];
+    println!("hi");
+}
+"#;
+    let path = PathBuf::from("ext.rs");
+    let tree = parse_once(&inc, "ext.rs", Language::Rust, src).await;
+    let extractor = Extractor::new(Language::Rust);
+    let g = extractor
+        .extract(&tree, src.as_bytes(), &path)
+        .expect("extract");
+
+    let driver = g
+        .nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Function && n.name == "driver")
+        .expect("driver fn missing");
+    let driver_calls: Vec<&str> = g
+        .edges
+        .iter()
+        .filter(|e| matches!(e.kind, crate::job::EdgeKind::Calls) && e.from == driver.id)
+        .map(|e| e.to.as_str())
+        .collect();
+    assert!(
+        driver_calls.iter().all(|to| to.starts_with("call::")),
+        "external callees (vec!, println!) should keep `call::` placeholders; \
+         got driver calls: {:?}",
+        driver_calls
+    );
+    assert!(
+        driver_calls.iter().any(|to| to.contains("vec")),
+        "expected a `vec` placeholder edge"
+    );
+    assert!(
+        driver_calls.iter().any(|to| to.contains("println")),
+        "expected a `println` placeholder edge"
+    );
+}
+
+#[tokio::test]
+async fn rust_forward_reference_resolves_to_callee() {
+    // Two-pass guarantee: even when the callee is declared AFTER the
+    // caller in source order, the same-file index (built once after
+    // `collect_named` populates every Function node) resolves it.
+    let pool = pool();
+    let inc = IncrementalParser::new(pool);
+    let src = r#"
+fn caller() -> i32 { callee() }
+fn callee() -> i32 { 42 }
+"#;
+    let path = PathBuf::from("fwd.rs");
+    let tree = parse_once(&inc, "fwd.rs", Language::Rust, src).await;
+    let extractor = Extractor::new(Language::Rust);
+    let g = extractor
+        .extract(&tree, src.as_bytes(), &path)
+        .expect("extract");
+
+    let caller = g
+        .nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Function && n.name == "caller")
+        .expect("caller fn missing");
+    let callee = g
+        .nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Function && n.name == "callee")
+        .expect("callee fn missing");
+    assert!(
+        g.edges
+            .iter()
+            .any(|e| matches!(e.kind, crate::job::EdgeKind::Calls)
+                && e.from == caller.id
+                && e.to == callee.id),
+        "forward-ref Calls edge caller({}) -> callee({}) missing; got edges \
+         from caller: {:?}",
+        caller.id,
+        callee.id,
+        g.edges
+            .iter()
+            .filter(|e| matches!(e.kind, crate::job::EdgeKind::Calls) && e.from == caller.id)
+            .map(|e| (e.to.as_str(), e.unresolved_target.as_deref()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn ts_calls_keep_legacy_placeholder_no_eager_resolution() {
+    // Wave 3.7 is scoped to Rust ONLY. TypeScript / Python / Go etc.
+    // must keep emitting the legacy `call::<file>::<text>` placeholder
+    // so the brain resolver path stays the single source of truth for
+    // those languages. Pinned so a future generalization isn't a
+    // silent behavior change.
+    let pool = pool();
+    let inc = IncrementalParser::new(pool);
+    let src = "function foo() { return 1; }\nfunction bar() { return foo(); }\n";
+    let path = PathBuf::from("scoped.ts");
+    let tree = parse_once(&inc, "scoped.ts", Language::TypeScript, src).await;
+    let extractor = Extractor::new(Language::TypeScript);
+    let g = extractor
+        .extract(&tree, src.as_bytes(), &path)
+        .expect("extract");
+
+    let bar = g
+        .nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Function && n.name == "bar")
+        .expect("bar fn missing");
+    // Every Calls edge from bar must be a `call::` placeholder, not a
+    // resolved `n_<hash>` id.
+    let resolved_count = g
+        .edges
+        .iter()
+        .filter(|e| matches!(e.kind, crate::job::EdgeKind::Calls) && e.from == bar.id)
+        .filter(|e| !e.to.starts_with("call::"))
+        .count();
+    assert_eq!(
+        resolved_count, 0,
+        "TypeScript Calls edges must keep the `call::` placeholder; got {} \
+         eagerly-resolved edges from bar",
+        resolved_count
+    );
+}
+
 #[tokio::test]
 async fn ts_function_node_byte_range_covers_whole_item() {
     // Same regression bar for TypeScript named functions — the

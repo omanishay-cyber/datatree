@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Graph from "graphology";
 import Sigma from "sigma";
 import forceAtlas2 from "graphology-layout-forceatlas2";
+import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { fetchNodes, fetchEdges } from "../api/graph";
 import { useVisionStore, shallow } from "../store";
 import { Legend, type LegendKindRow } from "../components/Legend";
@@ -57,6 +58,12 @@ export function ForceGalaxy(): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sigmaRef = useRef<Sigma | null>(null);
   const graphRef = useRef<Graph | null>(null);
+  // FA2 worker + its safety-stop timeout live alongside sigmaRef so the
+  // unmount cleanup hook can stop+kill them deterministically. We
+  // previously stashed them on `(sigmaRef as ...).fa2Worker` which never
+  // survived strict-mode double-mount and leaked a worker each time.
+  const fa2WorkerRef = useRef<FA2Layout | null>(null);
+  const fa2TimeoutRef = useRef<number | null>(null);
   // Hover state lives in a ref so the Sigma reducers (registered once
   // at mount) read the *current* value without us re-creating the
   // reducer closures on every state change.
@@ -153,19 +160,61 @@ export function ForceGalaxy(): JSX.Element {
           }
         }
 
+        // Bug #NEW-E (2026-05-04): synchronous forceAtlas2.assign() blocks
+        // the main thread for 30s+ on 17K-node graphs. Replaced with two-
+        // phase layout: (1) cheap synchronous warm-up (3 iterations) so
+        // first-paint isn't pure random positions, then (2) FA2Layout
+        // worker that iterates in a Web Worker and live-updates sigma's
+        // node positions in the background. User sees motion within 500ms,
+        // gets a refined layout over the next ~5s, no main-thread block.
         if (g.order > 0) {
           forceAtlas2.assign(g, {
-            iterations: nodes.length > 5000 ? 30 : 60,
+            iterations: 3,
             settings: { gravity: 1, scalingRatio: 8 },
           });
         }
 
         // Item #2: enable node events so enterNode/leaveNode fire.
+        // Item #4 (2026-05-04 follow-up): show node labels by default —
+        // labelRenderedSizeThreshold lowered from default 6 → 3 so labels
+        // surface on first paint instead of only after deep zoom. Helps
+        // mneme view look closer to Graphify / CRG which surface labels
+        // immediately.
         sigmaRef.current = new Sigma(g, containerRef.current, {
           renderEdgeLabels: false,
           enableEdgeEvents: false,
           allowInvalidContainer: true,
+          renderLabels: true,
+          labelRenderedSizeThreshold: 3,
+          labelDensity: 1.5,
+          labelGridCellSize: 60,
         });
+
+        // Spin up the FA2 worker for high-quality refinement off the
+        // main thread. Runs ~5s then stops; sigma sees the live position
+        // updates and re-renders automatically.
+        if (g.order > 0) {
+          const fa2Worker = new FA2Layout(g, {
+            settings: { gravity: 1, scalingRatio: 8 },
+          });
+          fa2Worker.start();
+          fa2WorkerRef.current = fa2Worker;
+          // Stop the worker after 5s — refinement plateaus around then
+          // and we don't want a runaway worker burning a CPU thread for
+          // the entire lifetime of the tab.
+          fa2TimeoutRef.current = window.setTimeout(() => {
+            const w = fa2WorkerRef.current;
+            if (!w) return;
+            try {
+              if (w.isRunning()) w.stop();
+              w.kill();
+            } catch {
+              /* already stopped/killed — ignore */
+            }
+            fa2WorkerRef.current = null;
+            fa2TimeoutRef.current = null;
+          }, 5000);
+        }
         graphRef.current = g;
 
         // ── Item #2: hover-highlight ego-network ─────────────────────
@@ -241,6 +290,23 @@ export function ForceGalaxy(): JSX.Element {
     return () => {
       cancelled = true;
       ac.abort();
+      // Stop + kill the FA2 worker first — it holds a Web Worker thread
+      // that will keep posting position updates to a dead Sigma if we
+      // tear down sigma first, throwing "Cannot read properties of null"
+      // on every animation frame. Order matters.
+      if (fa2TimeoutRef.current !== null) {
+        window.clearTimeout(fa2TimeoutRef.current);
+        fa2TimeoutRef.current = null;
+      }
+      if (fa2WorkerRef.current) {
+        try {
+          if (fa2WorkerRef.current.isRunning()) fa2WorkerRef.current.stop();
+          fa2WorkerRef.current.kill();
+        } catch {
+          /* already stopped/killed — ignore */
+        }
+        fa2WorkerRef.current = null;
+      }
       sigmaRef.current?.kill();
       sigmaRef.current = null;
       graphRef.current = null;

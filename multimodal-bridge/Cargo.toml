@@ -38,14 +38,26 @@ default = []
 tesseract = ["dep:tesseract"]
 
 # Audio transcription via whisper.cpp bindings. Requires a C++ toolchain
-# plus a Whisper GGML model on disk (path set by the caller).
-whisper = ["dep:whisper-rs", "dep:hound"]
+# plus a Whisper GGML model on disk (path set by the caller, or
+# auto-resolved from ~/.mneme/models/whisper/).
+#
+# Pulls in:
+#   whisper-rs — Rust FFI bindings to whisper.cpp (statically linked C++)
+#   hound      — pure-Rust WAV decoder (no system libs)
+#   symphonia  — pure-Rust MP3/M4A/OGG/FLAC/OPUS decoder (no system libs)
+#
+# Binary size impact: whisper-rs statically links whisper.cpp (~50 MB of
+# C++ object code on release + strip). Combined with the workspace binary
+# the net increase is ~45-55 MB (strip removes debug symbols). This stays
+# below the 100 MB fallback threshold specified in the Wave 3.4 brief.
+whisper = ["dep:whisper-rs", "dep:hound", "dep:symphonia"]
 
 # Video frame sampling + audio decoding via ffmpeg. Requires ffmpeg
 # system libs (libavformat / libavcodec / libavutil).
 ffmpeg = ["dep:ffmpeg-next"]
 
 # Build every optional extractor at once (CI convenience).
+# Equivalent to: cargo build -p mneme-multimodal --features all-extractors
 all-extractors = ["tesseract", "whisper", "ffmpeg"]
 
 [dependencies]
@@ -82,8 +94,21 @@ image = { version = "0.25", default-features = false, features = [
 
 # Feature-gated C FFI extractors.
 tesseract = { version = "0.15", optional = true }
+
+# whisper-rs: Rust bindings to whisper.cpp (statically linked C++ via cxx-build).
+# 0.13 introduced WhisperContextParameters (required for our API surface) and
+# updated the whisper.cpp submodule to 1.7.x which includes the multilingual tiny
+# model improvements. set_language(None) for auto-detect works from 0.13 onward.
 whisper-rs = { version = "0.13", optional = true, default-features = false }
+
+# hound: pure-Rust WAV encoder/decoder. Covers 8/16/24/32-bit PCM and f32 PCM.
 hound = { version = "3.5", optional = true }
+
+# symphonia: pure-Rust audio decoder suite. Covers MP3, AAC/M4A, OGG Vorbis,
+# FLAC, OPUS. No system libs required. We pull the "default" feature set which
+# includes all these codecs.
+symphonia = { version = "0.5", optional = true, default-features = true }
+
 ffmpeg-next = { version = "7.0", optional = true }
 
 [dev-dependencies]

@@ -1,0 +1,56 @@
+{
+  "name": "@mneme/parsers",
+  "version": "0.3.2",
+  "description": "Parse source files into a typed code graph — no daemon required",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omanishay-cyber/mneme"
+  },
+  "keywords": [
+    "code-graph",
+    "tree-sitter",
+    "ast",
+    "parsing",
+    "static-analysis",
+    "napi",
+    "rust"
+  ],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "mneme_parsers.*.node"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "test": "bun test test/",
+    "artifacts": "napi artifacts",
+    "prepublishOnly": "napi build --platform --release"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.0.0",
+    "bun-types": "latest",
+    "typescript": "^5.4.0"
+  },
+  "napi": {
+    "name": "mneme-parsers",
+    "triples": {
+      "defaults": true,
+      "additional": [
+        "x86_64-unknown-linux-musl",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl",
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+        "aarch64-pc-windows-msvc"
+      ]
+    }
+  }
+}

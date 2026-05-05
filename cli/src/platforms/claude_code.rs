@@ -91,13 +91,38 @@ pub struct HookSpec {
     pub matcher: &'static str,
 }
 
-/// The 8 hook events mneme registers by default (K1 fix, v0.3.2).
+/// The hook events mneme registers by default (K1 fix, v0.3.2; extended in v0.4.0).
+///
+/// v0.4.0 additions (Wave 1E — self-ping enforcement layer):
+///   Layer 1: `userprompt-submit` — fires on UserPromptSubmit, injects a
+///     reminder block listing the top 3 relevant mneme tools + a trespass log
+///     of grep/read calls that bypassed mneme this session.
+///   Layer 2: `pretool-edit-write` — fires on PreToolUse for Edit/Write/MultiEdit,
+///     blocks the edit if blast_radius was not run for the target file in the
+///     last 10 minutes, and auto-runs blast_radius inline so the AI has context
+///     immediately. Configured by `[hooks] enforce_blast_radius_before_edit` in
+///     ~/.mneme/config.toml (default ON).
+///   Layer 3: `pretool-grep-read` — fires on PreToolUse for Grep/Read/Glob,
+///     skeleton only in v0.4.0 (always approve). Full redirect logic deferred
+///     to v0.4.1. Controlled by `[hooks] enforce_recall_before_grep` (default OFF).
+///
+/// All three new hooks are fail-open: any internal error returns approve/empty
+/// so a broken mneme daemon can never block the user's editing workflow.
+///
 /// Skipped only when the user passes `--no-hooks` / `--skip-hooks`.
 /// Order matches the install banner so users can audit one-to-one.
 pub const HOOK_SPECS: &[HookSpec] = &[
     HookSpec {
         event: "SessionStart",
         args: &["session-prime"],
+        matcher: "*",
+    },
+    // Layer 1 (v0.4.0): self-ping reminder block injected on every user prompt.
+    // Runs ALONGSIDE the existing `inject` hook — Claude Code routes all
+    // UserPromptSubmit entries to all registered handlers.
+    HookSpec {
+        event: "UserPromptSubmit",
+        args: &["userprompt-submit"],
         matcher: "*",
     },
     HookSpec {
@@ -108,6 +133,23 @@ pub const HOOK_SPECS: &[HookSpec] = &[
     HookSpec {
         event: "PreToolUse",
         args: &["pre-tool"],
+        matcher: "*",
+    },
+    // Layer 2 (v0.4.0): blast_radius gate for Edit / Write / MultiEdit.
+    // Runs ALONGSIDE the existing `pre-tool` hook. Claude Code runs all
+    // PreToolUse entries; the gate hook handles its own tool-name filtering
+    // internally (only acts on Edit/Write/MultiEdit).
+    HookSpec {
+        event: "PreToolUse",
+        args: &["pretool-edit-write"],
+        matcher: "*",
+    },
+    // Layer 3 (v0.4.0 skeleton, always-approve): Grep/Read/Glob redirect.
+    // Enabled but pass-through until v0.4.1 wires the redirect logic.
+    // Controlled by `[hooks] enforce_recall_before_grep` (default OFF).
+    HookSpec {
+        event: "PreToolUse",
+        args: &["pretool-grep-read"],
         matcher: "*",
     },
     HookSpec {

@@ -1,0 +1,32 @@
+[package]
+name = "mneme-parsers-js"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Node.js bindings for mneme's tree-sitter-based code graph extractor"
+license.workspace = true
+# publish = false — npm distribution is handled via `npm publish` after `napi build`
+
+[lib]
+# cdylib = Node.js native addon (.node)
+crate-type = ["cdylib"]
+name = "mneme_parsers"
+
+[dependencies]
+# napi-rs — Node-API binding framework
+# napi and napi-derive have independent version numbers on crates.io.
+napi = { version = "3.8", features = ["async"] }
+napi-derive = "3.5"
+
+# Bridge to the core parsers crate
+mneme-parsers = { path = "../../parsers" }
+
+# Tokio runtime — napi-rs manages an async runtime internally; we use it
+# for async handler compatibility.
+tokio = { version = "1.40", features = ["rt", "macros"] }
+
+# Error display
+thiserror = "1.0"
+
+[build-dependencies]
+napi-build = "2"
