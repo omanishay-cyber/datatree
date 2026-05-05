@@ -11,7 +11,7 @@ name: pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, docs-redesign-defineseo]
     paths:
       - "docs-book/**"
       - ".github/workflows/pages.yml"
