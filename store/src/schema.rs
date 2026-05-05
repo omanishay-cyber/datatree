@@ -35,7 +35,7 @@ use rusqlite::Connection;
 
 use common::error::{DbError, DtResult};
 
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 1;
 
 /// Forward-only migration table for shards that don't have a layer-
 /// specific migration set. v0.3.2 framework default — kept empty so
@@ -47,36 +47,27 @@ pub const SCHEMA_VERSION: u32 = 2;
 /// transaction, then bumping `PRAGMA user_version` to the target.
 pub const MIGRATIONS: &[(u32, &[&str])] = &[];
 
-/// Migrations specific to the **Graph** layer (`graph.db`). Per-layer
-/// scoping was added with v0.4.0 Item #117 — a workspace-wide migration
-/// table can't run `DELETE FROM embeddings` because that table only
-/// exists on the Semantic layer; SQLite's parser rejects the statement
-/// outright on shards that don't have it. Splitting MIGRATIONS by
-/// layer keeps each block well-typed against the schema it targets.
-const MIGRATIONS_GRAPH: &[(u32, &[&str])] = &[
-    // v0.4.0 Item #117 (symbol-anchored embeddings). v0.3.x shards
-    // have populated `embedding_id` values pointing at file-anchored
-    // vectors. On upgrade we MUST clear the back-references so the
-    // re-embed pass reads every node again with the new symbol-anchor
-    // text — otherwise the keystone recall fix produces zero
-    // observable improvement for upgrading users (the entire premise
-    // of v0.4.0). Idempotent: re-running just no-ops.
-    (
-        2,
-        &["UPDATE nodes SET embedding_id = NULL WHERE embedding_id IS NOT NULL"],
-    ),
-];
-
-/// Migrations specific to the **Semantic** layer (`semantic.db`).
-/// Paired with [`MIGRATIONS_GRAPH`] — both bump `user_version` to 2
-/// at the same v0.3.x→v0.4.0 transition.
-const MIGRATIONS_SEMANTIC: &[(u32, &[&str])] = &[
-    // v0.4.0 Item #117: clear file-anchored embeddings so the next
-    // build pass re-embeds every node with symbol-anchored text.
-    // Cheap: deletes ~20 K rows on a typical project; embed pass
-    // re-populates in the same build run.
-    (2, &["DELETE FROM embeddings"]),
-];
+/// Per-layer migration tables. Currently empty for both:
+///
+/// The v0.4.0 audit landed an Item #117 migration here that did
+/// `UPDATE nodes SET embedding_id = NULL` (Graph) + `DELETE FROM
+/// embeddings` (Semantic) so upgrading users would automatically
+/// re-embed with symbol-anchored vectors. The chaos test
+/// `upgrade_v02_to_v03_schema_is_additive_only` flagged that the
+/// Graph migration breaks against pre-v0.3 shards whose `nodes`
+/// table predates the `embedding_id` column — SQLite parses the
+/// UPDATE statement upfront and fails with "no such column" before
+/// the WHERE clause is evaluated.
+///
+/// Reverted (2026-05-05) for v0.4.0 ship safety. Upgrading users
+/// instead get a documented `mneme rebuild` step in the v0.4.0
+/// release notes — same end result (re-embedded corpus), no
+/// migration risk.
+///
+/// A future v0.4.x will land the migration properly with a
+/// runtime column-existence check before issuing UPDATE / DELETE.
+const MIGRATIONS_GRAPH: &[(u32, &[&str])] = &[];
+const MIGRATIONS_SEMANTIC: &[(u32, &[&str])] = &[];
 
 /// Pick the migration set appropriate for `layer`. Layers without
 /// schema changes return the default (empty) set.
@@ -238,15 +229,17 @@ CREATE TABLE IF NOT EXISTS nodes (
 CREATE INDEX IF NOT EXISTS idx_nodes_qualified ON nodes(qualified_name);
 CREATE INDEX IF NOT EXISTS idx_nodes_file_path ON nodes(file_path);
 CREATE INDEX IF NOT EXISTS idx_nodes_kind ON nodes(kind);
--- PERF-P0-003 (v0.4.0 audit, 2026-05-05): partial index over rows
--- pending embedding. read_embeddable_nodes (cli/build.rs) does
--- `WHERE kind != 'comment' AND embedding_id IS NULL` on every
--- incremental build; without this index it's a full table scan.
--- Partial index cost: only rows matching the predicate are
--- indexed, so size stays tiny on a settled corpus (~handful of
--- recently-added rows) and the scan becomes index-only.
-CREATE INDEX IF NOT EXISTS idx_nodes_embed_pending ON nodes(id)
-    WHERE embedding_id IS NULL AND kind != 'comment';
+-- PERF-P0-003 partial index reverted (2026-05-05): chaos test
+-- `upgrade_v02_to_v03_schema_is_additive_only` simulates a
+-- pre-v0.3 shard whose `nodes` table doesn't yet have
+-- `embedding_id`. SQLite parses CREATE INDEX statements at
+-- creation time including the WHERE clause, so the partial index
+-- failed with "no such column: embedding_id" against the v0.2
+-- fixture. The base `idx_nodes_kind` index covers the same query
+-- pattern adequately for incremental builds (the read-side perf
+-- regression from removing the partial index is small enough that
+-- it can ship as a separate v0.4.x improvement once we have a
+-- safe ALTER+INDEX pipeline that detects column existence first).
 
 CREATE TABLE IF NOT EXISTS edges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
