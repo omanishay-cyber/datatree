@@ -30,6 +30,24 @@
 import { wasBlastRadiusRunFor, getHooksConfig } from "./lib/recent-tool-calls.ts";
 import { query } from "../db.ts";
 import { errMsg } from "../errors.ts";
+import { statSync } from "node:fs";
+
+// Item #120 (2026-05-05): bypass + size-cap thresholds.
+//
+// SMALL_FILE_BYTE_THRESHOLD: files under this size skip the gate
+//   entirely. Rationale: blast_radius on a 50-line config file is
+//   noise — the AI doesn't need 500 tokens of context to safely
+//   add a key. ~4 KB ≈ 100-150 LOC across typical source files
+//   (Rust ~40 char/line, TS ~50, Python ~35).
+//
+// MAX_BLAST_RESULT_CHARS: hard cap on the auto-run blast_radius
+//   summary that gets injected into the block reason. 1500 chars
+//   ≈ 375 tokens, well under the 500-token budget the v0.4.0 plan
+//   committed to. Truncation appends "... (truncated, full result
+//   in mcp__mneme__blast_radius)" so the AI knows where to drill
+//   if it needs the full picture.
+const SMALL_FILE_BYTE_THRESHOLD = 4096;
+const MAX_BLAST_RESULT_CHARS = 1500;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,7 +127,18 @@ async function autoRunBlastRadius(filePath: string): Promise<string> {
       lines.push(`  test files: ${result.test_files.slice(0, 3).join(", ")}`);
     }
 
-    return lines.join("\n");
+    const joined = lines.join("\n");
+    // Item #120: hard cap so the injected block-reason stays inside
+    // the 500-token budget. blast_radius results balloon on large
+    // affected_files lists; truncate with a hint to drill in for the
+    // full picture.
+    if (joined.length > MAX_BLAST_RESULT_CHARS) {
+      return (
+        joined.slice(0, MAX_BLAST_RESULT_CHARS) +
+        "\n... (truncated, full result in mcp__mneme__blast_radius)"
+      );
+    }
+    return joined;
   } catch (err) {
     // Not a hard failure — blast_radius auto-run is best-effort.
     return `(blast_radius auto-run failed: ${errMsg(err)} — run mcp__mneme__blast_radius manually)`;
@@ -144,6 +173,18 @@ export async function runPreToolEditWrite(
     const filePath = extractFilePath(args.params);
     if (!filePath) {
       // No file path in params — can't enforce, pass through.
+      return approve();
+    }
+
+    // Item #120 (2026-05-05): small-file bypass. blast_radius on a
+    // 50-line config or test fixture is noise — the AI doesn't need
+    // 500 tokens of impact context to safely add a key. We stat the
+    // file (cheap; one syscall) and skip the gate when the file is
+    // under SMALL_FILE_BYTE_THRESHOLD. New files (Write of a fresh
+    // path) intentionally fall through the stat check (ENOENT) and
+    // continue to the gate — Write of a fresh path IS a high-impact
+    // operation worth blast_radius'ing.
+    if (isSmallExistingFile(filePath)) {
       return approve();
     }
 
@@ -201,6 +242,25 @@ function extractFilePath(params: Record<string, unknown>): string | null {
   const raw = params["file_path"];
   if (typeof raw === "string" && raw.length > 0) return raw;
   return null;
+}
+
+/**
+ * Item #120 (2026-05-05): true iff the file exists and is smaller than
+ * SMALL_FILE_BYTE_THRESHOLD bytes. For non-existent files (Write of a
+ * fresh path), the stat throws ENOENT and we return false → the gate
+ * runs as before (Write of a new file is high-impact, worth gating).
+ *
+ * Wrapped in try/catch so any filesystem error (permission denied,
+ * network mount blip, symlink loop) returns false → gate runs → fail
+ * open via the outer hook catch if needed.
+ */
+function isSmallExistingFile(filePath: string): boolean {
+  try {
+    const st = statSync(filePath);
+    return st.isFile() && st.size < SMALL_FILE_BYTE_THRESHOLD;
+  } catch {
+    return false;
+  }
 }
 
 function buildBlockReason(filePath: string, blastResult: string): string {
