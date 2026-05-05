@@ -49,7 +49,28 @@ pub struct ProjectQuery {
     /// The hex SHA-256 of the project root the SPA wants to view.
     /// `None` keeps the legacy "first shard alphabetically" behaviour.
     pub project: Option<String>,
+
+    /// Optional row limit for endpoints that return a paged slice
+    /// (`/api/graph/nodes` + `/api/graph/edges`). Capped at
+    /// [`MAX_GRAPH_LIMIT`] server-side. Absent → handlers use their
+    /// own default (kept small to protect the daemon's blocking pool).
+    ///
+    /// BUG-NEW-I fix (2026-05-05): nodes used `LIMIT 2000` and edges
+    /// used `LIMIT 8000` hardcoded, with no client override. On any
+    /// non-trivial repo, edges referenced nodes outside the 2K node
+    /// window and the SPA's `g.hasNode()` guard silently dropped them
+    /// — visible to the user as "ForceGalaxy nodes appear but no
+    /// links between them". Threading the SPA's `?limit=` through
+    /// lets ForceGalaxy ask for matched windows (32K each).
+    pub limit: Option<usize>,
 }
+
+/// Hard ceiling for `ProjectQuery::limit`. Larger requests are clamped
+/// to this value so a malicious or buggy client can't ask the daemon
+/// to materialise the entire shard into a JSON array. Picked to cover
+/// the `mneme` repo itself (~17K Rust + ~9K TS nodes ≈ 26K) with
+/// headroom, while still finishing in a few hundred ms on a fast disk.
+pub const MAX_GRAPH_LIMIT: usize = 50_000;
 
 /// Shared application state for the `/api/graph/*` router.
 ///
@@ -678,14 +699,20 @@ async fn api_graph_nodes(
     State(state): State<ApiGraphState>,
     Query(q): Query<ProjectQuery>,
 ) -> impl IntoResponse {
+    // BUG-NEW-I fix (2026-05-05): respect the SPA's `?limit=` so
+    // ForceGalaxy can request a node window that matches its edge
+    // window. Default 2000 preserves the v0.3.2 behaviour for
+    // unauthenticated curl probes; clamp at MAX_GRAPH_LIMIT to keep
+    // the daemon responsive.
+    let limit = q.limit.unwrap_or(2000).min(MAX_GRAPH_LIMIT);
+    let sql = format!(
+        "SELECT qualified_name, name, kind, file_path \
+         FROM nodes ORDER BY id LIMIT {}",
+        limit
+    );
     let nodes: Vec<GraphNodeOut> =
-        with_layer_db_sync(&state, "graph", q.project.as_deref(), |conn| {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT qualified_name, name, kind, file_path \
-                 FROM nodes ORDER BY id LIMIT 2000",
-                )
-                .ok()?;
+        with_layer_db_sync(&state, "graph", q.project.as_deref(), move |conn| {
+            let mut stmt = conn.prepare(&sql).ok()?;
             let rows = stmt
                 .query_map([], |r| {
                     Ok((
@@ -726,14 +753,19 @@ async fn api_graph_edges(
     State(state): State<ApiGraphState>,
     Query(q): Query<ProjectQuery>,
 ) -> impl IntoResponse {
+    // BUG-NEW-I fix (2026-05-05): respect the SPA's `?limit=`. See
+    // `api_graph_nodes` for the rationale; both endpoints share the
+    // same clamping policy so a paired call from ForceGalaxy returns
+    // a balanced (nodes, edges) window with no silently-dropped edges.
+    let limit = q.limit.unwrap_or(8000).min(MAX_GRAPH_LIMIT);
+    let sql = format!(
+        "SELECT id, source_qualified, target_qualified, kind \
+         FROM edges ORDER BY id LIMIT {}",
+        limit
+    );
     let edges: Vec<GraphEdgeOut> =
-        with_layer_db_sync(&state, "graph", q.project.as_deref(), |conn| {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, source_qualified, target_qualified, kind \
-                 FROM edges ORDER BY id LIMIT 8000",
-                )
-                .ok()?;
+        with_layer_db_sync(&state, "graph", q.project.as_deref(), move |conn| {
+            let mut stmt = conn.prepare(&sql).ok()?;
             let rows = stmt
                 .query_map([], |r| {
                     Ok((

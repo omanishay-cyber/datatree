@@ -89,9 +89,29 @@ export function ForceGalaxy(): JSX.Element {
     (async (): Promise<void> => {
       const start = performance.now();
       try {
+        // BUG-NEW-I fix (2026-05-05): the previous limits (nodes=4000,
+        // edges=16000) silently dropped most edges on non-trivial repos.
+        // The render loop guards every g.addEdge with
+        // `g.hasNode(e.source) || g.hasNode(e.target)` and skips when
+        // either endpoint is outside the fetched node window. With a
+        // 4K-node ceiling and 16K edges, an edge whose source or target
+        // belongs to the 5,001st-most-recently-indexed node was silently
+        // discarded — visible to the user as "ForceGalaxy nodes appear
+        // but no links between them".
+        //
+        // Fix: fetch nodes and edges with the SAME upper bound so every
+        // returned edge has both endpoints in the node set, then let the
+        // hasNode guard handle the rare race where a node row gets
+        // garbage-collected mid-fetch. 32K is enough headroom for the
+        // mneme repo itself (~17K Rust nodes + ~9K TS) and stays well
+        // under the daemon's 200K hard cap on /api/graph/edges. Small
+        // repos pay nothing — the queries return early with whatever
+        // exists.
+        const NODE_LIMIT = 32000;
+        const EDGE_LIMIT = 32000;
         const [nodesRes, edgesRes] = await Promise.all([
-          fetchNodes(ac.signal, 4000),
-          fetchEdges(ac.signal, 16000),
+          fetchNodes(ac.signal, NODE_LIMIT),
+          fetchEdges(ac.signal, EDGE_LIMIT),
         ]);
         if (cancelled || !containerRef.current) return;
 
