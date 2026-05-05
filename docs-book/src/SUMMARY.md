@@ -37,7 +37,3 @@
 
 - [Troubleshooting](./troubleshooting.md)
 - [Contributing](./contributing.md)
-
----
-
-[GitHub repo](https://github.com/omanishay-cyber/mneme)
