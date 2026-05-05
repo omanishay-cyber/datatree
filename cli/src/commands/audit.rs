@@ -116,6 +116,23 @@ pub struct AuditArgs {
     #[arg(long, default_value = "info")]
     pub severity: String,
 
+    /// Wait for the audit to complete and print findings inline before
+    /// returning. Without `--wait`, the supervisor IPC path is
+    /// fire-and-forget — it returns "audit dispatched: N files queued"
+    /// immediately and findings stream into `findings.db` in the
+    /// background. With `--wait`, the CLI bypasses the supervisor and
+    /// runs the scanner-worker subprocess directly so the caller blocks
+    /// until every finding is persisted, then renders them. Useful for
+    /// pre-commit hooks, CI gates, and `git push`-style scripts that
+    /// need a deterministic exit code per audit run.
+    ///
+    /// BUG-NEW-C fix (2026-05-05). The direct-subprocess path already
+    /// existed as a fallback when the supervisor is unreachable; we
+    /// just expose it explicitly via this flag for the synchronous
+    /// case.
+    #[arg(long)]
+    pub wait: bool,
+
     /// Optional project root. Defaults to CWD.
     pub project: Option<PathBuf>,
 }
@@ -130,8 +147,18 @@ pub async fn run(args: AuditArgs, socket_override: Option<PathBuf>) -> CliResult
         project = %project.display(),
         scope,
         severity = severity_floor.label(),
+        wait = args.wait,
         "starting mneme audit",
     );
+
+    // BUG-NEW-C: --wait skips the IPC fire-and-forget and goes straight
+    // to the synchronous subprocess path. Findings stream into
+    // findings.db AND get rendered on stdout before the function
+    // returns, giving the caller a deterministic exit code (0 = no
+    // critical findings, non-zero on failure).
+    if args.wait {
+        return run_direct_subprocess(&project, scope, severity_floor).await;
+    }
 
     // Try IPC-first. On any failure (Err or `IpcResponse::Error`) we
     // fall back to the direct subprocess path below.
