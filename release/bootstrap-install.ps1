@@ -4,11 +4,11 @@
 #
 # Usage (PowerShell, any user, no admin needed):
 #
-#   iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)
+#   iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)
 #
 # Or, equivalently:
 #
-#   irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1 | iex
+#   irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1 | iex
 #
 # What it does:
 #   1. Picks a release version (default: v0.3.2; override with $env:MNEME_VERSION)
@@ -48,7 +48,7 @@
 # To override defaults, set env vars BEFORE the iex line:
 #   $env:MNEME_VERSION = 'v0.3.3'
 #   $env:MNEME_NO_MULTIMODAL = '1'
-#   iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)
+#   iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)
 #
 # Or pass flags via the scriptblock pattern (rare):
 #   $sb = [scriptblock]::Create((irm <url>))

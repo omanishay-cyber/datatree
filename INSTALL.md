@@ -18,14 +18,14 @@ Each script auto-detects your architecture (x64 / ARM64), downloads the matching
 
 ```powershell
 # PowerShell * no admin needed * auto-detects PROCESSOR_ARCHITECTURE
-iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)
+iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)
 ```
 
 ### macOS (Apple Silicon arm64)
 
 ```bash
 # auto-detects via uname -m
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-mac.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-mac.sh | bash
 ```
 
 > **Intel Macs (x86_64) are not supported in v0.3.2.** v0.3.2 ships only an `aarch64-apple-darwin` binary. Intel Mac users must build from source: `git clone` + `cargo build --release --workspace`. Native Intel Mac binaries may return in a later release if GitHub-hosted runner capacity recovers.
@@ -34,7 +34,7 @@ curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/ins
 
 ```bash
 # auto-detects via uname -m
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-linux.sh | bash
 ```
 
 ### Python wrapper (any OS, pip-friendly)

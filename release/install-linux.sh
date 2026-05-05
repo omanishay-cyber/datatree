@@ -5,11 +5,11 @@
 #
 # Usage (any user, no sudo needed):
 #
-#   curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh | bash
+#   curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-linux.sh | bash
 #
 # Or, equivalently (download first, then execute):
 #
-#   curl -fsSLo /tmp/install-linux.sh https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh
+#   curl -fsSLo /tmp/install-linux.sh https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-linux.sh
 #   bash /tmp/install-linux.sh
 #
 # What it does (mirrors bootstrap-install.ps1 design):

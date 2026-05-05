@@ -17,19 +17,19 @@ registers the MCP server with Claude Code, and starts the daemon.
 ### Windows (PowerShell, any user, no admin needed)
 
 ```powershell
-iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)
+iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)
 ```
 
 ### macOS (Intel or Apple Silicon)
 
 ```bash
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-mac.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-mac.sh | bash
 ```
 
 ### Linux (x86_64 or aarch64)
 
 ```bash
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-linux.sh | bash
 ```
 
 > **Requirements:** 64-bit OS (x64 or ARM64) * CPU with AVX2 / BMI2 / FMA
@@ -115,7 +115,7 @@ If anything looks wrong, the path is always:
 # Windows
 Get-Process | Where-Object { $_.ProcessName -match '^mneme' } | Stop-Process -Force
 Remove-Item -Recurse -Force $env:USERPROFILE\.mneme
-iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/bootstrap-install.ps1)
+iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)
 ```
 
 ```bash
@@ -123,9 +123,9 @@ iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/boots
 pkill -f mneme || true
 rm -rf ~/.mneme
 # macOS:
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-mac.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-mac.sh | bash
 # Linux:
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.3.2/install-linux.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-linux.sh | bash
 ```
 
 If MCP was registered and you want to unregister it:

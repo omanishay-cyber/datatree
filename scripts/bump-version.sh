@@ -113,6 +113,28 @@ WORKFLOW_FILES=(
 )
 
 # ---------------------------------------------------------------------------
+# INSTALL-DOC URL PATCHES — user-facing one-liners that point at a specific
+# release. `releases/download/v$FROM/...` -> `releases/download/v$TO/...`.
+# Without this, README/INSTALL/GH-Pages would still tell new users to
+# install the OLD version even after the binaries are uploaded to the new
+# tag.
+#
+# Note: we deliberately DO NOT use `releases/latest/download/...` here even
+# though that would auto-resolve. Pinning the version in the docs is what
+# Anish wanted (Wave 2.6) so users see "v0.4.0" in the command they're
+# about to paste — easier to spot a mismatch with the announcement.
+# ---------------------------------------------------------------------------
+INSTALL_DOC_FILES=(
+  'README.md'
+  'INSTALL.md'
+  'docs/INSTALL.md'
+  'docs/index.html'
+  'release/install-mac.sh'
+  'release/install-linux.sh'
+  'release/bootstrap-install.ps1'
+)
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 section() { echo ""; echo "== $1 =="; }
@@ -189,6 +211,33 @@ apply_workflow_replacement() {
   fi
 }
 
+apply_install_doc_replacement() {
+  # Narrowly scoped to /releases/download/v$FROM/ -> /releases/download/v$TO/.
+  # We do NOT do a blanket s/v$FROM/v$TO/g here because READMEs / GH-Pages
+  # also reference past versions in feature-history sections, benchmark
+  # tables, "since v0.3.2" comparison columns, etc. — those should stay
+  # frozen in time. The /releases/download/v.../ path pattern only ever
+  # appears in install one-liners that MUST match the current ship.
+  local file="$1"
+  if [[ ! -f "$file" ]]; then
+    fail "$file (file missing)"
+    return
+  fi
+  local pattern="releases/download/v${FROM}/"
+  if ! grep -qF "$pattern" "$file"; then
+    miss "$file (no $pattern occurrences)"
+    return
+  fi
+  local count
+  count=$(grep -cF "$pattern" "$file" || true)
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "  >>  $file ($count install one-liner(s): /v$FROM/ -> /v$TO/)"
+  else
+    sed "${SED_INPLACE[@]}" "s|releases/download/v${FROM}/|releases/download/v${TO}/|g" "$file"
+    ok "$file ($count install one-liner(s) swapped)"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Pre-flight
 # ---------------------------------------------------------------------------
@@ -211,6 +260,11 @@ done
 section "Update workflow YAMLs"
 for wf in "${WORKFLOW_FILES[@]}"; do
   apply_workflow_replacement "$wf"
+done
+
+section "Update install-doc URLs"
+for doc in "${INSTALL_DOC_FILES[@]}"; do
+  apply_install_doc_replacement "$doc"
 done
 
 # ---------------------------------------------------------------------------
