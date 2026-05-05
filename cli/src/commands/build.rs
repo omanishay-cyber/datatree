@@ -29,8 +29,13 @@ use brain::NodeId as BrainNodeId;
 use common::{ids::ProjectId, layer::DbLayer, paths::PathManager};
 use multimodal::{ExtractedDoc, Registry as MmRegistry};
 use parsers::{
-    extractor::Extractor, incremental::IncrementalParser, looks_like_test_path,
-    parser_pool::ParserPool, query_cache, Language, NodeKind,
+    extractor::Extractor,
+    incremental::IncrementalParser,
+    looks_like_test_path,
+    parser_pool::ParserPool,
+    query_cache,
+    resolver::{python_file_prefix, rust_file_prefix, ts_file_prefix},
+    Language, NodeKind,
 };
 use scanners::scanners::architecture::{ArchEdge, ArchNode, ArchitectureScanner};
 use sha2::{Digest, Sha256};
@@ -2197,28 +2202,116 @@ struct EmbeddableRow {
     name: String,
     signature: Option<String>,
     summary: Option<String>,
+    /// Project-relative file path the node came from. Used by the
+    /// v0.4.0 symbol-anchored embedding pass to compute a canonical
+    /// prefix per language.
+    file_path: Option<String>,
+    /// Language string from `nodes.language` (lowercased enum tag like
+    /// `"rust"`, `"typescript"`, `"python"`). Drives the resolver's
+    /// per-language prefix function.
+    language: Option<String>,
+}
+
+/// Build the symbol-anchor string for an embeddable node, or `None`
+/// if the node lacks the file/language context to compute one.
+///
+/// ## Why this exists (Item #117 — symbol-anchored embeddings)
+///
+/// Before this function landed, embeddings were *file-anchored*: the
+/// embed text was just the function's signature or summary, so a
+/// query like "where is the spawn function?" matched the README
+/// (which mentions "spawn") more strongly than the actual function
+/// (whose signature is `pub async fn spawn(...)`). That's why the
+/// CRG-vs-Mneme audit (2026-05-05) measured mneme's recall at 2/10
+/// vs CRG's 6/10 on the same golden-query suite.
+///
+/// Items #114–#116 shipped the symbol resolver — three per-language
+/// algorithms that turn `(file_path, name)` into a canonical string
+/// (`crate::manager::WorkerPool`, `vision/src/views/ForceGalaxy.tsx`,
+/// `pkg.sub.mod`). This function is the first consumer: it prepends
+/// the canonical prefix to the embedding text so the vector encodes
+/// "this is THE `spawn` symbol from THE `manager` module" rather
+/// than just the signature alone.
+///
+/// Cross-language matching is preserved because the embedder anchors
+/// on the leaf segment regardless of separator.
+fn canonical_embed_anchor(name: &str, file_path: &str, language: &str) -> Option<String> {
+    let name = name.trim();
+    if name.is_empty() || file_path.is_empty() {
+        return None;
+    }
+    // Per-language file prefix from the resolver. Each helper returns
+    // an empty string for paths it can't make sense of (e.g. a Rust
+    // path without a `src/` segment, or a non-`.py` Python input);
+    // we treat that as "skip the anchor for this row".
+    let prefix = match language {
+        "rust" => rust_file_prefix(file_path),
+        // TS/JS share the same prefix logic (filename is meaningful).
+        "typescript" | "tsx" | "javascript" | "jsx" => ts_file_prefix(file_path),
+        "python" => python_file_prefix(file_path),
+        // Other languages don't have a resolver yet (Go, Java, etc.) —
+        // fall back to using the file_path itself as the anchor so
+        // searches still cluster around the source file.
+        _ => return Some(format!("{file_path} :: {name}")),
+    };
+    if prefix.is_empty() {
+        return None;
+    }
+    // Use the language's native separator: `::` for Rust + TS, `.`
+    // for Python. The embedder's tokenizer treats these identically,
+    // but downstream tools (jedi, mypy, sphinx for Python; rustdoc
+    // for Rust) round-trip the canonical string into their own
+    // grammar without adapter code.
+    let separator = if language == "python" { "." } else { "::" };
+    Some(format!("{prefix}{separator}{name}"))
 }
 
 fn derive_text_for_embedding(row: &EmbeddableRow) -> String {
-    if let Some(sig) = row.signature.as_deref() {
+    // v0.4.0 Item #117: prepend the symbol-anchor when we have enough
+    // context to compute one. The anchor sits in front of the
+    // signature/summary so the vector encodes BOTH "what the symbol
+    // is called canonically" and "what its signature looks like".
+    let anchor = match (row.file_path.as_deref(), row.language.as_deref()) {
+        (Some(fp), Some(lang)) if !fp.is_empty() => canonical_embed_anchor(&row.name, fp, lang),
+        _ => None,
+    };
+
+    let body = if let Some(sig) = row.signature.as_deref() {
         let trimmed = sig.trim();
         if !trimmed.is_empty() {
-            return trimmed.to_string();
+            Some(trimmed.to_string())
+        } else {
+            None
         }
-    }
-    if let Some(sum) = row.summary.as_deref() {
-        let trimmed = sum.trim();
-        if !trimmed.is_empty() {
-            return trimmed.to_string();
-        }
-    }
+    } else {
+        None
+    };
+    let body = body.or_else(|| {
+        row.summary.as_deref().and_then(|s| {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+    });
     // Last-resort fallback so files/imports/classes with no signature
     // or summary still get an embedding row keyed on their identity.
-    let n = row.name.trim();
-    if n.is_empty() {
-        String::new()
-    } else {
-        format!("{} {}", row.kind, n)
+    let body = body.unwrap_or_else(|| {
+        let n = row.name.trim();
+        if n.is_empty() {
+            String::new()
+        } else {
+            format!("{} {}", row.kind, n)
+        }
+    });
+    if body.is_empty() {
+        return String::new();
+    }
+    match anchor {
+        Some(a) => format!("{a} {body}"),
+        None => body,
     }
 }
 
@@ -2232,7 +2325,7 @@ fn read_embeddable_nodes(graph_db: &Path) -> Result<Vec<EmbeddableRow>, String> 
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, kind, name, signature, summary \
+            "SELECT id, kind, name, signature, summary, file_path, language \
              FROM nodes \
              WHERE kind != 'comment' \
                AND embedding_id IS NULL",
@@ -2247,6 +2340,8 @@ fn read_embeddable_nodes(graph_db: &Path) -> Result<Vec<EmbeddableRow>, String> 
                 name: r.get::<_, String>(2).unwrap_or_default(),
                 signature: r.get::<_, Option<String>>(3).unwrap_or(None),
                 summary: r.get::<_, Option<String>>(4).unwrap_or(None),
+                file_path: r.get::<_, Option<String>>(5).unwrap_or(None),
+                language: r.get::<_, Option<String>>(6).unwrap_or(None),
             })
         })
         .map_err(|e| format!("exec nodes: {e}"))?;
@@ -6820,6 +6915,118 @@ fn chunk_markdown_by_headers(text: &str) -> Vec<MdSection> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---- Item #117: symbol-anchored embedding text --------------------
+
+    #[test]
+    fn anchor_for_rust_uses_crate_prefix() {
+        let a = canonical_embed_anchor("WorkerPool", "supervisor/src/manager.rs", "rust");
+        assert_eq!(a.as_deref(), Some("crate::manager::WorkerPool"));
+    }
+
+    #[test]
+    fn anchor_for_typescript_keeps_filename() {
+        let a = canonical_embed_anchor(
+            "ForceGalaxy",
+            "vision/src/views/ForceGalaxy.tsx",
+            "typescript",
+        );
+        assert_eq!(
+            a.as_deref(),
+            Some("vision/src/views/ForceGalaxy.tsx::ForceGalaxy"),
+        );
+    }
+
+    #[test]
+    fn anchor_for_python_uses_dot_separator() {
+        let a = canonical_embed_anchor("spawn", "pkg/sub/mod.py", "python");
+        assert_eq!(a.as_deref(), Some("pkg.sub.mod.spawn"));
+    }
+
+    #[test]
+    fn anchor_for_unknown_language_falls_back_to_file_path() {
+        let a = canonical_embed_anchor("DoStuff", "cmd/main.go", "go");
+        assert_eq!(a.as_deref(), Some("cmd/main.go :: DoStuff"));
+    }
+
+    #[test]
+    fn anchor_for_empty_inputs_returns_none() {
+        assert!(canonical_embed_anchor("", "src/lib.rs", "rust").is_none());
+        assert!(canonical_embed_anchor("Foo", "", "rust").is_none());
+        // Rust file without `src/` segment → resolver returns empty
+        // prefix; we treat that as "skip the anchor".
+        assert!(canonical_embed_anchor("Foo", "examples/x.rs", "rust").is_none());
+    }
+
+    #[test]
+    fn derive_text_prepends_anchor_when_signature_present() {
+        let row = EmbeddableRow {
+            id: 1,
+            kind: "function".into(),
+            name: "spawn".into(),
+            signature: Some("pub async fn spawn(&self) -> Result<()>".into()),
+            summary: None,
+            file_path: Some("supervisor/src/manager.rs".into()),
+            language: Some("rust".into()),
+        };
+        let text = derive_text_for_embedding(&row);
+        // Anchor + signature, separated by a single space.
+        assert_eq!(
+            text,
+            "crate::manager::spawn pub async fn spawn(&self) -> Result<()>"
+        );
+    }
+
+    #[test]
+    fn derive_text_falls_back_to_summary_when_signature_empty() {
+        let row = EmbeddableRow {
+            id: 2,
+            kind: "class".into(),
+            name: "ForceGalaxy".into(),
+            signature: Some("   ".into()), // whitespace-only
+            summary: Some("View component for the force-directed graph".into()),
+            file_path: Some("vision/src/views/ForceGalaxy.tsx".into()),
+            language: Some("tsx".into()),
+        };
+        let text = derive_text_for_embedding(&row);
+        assert!(
+            text.starts_with("vision/src/views/ForceGalaxy.tsx::ForceGalaxy "),
+            "expected anchor prefix; got: {text:?}"
+        );
+        assert!(text.contains("View component for"));
+    }
+
+    #[test]
+    fn derive_text_preserves_legacy_behavior_when_anchor_unavailable() {
+        // No file_path + no language → fall back to old code path.
+        let row = EmbeddableRow {
+            id: 3,
+            kind: "function".into(),
+            name: "spawn".into(),
+            signature: Some("pub fn spawn() {}".into()),
+            summary: None,
+            file_path: None,
+            language: None,
+        };
+        let text = derive_text_for_embedding(&row);
+        assert_eq!(text, "pub fn spawn() {}");
+    }
+
+    #[test]
+    fn derive_text_empty_when_no_body_and_no_name() {
+        let row = EmbeddableRow {
+            id: 4,
+            kind: "import".into(),
+            name: "".into(),
+            signature: None,
+            summary: None,
+            file_path: Some("src/lib.rs".into()),
+            language: Some("rust".into()),
+        };
+        // Empty name → anchor returns None → no body text either →
+        // empty string (caller filters this row out of the embed pass).
+        assert!(derive_text_for_embedding(&row).is_empty());
+    }
 
     // ---- chunk_markdown_by_headers (v0.3.2 hotfix #5) ------------------
 
