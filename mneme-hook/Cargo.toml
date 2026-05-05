@@ -34,6 +34,11 @@ tokio = { version = "1.40", features = ["rt", "rt-multi-thread", "macros", "io-u
 # definitions instead of importing the parent enum to keep the lib
 # boundary minimal.
 clap = { version = "4.5", features = ["derive"] }
+# JSON for the eprintln_via_stdout fail-open envelope. SEC-005 fix
+# (2026-05-05): hand-rolling escape was missing newline / control-
+# char handling. Routing through serde_json gives full JSON-grammar
+# correctness for free.
+serde_json = { workspace = true }
 
 [lints.rust]
 # Match parent crate's strictness — we want a hook binary that can

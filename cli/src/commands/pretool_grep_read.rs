@@ -50,6 +50,21 @@ use std::path::PathBuf;
 
 use crate::error::CliResult;
 
+/// Maximum stdin payload size for the hook (SEC-001 fix, 2026-05-05).
+/// Claude Code's largest legitimate PreToolUse payload is a tool-input
+/// JSON envelope around the size of one source-file path or grep
+/// pattern — kilobytes at most. Capping at 1 MiB is generous for the
+/// real surface and bounds the worst case at a constant: any sibling
+/// process feeding the hook unbounded data can't OOM the hot path.
+const MAX_STDIN_BYTES: u64 = 1024 * 1024;
+
+/// Maximum config.toml size we'll read before giving up + falling back
+/// to defaults (SEC-007 fix). User configs are tens of bytes; even a
+/// generous cap of 64 KiB is 1000× the realistic ceiling. A larger
+/// file is either accidental or hostile — either way DEFAULT is safer
+/// than parsing a multi-megabyte TOML on every Grep/Read fire.
+const MAX_CONFIG_BYTES: u64 = 64 * 1024;
+
 /// CLI args for `mneme pretool-grep-read`. All optional — payload
 /// comes from stdin per Claude Code's hook contract.
 #[derive(Debug, Args, Default)]
@@ -69,7 +84,16 @@ pub async fn run(_args: PretoolGrepReadArgs) -> CliResult<()> {
 
 fn read_stdin_payload() -> Option<String> {
     let mut buf = String::new();
-    io::stdin().read_to_string(&mut buf).ok()?;
+    // SEC-001 fix (2026-05-05): cap reads at MAX_STDIN_BYTES so a
+    // sibling process feeding the hook unbounded data can't OOM the
+    // session. `take` returns EOF after the cap, which leaves us
+    // with a truncated-but-valid (or nearly-valid) JSON payload —
+    // worst case the parse fails and we fall through to the silent-
+    // approve fallback.
+    io::stdin()
+        .take(MAX_STDIN_BYTES)
+        .read_to_string(&mut buf)
+        .ok()?;
     Some(buf)
 }
 
@@ -95,6 +119,16 @@ fn hooks_enforce_recall_before_grep() -> bool {
         Some(p) => p,
         None => return DEFAULT,
     };
+    // SEC-007 fix (2026-05-05): pre-flight size check so a multi-MB
+    // config.toml (accidental or hostile) doesn't dominate the hot
+    // hook path. We re-read on every invocation since the hook is a
+    // short-lived process; the metadata + read are cheap when the
+    // file is the typical few hundred bytes.
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > MAX_CONFIG_BYTES {
+            return DEFAULT;
+        }
+    }
     let raw = match std::fs::read_to_string(&path) {
         Ok(s) => s,
         Err(_) => return DEFAULT,
@@ -202,11 +236,19 @@ pub(crate) fn is_symbol_shaped(pattern: &str) -> bool {
     if s.contains('/') {
         return false;
     }
-    // Every remaining char must be alnum, `_`, `:`, or `.` — that
+    // Every remaining char must be ASCII alnum, `_`, `:`, or `.` —
     // covers `foo_bar`, `WorkerPool`, `crate::manager::spawn`, and
-    // `pkg.sub.mod`. Reject anything else.
+    // `pkg.sub.mod`. SEC-006 fix (2026-05-05): was `is_alphanumeric`
+    // which accepts Unicode RTL-override marks, zero-width joiners,
+    // and homoglyphs (e.g. Cyrillic 'а' for Latin 'a'). Those would
+    // pass the symbol-shape gate and reach `additionalContext`,
+    // letting a crafted file path or grep pattern smuggle prompt-
+    // injection into the AI's context. ASCII-only kicks out the
+    // entire homoglyph + bidi class. Real non-ASCII identifier
+    // codebases (Cyrillic, Han) lose the soft-redirect hint, but
+    // the Grep itself still runs — trade-off accepted.
     s.chars()
-        .all(|c| c.is_alphanumeric() || c == '_' || c == ':' || c == '.')
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':' || c == '.')
 }
 
 /// Heuristic: does this path point at human-written source code that

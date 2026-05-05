@@ -327,9 +327,19 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
         // Wave 1E (BUG-NEW-Q fix, 2026-05-05): three new hook entries
         // that HOOK_SPECS already registered but were missing from the
         // dispatch.
-        Command::UserpromptSubmit(args) => commands::userprompt_submit::run(args).await,
-        Command::PretoolEditWrite(args) => commands::pretool_edit_write::run(args).await,
-        Command::PretoolGrepRead(args) => commands::pretool_grep_read::run(args).await,
+        Command::UserpromptSubmit(args) => {
+            run_hook_failopen("userprompt-submit", commands::userprompt_submit::run(args)).await
+        }
+        Command::PretoolEditWrite(args) => {
+            run_hook_failopen(
+                "pretool-edit-write",
+                commands::pretool_edit_write::run(args),
+            )
+            .await
+        }
+        Command::PretoolGrepRead(args) => {
+            run_hook_failopen("pretool-grep-read", commands::pretool_grep_read::run(args)).await
+        }
         Command::Daemon(args) => commands::daemon::run(args, socket_override).await,
         Command::Cache(args) => commands::cache::run(args).await,
         Command::Abort(args) => commands::abort::run(args).await,
@@ -522,6 +532,50 @@ pub(crate) fn windows_launch_mcp_flags() -> u32 {
     /// <https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags>
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     CREATE_NO_WINDOW
+}
+
+/// v0.4.0 audit fix (REL-001, 2026-05-05): wrap a hook subcommand so
+/// any future Err propagation gets converted to a fail-open JSON
+/// envelope on stdout instead of bubbling to `main` (which prints
+/// `error: ...` to stderr + exits non-zero — Claude Code interprets
+/// non-zero PreToolUse exit as BLOCK, locking out the very tool the
+/// user invoked).
+///
+/// The contract: on Ok, do nothing extra (the handler already wrote
+/// its envelope to stdout). On Err, emit
+/// `{"hook_specific":{"decision":"approve"},"_mneme_diag":"..."}` and
+/// return Ok so the process exits 0.
+///
+/// Today's three handlers (`userprompt-submit`, `pretool-edit-write`,
+/// `pretool-grep-read`) all use `.ok()` / `.unwrap_or_default()` to
+/// swallow internal errors and always return `Ok(())`. This wrapper
+/// is defense-in-depth for any future change that propagates an
+/// error via `?`.
+async fn run_hook_failopen(
+    hook_name: &'static str,
+    fut: impl std::future::Future<Output = CliResult<()>>,
+) -> CliResult<()> {
+    match fut.await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            error!(
+                hook = hook_name,
+                error = %e,
+                "hook subcommand failed; emitting fail-open JSON envelope to satisfy Claude Code's PreToolUse contract"
+            );
+            // Escape via serde_json::Value so any control chars in the
+            // diagnostic message stay valid JSON (REL-008 lookalike).
+            let envelope = serde_json::json!({
+                "hook_specific": { "decision": "approve" },
+                "_mneme_diag": format!("{e}"),
+            });
+            println!("{envelope}");
+            // Exit 0: the printed JSON IS the hook's result. The
+            // tracing line above goes to stderr / log, which Claude
+            // Code does not parse.
+            Ok(())
+        }
+    }
 }
 
 fn init_tracing(verbose: u8, json: bool) {

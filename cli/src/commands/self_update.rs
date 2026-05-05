@@ -955,8 +955,42 @@ fn extract_tar_gz(archive: &Path, dest: &Path) -> CliResult<()> {
     let f = fs::File::open(archive).map_err(|e| CliError::io(archive.to_path_buf(), e))?;
     let gz = flate2::read::GzDecoder::new(f);
     let mut tar = tar::Archive::new(gz);
-    tar.unpack(dest)
-        .map_err(|e| CliError::Other(format!("untar {}: {e}", archive.display())))?;
+    // SEC-001 / 6-role-F13 fix (2026-05-05): the previous version
+    // called `tar.unpack(dest)` directly, which on the `tar` crate's
+    // default behavior does NOT validate entry paths against the
+    // destination root. A malicious release archive could include
+    // `../../.ssh/authorized_keys` entries and write outside the
+    // staging directory. The zip extractor (line ~917) was already
+    // hardened with `enclosed_name()` + symlink rejection; this
+    // fixes the matching defense for the Linux/macOS release format.
+    //
+    // Strategy: walk entries manually, validate each path is
+    // contained within `dest` (no `..`, no absolute paths), reject
+    // symlinks/hardlinks pointing outside, then unpack one entry at
+    // a time. tar's `entry.unpack_in(dest)` already does the
+    // contained-path check internally; switching to `unpack_in` is
+    // the cheapest correct fix.
+    let dest = dest.to_path_buf();
+    for entry in tar
+        .entries()
+        .map_err(|e| CliError::Other(format!("read entries {}: {e}", archive.display())))?
+    {
+        let mut entry =
+            entry.map_err(|e| CliError::Other(format!("entry: {} {e}", archive.display())))?;
+        // unpack_in returns Ok(false) when the entry's path resolves
+        // outside `dest` (path traversal); we treat that as an error
+        // rather than a silent skip so a tampered archive fails loud.
+        let unpacked = entry
+            .unpack_in(&dest)
+            .map_err(|e| CliError::Other(format!("unpack {}: {e}", archive.display())))?;
+        if !unpacked {
+            return Err(CliError::Other(format!(
+                "untar {}: refused to extract entry that resolves outside the staging dir \
+                 (path traversal blocked)",
+                archive.display(),
+            )));
+        }
+    }
     Ok(())
 }
 

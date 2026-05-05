@@ -132,6 +132,18 @@ pub fn apply_migrations(conn: &Connection, layer: DbLayer) -> DtResult<u32> {
         if *target <= current {
             continue;
         }
+        // PERF-P0-002 (v0.4.0 audit, 2026-05-05): announce migration
+        // start so a slow upgrade run (e.g. 100K-row DELETE FROM
+        // embeddings) doesn't look like a hang. Emits via tracing so
+        // it surfaces under MNEME_LOG=info; the CLI heartbeat picks
+        // it up from the same target.
+        tracing::info!(
+            layer = ?layer,
+            from = current,
+            to = target,
+            stmt_count = stmts.len(),
+            "applying schema migration (may take a moment on large shards)"
+        );
         // Apply this block atomically. Any single statement failing
         // rolls the whole block back, leaving `user_version` at the
         // previous value so the next open retries cleanly.
@@ -226,6 +238,15 @@ CREATE TABLE IF NOT EXISTS nodes (
 CREATE INDEX IF NOT EXISTS idx_nodes_qualified ON nodes(qualified_name);
 CREATE INDEX IF NOT EXISTS idx_nodes_file_path ON nodes(file_path);
 CREATE INDEX IF NOT EXISTS idx_nodes_kind ON nodes(kind);
+-- PERF-P0-003 (v0.4.0 audit, 2026-05-05): partial index over rows
+-- pending embedding. read_embeddable_nodes (cli/build.rs) does
+-- `WHERE kind != 'comment' AND embedding_id IS NULL` on every
+-- incremental build; without this index it's a full table scan.
+-- Partial index cost: only rows matching the predicate are
+-- indexed, so size stays tiny on a settled corpus (~handful of
+-- recently-added rows) and the scan becomes index-only.
+CREATE INDEX IF NOT EXISTS idx_nodes_embed_pending ON nodes(id)
+    WHERE embedding_id IS NULL AND kind != 'comment';
 
 CREATE TABLE IF NOT EXISTS edges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

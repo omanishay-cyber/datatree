@@ -2478,6 +2478,7 @@ version = "0.4.0"
 dependencies = [
  "clap",
  "mneme-cli",
+ "serde_json",
  "tokio",
 ]
 

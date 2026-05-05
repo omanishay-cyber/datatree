@@ -172,9 +172,25 @@ fn eprintln_via_stdout(msg: &str) {
     // Best-effort. If stdout is also closed (extremely rare under
     // hook spawn), we silently drop — failing harder is worse than
     // missing one diagnostic.
-    let escaped = msg.replace('\\', "\\\\").replace('"', "\\\"");
-    let _ = std::io::Write::write_all(
-        &mut std::io::stdout().lock(),
-        format!(r#"{{"hook_specific":{{}},"_mneme_diag":"{escaped}"}}"#).as_bytes(),
-    );
+    //
+    // SEC-005 / REL-008 fix (2026-05-05): the previous version only
+    // escaped `\\` and `"`, producing invalid JSON when `msg`
+    // contained a literal newline / tab / control char. Tokio
+    // runtime init errors and clap parse errors routinely include
+    // multiline output, so the very paths designed to be fail-open
+    // shipped invalid JSON to Claude Code, defeating the documented
+    // contract. serde_json::to_string handles every escape the JSON
+    // grammar requires (\n \r \t \" \\ \uXXXX for control chars).
+    let envelope = serde_json::json!({
+        "hook_specific": {},
+        "_mneme_diag": msg,
+    });
+    let serialized = match serde_json::to_string(&envelope) {
+        Ok(s) => s,
+        // Fallback for the impossible case where serde itself
+        // chokes — emit a static-string envelope rather than no
+        // envelope at all.
+        Err(_) => r#"{"hook_specific":{},"_mneme_diag":"<serde-failure>"}"#.to_string(),
+    };
+    let _ = std::io::Write::write_all(&mut std::io::stdout().lock(), serialized.as_bytes());
 }
