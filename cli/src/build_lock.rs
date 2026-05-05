@@ -336,12 +336,22 @@ mod tests {
         let first = BuildLock::acquire("beta", &root, Duration::ZERO).expect("first acquire");
 
         // Spawn a thread that releases `first` after 300 ms.
+        //
+        // 2026-05-05 race fix: set the signal BEFORE dropping the
+        // lock. Pre-fix, `drop(first)` ran first; the second thread
+        // could wake instantly on the dropped lock, run the
+        // assertion, and check `released_signal` before this
+        // thread's `signal_clone.store(true)` had landed — race
+        // observed on macos-latest CI on 4824ab6 (CI run
+        // 25385331237). Setting the flag first preserves the
+        // happens-before: by the time `first` is observably
+        // released, the flag is already true.
         let released_signal = Arc::new(AtomicBool::new(false));
         let signal_clone = Arc::clone(&released_signal);
         let release_thread = thread::spawn(move || {
             thread::sleep(Duration::from_millis(300));
-            drop(first);
             signal_clone.store(true, Ordering::SeqCst);
+            drop(first);
         });
 
         // Try to acquire with a 2s timeout — should succeed once
