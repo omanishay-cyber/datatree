@@ -6940,7 +6940,12 @@ mod tests {
     }
 
     #[test]
-    fn anchor_for_typescript_keeps_filename() {
+    fn anchor_for_typescript_strips_extension() {
+        // v0.4.0 audit (2026-05-05): ts_file_prefix strips the .tsx
+        // extension so the def `Foo.tsx::Bar` and the relative-import
+        // ref `./Foo` (which the resolver returns without extension)
+        // live in the same namespace. Was previously
+        // `Foo.tsx::ForceGalaxy` — now `ForceGalaxy::ForceGalaxy`.
         let a = canonical_embed_anchor(
             "ForceGalaxy",
             "vision/src/views/ForceGalaxy.tsx",
@@ -6948,7 +6953,7 @@ mod tests {
         );
         assert_eq!(
             a.as_deref(),
-            Some("vision/src/views/ForceGalaxy.tsx::ForceGalaxy"),
+            Some("vision/src/views/ForceGalaxy::ForceGalaxy"),
         );
     }
 
@@ -7004,8 +7009,10 @@ mod tests {
             language: Some("tsx".into()),
         };
         let text = derive_text_for_embedding(&row);
+        // v0.4.0 audit (2026-05-05): ts_file_prefix now strips the
+        // .tsx extension so def/ref namespaces match.
         assert!(
-            text.starts_with("vision/src/views/ForceGalaxy.tsx::ForceGalaxy "),
+            text.starts_with("vision/src/views/ForceGalaxy::ForceGalaxy "),
             "expected anchor prefix; got: {text:?}"
         );
         assert!(text.contains("View component for"));
