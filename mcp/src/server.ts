@@ -25,6 +25,7 @@ import type { ToolContext, ToolDescriptor } from "./types.ts";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { getLastIndexed, graphStats, shardDbPath } from "./store.ts";
 import { ToolCache, wrapCachedResult } from "./tool-cache.ts";
+import { capResult, effectiveMaxBytes } from "./result-cap.ts";
 // A5-001 (2026-05-04): SDK server `version` MUST stay in lockstep with
 // `mcp/package.json`. Bun supports the JSON import attribute natively, so
 // we read the published version directly from the manifest at module load.
@@ -358,15 +359,24 @@ export class MnemeMcpServer {
           };
         }
         const out = await registry.invoke(name, args ?? {}, this.ctx);
-        // Cache successful results only — the set call is a no-op for
-        // tools on the bypass list. Errors fall through to the catch
-        // branch below and never get stored.
-        this.toolCache.set(name, args ?? {}, out);
+        // Item #118 (2026-05-05): cap the result BEFORE we cache or
+        // serialize. Default 4 KB; specific tools (architecture_overview,
+        // wiki_page, audit*, etc.) get registered overrides via
+        // MAX_BYTES_OVERRIDES. Caller can request the bigger
+        // DETAIL_FULL_MAX_BYTES (16 KB) by passing `detail: "full"`.
+        // Error envelopes pass through verbatim regardless of size.
+        const cap = effectiveMaxBytes(name, args ?? {});
+        const capped = capResult(out, cap);
+        // Cache the capped value rather than the raw one — keeps the
+        // cache memory budget predictable and ensures a cache hit
+        // never serves a too-big payload.
+        // Item #121: tool-cache skips mutators internally.
+        this.toolCache.set(name, args ?? {}, capped);
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(out),
+              text: JSON.stringify(capped),
             },
           ],
           isError: false,
