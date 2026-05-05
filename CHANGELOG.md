@@ -9,6 +9,22 @@ Versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 v0.4.0 is the first release where mneme actively enforces its own use in AI hosts (Claude Code, Cursor, Codex) rather than just suggesting it. Bundles all v0.3.3 cocktail features into a single ship, plus 5 critical bug-tail fixes and the 4-route install matrix.
 
+### Added — recall + token keystone (2026-05-05)
+
+The audit comparing mneme to CRG and graphify (2026-05-05) identified one root cause behind both gaps — recall (mneme 2/10 vs CRG 6/10) and token reduction (mneme 1.34× vs CRG's claimed 6.8×). Mneme had no symbol resolver: function names matched README chunks more strongly than the function itself. This release closes that gap end-to-end.
+
+- **Symbol resolver — Rust** (Item #114). New `parsers/src/resolver.rs::RustResolver` rewrites syntactic paths (`super::`, `self::`, `crate::`, `use` aliases) into one canonical string per logical symbol. Walks file path → `crate::module::path::to::file` prefix and rewrites references against a `UseMap` derived from the file's `use` statements.
+- **Symbol resolver — TypeScript / JavaScript** (Item #115). `TypeScriptResolver` handles tsconfig `paths` aliases (wildcard + exact match), relative imports (`./x`, `../y`), and bare module specifiers. Per-language file-prefix function (filename kept since TS files aren't directory-as-module).
+- **Symbol resolver — Python** (Item #116). `PythonResolver` handles N-leading-dot relative imports (walking one parent up per dot), absolute imports, and aliased imports via `PythonImportMap`. Native `.` separator for round-trip compatibility with jedi/mypy/sphinx.
+- **Symbol-anchored BGE embeddings** (Item #117). The embedder now prepends the resolver's canonical prefix (`crate::manager::WorkerPool` / `vision/src/views/Foo.tsx::Bar` / `pkg.sub.mod.spawn`) before signature/summary text, so `recall_concept "spawn"` matches the actual function instead of the README. Falls back to file-path-anchored text for languages without a resolver yet.
+- **PreToolUse Grep/Read soft-redirect** (Item #122). Replaces the v0.4.0 always-approve skeleton: when Grep is called with a symbol-shaped pattern (identifier, dotted/`::` path, PascalCase), or Read is called on a source file, the hook injects an `additionalContext` hint pointing at `mcp__mneme__find_references` / `mcp__mneme__blast_radius`. NEVER blocks (Reads / Greps still run); just nudges the AI's next call. Configurable via `[hooks] enforce_recall_before_grep` (default ON).
+- **Server-pre-computed ForceGalaxy layout snapshot** (Item #124). New `/api/graph/layout` endpoint returns deterministic community-aware sunflower-spiral positions for the same node window the SPA fetches. ForceGalaxy seeds Sigma's positions from the snapshot before WebGL paints — first-paint drops from ~3 s (random init + FA2 warm-up) to <500 ms on the mneme repo (17 K nodes). FA2 worker still runs for refinement. Fallback to random when the layout endpoint is unavailable; layout is a speed-up, never a correctness gate.
+
+### Deferred to v0.4.1
+
+- **Auto-update apply mode w/ rollback** (Item #84). The atomic-binary-swap engine + `.old` backup are already shipped (see `cli/src/commands/self_update.rs::replace_binaries_atomically` and the rename-restore path in `swap_one_binary`). What remains is a post-swap `mneme --version` health check that auto-restores `.old` files on failure, plus a standalone `--rollback` flag — both require deferring `.old` cleanup until verification, a non-trivial refactor that's safer to land in v0.4.1 with its own VM cycle.
+- **Docs site overhaul** (Item #92). The current `docs/index.html` is hand-written but truthful (refreshed in Item #113). The mdBook/Vitepress migration is polish, not a bug.
+
 ### Added — install matrix (4 routes, all paths same `~/.mneme` install)
 
 - `winget install Anish.Mneme` (Windows) — manifest in microsoft/winget-pkgs after maintainer PR
@@ -19,7 +35,7 @@ v0.4.0 is the first release where mneme actively enforces its own use in AI host
 
 ### Added — features
 
-- **Self-ping enforcement** — 3-layer hook system. `UserPromptSubmit` injects a top-3-tools reminder + grep/read trespass log on every prompt. `PreToolUse Edit/Write` blocks edits without recent `mcp__mneme__blast_radius` and auto-runs it inline so the AI can retry immediately. `PreToolUse Grep/Read` skeleton (full redirect deferred to v0.4.1). All hooks fail-open: if mneme is down, edits go through unchanged. Configurable via `~/.mneme/config.toml [hooks]`.
+- **Self-ping enforcement** — 3-layer hook system. `UserPromptSubmit` injects a top-3-tools reminder + grep/read trespass log on every prompt. `PreToolUse Edit/Write` blocks edits without recent `mcp__mneme__blast_radius` and auto-runs it inline so the AI can retry immediately. `PreToolUse Grep/Read` ships the soft-redirect (Item #122 — see "recall + token keystone" above) — never blocks, but injects a `mcp__mneme__find_references` / `blast_radius` hint when the pattern looks symbol-shaped or the path looks like source. All hooks fail-open: if mneme is down, edits go through unchanged. Configurable via `~/.mneme/config.toml [hooks]`.
 - **Auto-rebuild guard** — MCP queries (`file_intent`, `blast_radius`) on out-of-shard paths now spawn a background `mneme build` and return a structured `{ error: "path_not_indexed", auto_rebuild_started: true, suggestion: "..." }` response instead of silently empty hits. Fixes Bug #224.
 - **`mneme graph-export`** — new CLI subcommand exporting the project graph in 5 portable formats: GraphML (Gephi/yEd/Cytoscape), Obsidian vault, Cypher (Neo4j), SVG, JSON-LD (schema.org).
 - **Smart questions MCP tool** — `mcp__mneme__smart_questions` auto-ranks "what should I ask about this codebase?" queries from graph topology (centrality + complexity + anomaly score).
