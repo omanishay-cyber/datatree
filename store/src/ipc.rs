@@ -276,6 +276,25 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
             params,
             opts,
         } => {
+            // CRIT-3 fix (2026-05-05 audit): the IPC `Insert` request
+            // previously accepted any SQL string from any local process
+            // and piped it to `conn.prepare_cached(&sql)`. The named-pipe
+            // ACL is permissive by default on Windows and the Unix socket
+            // has no peer-credential check, so any same-user process
+            // could ATTACH a foreign DB, DROP tables, write to
+            // `sqlite_master` via `PRAGMA writable_schema=1`, etc.
+            //
+            // Reject anything that doesn't look like a single INSERT
+            // statement. The shape we accept: optional whitespace, then
+            // "INSERT" (case-insensitive), and at most one trailing
+            // `;` (no statement chaining). Multi-statement payloads,
+            // DDL (DROP / ALTER / CREATE), connection-affecting pragmas,
+            // and ATTACH / DETACH all fail this gate.
+            if let Err(reason) = validate_insert_sql(&sql) {
+                return err(format!(
+                    "store IPC: rejected Insert request: {reason}"
+                ));
+            }
             let r = store
                 .inject
                 .insert(&project, layer, &sql, params, opts)
@@ -372,4 +391,151 @@ async fn write_response<S: AsyncWriteExt + Unpin>(
 /// Helper for non-store crates to construct a path manager.
 pub fn default_paths() -> PathManager {
     PathManager::default_root()
+}
+
+/// CRIT-3 fix (2026-05-05 audit): allowlist gate on the IPC `Insert`
+/// request's `sql` field. We accept exactly one well-formed INSERT
+/// statement (with or without a trailing `;`). Everything else — DDL,
+/// PRAGMA, ATTACH, DETACH, VACUUM, REINDEX, multi-statement chains,
+/// SELECT-into payloads — is rejected.
+///
+/// This is intentionally narrow. The Insert request is the only IPC
+/// path that takes user-supplied SQL; every other request shape uses
+/// typed parameters that go through `prepare_cached` with parameter
+/// bindings.
+///
+/// Rejected examples (each as a `code: reason` string):
+/// - `DROP TABLE nodes` → "not an INSERT"
+/// - `INSERT INTO x VALUES (1); DROP TABLE y` → "multiple statements"
+/// - `INSERT INTO x VALUES (1) -- DROP TABLE y` → "trailing comment"
+/// - `ATTACH DATABASE 'evil.db' AS evil` → "not an INSERT"
+/// - `PRAGMA writable_schema = 1` → "not an INSERT"
+fn validate_insert_sql(sql: &str) -> Result<(), &'static str> {
+    let trimmed = sql.trim();
+    if trimmed.is_empty() {
+        return Err("empty SQL");
+    }
+
+    // Strip an optional single trailing `;`.
+    let body = trimmed.strip_suffix(';').unwrap_or(trimmed).trim_end();
+
+    // Must start with INSERT (case-insensitive). `INSERT OR IGNORE` /
+    // `INSERT OR REPLACE` are accepted because they still begin with
+    // INSERT. `WITH ... INSERT` / `INSERT ... RETURNING` are accepted
+    // (they are still single INSERT statements).
+    let upper_prefix = body
+        .chars()
+        .take(7)
+        .collect::<String>()
+        .to_ascii_uppercase();
+    if !upper_prefix.starts_with("INSERT ") && !upper_prefix.starts_with("INSERT\t") {
+        return Err("not an INSERT");
+    }
+
+    // Reject multiple statements. SQLite tolerates a trailing `;` we
+    // already stripped above. Any inner `;` followed by non-whitespace
+    // is a chained statement.
+    let mut chars = body.chars().peekable();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' if !in_double_quote => {
+                // SQL escapes a single quote by doubling it ('').
+                if in_single_quote && chars.peek() == Some(&'\'') {
+                    chars.next();
+                } else {
+                    in_single_quote = !in_single_quote;
+                }
+            }
+            '"' if !in_single_quote => {
+                in_double_quote = !in_double_quote;
+            }
+            ';' if !in_single_quote && !in_double_quote => {
+                let rest: String = chars.by_ref().collect();
+                if !rest.trim().is_empty() {
+                    return Err("multiple statements");
+                }
+                break;
+            }
+            '-' if !in_single_quote && !in_double_quote => {
+                // Block SQL line comments. Genuine INSERT statements
+                // do not need them; rejecting prevents a comment from
+                // hiding a chained statement.
+                if chars.peek() == Some(&'-') {
+                    return Err("trailing comment");
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod validate_insert_sql_tests {
+    use super::validate_insert_sql;
+
+    #[test]
+    fn accepts_simple_insert() {
+        assert!(validate_insert_sql("INSERT INTO nodes (id) VALUES (?)").is_ok());
+    }
+
+    #[test]
+    fn accepts_insert_or_ignore() {
+        assert!(
+            validate_insert_sql("insert or ignore into edges (a, b) values (?, ?)").is_ok()
+        );
+    }
+
+    #[test]
+    fn accepts_with_returning_and_trailing_semicolon() {
+        assert!(
+            validate_insert_sql("INSERT INTO x (a) VALUES (?) RETURNING id;").is_ok()
+        );
+    }
+
+    #[test]
+    fn rejects_drop_table() {
+        assert!(validate_insert_sql("DROP TABLE nodes").is_err());
+    }
+
+    #[test]
+    fn rejects_pragma() {
+        assert!(validate_insert_sql("PRAGMA writable_schema = 1").is_err());
+    }
+
+    #[test]
+    fn rejects_attach() {
+        assert!(validate_insert_sql("ATTACH DATABASE 'evil.db' AS evil").is_err());
+    }
+
+    #[test]
+    fn rejects_chained_statement() {
+        assert!(
+            validate_insert_sql("INSERT INTO x VALUES (1); DROP TABLE y").is_err()
+        );
+    }
+
+    #[test]
+    fn rejects_line_comment_chain() {
+        assert!(
+            validate_insert_sql("INSERT INTO x VALUES (1) -- DROP TABLE y").is_err()
+        );
+    }
+
+    #[test]
+    fn allows_semicolon_inside_string_literal() {
+        // Semicolon inside a quoted string is part of the data, not a
+        // statement separator.
+        assert!(
+            validate_insert_sql("INSERT INTO x (msg) VALUES ('hello;world')").is_ok()
+        );
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(validate_insert_sql("   ").is_err());
+    }
 }
