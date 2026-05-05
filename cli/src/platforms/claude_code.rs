@@ -166,15 +166,29 @@ pub const HOOK_SPECS: &[HookSpec] = &[
         args: &["pre-tool"],
         matcher: "*",
     },
-    // Layer 2 (v0.4.0): blast_radius gate for Edit / Write / MultiEdit.
-    // Runs ALONGSIDE the existing `pre-tool` hook. Claude Code runs all
-    // PreToolUse entries; the gate hook handles its own tool-name filtering
-    // internally (only acts on Edit/Write/MultiEdit).
+    // Layer 2 — pretool-edit-write blast_radius gate.
+    // MAINT-4 (2026-05-05 audit): the Rust subcommand is currently a
+    // 56-line always-approve skeleton (cli/src/commands/pretool_edit_write.rs)
+    // and the real logic lives in the MCP-side TS sibling
+    // (mcp/src/hooks/pretool-edit-write.ts). Registering this in
+    // HOOK_SPECS made Claude Code spawn mneme-hook.exe + run clap on
+    // every Edit/Write/MultiEdit call for zero behaviour — pure overhead
+    // (process fork + exe load + JSON serialize on a hot path).
+    //
+    // Unregister until v0.4.1 wires the recency check + blast_radius
+    // auto-run into the Rust subcommand. The MCP hook continues to
+    // fire through the MCP server's hook events, so the gate behaviour
+    // (such as it is) is unaffected.
+    //
+    // Re-enable once cli/src/commands/pretool_edit_write.rs::run is
+    // fully implemented (TS sibling has the reference behaviour).
+    /*
     HookSpec {
         event: "PreToolUse",
         args: &["pretool-edit-write"],
         matcher: "*",
     },
+    */
     // Layer 3: Grep/Read/Glob soft-redirect. Emits a hint payload pointing
     // the agent at find_references when the search shape looks like a
     // resolver-shaped symbol query.
