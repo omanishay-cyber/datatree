@@ -97,7 +97,16 @@ fn migrations_for_layer(layer: DbLayer) -> &'static [(u32, &'static [&'static st
 /// AFTER the baseline `schema_sql` `CREATE TABLE IF NOT EXISTS`
 /// statements run, so v0.3.0 shards built before any migrations
 /// existed are correctly migrated forward when the user upgrades.
-pub fn apply_migrations(conn: &Connection, layer: DbLayer) -> DtResult<u32> {
+pub fn apply_migrations(conn: &mut Connection, layer: DbLayer) -> DtResult<u32> {
+    // CRIT-6 fix (2026-05-05 audit): take `&mut Connection` so we can use
+    // the type-checked `conn.transaction()` instead of the unsound
+    // `conn.unchecked_transaction()`. The latter bypassed rusqlite's
+    // borrow-checker invariant that no live prepared statements exist at
+    // tx-start time — which made a mid-migration panic with active
+    // statements leave SQLite in an inconsistent write state.
+    //
+    // We read PRAGMA user_version up front and let the borrow drop before
+    // any transaction begins.
     let mut current: u32 = conn
         .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
         .map_err(DbError::from)? as u32;
@@ -136,9 +145,12 @@ pub fn apply_migrations(conn: &Connection, layer: DbLayer) -> DtResult<u32> {
             "applying schema migration (may take a moment on large shards)"
         );
         // Apply this block atomically. Any single statement failing
-        // rolls the whole block back, leaving `user_version` at the
-        // previous value so the next open retries cleanly.
-        let tx = conn.unchecked_transaction().map_err(DbError::from)?;
+        // rolls the whole block back via the Drop on `tx`, leaving
+        // `user_version` at the previous value so the next open retries
+        // cleanly. `transaction()` is the type-checked variant — it
+        // requires `&mut Connection` so the borrow checker proves no
+        // statements are alive when the tx begins.
+        let tx = conn.transaction().map_err(DbError::from)?;
         for stmt in stmts.iter() {
             tx.execute_batch(stmt).map_err(DbError::from)?;
         }

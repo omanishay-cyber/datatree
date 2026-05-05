@@ -147,7 +147,7 @@ impl DbBuilder for DefaultBuilder {
 fn init_shard(paths: &PathManager, project: &ProjectId, layer: DbLayer) -> DtResult<()> {
     let path = paths.shard_db(project, layer);
     let pre_existed = path.exists();
-    let conn = Connection::open(&path).map_err(DbError::from)?;
+    let mut conn = Connection::open(&path).map_err(DbError::from)?;
     apply_pragmas(&conn)?;
 
     // Some shards manage their own schema entirely (e.g. Concepts → owned
@@ -173,7 +173,7 @@ fn init_shard(paths: &PathManager, project: &ProjectId, layer: DbLayer) -> DtRes
     // Run pending column-additive migrations from `schema::MIGRATIONS`.
     // No-op when the table is empty (v0.3.2 ship state). Once v0.4 adds
     // entries, this catches v0.3.x shards forward without a rebuild.
-    apply_migrations(&conn, layer)?;
+    apply_migrations(&mut conn, layer)?;
     // phase-c10: for Graph shards, back-fill nodes_fts from nodes if the
     // FTS index is empty but the base table has rows (upgrade path for
     // graph.db files built before the sync triggers existed). Idempotent
@@ -247,14 +247,14 @@ fn init_meta(paths: &PathManager) -> DtResult<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let conn = Connection::open(&path).map_err(DbError::from)?;
+    let mut conn = Connection::open(&path).map_err(DbError::from)?;
     apply_pragmas(&conn)?;
     conn.execute_batch(schema_sql(DbLayer::Meta))
         .map_err(DbError::from)?;
     record_version(&conn)?;
     // See comment in `init_shard` — migrations also run on the
     // root-level meta.db so cross-project tables stay in sync.
-    apply_migrations(&conn, DbLayer::Meta)?;
+    apply_migrations(&mut conn, DbLayer::Meta)?;
     Ok(())
 }
 
