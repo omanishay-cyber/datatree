@@ -53,6 +53,13 @@
 </div>
 </div>
 
+<div class="mneme-marquee">
+  <div class="mneme-marquee-track">
+    <span>Local-only</span><span>50 MCP tools</span><span>3 resolvers</span><span>14 graph views</span><span>22 storage layers</span><span>Apache-2.0</span><span>No telemetry</span><span>Sub-second rebuild</span><span>Symbol-anchored embeddings</span>
+    <span>Local-only</span><span>50 MCP tools</span><span>3 resolvers</span><span>14 graph views</span><span>22 storage layers</span><span>Apache-2.0</span><span>No telemetry</span><span>Sub-second rebuild</span><span>Symbol-anchored embeddings</span>
+  </div>
+</div>
+
 <div class="mneme-trust-strip">
   <div class="mneme-trust-item"><span class="trust-num">2/10 → 6/10</span><span class="trust-lbl">Recall jump on the v0.4.0 audit</span></div>
   <div class="mneme-trust-item"><span class="trust-num">&lt; 500 ms</span><span class="trust-lbl">First paint on a 50k-node graph</span></div>

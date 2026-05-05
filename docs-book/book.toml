@@ -25,7 +25,7 @@ git-repository-url = "https://github.com/omanishay-cyber/mneme"
 # explicit GitHub Issues / PR review, not a per-page edit link.
 # edit-url-template = "https://github.com/omanishay-cyber/mneme/edit/main/docs-book/{path}"
 additional-css = ["theme/custom.css"]
-additional-js = []
+additional-js = ["theme/custom.js"]
 no-section-label = false
 mathjax-support = false
 copy-fonts = true
