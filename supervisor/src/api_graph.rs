@@ -2786,6 +2786,71 @@ mod tests {
         }
     }
 
+    #[test]
+    fn layout_handles_duplicate_qualified_names_collision() {
+        // T-P0-03 audit fix (2026-05-05): the prior tests never covered
+        // what compute_layout does when two rows share the same
+        // qualified_name. Inside the function, by_qname is a HashMap
+        // keyed on `&str`; duplicate insertions overwrite. The OUTER
+        // result loop then does `by_qname.get(row.0.as_str())` which
+        // returns the SAME (x, y) pair for every duplicate — both
+        // emitted LayoutPosition entries land at identical coordinates.
+        //
+        // This pins the contract: duplicates collide deterministically
+        // (same coord). graph.db `qualified_name` is UNIQUE NOT NULL
+        // per store/src/schema.rs so this case shouldn't reach prod,
+        // but the math doesn't panic and the SPA's lookup-by-qname
+        // still resolves cleanly.
+        let rows = vec![
+            ("dup".to_string(), "function".to_string(), Some(1)),
+            ("dup".to_string(), "function".to_string(), Some(1)),
+            ("uniq".to_string(), "function".to_string(), Some(1)),
+        ];
+        let out = compute_layout(&rows);
+        assert_eq!(
+            out.len(),
+            3,
+            "every input row must produce one output entry"
+        );
+        assert_eq!(out[0].q, "dup");
+        assert_eq!(out[1].q, "dup");
+        assert_eq!(out[2].q, "uniq");
+        // The two duplicate rows MUST share the same coordinate (since
+        // the by_qname HashMap collapses them).
+        assert_eq!(out[0].x, out[1].x, "duplicate qnames must share x");
+        assert_eq!(out[0].y, out[1].y, "duplicate qnames must share y");
+        // The unique entry has a different coordinate.
+        assert!(
+            (out[0].x - out[2].x).abs() > 1e-9 || (out[0].y - out[2].y).abs() > 1e-9,
+            "unique row must not collide with duplicates: {out:?}",
+        );
+        // Coords are finite (no NaN / Inf from the math).
+        for p in &out {
+            assert!(p.x.is_finite(), "x must be finite: {p:?}");
+            assert!(p.y.is_finite(), "y must be finite: {p:?}");
+        }
+    }
+
+    #[test]
+    fn layout_handles_pathological_kind_values() {
+        // Defensive: confirm the layout doesn't panic on unusual kind
+        // strings (NUL byte, Unicode, very long, empty). build.rs's
+        // writer should never emit these — kinds come from a fixed
+        // enum — but the layout function takes &str so it must be
+        // robust.
+        let rows = vec![
+            ("a".to_string(), "".to_string(), None),
+            ("b".to_string(), "function\0extra".to_string(), None),
+            ("c".to_string(), "ƒüñçtïøn".to_string(), None),
+            ("d".to_string(), "x".repeat(500), None),
+        ];
+        let out = compute_layout(&rows);
+        assert_eq!(out.len(), 4);
+        for p in &out {
+            assert!(p.x.is_finite() && p.y.is_finite());
+        }
+    }
+
     #[tokio::test]
     async fn api_graph_layout_returns_empty_array_on_no_shard() {
         let app = build_router(test_state());

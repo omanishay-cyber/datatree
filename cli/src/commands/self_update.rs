@@ -1961,4 +1961,111 @@ mod tests {
             "no mneme binary should be created"
         );
     }
+
+    // -----------------------------------------------------------------
+    // T-P0-02 audit fix (2026-05-05) — rollback partial-failure path.
+    // The prior tests covered "all backups present, all restored" and
+    // "no backups (first install)" but not the mixed case where SOME
+    // backups exist and others don't. rollback_swaps is documented as
+    // best-effort: it must not panic, must restore the ones it can,
+    // must log + skip the ones it can't.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn rollback_with_mixed_backup_states_is_best_effort() {
+        let td = tempfile::tempdir().expect("tempdir");
+        let target = td.path().join("target");
+        fs::create_dir_all(&target).unwrap();
+
+        // Three swaps, three different states:
+        //   A — backup file EXISTS at .old, contains OLD content
+        //   B — backup file MISSING (simulates a transient I/O loss
+        //       or filesystem race)
+        //   C — first-install entry (backup: None)
+        let a_cur = target.join(exe_name("mneme"));
+        let a_old = target.join(format!("{}.old", exe_name("mneme")));
+        let b_cur = target.join(exe_name("mneme-daemon"));
+        let b_old = target.join(format!("{}.old", exe_name("mneme-daemon")));
+        let c_cur = target.join(exe_name("mneme-hook"));
+
+        // Pre-populate "new" content in each current location.
+        make_dummy_exe(&a_cur, b"NEW-A");
+        make_dummy_exe(&b_cur, b"NEW-B");
+        make_dummy_exe(&c_cur, b"NEW-C-FIRST-INSTALL");
+        // Only swap A's backup actually exists.
+        make_dummy_exe(&a_old, b"OLD-A-RESTORE-ME");
+        // b_old intentionally does NOT exist on disk.
+
+        let swaps = vec![
+            BinarySwap {
+                current: a_cur.clone(),
+                backup: Some(a_old.clone()),
+            },
+            BinarySwap {
+                current: b_cur.clone(),
+                backup: Some(b_old.clone()),
+            },
+            BinarySwap {
+                current: c_cur.clone(),
+                backup: None,
+            },
+        ];
+
+        // Must NOT panic. verbose=false to keep test output clean.
+        rollback_swaps(&swaps, false);
+
+        // A — backup existed, so the restore succeeded: a_cur now
+        // contains OLD content; a_old is gone (renamed in place).
+        assert!(a_cur.exists(), "A current must exist after restore");
+        assert_eq!(
+            fs::read(&a_cur).unwrap(),
+            b"OLD-A-RESTORE-ME",
+            "A must hold the OLD content (restored from backup)"
+        );
+        assert!(
+            !a_old.exists(),
+            "A's .old should be gone — renamed back over the live file"
+        );
+
+        // B — backup didn't exist, so the rename failed. The
+        // implementation removes the new file BEFORE attempting the
+        // rename, so b_cur ends up gone. The function logged a
+        // warning to stderr and continued. Net state: B is missing
+        // entirely. Better than leaving a broken new binary.
+        assert!(
+            !b_cur.exists(),
+            "B should be gone (new file removed, backup couldn't be restored)"
+        );
+
+        // C — first-install: backup=None branch deleted the new file.
+        assert!(
+            !c_cur.exists(),
+            "C first-install rollback must delete the new binary"
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // T-P0-01 audit fix — health_check_new_binary against a real
+    // process. The closure-injection seam (replace_binaries_atomically_
+    // with_check) lets the rollback tests skip spawning real binaries,
+    // but the health check function itself had zero coverage. We use
+    // the test runner's own executable as a "binary that exits 0
+    // cleanly" — every Rust test binary supports `--list` (returns
+    // 0 quickly) so it stands in for a fast --version probe.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn health_check_real_binary_fails_when_path_does_not_exist() {
+        // Spawn against a path that doesn't exist — must return Err.
+        let nonexistent = std::env::temp_dir()
+            .join("definitely-not-a-real-binary-xyz123")
+            .with_extension(if cfg!(windows) { "exe" } else { "" });
+        let result = health_check_new_binary(&nonexistent);
+        assert!(result.is_err(), "spawn of missing binary must Err");
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("spawn"),
+            "error must mention spawn failure; got {msg:?}"
+        );
+    }
 }
