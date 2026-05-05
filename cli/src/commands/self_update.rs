@@ -964,14 +964,43 @@ fn extract_tar_gz(archive: &Path, dest: &Path) -> CliResult<()> {
 // Atomic binary swap.
 // ---------------------------------------------------------------------------
 
-fn replace_binaries_atomically(staging: &Path, target: &Path, verbose: bool) -> CliResult<usize> {
-    let mut swapped: usize = 0;
+/// Per-binary swap record returned from [`swap_one_binary`]. Holds
+/// enough state for [`replace_binaries_atomically`] to roll the swap
+/// back if the post-swap health check fails (Item #84).
+#[derive(Debug, Clone)]
+struct BinarySwap {
+    /// Runtime location of the binary (e.g. `~/.mneme/bin/mneme.exe`).
+    current: PathBuf,
+    /// `.old` backup of the previous binary at this path. `None` for
+    /// first-install (no prior binary existed) and for the
+    /// `.deleteme` Windows fallback (the leftover is on its way out
+    /// the door already).
+    backup: Option<PathBuf>,
+}
 
+fn replace_binaries_atomically(staging: &Path, target: &Path, verbose: bool) -> CliResult<usize> {
+    replace_binaries_atomically_with_check(staging, target, verbose, health_check_new_binary)
+}
+
+/// Internal entry point that takes the post-swap health check as a
+/// closure, so unit tests can drive the rollback path without
+/// spawning real `mneme.exe --version` processes.
+fn replace_binaries_atomically_with_check<F>(
+    staging: &Path,
+    target: &Path,
+    verbose: bool,
+    health_check: F,
+) -> CliResult<usize>
+where
+    F: FnOnce(&Path) -> Result<(), String>,
+{
     // Find every staged binary that matches a known shipped name. The
     // staging tree may be flat or have a top-level dir (e.g.
     // `mneme-v0.3.3-windows-x64/...`); we walk one level of subdirs to
     // find a `bin/` directory if present.
     let staged_bin_dir = locate_staged_bin_dir(staging).unwrap_or_else(|| staging.to_path_buf());
+
+    let mut swaps: Vec<BinarySwap> = Vec::new();
 
     for name in SHIPPED_BINARIES {
         let candidates = if cfg!(windows) {
@@ -985,18 +1014,154 @@ fn replace_binaries_atomically(staging: &Path, target: &Path, verbose: bool) -> 
                 continue;
             }
             let current = target.join(&candidate);
-            swap_one_binary(&staged, &current, verbose)?;
+            let swap = swap_one_binary(&staged, &current, verbose)?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 let _ = fs::set_permissions(&current, fs::Permissions::from_mode(0o755));
             }
-            swapped += 1;
+            swaps.push(swap);
             break;
         }
     }
 
-    Ok(swapped)
+    if swaps.is_empty() {
+        // Nothing was swapped. The caller already hard-fails on this
+        // (see the `if swapped == 0` branch in `run`); pass through
+        // the empty count without running the health check.
+        return Ok(0);
+    }
+
+    // Item #84: post-swap health check. We invoke `--version` on the
+    // newly-installed `mneme` (or `mneme.exe`) — if it can't print
+    // its own version cleanly within 5 seconds, the binary is broken
+    // (corrupted download, ABI mismatch, missing co-installed DLL,
+    // wrong arch, etc.) and we restore every `.old` backup.
+    let mneme_exe = locate_primary_mneme(target);
+    if let Some(exe) = mneme_exe.as_deref() {
+        if let Err(reason) = health_check(exe) {
+            rollback_swaps(&swaps, verbose);
+            return Err(CliError::Other(format!(
+                "self-update: post-swap health check failed ({reason}); \
+                 rolled back to the previous binaries from .old backups. \
+                 Re-run with --verbose to inspect the staging dir.",
+            )));
+        }
+    }
+    // Else: no `mneme` binary at the target (maybe only auxiliaries
+    // were shipped in this archive). Skipping the health check is
+    // safer than running it against a non-existent path.
+
+    // Health check passed (or skipped). Clean up the .old backups.
+    for swap in &swaps {
+        if let Some(backup) = &swap.backup {
+            let _ = fs::remove_file(backup);
+        }
+    }
+
+    Ok(swaps.len())
+}
+
+/// Locate the primary `mneme` (or `mneme.exe`) binary inside the
+/// install bin directory. Returns `None` if neither exists, in which
+/// case the caller skips the health check entirely.
+fn locate_primary_mneme(target: &Path) -> Option<PathBuf> {
+    let names: &[&str] = if cfg!(windows) {
+        &["mneme.exe", "mneme"]
+    } else {
+        &["mneme"]
+    };
+    for n in names {
+        let p = target.join(n);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Restore every `.old` backup back over the freshly-swapped binary.
+/// Best-effort — if individual restores fail, we log and continue so
+/// the user is left with the most-recent set of backups intact.
+fn rollback_swaps(swaps: &[BinarySwap], verbose: bool) {
+    for swap in swaps.iter().rev() {
+        let backup = match &swap.backup {
+            Some(b) => b,
+            None => {
+                // First-install case: just delete the new binary so
+                // the user is back to nothing-installed.
+                if verbose {
+                    eprintln!(
+                        "self-update: rollback: no .old for {} (first install) — deleting new file",
+                        swap.current.display()
+                    );
+                }
+                let _ = fs::remove_file(&swap.current);
+                continue;
+            }
+        };
+        if verbose {
+            eprintln!(
+                "self-update: rollback: restoring {} from {}",
+                swap.current.display(),
+                backup.display()
+            );
+        }
+        let _ = fs::remove_file(&swap.current);
+        if let Err(e) = fs::rename(backup, &swap.current) {
+            eprintln!(
+                "self-update: WARNING: failed to restore {} from backup {}: {e}",
+                swap.current.display(),
+                backup.display()
+            );
+        }
+    }
+}
+
+/// Run `--version` on the freshly-swapped `mneme` binary. Returns
+/// `Ok(())` if the process exits 0 within 5 seconds; `Err(reason)`
+/// for non-zero exit, timeout, or spawn failure. The exit-1 / timeout
+/// cases trigger the rollback in [`replace_binaries_atomically`].
+fn health_check_new_binary(mneme_exe: &Path) -> Result<(), String> {
+    use std::process::{Command, Stdio};
+    use std::time::Instant;
+
+    let mut child = Command::new(mneme_exe)
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("spawn {} --version: {e}", mneme_exe.display()))?;
+
+    let start = Instant::now();
+    let timeout = Duration::from_secs(5);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return if status.success() {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "{} --version exited with {status}",
+                        mneme_exe.display()
+                    ))
+                };
+            }
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!(
+                        "{} --version did not exit within 5 s",
+                        mneme_exe.display()
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => return Err(format!("try_wait on child: {e}")),
+        }
+    }
 }
 
 /// Search up to two levels deep under `staging` for a `bin/` directory.
@@ -1021,7 +1186,7 @@ fn locate_staged_bin_dir(staging: &Path) -> Option<PathBuf> {
     None
 }
 
-fn swap_one_binary(staged: &Path, current: &Path, verbose: bool) -> CliResult<()> {
+fn swap_one_binary(staged: &Path, current: &Path, verbose: bool) -> CliResult<BinarySwap> {
     if verbose {
         eprintln!(
             "self-update: swap {} -> {}",
@@ -1031,8 +1196,14 @@ fn swap_one_binary(staged: &Path, current: &Path, verbose: bool) -> CliResult<()
     }
     if !current.exists() {
         // First-time install of this particular binary: just copy.
+        // No backup to retain — `BinarySwap::backup = None` tells the
+        // rollback path to just delete the new file if health-check
+        // fails (returning the user to "this binary not installed").
         fs::copy(staged, current).map_err(|e| CliError::io(current.to_path_buf(), e))?;
-        return Ok(());
+        return Ok(BinarySwap {
+            current: current.to_path_buf(),
+            backup: None,
+        });
     }
 
     let backup = current.with_extension("old");
@@ -1052,7 +1223,15 @@ fn swap_one_binary(staged: &Path, current: &Path, verbose: bool) -> CliResult<()
                     // Last-ditch: rename current to .deleteme and copy
                     // the new binary into place. On next reboot
                     // Windows will release the lock and the leftover
-                    // can be cleaned up.
+                    // can be cleaned up. We return `backup: None`
+                    // because the rollback artifact at this point is
+                    // the .deleteme file, which by definition is
+                    // already on its way out — restoring from it
+                    // would defeat the purpose. Item #84 health check
+                    // still runs; if it fails the rollback path
+                    // deletes the new binary (returning the user to
+                    // a no-binary state), but the .deleteme leftover
+                    // continues toward its scheduled cleanup.
                     let leftover = current.with_extension("deleteme");
                     let _ = fs::remove_file(&leftover);
                     fs::rename(current, &leftover).map_err(|e2| {
@@ -1070,7 +1249,10 @@ fn swap_one_binary(staged: &Path, current: &Path, verbose: bool) -> CliResult<()
                         current.display(),
                         leftover.display()
                     );
-                    return Ok(());
+                    return Ok(BinarySwap {
+                        current: current.to_path_buf(),
+                        backup: None,
+                    });
                 }
                 std::thread::sleep(Duration::from_secs(1));
             }
@@ -1082,8 +1264,13 @@ fn swap_one_binary(staged: &Path, current: &Path, verbose: bool) -> CliResult<()
         let _ = fs::rename(&backup, current);
         return Err(CliError::io(current.to_path_buf(), e));
     }
-    let _ = fs::remove_file(&backup);
-    Ok(())
+    // Item #84: keep the `.old` backup for now — `replace_binaries_
+    // atomically` deletes it AFTER the post-swap health check passes,
+    // or restores from it if the health check fails.
+    Ok(BinarySwap {
+        current: current.to_path_buf(),
+        backup: Some(backup),
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -1450,7 +1637,12 @@ mod tests {
             make_dummy_exe(&target.join(&nm), b"OLD-CONTENT");
         }
 
-        let swapped = replace_binaries_atomically(&staging, &target, false)
+        // Tests use the `_with_check` seam so the dummy non-executable
+        // payloads we stage don't get sent to a real `--version` health
+        // probe (which would fail-closed and roll the swap back). The
+        // health-check + rollback code is exercised directly in the
+        // dedicated tests below.
+        let swapped = replace_binaries_atomically_with_check(&staging, &target, false, |_| Ok(()))
             .expect("atomic swap should succeed on a clean stage");
         assert_eq!(
             swapped,
@@ -1491,8 +1683,8 @@ mod tests {
         make_dummy_exe(&target.join(exe_name("mneme")), b"OLD-A");
         make_dummy_exe(&target.join(exe_name("mneme-daemon")), b"OLD-B");
 
-        let swapped =
-            replace_binaries_atomically(&staging, &target, false).expect("partial swap succeeds");
+        let swapped = replace_binaries_atomically_with_check(&staging, &target, false, |_| Ok(()))
+            .expect("partial swap succeeds");
         assert_eq!(swapped, 2, "exactly 2 binaries should be swapped");
 
         assert_eq!(fs::read(target.join(exe_name("mneme"))).unwrap(), b"NEW-A",);
@@ -1526,7 +1718,7 @@ mod tests {
         // Only stage one binary; target dir is empty.
         make_dummy_exe(&staging.join(exe_name("mneme")), b"FIRST-INSTALL");
 
-        let swapped = replace_binaries_atomically(&staging, &target, false)
+        let swapped = replace_binaries_atomically_with_check(&staging, &target, false, |_| Ok(()))
             .expect("first-install swap succeeds");
         assert_eq!(swapped, 1);
         assert_eq!(
@@ -1561,7 +1753,7 @@ mod tests {
         let stale_deleteme = target.join(format!("{}.deleteme", exe_name("mneme")));
         make_dummy_exe(&stale_deleteme, b"STALE-FROM-PRIOR-FAILED-SWAP");
 
-        let swapped = replace_binaries_atomically(&staging, &target, false)
+        let swapped = replace_binaries_atomically_with_check(&staging, &target, false, |_| Ok(()))
             .expect("swap in presence of stale .deleteme should succeed");
         assert_eq!(swapped, 1);
         assert_eq!(
@@ -1594,12 +1786,145 @@ mod tests {
         make_dummy_exe(&nested_bin.join(exe_name("mneme")), b"NESTED-NEW");
         make_dummy_exe(&target.join(exe_name("mneme")), b"OLD");
 
-        let swapped = replace_binaries_atomically(&staging, &target, false)
+        let swapped = replace_binaries_atomically_with_check(&staging, &target, false, |_| Ok(()))
             .expect("swap should locate bin/ via locate_staged_bin_dir");
         assert_eq!(swapped, 1);
         assert_eq!(
             fs::read(target.join(exe_name("mneme"))).unwrap(),
             b"NESTED-NEW",
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Item #84 — apply mode + post-swap rollback. The atomic swap
+    // engine above retains `.old` backups until the post-swap health
+    // check has passed; if the check fails, every swap is reversed
+    // and the user ends up exactly where they started.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn rollback_restores_old_binary_on_health_check_failure() {
+        // Stage NEW bytes over OLD bytes. The injected health check
+        // returns Err — the rollback path must restore OLD into the
+        // original target paths and clean up no .old leftovers
+        // (they've all been renamed back into place).
+        let td = tempfile::tempdir().expect("tempdir");
+        let staging = td.path().join("staging");
+        let target = td.path().join("target");
+        fs::create_dir_all(&staging).unwrap();
+        fs::create_dir_all(&target).unwrap();
+
+        for name in SHIPPED_BINARIES {
+            let nm = exe_name(name);
+            make_dummy_exe(&staging.join(&nm), b"NEW-CONTENT");
+            make_dummy_exe(&target.join(&nm), b"OLD-CONTENT");
+        }
+
+        let result = replace_binaries_atomically_with_check(&staging, &target, false, |_| {
+            Err("simulated --version exit 1".to_string())
+        });
+        assert!(
+            result.is_err(),
+            "swap+failed health check must propagate Err"
+        );
+        let msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            msg.contains("rolled back"),
+            "error message must announce rollback; got {msg}"
+        );
+
+        // Every target binary holds the OLD bytes again.
+        for name in SHIPPED_BINARIES {
+            let nm = exe_name(name);
+            let bytes = fs::read(target.join(&nm)).expect("read post-rollback");
+            assert_eq!(
+                bytes, b"OLD-CONTENT",
+                "{name} should be restored to OLD bytes after rollback"
+            );
+            // .old leftover from the rollback rename is also cleaned
+            // up because we renamed it back over the live file.
+            assert!(
+                !target.join(format!("{nm}.old")).exists(),
+                "{nm}.old should be gone after rollback (renamed back over the live file)"
+            );
+        }
+    }
+
+    #[test]
+    fn rollback_first_install_failure_deletes_new_file() {
+        // First-install case: target was empty before the swap.
+        // BinarySwap.backup is None, so the rollback path can't
+        // restore anything — instead it deletes the new file so the
+        // user is back to "this binary not installed".
+        let td = tempfile::tempdir().expect("tempdir");
+        let staging = td.path().join("staging");
+        let target = td.path().join("target");
+        fs::create_dir_all(&staging).unwrap();
+        fs::create_dir_all(&target).unwrap();
+
+        make_dummy_exe(&staging.join(exe_name("mneme")), b"FIRST-INSTALL");
+
+        let result = replace_binaries_atomically_with_check(&staging, &target, false, |_| {
+            Err("simulated --version crash".to_string())
+        });
+        assert!(result.is_err(), "first-install + bad health = Err");
+        // The new binary that was just placed must be removed since
+        // there's no .old to fall back to.
+        assert!(
+            !target.join(exe_name("mneme")).exists(),
+            "first-install rollback must delete the bad new binary"
+        );
+    }
+
+    #[test]
+    fn empty_staging_skips_health_check() {
+        // No staged binaries at all → swapped = 0, no health check
+        // attempted, no rollback. The hard-fail-on-zero check lives
+        // in `run` (see comment in replace_binaries_atomically).
+        let td = tempfile::tempdir().expect("tempdir");
+        let staging = td.path().join("staging");
+        let target = td.path().join("target");
+        fs::create_dir_all(&staging).unwrap();
+        fs::create_dir_all(&target).unwrap();
+
+        // Health check would crash if invoked because we pass a
+        // panicking closure here. Test passes iff the health check is
+        // NOT reached.
+        let swapped = replace_binaries_atomically_with_check(&staging, &target, false, |_| {
+            panic!("health check must not run when nothing was swapped")
+        })
+        .expect("empty swap = Ok(0)");
+        assert_eq!(swapped, 0);
+    }
+
+    #[test]
+    fn no_mneme_binary_skips_health_check() {
+        // If the staged archive ships only auxiliary binaries (no
+        // `mneme` / `mneme.exe`), there's nothing to run --version
+        // against, so we skip the health check rather than failing
+        // for the wrong reason. We pin this with a panicking closure
+        // — the test passes iff the closure is never called.
+        let td = tempfile::tempdir().expect("tempdir");
+        let staging = td.path().join("staging");
+        let target = td.path().join("target");
+        fs::create_dir_all(&staging).unwrap();
+        fs::create_dir_all(&target).unwrap();
+
+        // Stage only `mneme-daemon`, no `mneme` itself.
+        make_dummy_exe(&staging.join(exe_name("mneme-daemon")), b"DAEMON-ONLY");
+
+        let swapped = replace_binaries_atomically_with_check(&staging, &target, false, |_| {
+            panic!("health check must not run without a mneme binary at the target")
+        })
+        .expect("daemon-only swap should succeed");
+        assert_eq!(swapped, 1);
+        assert!(
+            target.join(exe_name("mneme-daemon")).exists(),
+            "daemon binary should be installed"
+        );
+        assert!(
+            !target.join(exe_name("mneme")).exists(),
+            "no mneme binary should be created"
         );
     }
 }
