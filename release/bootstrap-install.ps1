@@ -346,7 +346,7 @@ Section "Stop existing mneme processes (if any)"
 # returns exit 1 silently — that's fine.
 & schtasks /Delete /TN MnemeDaemon /F 2>$null | Out-Null
 
-$names = @('mneme', 'mneme-daemon', 'mneme-store', 'mneme-parsers', 'mneme-scanners',
+$names = @('mneme', 'mneme-hook', 'mneme-daemon', 'mneme-store', 'mneme-parsers', 'mneme-scanners',
            'mneme-brain', 'mneme-livebus', 'mneme-md-ingest', 'mneme-multimodal')
 # Bug G-7 (2026-05-01): the empty `catch { }` swallowed every
 # Stop-Process failure (Access denied, zombie, locked exe). The

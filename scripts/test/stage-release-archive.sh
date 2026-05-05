@@ -134,8 +134,13 @@ for d in "$MCP_DIR" "$VISION_DIST" "$SCRIPTS_DIR" "$PLUGIN_DIR"; do
 done
 
 # Required binaries (workspace, no .exe suffix on POSIX).
+# 2026-05-05: added mneme-hook (BUG-NEW-H true fix). On POSIX it's
+# functionally identical to mneme — there's no console-flash issue
+# without Windows — but we ship it everywhere so install scripts can
+# stay symmetric across platforms.
 REQUIRED_BINS=(
   "mneme"
+  "mneme-hook"
   "mneme-daemon"
   "mneme-store"
   "mneme-parsers"

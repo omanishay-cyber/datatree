@@ -87,8 +87,15 @@ foreach ($p in @($mcp, $visionDist, $scripts, $plugin)) {
 }
 
 # Required binaries (workspace).
+# 2026-05-05: added mneme-hook.exe (BUG-NEW-H true fix). It's the
+# Windows GUI-subsystem dispatcher that Claude Code's settings.json
+# now points at for hook commands — no transient cmd.exe flash on
+# UserPromptSubmit / PreToolUse fire. Built from `mneme-hook` workspace
+# member; cargo build --workspace already produces it alongside
+# mneme.exe.
 $requiredBins = @(
     "mneme.exe",
+    "mneme-hook.exe",
     "mneme-daemon.exe",
     "mneme-store.exe",
     "mneme-parsers.exe",

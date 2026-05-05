@@ -123,6 +123,10 @@ jobs:
           # is not built unconditionally on every target).
           if [ "${{ runner.os }}" = "Windows" ]; then
             cp target/${{ matrix.target }}/release/mneme.exe release-staging/bin/
+            # 2026-05-05: BUG-NEW-H true fix — mneme-hook.exe is the
+            # Windows GUI-subsystem dispatcher Claude Code's settings.json
+            # now points at for hook commands.
+            cp target/${{ matrix.target }}/release/mneme-hook.exe release-staging/bin/
             cp target/${{ matrix.target }}/release/mneme-daemon.exe release-staging/bin/
             cp target/${{ matrix.target }}/release/mneme-store.exe release-staging/bin/
             cp target/${{ matrix.target }}/release/mneme-parsers.exe release-staging/bin/
@@ -138,6 +142,11 @@ jobs:
             fi
           else
             cp target/${{ matrix.target }}/release/mneme release-staging/bin/
+            # 2026-05-05: ship mneme-hook on POSIX too even though there's
+            # no console-flash issue there. Keeps install scripts symmetric
+            # across platforms — the hook binary just behaves like any
+            # ordinary CLI tool when launched from a shell.
+            cp target/${{ matrix.target }}/release/mneme-hook release-staging/bin/
             cp target/${{ matrix.target }}/release/mneme-daemon release-staging/bin/
             cp target/${{ matrix.target }}/release/mneme-store release-staging/bin/
             cp target/${{ matrix.target }}/release/mneme-parsers release-staging/bin/

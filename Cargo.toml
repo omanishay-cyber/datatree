@@ -9,6 +9,7 @@ members = [
     "livebus",
     "multimodal-bridge",
     "cli",
+    "mneme-hook", # NEW v0.4.0: Windows GUI-subsystem hook dispatcher (BUG-NEW-H true fix)
     "md-ingest",
 
     "brain",

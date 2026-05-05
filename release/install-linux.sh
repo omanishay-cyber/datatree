@@ -350,6 +350,7 @@ killed=0
 if command -v pkill >/dev/null 2>&1; then
     for bin in \
         mneme-daemon \
+        mneme-hook \
         mneme-store \
         mneme-parsers \
         mneme-scanners \

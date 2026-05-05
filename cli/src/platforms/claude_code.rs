@@ -66,6 +66,33 @@ use crate::platforms::{
     backup_then_write, AdapterContext, InstallScope, McpFormat, Platform, PlatformAdapter,
 };
 
+/// BUG-NEW-H true fix (2026-05-05) — pick the dispatcher binary used in
+/// hook commands. On Windows we swap `mneme.exe` → `mneme-hook.exe` so
+/// hook spawns hit the GUI-subsystem binary and don't flash a console.
+/// On POSIX (or if the path doesn't end with `mneme.exe`) we return the
+/// original path unchanged — single-binary install, no flash issue.
+///
+/// Uses sibling-path replacement: `<dir>/mneme.exe` → `<dir>/mneme-hook.exe`.
+/// Falls back to `exe_path` verbatim when the file stem isn't exactly
+/// `mneme` (defensive — never break a custom install).
+fn hook_dispatcher_path(exe_path: &Path) -> std::borrow::Cow<'_, Path> {
+    #[cfg(windows)]
+    {
+        if exe_path.file_stem().and_then(|s| s.to_str()) == Some("mneme")
+            && exe_path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|e| e.eq_ignore_ascii_case("exe"))
+                .unwrap_or(false)
+        {
+            if let Some(parent) = exe_path.parent() {
+                return std::borrow::Cow::Owned(parent.join("mneme-hook.exe"));
+            }
+        }
+    }
+    std::borrow::Cow::Borrowed(exe_path)
+}
+
 /// Marker stamped onto every mneme-managed hook entry. Lets `uninstall`
 /// find exactly the entries we own without touching the user's other
 /// hooks.
@@ -299,7 +326,17 @@ fn build_hook_entry(spec: &HookSpec, exe_path: &Path) -> serde_json::Value {
     // `C:UsersAdministrator.mnemebinmneme.exe` — "command not found".
     // Forward slashes work in BOTH cmd.exe and bash on Windows, and
     // are obviously fine on POSIX.
-    let mut command = exe_path.to_string_lossy().replace('\\', "/");
+    //
+    // BUG-NEW-H true fix (2026-05-05): on Windows, route hook commands
+    // through `mneme-hook.exe` instead of `mneme.exe`. mneme-hook is
+    // a Windows GUI-subsystem binary (no console allocation) that
+    // dispatches the same subcommand grammar to the same handlers in
+    // `mneme_cli`. Without this swap, every UserPromptSubmit / PreToolUse
+    // / PostToolUse fire flashed a transient cmd.exe window before the
+    // CLI subprocess could detach. POSIX is unaffected — there's no
+    // console-flash phenomenon there, so we keep the single binary.
+    let resolved = hook_dispatcher_path(exe_path);
+    let mut command = resolved.to_string_lossy().replace('\\', "/");
     for a in spec.args {
         command.push(' ');
         command.push_str(a);
@@ -748,6 +785,14 @@ mod tests {
         );
     }
 
+    /// BUG-NEW-H true fix (2026-05-05): the dispatcher path the hook
+    /// JSON commands actually carry. Identical to `exe` on POSIX;
+    /// `mneme.exe` swapped to `mneme-hook.exe` on Windows.
+    fn fake_dispatcher_exe() -> PathBuf {
+        let exe = fake_exe();
+        hook_dispatcher_path(&exe).into_owned()
+    }
+
     #[test]
     fn inject_hooks_json_into_empty_file() {
         let exe = fake_exe();
@@ -765,7 +810,10 @@ mod tests {
             by_event.entry(spec.event).or_default().push(spec);
         }
 
-        let exe_norm = exe.to_string_lossy().replace('\\', "/");
+        // The hook JSON now carries the dispatcher path (mneme.exe on
+        // POSIX, mneme-hook.exe on Windows) — see hook_dispatcher_path
+        // for the BUG-NEW-H true fix rationale.
+        let exe_norm = fake_dispatcher_exe().to_string_lossy().replace('\\', "/");
         for (event, specs) in &by_event {
             assert!(hooks.contains_key(*event), "missing event {}", event);
             let arr = hooks[*event].as_array().unwrap();

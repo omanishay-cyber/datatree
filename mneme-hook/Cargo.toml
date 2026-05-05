@@ -1,0 +1,41 @@
+[package]
+name = "mneme-hook"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Windowless hook entry point for Claude Code / Cursor / etc. — kills the cmd.exe flash on every UserPromptSubmit + PreToolUse fire."
+
+# Single binary. Built as a Windows GUI-subsystem program so Windows
+# does not allocate a transient console when a windowless parent
+# (Claude Code's hook spawner) launches it. On non-Windows targets the
+# subsystem attribute is a no-op and this binary behaves like any
+# other CLI tool.
+#
+# This is the *only* crate in the workspace built with this attribute —
+# `mneme-cli`'s `mneme.exe` keeps the console subsystem so normal CLI
+# usage (running `mneme build .` from a terminal) still works as
+# expected with stdout, stderr, and Ctrl-C.
+[[bin]]
+name = "mneme-hook"
+path = "src/main.rs"
+
+[dependencies]
+# Pull in the entire CLI library — we want to delegate hook commands
+# to the exact same handler functions `mneme.exe` runs so output
+# semantics are identical and there is one source of truth.
+mneme-cli = { path = "../cli" }
+# Async runtime — required because the hook handlers we call into are
+# async. Same feature set the parent CLI uses for its handlers.
+tokio = { version = "1.40", features = ["rt", "rt-multi-thread", "macros", "io-util", "net", "fs", "time", "signal", "sync"] }
+# CLI argument parsing — clap so the subcommand grammar matches
+# `mneme.exe`'s exactly. We intentionally repeat the subcommand
+# definitions instead of importing the parent enum to keep the lib
+# boundary minimal.
+clap = { version = "4.5", features = ["derive"] }
+
+[lints.rust]
+# Match parent crate's strictness — we want a hook binary that can
+# never panic and must be auditable line-by-line.
+unsafe_code = "forbid"

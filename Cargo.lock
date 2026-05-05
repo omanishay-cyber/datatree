@@ -2473,6 +2473,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mneme-hook"
+version = "0.4.0"
+dependencies = [
+ "clap",
+ "mneme-cli",
+ "tokio",
+]
+
+[[package]]
 name = "mneme-livebus"
 version = "0.4.0"
 dependencies = [
