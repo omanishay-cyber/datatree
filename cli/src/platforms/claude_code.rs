@@ -175,9 +175,11 @@ pub const HOOK_SPECS: &[HookSpec] = &[
         args: &["pretool-edit-write"],
         matcher: "*",
     },
-    // Layer 3 (v0.4.0 skeleton, always-approve): Grep/Read/Glob redirect.
-    // Enabled but pass-through until v0.4.1 wires the redirect logic.
-    // Controlled by `[hooks] enforce_recall_before_grep` (default OFF).
+    // Layer 3: Grep/Read/Glob soft-redirect. Emits a hint payload pointing
+    // the agent at find_references when the search shape looks like a
+    // resolver-shaped symbol query.
+    // Controlled by `[hooks] enforce_recall_before_grep` (default ON in
+    // v0.4.0; see pretool_grep_read::DEFAULT). Always fail-open.
     HookSpec {
         event: "PreToolUse",
         args: &["pretool-grep-read"],
