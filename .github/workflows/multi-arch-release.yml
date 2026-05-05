@@ -1,14 +1,14 @@
 name: Multi-Arch Release
 
 # Cross-platform release builder. Produces 6 platform archives for the
-# v0.3.2 (and later) GitHub Release pages so the Mac/Linux install
+# v0.4.0 (and later) GitHub Release pages so the Mac/Linux install
 # one-liners actually resolve to a real download. The Windows x64 leg
 # duplicates what `release.yml` builds on tag push — kept here for
 # parity so a single `gh workflow run multi-arch-release.yml` rebuilds
 # every platform from one button.
 #
 # Triggers:
-#   workflow_dispatch  - manual rebuild + upload (any tag, defaults to v0.3.2)
+#   workflow_dispatch  - manual rebuild + upload (any tag, defaults to v0.4.0)
 #   release published  - automatic on every Release publish event
 #
 # Caveats (read carefully):
@@ -29,9 +29,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to upload to (e.g. v0.3.2)"
+        description: "Release tag to upload to (e.g. v0.4.0)"
         required: true
-        default: "v0.3.2"
+        default: "v0.4.0"
   release:
     types: [published]
 
@@ -51,7 +51,7 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact: mneme-v0.3.2-windows-x64.zip
+            artifact: mneme-v0.4.0-windows-x64.zip
             archive: zip
             ort_archive: onnxruntime-win-x64-1.24.4.zip
             ort_lib: onnxruntime.dll
@@ -60,7 +60,7 @@ jobs:
           # `cargo-xwin` or `cross` for aarch64-pc-windows-msvc.
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
-            artifact: mneme-v0.3.2-windows-arm64.zip
+            artifact: mneme-v0.4.0-windows-arm64.zip
             archive: zip
             ort_archive: onnxruntime-win-arm64-1.24.4.zip
             ort_lib: onnxruntime.dll
@@ -71,13 +71,13 @@ jobs:
           # recovers, or pivot to cross-compilation from arm64.
           - os: macos-14
             target: aarch64-apple-darwin
-            artifact: mneme-v0.3.2-macos-arm64.tar.gz
+            artifact: mneme-v0.4.0-macos-arm64.tar.gz
             archive: tar.gz
             ort_archive: onnxruntime-osx-arm64-1.24.4.tgz
             ort_lib: libonnxruntime.dylib
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            artifact: mneme-v0.3.2-linux-x64.tar.gz
+            artifact: mneme-v0.4.0-linux-x64.tar.gz
             archive: tar.gz
             ort_archive: onnxruntime-linux-x64-1.24.4.tgz
             ort_lib: libonnxruntime.so
@@ -87,7 +87,7 @@ jobs:
           # cross toolchain pre-installed).
           - os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
-            artifact: mneme-v0.3.2-linux-arm64.tar.gz
+            artifact: mneme-v0.4.0-linux-arm64.tar.gz
             archive: tar.gz
             ort_archive: onnxruntime-linux-aarch64-1.24.4.tgz
             ort_lib: libonnxruntime.so
@@ -250,7 +250,7 @@ jobs:
           elif [ "${{ github.event_name }}" = "release" ]; then
             echo "value=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
           else
-            echo "value=v0.3.2" >> $GITHUB_OUTPUT
+            echo "value=v0.4.0" >> $GITHUB_OUTPUT
           fi
 
       - name: Upload all artifacts to release

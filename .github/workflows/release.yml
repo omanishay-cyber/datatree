@@ -5,7 +5,7 @@ name: Release
 # This workflow runs on tag push (`v*.*.*`) and produces 3-platform archives
 # named WITH the version embedded so they match the convention that
 # `multi-arch-release.yml`, `bootstrap-install.ps1`, and the winget manifest
-# all expect (`mneme-v0.3.2-windows-x64.zip` etc.). Pre-fix, the asset names
+# all expect (`mneme-v0.4.0-windows-x64.zip` etc.). Pre-fix, the asset names
 # here were `mneme-windows-x64.zip` (no version), which 404'd from the
 # bootstrap installer until someone manually re-ran `multi-arch-release.yml`.
 #
@@ -43,7 +43,7 @@ jobs:
       matrix:
         include:
           # NOTE (A9-020): asset_name now embeds ${{ github.ref_name }} (the
-          # tag, e.g. `v0.3.2`) so output is `mneme-v0.3.2-linux-x64.tar.gz`,
+          # tag, e.g. `v0.4.0`) so output is `mneme-v0.4.0-linux-x64.tar.gz`,
           # matching `multi-arch-release.yml` + bootstrap + winget expectations.
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu

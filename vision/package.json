@@ -1,6 +1,6 @@
 {
   "name": "mneme-vision",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Vision app for the mneme daemon — 14 view modes + Command Center, served via Bun and packaged via Tauri.",

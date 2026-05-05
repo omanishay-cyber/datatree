@@ -2,7 +2,7 @@
   "name": "mneme-vscode",
   "displayName": "Mneme",
   "description": "Local-first persistent memory and code graph for AI agents. Full IDE integration: sidebar, graph webview, hover, CodeLens, drift diagnostics, walkthroughs, and more.",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "publisher": "anishtrivedi",
   "license": "Apache-2.0",
   "author": {

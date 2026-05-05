@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mnemeos"
-version = "0.3.2"
+version = "0.4.0"
 description = "Mneme OS — local persistent code-graph + AI-superbrain MCP server. One-line Python wrapper around the official installer (auto-detects Windows/macOS/Linux + x64/arm64)."
 readme = "README.md"
 license = { text = "Apache-2.0" }

@@ -1,6 +1,6 @@
 [package]
 name = "mneme-vision-tauri"
-version = "0.3.2"
+version = "0.4.0"
 description = "Tauri desktop wrapper for the mneme Vision app"
 authors = ["Anish Trivedi", "Kruti Trivedi"]
 edition = "2021"
