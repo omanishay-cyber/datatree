@@ -51,8 +51,23 @@ const FingerprintOut = z.object({
   jaccard: z.number().min(0).max(1),
 });
 
+/**
+ * HIGH-21 fix (2026-05-05 audit): cap `code_snippet` at 64 KiB.
+ *
+ * The previous schema only enforced `.min(1)`. The downstream
+ * tokenize / simhash64 / minhashK loops are all O(n) in token count
+ * and run synchronously on Bun's main thread — a 100 MB snippet would
+ * stall the MCP server for seconds, causing every other concurrent
+ * tool call to time out. That's a local DoS reachable from any MCP
+ * client (Claude Code, Cursor, etc.). 64 KiB is bigger than any
+ * realistic single-symbol snippet (the largest function in the
+ * audited mneme repo is ~12 KB) but bounded enough that the
+ * synchronous loops complete in milliseconds.
+ */
+const MAX_CODE_SNIPPET_BYTES = 64 * 1024;
+
 export const FederatedSimilarInput = z.object({
-  code_snippet: z.string().min(1),
+  code_snippet: z.string().min(1).max(MAX_CODE_SNIPPET_BYTES),
   pattern_kind: z.string().optional(),
   k: z.number().int().positive().max(50).default(10),
 });
