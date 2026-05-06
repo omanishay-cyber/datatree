@@ -196,6 +196,14 @@ impl DbLifecycle for DefaultLifecycle {
                 }
                 let before = fs::metadata(&p).map(|m| m.len() as i64).unwrap_or(0);
                 let conn = Connection::open(&p).map_err(DbError::from)?;
+                // DB-4 fix (2026-05-05 audit): set busy_timeout BEFORE
+                // VACUUM. VACUUM needs an exclusive lock; without the
+                // timeout, any concurrent reader/writer activity
+                // surfaces as instant SQLITE_BUSY and the lifecycle
+                // operation fails. 5000ms matches the canonical pragma
+                // block in builder.rs::apply_pragmas.
+                conn.busy_timeout(std::time::Duration::from_millis(5000))
+                    .map_err(DbError::from)?;
                 conn.execute("VACUUM", []).map_err(DbError::from)?;
                 let after = fs::metadata(&p).map(|m| m.len() as i64).unwrap_or(0);
                 reclaimed += before - after;
@@ -260,6 +268,10 @@ impl DbLifecycle for DefaultLifecycle {
                 }
                 let p = paths.shard_db(&project, report.layer);
                 let conn = Connection::open(&p).map_err(DbError::from)?;
+                // DB-4 fix: same busy_timeout as VACUUM path above.
+                // REINDEX also takes an exclusive lock and would race
+                // a concurrent reader without this.
+                let _ = conn.busy_timeout(std::time::Duration::from_millis(5000));
                 let _ = conn.execute("VACUUM", []);
                 let _ = conn.execute("REINDEX", []);
                 drop(conn);
