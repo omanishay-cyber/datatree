@@ -53,7 +53,25 @@
 # Or pass flags via the scriptblock pattern (rare):
 #   $sb = [scriptblock]::Create((irm <url>))
 #   & $sb
+# M-3 fix (2026-05-05 audit): validate MNEME_VERSION against the
+# canonical semver-with-leading-v shape before interpolating into the
+# download URL. The previous code shoved the env-var directly into
+# `$releaseBase = ".../releases/download/$Version"`, so a hostile
+# value like MNEME_VERSION='v0.4.0" & calc & rem' could break out of
+# the URL construction. The downstream curl.exe call would just see
+# a malformed URL and fail, but the WarnLine echo of $Version would
+# also pass through ANSI escape sequences to the terminal.
+#
+# Allowed shape: v<major>.<minor>.<patch> with optional pre-release
+# tag of [a-z0-9.] characters. Anything else aborts before any URL
+# is built.
 $Version = if ($env:MNEME_VERSION) { $env:MNEME_VERSION } else { 'v0.4.0' }
+if ($Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$') {
+    Write-Host "ERROR: MNEME_VERSION '$Version' is not a valid mneme release tag." -ForegroundColor Red
+    Write-Host "       Expected format: v<major>.<minor>.<patch>[-<pre-release>]" -ForegroundColor Red
+    Write-Host "       Examples: v0.4.0, v0.4.0-rc1, v1.2.3" -ForegroundColor Red
+    exit 2
+}
 $NoToolchain   = [bool]$env:MNEME_NO_TOOLCHAIN
 $NoMultimodal  = [bool]$env:MNEME_NO_MULTIMODAL
 $NoModels      = [bool]$env:MNEME_NO_MODELS
