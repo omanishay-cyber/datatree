@@ -34,6 +34,15 @@
 #                       ~/.mneme/bin/mneme.exe exists before continuing
 #                       to step 4/8 (Defender exclusions); if missing,
 #                       it errors with a clear remediation hint.
+#   -SkipHashVerify     skip SHA-256 verification of the downloaded archive
+#                       against release-checksums.json. Use ONLY for
+#                       emergency installs where the manifest sidecar is
+#                       unavailable for a legitimate reason and the tarball
+#                       has already been verified out-of-band. Prints a
+#                       loud warning before extracting. The env vars
+#                       MNEME_SKIP_HASH_VERIFY=1 / MNEME_SKIP_HASH_CHECK=1
+#                       are accepted as equivalents for piped iwr|iex
+#                       invocations that cannot pass switch parameters.
 #
 # What it does, in order:
 #   1. Ensures Bun is installed (runs the official Bun installer if not
@@ -90,6 +99,11 @@ param(
     [string]$LocalZip = $null, # path to a local mneme zip; skips GitHub fetch in step 2/8 and uses this in step 3/8
     [Parameter()]
     [switch]$SkipDownload,    # skip BOTH step 2/8 + step 3/8; assume ~/.mneme is already populated
+    # HIGH-13 (2026-05-06 deep audit): emergency override for SHA-256
+    # verification. Honors MNEME_SKIP_HASH_VERIFY / MNEME_SKIP_HASH_CHECK env
+    # vars too, so piped iwr|iex callers can opt out without a switch.
+    [Parameter()]
+    [switch]$SkipHashVerify,
     # ---- v0.3.2 install-reliability additions (step 6 + 7b + 7c) ----
     [Parameter()]
     [string]$ModelsPath = $null,  # explicit models bundle dir; if null, step 7b auto-detects <bundle>/models next to -LocalZip
@@ -1130,6 +1144,19 @@ if ($UsePreExtracted) {
         # may not ship the sidecar. We warn and continue so users on
         # those tags aren't blocked. Once the tag DOES ship a
         # manifest, hash mismatch is fatal.
+        #
+        # HIGH-13 (2026-05-06 deep audit): honor -SkipHashVerify or
+        # MNEME_SKIP_HASH_VERIFY / MNEME_SKIP_HASH_CHECK env vars as
+        # an opt-out. Required for emergency installs where the
+        # manifest sidecar is missing for a legitimate reason. We
+        # print loud warnings so the user remembers they bypassed it.
+        $skipHashVerifyEnv = ($env:MNEME_SKIP_HASH_VERIFY) -or ($env:MNEME_SKIP_HASH_CHECK)
+        if ($SkipHashVerify -or $skipHashVerifyEnv) {
+            Write-Warn "!!! SHA-256 verification SKIPPED (override active)"
+            Write-Warn "!!! the downloaded archive will be extracted WITHOUT integrity check"
+            Write-Warn ("!!! source: {0}" -f $AssetEntry.browser_download_url)
+            Write-Warn "!!! this is an emergency-only override; remove the flag/env var to re-enable"
+        } else {
         $manifestUrl = "https://github.com/{0}/releases/download/{1}/release-checksums.json" -f $Repo, $ReleaseTag
         $manifestPath = Join-Path $Tmp 'release-checksums.json'
         Write-Info "fetching SHA-256 manifest"
@@ -1160,8 +1187,14 @@ if ($UsePreExtracted) {
                 }
                 if ($expected) {
                     $actualHash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                    # HIGH-13 (2026-05-06): print expected + actual + verdict
+                    # on every verification path so the user has an audit trail
+                    # in stdout/CI logs even when the check passes.
+                    Write-Info ("  asset    : {0}" -f $Asset)
+                    Write-Info ("  expected : {0}" -f $expected)
+                    Write-Info ("  actual   : {0}" -f $actualHash)
                     if ($actualHash -eq $expected) {
-                        Write-OK ("archive SHA-256 verified ({0})" -f $actualHash)
+                        Write-OK "archive SHA-256 verified - verdict: MATCH"
                     } else {
                         Write-Fail "ARCHIVE INTEGRITY CHECK FAILED"
                         Write-Fail ("  asset    : {0}" -f $Asset)
@@ -1184,6 +1217,7 @@ if ($UsePreExtracted) {
         } else {
             Write-Warn "release-checksums.json not available - skipping integrity check"
             Write-Warn ("  this release pre-dates SHA-256 pinning. Tag: {0}" -f $ReleaseTag)
+        }
         }
     }
 
