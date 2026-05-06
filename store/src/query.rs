@@ -160,6 +160,16 @@ impl DefaultQuery {
         }
         let path = self.paths.shard_db(project, layer);
         let mgr = SqliteConnectionManager::file(&path).with_init(|c| {
+            // DB-2 fix (2026-05-05 audit): match the writer + builder
+            // pragma block. Without busy_timeout=5000, reader sees
+            // SQLITE_BUSY immediately when a checkpoint takes the
+            // exclusive lock. Without journal_mode=WAL the connection's
+            // snapshot reads can race writers. foreign_keys is per-
+            // connection in SQLite — readers must opt in too so any
+            // ATTACH/trigger logic runs the same.
+            c.busy_timeout(std::time::Duration::from_millis(5000))?;
+            c.pragma_update(None, "journal_mode", "WAL")?;
+            c.pragma_update(None, "foreign_keys", "ON")?;
             c.pragma_update(None, "query_only", true)?;
             c.pragma_update(None, "temp_store", "MEMORY")?;
             Ok(())
