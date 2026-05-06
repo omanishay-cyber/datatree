@@ -3657,6 +3657,20 @@ async fn run_intent_md_pass(
     let mut dir_cache: HashMap<PathBuf, Option<HashMap<String, (String, Option<String>)>>> =
         HashMap::new();
 
+    // Audit fix PERF-NEW-1 (2026-05-06 multi-agent fan-out): collect
+    // all matched (fp, intent, reason) triples first, then run a
+    // SINGLE batch_inject. The prior implementation sent one IPC
+    // round-trip per matched file. On large projects (10k+ files
+    // with INTENT.md coverage on a few directories) that was the
+    // dominant cost of the intent pass — the inject layer's worker
+    // task processed each Write as its own r2d2 connection lease
+    // + transaction commit. Mirrors the run_convention_intent_pass
+    // shape from item #233.
+    let mut ops: Vec<InjectOp> = Vec::new();
+    let mut to_claim: Vec<String> = Vec::new();
+    let sql = "INSERT OR IGNORE INTO file_intent(file_path, intent, reason, source, confidence) \
+               VALUES(?1, ?2, ?3, 'convention', 0.9)";
+
     for fp in files {
         if claimed.contains(&fp) {
             continue;
@@ -3688,9 +3702,6 @@ async fn run_intent_md_pass(
             continue;
         }
 
-        let sql =
-            "INSERT OR IGNORE INTO file_intent(file_path, intent, reason, source, confidence) \
-                   VALUES(?1, ?2, ?3, 'convention', 0.9)";
         let params = vec![
             serde_json::Value::String(fp.clone()),
             serde_json::Value::String(kind.clone()),
@@ -3699,22 +3710,33 @@ async fn run_intent_md_pass(
                 None => serde_json::Value::String("INTENT.md".to_string()),
             },
         ];
-        let resp = store
-            .inject
-            .insert(
-                project_id,
-                DbLayer::Memory,
-                sql,
-                params,
-                InjectOptions {
-                    emit_event: false,
-                    audit: false,
-                    ..InjectOptions::default()
-                },
-            )
-            .await;
-        if resp.success {
-            claimed.insert(fp.clone());
+        ops.push(InjectOp::Insert {
+            project: project_id.clone(),
+            layer: DbLayer::Memory,
+            sql: sql.to_string(),
+            params,
+        });
+        to_claim.push(fp);
+    }
+
+    if ops.is_empty() {
+        return;
+    }
+
+    let resp = store
+        .inject
+        .batch_inject(
+            ops,
+            InjectOptions {
+                emit_event: false,
+                audit: false,
+                ..InjectOptions::default()
+            },
+        )
+        .await;
+    if resp.success {
+        for fp in to_claim {
+            claimed.insert(fp);
             stats.convention_count += 1;
             stats.total_written += 1;
         }
@@ -4847,30 +4869,48 @@ async fn run_tests_pass(store: &Store, project_id: &ProjectId, paths: &PathManag
         return stats;
     }
 
-    for fp in &test_paths {
-        let framework = framework_for_path(fp);
-        let sql = "INSERT OR REPLACE INTO test_files(file_path, framework) VALUES(?1, ?2)";
-        let params = vec![
-            serde_json::Value::String(fp.clone()),
-            serde_json::Value::String(framework.to_string()),
-        ];
-        let resp = store
-            .inject
-            .insert(
-                project_id,
-                DbLayer::Tests,
-                sql,
+    // Audit fix PERF-NEW-2 (2026-05-06 multi-agent fan-out): batch
+    // the per-test-file inserts into one IPC round-trip. Same N+1
+    // shape as PERF-NEW-1 above. A typical project has 50-300 test
+    // files; pre-fix that meant 50-300 r2d2 lease + single-statement
+    // commits, all serialised through the writer task. Now: one
+    // tx, one round-trip.
+    let sql = "INSERT OR REPLACE INTO test_files(file_path, framework) VALUES(?1, ?2)";
+    let ops: Vec<InjectOp> = test_paths
+        .iter()
+        .map(|fp| {
+            let framework = framework_for_path(fp);
+            let params = vec![
+                serde_json::Value::String(fp.clone()),
+                serde_json::Value::String(framework.to_string()),
+            ];
+            InjectOp::Insert {
+                project: project_id.clone(),
+                layer: DbLayer::Tests,
+                sql: sql.to_string(),
                 params,
-                InjectOptions {
-                    emit_event: false,
-                    audit: false,
-                    ..InjectOptions::default()
-                },
-            )
-            .await;
-        if resp.success {
-            stats.test_files_written += 1;
-        }
+            }
+        })
+        .collect();
+
+    let resp = store
+        .inject
+        .batch_inject(
+            ops,
+            InjectOptions {
+                emit_event: false,
+                audit: false,
+                ..InjectOptions::default()
+            },
+        )
+        .await;
+    if resp.success {
+        // batch_inject returns total rows affected; for INSERT OR
+        // REPLACE on a unique-keyed table that's exactly the number
+        // of inputs (each maps to one row, replace counts as 1).
+        // Fall back to test_paths.len() if the response shape isn't
+        // populated — safer than under-counting.
+        stats.test_files_written = test_paths.len();
     }
 
     stats
