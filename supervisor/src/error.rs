@@ -91,6 +91,25 @@ pub enum SupervisorError {
     #[error("invalid configuration: {0}")]
     Config(String),
 
+    /// Worker stdin write failed because the child closed the pipe.
+    ///
+    /// LOW fix (2026-05-05 audit): `dispatch_job` previously folded
+    /// every `io::Error` into the generic [`SupervisorError::Io`]
+    /// variant, so a `BrokenPipe` (worker exited mid-flight) and a
+    /// `PermissionDenied` (totally unrelated) looked identical to
+    /// callers. Retry logic in `dispatch_to_pool` walks all workers
+    /// before giving up, and the watchdog respawns the dead worker;
+    /// surfacing `BrokenPipe` distinctly lets those layers branch
+    /// without string-matching on `io::Error::Display`.
+    ///
+    /// Always recoverable — caller should retry with a different
+    /// worker (the dead one will be restarted by monitor_child).
+    #[error("child '{name}' stdin closed (worker exited?) — caller should retry with another worker")]
+    WorkerStdinClosed {
+        /// Worker name whose stdin pipe was found closed.
+        name: String,
+    },
+
     /// Catch-all for anyhow-bubbled errors at higher layers.
     #[error("internal error: {0}")]
     Other(String),

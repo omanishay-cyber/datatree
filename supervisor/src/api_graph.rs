@@ -3140,12 +3140,24 @@ mod tests {
     /// alphabetically-first one. Builds two graph.db fixtures with
     /// different file rows and asserts the file-tree response reflects
     /// the requested project.
+    ///
+    /// M-2 follow-up (2026-05-05): the project hash validator now
+    /// requires exactly 64 lowercase hex chars (the canonical
+    /// SHA-256 shape produced by `ProjectId::from_path`). The earlier
+    /// fixtures used "aaaa" / "zzzz" which are valid as filesystem
+    /// names but rejected by the strict validator, so `?project=zzzz`
+    /// silently fell back to the alphabetical default. Swap to
+    /// 64-hex strings — `a` repeated 64× and `f` repeated 64× — to
+    /// preserve the lexicographic ordering the test relies on while
+    /// passing the new validator.
     #[tokio::test]
     async fn api_graph_file_tree_honours_project_query_param() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        // Project "aaaa" — alphabetically-first, contains foo.rs.
-        let proj_a = tmp.path().join("projects").join("aaaa");
-        std::fs::create_dir_all(&proj_a).expect("mkdir aaaa");
+        let hash_a = "a".repeat(64);
+        let hash_z = "f".repeat(64);
+        // Project "aaaa…" — alphabetically-first, contains foo.rs.
+        let proj_a = tmp.path().join("projects").join(&hash_a);
+        std::fs::create_dir_all(&proj_a).expect("mkdir hash_a");
         let conn = rusqlite::Connection::open(proj_a.join("graph.db")).expect("open a");
         conn.execute_batch(
             "CREATE TABLE files (path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, \
@@ -3157,9 +3169,9 @@ mod tests {
         .expect("seed a");
         drop(conn);
 
-        // Project "zzzz" — alphabetically-last, contains different file.
-        let proj_z = tmp.path().join("projects").join("zzzz");
-        std::fs::create_dir_all(&proj_z).expect("mkdir zzzz");
+        // Project "ffff…" — alphabetically-last, contains different file.
+        let proj_z = tmp.path().join("projects").join(&hash_z);
+        std::fs::create_dir_all(&proj_z).expect("mkdir hash_z");
         let conn = rusqlite::Connection::open(proj_z.join("graph.db")).expect("open z");
         conn.execute_batch(
             "CREATE TABLE files (path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, \
@@ -3203,7 +3215,7 @@ mod tests {
         let resp = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/graph/file-tree?project=zzzz")
+                    .uri(format!("/api/graph/file-tree?project={hash_z}"))
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3217,11 +3229,11 @@ mod tests {
         let raw = serde_json::to_string(&v).expect("json string");
         assert!(
             raw.contains("zeta.rs"),
-            "?project=zzzz should pick zzzz/graph.db; tree was: {raw}"
+            "?project={hash_z} should pick zzzz fixture's graph.db; tree was: {raw}"
         );
         assert!(
             !raw.contains("foo.rs"),
-            "?project=zzzz must NOT leak rows from aaaa; tree was: {raw}"
+            "?project={hash_z} must NOT leak rows from aaaa fixture; tree was: {raw}"
         );
     }
 

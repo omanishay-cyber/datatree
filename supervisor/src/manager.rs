@@ -1022,7 +1022,22 @@ impl ChildManager {
             .await;
         match write_result {
             Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(SupervisorError::Io(e)),
+            Ok(Err(e)) => {
+                // LOW fix (2026-05-05 audit): map BrokenPipe to the
+                // dedicated WorkerStdinClosed variant so dispatch_to_pool
+                // and the watchdog can branch on it without string
+                // matching on the io::Error display. Other io::ErrorKinds
+                // (PermissionDenied, Interrupted, etc.) keep the generic
+                // Io path because they're rarer and don't have an
+                // obvious recovery distinct from "log + propagate".
+                if e.kind() == std::io::ErrorKind::BrokenPipe {
+                    Err(SupervisorError::WorkerStdinClosed {
+                        name: name.to_string(),
+                    })
+                } else {
+                    Err(SupervisorError::Io(e))
+                }
+            }
             Err(_elapsed) => Err(SupervisorError::Other(format!(
                 "child '{name}' stdin write timed out after {:?} (wedged worker?)",
                 STDIN_WRITE_TIMEOUT
