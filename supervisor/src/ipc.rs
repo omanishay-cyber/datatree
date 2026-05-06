@@ -750,6 +750,53 @@ async fn dispatch(
             ControlResponse::Ok { message: None }
         }
         ControlCommand::Dispatch { pool, payload } => {
+            // HIGH-19 fix (2026-05-05 audit): validate pool name +
+            // payload size BEFORE invoking dispatch_to_pool. The
+            // previous code passed both straight through to
+            // manager.dispatch_to_pool(prefix-match → write to
+            // worker stdin). Two attack patterns:
+            //   1. pool="" matches every worker; payload broadcasts
+            //      to ALL stdin pipes simultaneously.
+            //   2. arbitrary multi-megabyte payload fills a worker's
+            //      stdin buffer and stalls the dispatch path.
+            //
+            // Restrict pool to a known allowlist (the same prefixes
+            // mneme uses internally — parser-, scanner-, embed-,
+            // brain-, livebus-, store-, md-ingest, multimodal-).
+            // Cap payload at 1 MiB which is generous for any real
+            // worker job dispatch.
+            const MAX_DISPATCH_PAYLOAD: usize = 1_048_576;
+            const POOL_ALLOWLIST: &[&str] = &[
+                "parser-",
+                "scanner-",
+                "embed-",
+                "brain-",
+                "brain",
+                "livebus-",
+                "livebus",
+                "store-",
+                "store",
+                "md-ingest",
+                "multimodal-",
+            ];
+            if pool.is_empty()
+                || !POOL_ALLOWLIST.iter().any(|p| pool.starts_with(p))
+            {
+                return ControlResponse::Error {
+                    message: format!(
+                        "Dispatch rejected: pool '{}' is not in the worker allowlist",
+                        pool
+                    ),
+                };
+            }
+            if payload.len() > MAX_DISPATCH_PAYLOAD {
+                return ControlResponse::Error {
+                    message: format!(
+                        "Dispatch rejected: payload {} bytes exceeds 1 MiB cap",
+                        payload.len()
+                    ),
+                };
+            }
             match manager.dispatch_to_pool(&pool, &payload).await {
                 Ok(worker) => ControlResponse::Dispatched { worker },
                 Err(e) => ControlResponse::Error {
