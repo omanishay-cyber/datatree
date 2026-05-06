@@ -881,9 +881,20 @@ async fn fetch_sha256_sidecar(url: &str, archive_name: &str) -> CliResult<String
 //   sig file? | embedded pubkey? | --allow-unsigned? | outcome
 //   ---------|-------------------|-------------------|---------
 //   yes      | yes               | (any)             | verify; mismatch=FAIL, match=OK
-//   yes      | no                | (any)             | WARN ("ships sig but no pubkey to verify"); proceed
+//   yes      | no                | true              | WARN ("ships sig but no pubkey to verify, --allow-unsigned set"); proceed
+//   yes      | no                | false             | FAIL ("ships sig but binary has no key to verify against; pass --allow-unsigned to override")
 //   no       | (any)             | true              | WARN ("unsigned, --allow-unsigned set"); proceed
 //   no       | (any)             | false             | FAIL with rollout instructions
+//
+// Audit fix (2026-05-06 multi-agent fan-out, security-sentinel):
+// the (sig=yes, pubkey=no) row previously silently proceeded
+// regardless of --allow-unsigned. Result: an attacker who controls
+// the release CDN could publish a signature alongside a tampered
+// binary, and an mneme build that doesn't yet have the embedded
+// pubkey would log a WARN and install anyway — exactly the
+// supply-chain attack the signature mechanism was meant to block.
+// The new row enforces fail-closed: unverifiable signatures
+// require an explicit --allow-unsigned acknowledgement.
 //
 // The "yes/no/any" branch is exercised today (current release ships no sig
 // and no pubkey is embedded). Until both are in place, users who want to
@@ -919,16 +930,30 @@ async fn verify_signature(
             let _ = archive_path;
             Ok(())
         }
-        (Some(_sig), None, _) => {
+        (Some(_sig), None, true) => {
             eprintln!(
                 "self-update WARN: release {} ships signature {} but this binary has no \
                  embedded public key to verify against (MNEME_RELEASE_PUBKEY = None). \
-                 Proceeding because verification is impossible without a key.",
+                 Proceeding because --allow-unsigned was passed.",
                 release.tag_name, sig_name,
             );
             let _ = archive_path;
             Ok(())
         }
+        (Some(_sig), None, false) => Err(CliError::Other(format!(
+            "self-update: refusing — release {} ships signature {} but this binary \n\
+             has no embedded public key to verify against (MNEME_RELEASE_PUBKEY = None). \n\
+             A published signature with no key on the receiver side is the exact \n\
+             supply-chain shape the signing mechanism is meant to block — silently \n\
+             accepting it would let an attacker who controls the release CDN ship a \n\
+             tampered binary alongside an unverifiable .minisig and have older mneme \n\
+             builds install it. \n\
+             Either: \n\
+               • upgrade mneme to a build that embeds MNEME_RELEASE_PUBKEY, or \n\
+               • pass --allow-unsigned to override deliberately (acknowledging that \n\
+                 you are skipping signature verification this run).",
+            release.tag_name, sig_name,
+        ))),
         (Some(sig), Some(_pubkey), _) => {
             // CRIT-9 fix (2026-05-05 audit): this branch was previously a
             // silent Ok(()) "placeholder". The audit caught that the moment
