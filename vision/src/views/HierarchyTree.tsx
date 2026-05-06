@@ -99,8 +99,18 @@ export function HierarchyTree(): JSX.Element {
         const width = Math.max(1200, maxDepth * 220);
         const height = Math.max(600, Math.min(4500, root.leaves().length * 18));
 
+        // L11 fix (2026-05-05 audit): bind the laid-out root to its
+        // post-layout type. `layout(root)` mutates in place, transforming
+        // the HierarchyNode<T> children into HierarchyPointNode<T> (with
+        // x/y/depth fields populated). Without this binding, downstream
+        // descendants() calls return HierarchyNode<T> by declared type,
+        // and every consumer needed an `as d3.HierarchyPointNode<T>`
+        // cast. Single binding here = zero downstream casts.
         const layout = d3.tree<HierarchyNode>().size([height - 40, width - 280]);
-        layout(root);
+        const positioned = layout(root);
+        // From here, use `positioned` instead of `root` whenever the
+        // x/y/depth coordinates are needed.
+        void root; // suppress unused-binding for the pre-layout root
 
         const svg = d3
           .select(svgRef.current)
@@ -118,7 +128,7 @@ export function HierarchyTree(): JSX.Element {
           .attr("stroke", "rgba(122, 138, 166, 0.45)")
           .attr("stroke-width", 1.2)
           .selectAll("path")
-          .data(root.links() as d3.HierarchyPointLink<HierarchyNode>[])
+          .data(positioned.links())
           .join("path")
           .attr(
             "d",
@@ -134,14 +144,11 @@ export function HierarchyTree(): JSX.Element {
         const node = g
           .append("g")
           .selectAll("g")
-          .data(root.descendants())
+          .data(positioned.descendants())
           .join("g")
           .attr(
             "transform",
-            (d) =>
-              `translate(${(d as d3.HierarchyPointNode<HierarchyNode>).y},${
-                (d as d3.HierarchyPointNode<HierarchyNode>).x
-              })`,
+            (d) => `translate(${d.y},${d.x})`,
           );
 
         // Node halo (depth-1 only) so the top-level domains pop without
