@@ -1130,6 +1130,42 @@ fn layout_cache_put(project: &str, limit: usize, rows: Vec<LayoutPosition>) {
     }
 }
 
+/// Audit fix TEST-NEW-10 (2026-05-06 multi-agent fan-out, testing-
+/// reviewer): direct test-only writer that lets a unit test back-
+/// date `inserted_at` so the TTL-expiry branch is exercisable
+/// without sleeping 30 seconds. Production callers use
+/// `layout_cache_put` (which always stamps `Instant::now()`).
+#[cfg(test)]
+fn layout_cache_put_with_age(
+    project: &str,
+    limit: usize,
+    rows: Vec<LayoutPosition>,
+    age: std::time::Duration,
+) {
+    let cache = LAYOUT_CACHE.get_or_init(|| std::sync::Mutex::new(Default::default()));
+    if let Ok(mut guard) = cache.lock() {
+        let inserted_at = std::time::Instant::now()
+            .checked_sub(age)
+            .unwrap_or_else(std::time::Instant::now);
+        guard.insert(
+            (project.to_string(), limit),
+            LayoutCacheEntry { rows, inserted_at },
+        );
+    }
+}
+
+/// Audit fix TEST-NEW-10: explicit clear so tests don't see each
+/// other's writes. The static is process-global, so tests use
+/// distinctive project-key prefixes AND clear by-key after
+/// themselves.
+#[cfg(test)]
+fn layout_cache_clear_for_test(project: &str, limit: usize) {
+    let cache = LAYOUT_CACHE.get_or_init(|| std::sync::Mutex::new(Default::default()));
+    if let Ok(mut guard) = cache.lock() {
+        guard.remove(&(project.to_string(), limit));
+    }
+}
+
 /// `GET /api/graph/layout` — pre-computed (q, x, y) positions for
 /// the same node window the paired `/api/graph/nodes` call returns.
 async fn api_graph_layout(
@@ -3834,5 +3870,108 @@ mod tests {
             v.get("phase").is_none(),
             "/api/daemon/health must not leak phase"
         );
+    }
+
+    // ---------------------------------------------------------------
+    // Audit fix TEST-NEW-10 (2026-05-06 multi-agent fan-out, testing-
+    // reviewer): the HIGH-22 layout-cache fix's TTL behaviour shipped
+    // with no test. A regression that always recomputes (the cache
+    // either bypassed or always misses) would pass cargo check and
+    // serve users with the original Item #124 first-paint regression
+    // unnoticed. Exercise the four operational branches:
+    //   (a) cache-miss returns None,
+    //   (b) put-then-get within TTL returns the same data (cache hit),
+    //   (c) entry past TTL is treated as miss (TTL expiry),
+    //   (d) different (project, limit) keys are isolated.
+    // ---------------------------------------------------------------
+
+    fn fresh_position(q: &str, x: f64, y: f64) -> LayoutPosition {
+        LayoutPosition {
+            q: q.to_string(),
+            x,
+            y,
+        }
+    }
+
+    #[test]
+    fn layout_cache_miss_returns_none_on_first_lookup() {
+        // Use a unique project key so this test is order-independent
+        // against the process-global static.
+        let proj = "test-NEW-10-miss";
+        layout_cache_clear_for_test(proj, 100);
+        let out = layout_cache_get(proj, 100);
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn layout_cache_hit_within_ttl_returns_same_rows() {
+        let proj = "test-NEW-10-hit";
+        layout_cache_clear_for_test(proj, 50);
+        let rows = vec![fresh_position("a", 1.0, 2.0), fresh_position("b", 3.0, 4.0)];
+        layout_cache_put(proj, 50, rows.clone());
+        let hit = layout_cache_get(proj, 50).expect("cache must hit within TTL");
+        assert_eq!(hit.len(), 2);
+        assert_eq!(hit[0].q, "a");
+        assert_eq!(hit[1].q, "b");
+        layout_cache_clear_for_test(proj, 50);
+    }
+
+    #[test]
+    fn layout_cache_expired_entry_is_treated_as_miss() {
+        let proj = "test-NEW-10-ttl";
+        layout_cache_clear_for_test(proj, 75);
+        // Insert with an inserted_at that is already older than the
+        // 30s TTL — should behave the same as a cold miss.
+        let rows = vec![fresh_position("stale", 9.0, 9.0)];
+        layout_cache_put_with_age(
+            proj,
+            75,
+            rows,
+            std::time::Duration::from_secs(60), // 2x TTL
+        );
+        let out = layout_cache_get(proj, 75);
+        assert!(
+            out.is_none(),
+            "an entry inserted 60s ago must be treated as a cache miss \
+             when LAYOUT_CACHE_TTL is 30s"
+        );
+        // Also assert the stale entry was DROPPED (the cache trims
+        // expired keys to keep the map bounded).
+        let again = layout_cache_get(proj, 75);
+        assert!(
+            again.is_none(),
+            "stale entries should not linger in the map after a miss"
+        );
+    }
+
+    #[test]
+    fn layout_cache_keys_are_isolated_by_project_and_limit() {
+        let proj_a = "test-NEW-10-iso-a";
+        let proj_b = "test-NEW-10-iso-b";
+        layout_cache_clear_for_test(proj_a, 100);
+        layout_cache_clear_for_test(proj_b, 100);
+        layout_cache_clear_for_test(proj_a, 200);
+
+        layout_cache_put(proj_a, 100, vec![fresh_position("a-100", 0.0, 0.0)]);
+
+        // Different project, same limit -> miss.
+        assert!(
+            layout_cache_get(proj_b, 100).is_none(),
+            "proj_b must not see proj_a's entry"
+        );
+        // Same project, different limit -> miss.
+        assert!(
+            layout_cache_get(proj_a, 200).is_none(),
+            "limit=200 must not see limit=100's entry"
+        );
+        // Same project + same limit -> hit.
+        assert!(
+            layout_cache_get(proj_a, 100).is_some(),
+            "exact key must hit"
+        );
+
+        layout_cache_clear_for_test(proj_a, 100);
+        layout_cache_clear_for_test(proj_b, 100);
+        layout_cache_clear_for_test(proj_a, 200);
     }
 }
