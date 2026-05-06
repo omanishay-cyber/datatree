@@ -57,10 +57,38 @@ export interface ProjectsResponse {
  * both: prefer the new fields, fall back to the minimal ones, derive
  * display_name from the path basename when missing.
  */
+/**
+ * HIGH-40 fix (2026-05-05 audit): replace 5 raw `as string` casts on
+ * Record<string, unknown> fields with `typeof === 'string'` checks.
+ * The daemon may legitimately ship any of these fields as a number
+ * (legacy id), null (no canonical path resolved), or undefined
+ * (older response shape). The `??` fallback chain saw a real-but-
+ * non-string value as truthy and propagated it into the typed
+ * ProjectSummary, where downstream `display_name.split(...)` and
+ * `hash.length > 0` filters then threw at runtime.
+ *
+ * Author already used the `typeof === 'string' ? value : default`
+ * pattern in graph.ts:472. This fix aligns projects.ts with that
+ * convention.
+ */
+function pickString(...values: unknown[]): string {
+  for (const v of values) {
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return "";
+}
+
+function pickStringOrNull(...values: unknown[]): string | null {
+  for (const v of values) {
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return null;
+}
+
 function normalizeProject(raw: Record<string, unknown>): ProjectSummary {
-  const hash = (raw.hash as string) ?? (raw.id as string) ?? "";
-  const canonical_path = (raw.canonical_path as string) ?? (raw.path as string) ?? null;
-  let display_name = (raw.display_name as string) ?? "";
+  const hash = pickString(raw.hash, raw.id);
+  const canonical_path = pickStringOrNull(raw.canonical_path, raw.path);
+  let display_name = pickString(raw.display_name);
   if (!display_name && canonical_path) {
     const segs = canonical_path.split(/[\\/]/).filter(Boolean);
     display_name = segs[segs.length - 1] ?? hash.slice(0, 8);
@@ -73,7 +101,7 @@ function normalizeProject(raw: Record<string, unknown>): ProjectSummary {
     indexed_files: Number(raw.indexed_files ?? 0),
     nodes: Number(raw.nodes ?? 0),
     edges: Number(raw.edges ?? 0),
-    last_indexed_at: (raw.last_indexed_at as string) ?? null,
+    last_indexed_at: pickStringOrNull(raw.last_indexed_at),
     has_graph_db: Boolean(raw.has_graph_db),
   };
 }
