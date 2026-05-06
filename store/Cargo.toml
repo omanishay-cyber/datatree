@@ -38,6 +38,12 @@ once_cell.workspace = true
 futures.workspace = true
 clap.workspace = true
 parking_lot = "0.12"
+# CRIT-14 fix (2026-05-05 audit): cross-process file lock so the
+# supervisor's writer task respects the same per-project .lock that
+# `mneme build` / `mneme rebuild` take in the CLI. Same crate the
+# CLI's BuildLock uses, so the lock semantics are wire-compatible
+# (LockFileEx on Windows, flock on Unix).
+fs2 = "0.4"
 
 [features]
 default = []

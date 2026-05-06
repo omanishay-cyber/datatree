@@ -345,6 +345,38 @@ impl DbQuery for DefaultQuery {
 
 fn spawn_writer_task(path: PathBuf, mut rx: mpsc::Receiver<WriteCmd>) {
     tokio::task::spawn_blocking(move || {
+        // CRIT-14 fix (2026-05-05 audit): take the per-project file lock
+        // BEFORE opening the SQLite connection so the supervisor's
+        // writer task is mutually exclusive with the CLI's BuildLock
+        // (cli/src/build_lock.rs). Without this, two writer tasks
+        // (supervisor watch-build + CLI `mneme build`) could open the
+        // same graph.db, each spawn their own writer, and race on
+        // FTS5 rebuild + INSERT OR REPLACE — producing duplicate
+        // qualified_name rows that survive the UNIQUE constraint via
+        // the trigger DELETE-then-INSERT pattern.
+        //
+        // Lock path: `<shard_dir>/.lock`, identical location used by
+        // the CLI's BuildLock. fs2 maps to LockFileEx on Windows and
+        // flock on Unix, so the cross-process semantics are correct
+        // on both platforms.
+        let lock_path = path.parent().map(|p| p.join(".lock"));
+        let _lock_guard = if let Some(lock_path) = lock_path {
+            match acquire_writer_lock(&lock_path) {
+                Ok(guard) => Some(guard),
+                Err(e) => {
+                    error!(
+                        path = %path.display(),
+                        lock = %lock_path.display(),
+                        error = %e,
+                        "writer cannot acquire per-project file lock; CLI build may be in progress"
+                    );
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+
         let conn = match rusqlite::Connection::open(&path) {
             Ok(c) => c,
             Err(e) => {
@@ -455,6 +487,60 @@ fn num_cpus_or(default: usize) -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(default)
+}
+
+/// CRIT-14 fix (2026-05-05 audit): RAII guard around the per-project
+/// file lock. Holds the file handle for the lifetime of the writer
+/// task; Drop releases the OS-level lock automatically when the
+/// handle is dropped. We don't unlink the lock file (CLI's BuildLock
+/// owns that lifecycle).
+struct WriterLockGuard {
+    _file: std::fs::File,
+}
+
+/// Acquire the per-project file lock used by the CLI's BuildLock.
+/// Blocks until acquired (with periodic retry) so a CLI build that
+/// holds the lock causes the daemon's writer task to wait politely
+/// rather than race.
+fn acquire_writer_lock(lock_path: &std::path::Path) -> std::io::Result<WriterLockGuard> {
+    use fs2::FileExt;
+    use std::fs::OpenOptions;
+    use std::time::Instant;
+
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(lock_path)?;
+
+    // Try non-blocking first to keep the common path (no contention)
+    // hot. If contention, log + spin every 250ms with a generous
+    // ceiling so the writer task never wedges forever.
+    let started = Instant::now();
+    let max_wait = std::time::Duration::from_secs(60 * 5); // 5 minutes
+    loop {
+        match file.try_lock_exclusive() {
+            Ok(()) => return Ok(WriterLockGuard { _file: file }),
+            Err(e) if started.elapsed() > max_wait => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    format!(
+                        "writer-task lock held for >5min by another process: {e}; \
+                         giving up to avoid wedging the daemon"
+                    ),
+                ));
+            }
+            Err(_) => {
+                // Held by CLI build or another supervisor instance.
+                // Sleep and retry.
+                std::thread::sleep(std::time::Duration::from_millis(250));
+            }
+        }
+    }
 }
 
 // Used by Timestamp imports indirectly; keep a no-op anchor so unused import warnings stay quiet.
