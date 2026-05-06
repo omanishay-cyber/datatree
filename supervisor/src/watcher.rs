@@ -162,6 +162,20 @@ impl WatcherStatsHandle {
     fn bump_ignored(&self) {
         self.0.lock().total_ignored = self.0.lock().total_ignored.saturating_add(1);
     }
+
+    /// Audit fix TEST-NEW-5 (2026-05-06 multi-agent fan-out, testing-
+    /// reviewer): the M-7 overflow-drop counter shipped with no test.
+    /// A future refactor that moves the increment-site (e.g. behind
+    /// a conditionally-compiled warn!) would silently turn the
+    /// counter into dead metadata without breaking any check. Wrap
+    /// the increment in a public method so tests can hit it without
+    /// driving the whole notify watcher loop, and so the call-site
+    /// in `run_watcher_with_bus` can use a single named function
+    /// rather than reach into the Mutex directly.
+    pub fn note_overflow_drop(&self) {
+        let mut s = self.0.lock();
+        s.total_dropped_overflow = s.total_dropped_overflow.saturating_add(1);
+    }
 }
 
 /// One debounced batch ready for re-indexing.
@@ -280,11 +294,11 @@ pub async fn run_watcher_with_bus(
                                     // WatcherStats.total_dropped_overflow so operators see it
                                     // on /health and `mneme doctor`. Without this the only
                                     // signal was a warn! log line that's easy to miss.
-                                    {
-                                        let mut s = stats_for_debounce.0.lock();
-                                        s.total_dropped_overflow =
-                                            s.total_dropped_overflow.saturating_add(1);
-                                    }
+                                    // Audit fix TEST-NEW-5: route through
+                                    // WatcherStatsHandle::note_overflow_drop so the
+                                    // increment site is unit-testable without driving
+                                    // the full notify loop.
+                                    stats_for_debounce.note_overflow_drop();
                                     warn!(pending = pending.len(), cap = pending_cap, "debounce queue full; dropping event");
                                     continue;
                                 }
@@ -1065,5 +1079,49 @@ mod tests {
         assert_eq!(snap.total_reindexed, 10);
         assert!(snap.p50_ms <= snap.p95_ms);
         assert!(snap.p95_ms <= snap.p99_ms);
+    }
+
+    /// Audit fix TEST-NEW-5 (2026-05-06 multi-agent fan-out, testing-
+    /// reviewer): the M-7 overflow-drop counter shipped with no
+    /// test. Pin the contract so a future refactor that forgets to
+    /// call note_overflow_drop (or accidentally bumps a different
+    /// counter) is caught on the spot.
+    #[test]
+    fn note_overflow_drop_increments_counter_idempotently() {
+        let h = WatcherStatsHandle::new();
+        let initial = h.snapshot().total_dropped_overflow;
+        assert_eq!(initial, 0);
+
+        h.note_overflow_drop();
+        assert_eq!(h.snapshot().total_dropped_overflow, 1);
+
+        // Multiple calls accumulate (no debouncing, no cap collapse).
+        for _ in 0..49 {
+            h.note_overflow_drop();
+        }
+        assert_eq!(h.snapshot().total_dropped_overflow, 50);
+
+        // Other counters remain at zero — the bump is field-targeted.
+        let snap = h.snapshot();
+        assert_eq!(snap.total_reindexed, 0);
+        assert_eq!(snap.total_ignored, 0);
+        assert_eq!(snap.total_deletes, 0);
+    }
+
+    /// Pin the public-API contract: WatcherStats must serialise the
+    /// `total_dropped_overflow` field. The field has `#[derive(Serialize)]`
+    /// implicitly via the struct-level derive; this test guards against
+    /// someone adding `#[serde(skip)]` on the wrong field during a
+    /// drive-by edit. The /health endpoint depends on the field
+    /// being present in JSON output — operators alert on it.
+    #[test]
+    fn watcher_stats_json_includes_total_dropped_overflow() {
+        let mut s = WatcherStats::default();
+        s.total_dropped_overflow = 7;
+        let json = serde_json::to_string(&s).expect("serialise WatcherStats");
+        assert!(
+            json.contains("\"total_dropped_overflow\":7"),
+            "expected total_dropped_overflow=7 in JSON, got {json}",
+        );
     }
 }
