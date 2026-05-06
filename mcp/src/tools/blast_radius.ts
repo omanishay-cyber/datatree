@@ -15,6 +15,7 @@
 import { z } from "zod";
 import {
   BlastRadiusInput,
+  TruncationMixin,
   type ToolDescriptor,
 } from "../types.ts";
 import { blastRadius, boundFilePath } from "../store.ts";
@@ -33,21 +34,23 @@ const CodeRef = z.object({
 
 const RiskLevel = z.enum(["low", "medium", "high", "critical"]);
 
-const BlastRadiusOutputExtended = z.object({
-  // --- original fields ---
-  target: z.string(),
-  affected_files: z.array(z.string()),
-  affected_symbols: z.array(z.string()),
-  test_files: z.array(z.string()),
-  total_count: z.number().int(),
-  critical_paths: z.array(z.string()).default([]),
-  // --- F7 additions ---
-  direct_consumers: z.array(CodeRef).default([]),
-  transitive_consumers: z.array(CodeRef).default([]),
-  tests_affected: z.array(CodeRef).default([]),
-  decisions_assumed: z.array(z.string()).default([]),
-  risk: RiskLevel.default("low"),
-});
+const BlastRadiusOutputExtended = z
+  .object({
+    // --- original fields ---
+    target: z.string(),
+    affected_files: z.array(z.string()),
+    affected_symbols: z.array(z.string()),
+    test_files: z.array(z.string()),
+    total_count: z.number().int(),
+    critical_paths: z.array(z.string()).default([]),
+    // --- F7 additions ---
+    direct_consumers: z.array(CodeRef).default([]),
+    transitive_consumers: z.array(CodeRef).default([]),
+    tests_affected: z.array(CodeRef).default([]),
+    decisions_assumed: z.array(z.string()).default([]),
+    risk: RiskLevel.default("low"),
+  })
+  .extend(TruncationMixin.shape);
 
 type BlastRadiusInputT = z.infer<typeof BlastRadiusInput>;
 type BlastRadiusOutputExtendedT = z.infer<typeof BlastRadiusOutputExtended>;

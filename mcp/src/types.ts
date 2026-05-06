@@ -15,6 +15,30 @@
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
+// HIGH-43 — Truncation fields mixin
+//
+// Every tool's outputSchema MUST include these two optional fields so that
+// MCP clients that strictly validate wire responses (Cursor, IDE integrations,
+// custom clients) never see a schema violation when result-cap.ts truncates
+// an oversized payload.
+//
+// Usage — extend any output schema:
+//   export const MyOutput = z.object({ ... }).extend(TruncationMixin.shape);
+//
+// Do NOT add to `required`. Present only when the result was truncated.
+// ---------------------------------------------------------------------------
+export const TruncationMixin = z.object({
+  _truncated: z
+    .boolean()
+    .optional()
+    .describe("True when the result was truncated to fit the byte budget"),
+  truncation_reason: z
+    .string()
+    .optional()
+    .describe("Human-readable explanation present only when _truncated is true"),
+});
+
+// ---------------------------------------------------------------------------
 // Primitives
 // ---------------------------------------------------------------------------
 
@@ -78,7 +102,7 @@ export const RecallDecisionOutput = z.object({
   decisions: z.array(Decision),
   query_id: z.string(),
   latency_ms: z.number(),
-});
+}).extend(TruncationMixin.shape);
 
 export const RecallConversationInput = z.object({
   query: z.string().min(1),
@@ -101,7 +125,7 @@ export type ConversationTurn = z.infer<typeof ConversationTurn>;
 
 export const RecallConversationOutput = z.object({
   turns: z.array(ConversationTurn),
-});
+}).extend(TruncationMixin.shape);
 
 export const RecallConceptInput = z.object({
   query: z.string().min(1),
@@ -131,7 +155,7 @@ export type Concept = z.infer<typeof Concept>;
 
 export const RecallConceptOutput = z.object({
   concepts: z.array(Concept),
-});
+}).extend(TruncationMixin.shape);
 
 export const RecallFileInput = z.object({
   path: z.string().min(1),
@@ -148,7 +172,7 @@ export const FileState = z.object({
   last_modified_at: z.string().nullable(),
   blast_radius_count: z.number().int().nullable(),
   test_coverage: z.number().min(0).max(1).nullable(),
-});
+}).extend(TruncationMixin.shape);
 export type FileState = z.infer<typeof FileState>;
 
 export const RecallTodoInput = z.object({
@@ -172,7 +196,7 @@ export const Todo = z.object({
 });
 export type Todo = z.infer<typeof Todo>;
 
-export const RecallTodoOutput = z.object({ todos: z.array(Todo) });
+export const RecallTodoOutput = z.object({ todos: z.array(Todo) }).extend(TruncationMixin.shape);
 
 export const RecallConstraintInput = z.object({
   scope: z.enum(["global", "project", "file"]).default("project"),
@@ -191,7 +215,7 @@ export type Constraint = z.infer<typeof Constraint>;
 
 export const RecallConstraintOutput = z.object({
   constraints: z.array(Constraint),
-});
+}).extend(TruncationMixin.shape);
 
 // ---------------------------------------------------------------------------
 // Tool I/O — Code Graph (§5.2)
@@ -223,7 +247,7 @@ export const BlastRadiusOutput = z.object({
    * downstream code can branch on its presence.
    */
   error: z.string().optional(),
-});
+}).extend(TruncationMixin.shape);
 
 export const CallGraphInput = z.object({
   function: z.string().min(1),
@@ -247,7 +271,7 @@ export const CallGraphEdge = z.object({
 export const CallGraphOutput = z.object({
   nodes: z.array(CallGraphNode),
   edges: z.array(CallGraphEdge),
-});
+}).extend(TruncationMixin.shape);
 
 export const FindReferencesInput = z.object({
   symbol: z.string().min(1),
@@ -284,7 +308,7 @@ export const FindReferencesOutput = z.object({
   limit: z.number().int().positive(),
   offset: z.number().int().nonnegative(),
   has_more: z.boolean(),
-});
+}).extend(TruncationMixin.shape);
 
 export const DependencyChainInput = z.object({
   file: z.string().min(1),
@@ -295,7 +319,7 @@ export const DependencyChainOutput = z.object({
   file: z.string(),
   forward: z.array(z.string()),
   reverse: z.array(z.string()),
-});
+}).extend(TruncationMixin.shape);
 
 export const CyclicDepsInput = z.object({
   scope: z.enum(["project", "workspace"]).default("project"),
@@ -304,7 +328,7 @@ export const CyclicDepsInput = z.object({
 export const CyclicDepsOutput = z.object({
   cycles: z.array(z.array(z.string())),
   count: z.number().int(),
-});
+}).extend(TruncationMixin.shape);
 
 // ---------------------------------------------------------------------------
 // Tool I/O — Multimodal (§5.3)
@@ -323,7 +347,7 @@ export const GraphifyCorpusOutput = z.object({
   communities_count: z.number().int(),
   duration_ms: z.number(),
   report_path: z.string(),
-});
+}).extend(TruncationMixin.shape);
 
 export const GodNodesInput = z.object({
   project: z.string().optional(),
@@ -341,7 +365,7 @@ export const GodNode = z.object({
   community_id: z.number().int().nullable(),
 });
 
-export const GodNodesOutput = z.object({ gods: z.array(GodNode) });
+export const GodNodesOutput = z.object({ gods: z.array(GodNode) }).extend(TruncationMixin.shape);
 
 export const SurprisingConnectionsInput = z.object({
   min_confidence: z.number().min(0).max(1).default(0.7),
@@ -360,7 +384,7 @@ export const Surprise = z.object({
 
 export const SurprisingConnectionsOutput = z.object({
   surprises: z.array(Surprise),
-});
+}).extend(TruncationMixin.shape);
 
 export const AuditCorpusInput = z.object({
   path: z.string().optional(),
@@ -370,7 +394,7 @@ export const AuditCorpusOutput = z.object({
   report_markdown: z.string(),
   report_path: z.string(),
   warnings: z.array(z.string()),
-});
+}).extend(TruncationMixin.shape);
 
 // ---------------------------------------------------------------------------
 // Tool I/O — Drift & Audit (§5.4)
@@ -402,7 +426,7 @@ export const AuditOutput = z.object({
     by_severity: z.record(z.string(), z.number().int()),
     by_scanner: z.record(z.string(), z.number().int()),
   }),
-});
+}).extend(TruncationMixin.shape);
 
 export const DriftFindingsInput = z.object({
   severity: SeverityEnum.optional(),
@@ -412,18 +436,20 @@ export const DriftFindingsInput = z.object({
 
 export const DriftFindingsOutput = z.object({
   findings: z.array(Finding),
-});
+}).extend(TruncationMixin.shape);
 
 export const ScannerInput = z.object({
   file: z.string().optional(),
   scope: z.enum(["project", "file", "diff"]).default("project"),
 });
 
-export const ScannerOutput = z.object({
-  findings: z.array(Finding),
-  scanner: z.string(),
-  duration_ms: z.number(),
-});
+export const ScannerOutput = z
+  .object({
+    findings: z.array(Finding),
+    scanner: z.string(),
+    duration_ms: z.number(),
+  })
+  .extend(TruncationMixin.shape);
 
 // ---------------------------------------------------------------------------
 // Tool I/O — Step Ledger (§5.5)
@@ -451,68 +477,80 @@ export const StepStatusInput = z.object({
   session_id: z.string().optional(),
 });
 
-export const StepStatusOutput = z.object({
-  current_step_id: z.string().nullable(),
-  steps: z.array(Step),
-  drift_score_total: z.number().int(),
-  goal_root: z.string().nullable(),
-});
+export const StepStatusOutput = z
+  .object({
+    current_step_id: z.string().nullable(),
+    steps: z.array(Step),
+    drift_score_total: z.number().int(),
+    goal_root: z.string().nullable(),
+  })
+  .extend(TruncationMixin.shape);
 
 export const StepShowInput = z.object({
   step_id: z.string(),
 });
 
-export const StepShowOutput = z.object({ step: Step });
+export const StepShowOutput = z
+  .object({ step: Step })
+  .extend(TruncationMixin.shape);
 
 export const StepVerifyInput = z.object({
   step_id: z.string(),
   dry_run: z.boolean().default(false),
 });
 
-export const StepVerifyOutput = z.object({
-  step_id: z.string(),
-  passed: z.boolean(),
-  proof: z.string(),
-  exit_code: z.number().int(),
-  duration_ms: z.number(),
-});
+export const StepVerifyOutput = z
+  .object({
+    step_id: z.string(),
+    passed: z.boolean(),
+    proof: z.string(),
+    exit_code: z.number().int(),
+    duration_ms: z.number(),
+  })
+  .extend(TruncationMixin.shape);
 
 export const StepCompleteInput = z.object({
   step_id: z.string(),
   force: z.boolean().default(false),
 });
 
-export const StepCompleteOutput = z.object({
-  step_id: z.string(),
-  completed: z.boolean(),
-  next_step_id: z.string().nullable(),
-  // A5-017 (2026-05-04): when the supervisor IPC is unreachable we cannot
-  // actually mark the step complete. The prior shape returned
-  // `{ completed: false, next_step_id: <suggested> }` which the model
-  // could plausibly read as "the step succeeded; here is the next one".
-  // `note` exists to disambiguate — populated only on the failure path.
-  note: z.string().optional(),
-});
+export const StepCompleteOutput = z
+  .object({
+    step_id: z.string(),
+    completed: z.boolean(),
+    next_step_id: z.string().nullable(),
+    // A5-017 (2026-05-04): when the supervisor IPC is unreachable we cannot
+    // actually mark the step complete. The prior shape returned
+    // `{ completed: false, next_step_id: <suggested> }` which the model
+    // could plausibly read as "the step succeeded; here is the next one".
+    // `note` exists to disambiguate — populated only on the failure path.
+    note: z.string().optional(),
+  })
+  .extend(TruncationMixin.shape);
 
 export const StepResumeInput = z.object({
   session_id: z.string().optional(),
 });
 
-export const StepResumeOutput = z.object({
-  bundle: z.string(),
-  current_step_id: z.string().nullable(),
-  total_steps: z.number().int(),
-});
+export const StepResumeOutput = z
+  .object({
+    bundle: z.string(),
+    current_step_id: z.string().nullable(),
+    total_steps: z.number().int(),
+  })
+  .extend(TruncationMixin.shape);
 
 export const StepPlanFromInput = z.object({
   markdown_path: z.string().min(1),
   session_id: z.string().optional(),
 });
 
-export const StepPlanFromOutput = z.object({
-  steps_created: z.number().int(),
-  root_step_id: z.string(),
-});
+export const StepPlanFromOutput = z
+  .object({
+    steps_created: z.number().int(),
+    root_step_id: z.string(),
+  })
+  .extend(TruncationMixin.shape);
 
 // ---------------------------------------------------------------------------
 // Tool I/O — Step Ledger recall / resume / why  (F1 + F6)
@@ -560,10 +598,12 @@ export const MnemeRecallInput = z.object({
 });
 export type MnemeRecallInput = z.infer<typeof MnemeRecallInput>;
 
-export const MnemeRecallOutput = z.object({
-  entries: z.array(LedgerEntry),
-  formatted: z.string(),
-});
+export const MnemeRecallOutput = z
+  .object({
+    entries: z.array(LedgerEntry),
+    formatted: z.string(),
+  })
+  .extend(TruncationMixin.shape);
 export type MnemeRecallOutput = z.infer<typeof MnemeRecallOutput>;
 
 export const MnemeResumeInput = z.object({
@@ -572,15 +612,17 @@ export const MnemeResumeInput = z.object({
 });
 export type MnemeResumeInput = z.infer<typeof MnemeResumeInput>;
 
-export const MnemeResumeOutput = z.object({
-  session_id: z.string(),
-  generated_at: z.string(),
-  recent_decisions: z.array(LedgerEntry),
-  recent_implementations: z.array(LedgerEntry),
-  open_questions: z.array(LedgerEntry),
-  timeline: z.array(LedgerEntry),
-  formatted: z.string(),
-});
+export const MnemeResumeOutput = z
+  .object({
+    session_id: z.string(),
+    generated_at: z.string(),
+    recent_decisions: z.array(LedgerEntry),
+    recent_implementations: z.array(LedgerEntry),
+    open_questions: z.array(LedgerEntry),
+    timeline: z.array(LedgerEntry),
+    formatted: z.string(),
+  })
+  .extend(TruncationMixin.shape);
 export type MnemeResumeOutput = z.infer<typeof MnemeResumeOutput>;
 
 export const MnemeWhyInput = z.object({
@@ -589,19 +631,21 @@ export const MnemeWhyInput = z.object({
 });
 export type MnemeWhyInput = z.infer<typeof MnemeWhyInput>;
 
-export const MnemeWhyOutput = z.object({
-  question: z.string(),
-  decisions: z.array(LedgerEntry),
-  git_commits: z.array(
-    z.object({
-      sha: z.string(),
-      date: z.string(),
-      subject: z.string(),
-    }),
-  ),
-  related_concepts: z.array(z.string()),
-  formatted: z.string(),
-});
+export const MnemeWhyOutput = z
+  .object({
+    question: z.string(),
+    decisions: z.array(LedgerEntry),
+    git_commits: z.array(
+      z.object({
+        sha: z.string(),
+        date: z.string(),
+        subject: z.string(),
+      }),
+    ),
+    related_concepts: z.array(z.string()),
+    formatted: z.string(),
+  })
+  .extend(TruncationMixin.shape);
 export type MnemeWhyOutput = z.infer<typeof MnemeWhyOutput>;
 
 // ---------------------------------------------------------------------------
@@ -612,11 +656,13 @@ export const SnapshotInput = z.object({
   label: z.string().optional(),
 });
 
-export const SnapshotOutput = z.object({
-  snapshot_id: z.string(),
-  created_at: z.string(),
-  size_bytes: z.number().int(),
-});
+export const SnapshotOutput = z
+  .object({
+    snapshot_id: z.string(),
+    created_at: z.string(),
+    size_bytes: z.number().int(),
+  })
+  .extend(TruncationMixin.shape);
 
 export const CompareInput = z.object({
   snapshot_a: z.string(),
@@ -632,26 +678,30 @@ export const Diff = z.object({
   findings_introduced: z.number().int(),
 });
 
-export const CompareOutput = z.object({ diff: Diff });
+export const CompareOutput = z
+  .object({ diff: Diff })
+  .extend(TruncationMixin.shape);
 
 export const RewindInput = z.object({
   file: z.string().min(1),
   when: z.string().min(1),
 });
 
-export const RewindOutput = z.object({
-  file: z.string(),
-  when: z.string(),
-  // v0.3.x: snapshots store .db files but NOT the underlying file bytes,
-  // so we can only return a metadata summary (path, sha, language, line +
-  // byte counts, parsed_at). When the snapshot subsystem starts archiving
-  // the original file content (planned for v0.4) we'll add a sibling
-  // `content` field and flip `content_available` to true.
-  // TODO(v0.4): persist file blobs in snapshots and surface raw content.
-  content_summary: z.string(),
-  content_available: z.boolean(),
-  hash: z.string(),
-});
+export const RewindOutput = z
+  .object({
+    file: z.string(),
+    when: z.string(),
+    // v0.3.x: snapshots store .db files but NOT the underlying file bytes,
+    // so we can only return a metadata summary (path, sha, language, line +
+    // byte counts, parsed_at). When the snapshot subsystem starts archiving
+    // the original file content (planned for v0.4) we'll add a sibling
+    // `content` field and flip `content_available` to true.
+    // TODO(v0.4): persist file blobs in snapshots and surface raw content.
+    content_summary: z.string(),
+    content_available: z.boolean(),
+    hash: z.string(),
+  })
+  .extend(TruncationMixin.shape);
 
 // ---------------------------------------------------------------------------
 // Tool I/O — Health (§5.7)
@@ -659,55 +709,61 @@ export const RewindOutput = z.object({
 
 export const HealthInput = z.object({}).default({});
 
-export const HealthOutput = z.object({
-  status: z.enum(["green", "yellow", "red"]),
-  uptime_seconds: z.number().int(),
-  workers: z.array(
-    z.object({
-      name: z.string(),
-      pid: z.number().int().nullable(),
-      restarts_24h: z.number().int(),
-      rss_mb: z.number(),
-      status: z.string(),
-    }),
-  ),
-  cache_hit_rate: z.number().min(0).max(1),
-  disk_usage_mb: z.number(),
-  queue_depth: z.number().int(),
-  // Raw percentiles in milliseconds. Kept for back-compat with any
-  // dashboard / script that already parses them.
-  p50_ms: z.number(),
-  p95_ms: z.number(),
-  p99_ms: z.number(),
-  // B15 (2026-05-02): human-friendly mirrors. Same numbers as p50_ms /
-  // p99_ms with friendlier names. UIs should prefer these.
-  typical_response_ms: z.number(),
-  slow_response_ms: z.number(),
-});
+export const HealthOutput = z
+  .object({
+    status: z.enum(["green", "yellow", "red"]),
+    uptime_seconds: z.number().int(),
+    workers: z.array(
+      z.object({
+        name: z.string(),
+        pid: z.number().int().nullable(),
+        restarts_24h: z.number().int(),
+        rss_mb: z.number(),
+        status: z.string(),
+      }),
+    ),
+    cache_hit_rate: z.number().min(0).max(1),
+    disk_usage_mb: z.number(),
+    queue_depth: z.number().int(),
+    // Raw percentiles in milliseconds. Kept for back-compat with any
+    // dashboard / script that already parses them.
+    p50_ms: z.number(),
+    p95_ms: z.number(),
+    p99_ms: z.number(),
+    // B15 (2026-05-02): human-friendly mirrors. Same numbers as p50_ms /
+    // p99_ms with friendlier names. UIs should prefer these.
+    typical_response_ms: z.number(),
+    slow_response_ms: z.number(),
+  })
+  .extend(TruncationMixin.shape);
 
 export const DoctorInput = z.object({}).default({});
 
-export const DoctorOutput = z.object({
-  ok: z.boolean(),
-  checks: z.array(
-    z.object({
-      name: z.string(),
-      passed: z.boolean(),
-      detail: z.string(),
-    }),
-  ),
-  recommendations: z.array(z.string()),
-});
+export const DoctorOutput = z
+  .object({
+    ok: z.boolean(),
+    checks: z.array(
+      z.object({
+        name: z.string(),
+        passed: z.boolean(),
+        detail: z.string(),
+      }),
+    ),
+    recommendations: z.array(z.string()),
+  })
+  .extend(TruncationMixin.shape);
 
 export const RebuildInput = z.object({
   scope: z.enum(["graph", "semantic", "all"]).default("graph"),
   confirm: z.boolean().default(false),
 });
 
-export const RebuildOutput = z.object({
-  rebuilt: z.array(z.string()),
-  duration_ms: z.number(),
-});
+export const RebuildOutput = z
+  .object({
+    rebuilt: z.array(z.string()),
+    duration_ms: z.number(),
+  })
+  .extend(TruncationMixin.shape);
 
 // ---------------------------------------------------------------------------
 // Tool I/O — Refactor (closes CRG gap)
@@ -744,24 +800,28 @@ export const RefactorSuggestInput = z.object({
   limit: z.number().int().positive().max(500).default(100),
 });
 
-export const RefactorSuggestOutput = z.object({
-  proposals: z.array(RefactorProposal),
-  scanned_files: z.number().int(),
-  duration_ms: z.number(),
-});
+export const RefactorSuggestOutput = z
+  .object({
+    proposals: z.array(RefactorProposal),
+    scanned_files: z.number().int(),
+    duration_ms: z.number(),
+  })
+  .extend(TruncationMixin.shape);
 
 export const RefactorApplyInput = z.object({
   proposal_id: z.string().min(1),
   dry_run: z.boolean().default(false),
 });
 
-export const RefactorApplyOutput = z.object({
-  proposal_id: z.string(),
-  applied: z.boolean(),
-  backup_path: z.string().nullable(),
-  diff_summary: z.string(),
-  bytes_written: z.number().int().nonnegative(),
-});
+export const RefactorApplyOutput = z
+  .object({
+    proposal_id: z.string(),
+    applied: z.boolean(),
+    backup_path: z.string().nullable(),
+    diff_summary: z.string(),
+    bytes_written: z.number().int().nonnegative(),
+  })
+  .extend(TruncationMixin.shape);
 
 // ---------------------------------------------------------------------------
 // Tool I/O — Wiki (closes CRG gap)
@@ -781,11 +841,13 @@ export const WikiPageSummary = z.object({
   entry_point_count: z.number().int(),
 });
 
-export const WikiGenerateOutput = z.object({
-  pages: z.array(WikiPageSummary),
-  total_pages: z.number().int(),
-  duration_ms: z.number(),
-});
+export const WikiGenerateOutput = z
+  .object({
+    pages: z.array(WikiPageSummary),
+    total_pages: z.number().int(),
+    duration_ms: z.number(),
+  })
+  .extend(TruncationMixin.shape);
 
 export const WikiPageInput = z
   .object({
@@ -797,15 +859,17 @@ export const WikiPageInput = z
     message: "Either slug or topic is required",
   });
 
-export const WikiPageOutput = z.object({
-  slug: z.string(),
-  title: z.string(),
-  community_id: z.number().int(),
-  version: z.number().int(),
-  markdown: z.string(),
-  risk_score: z.number(),
-  generated_at: z.string(),
-});
+export const WikiPageOutput = z
+  .object({
+    slug: z.string(),
+    title: z.string(),
+    community_id: z.number().int(),
+    version: z.number().int(),
+    markdown: z.string(),
+    risk_score: z.number(),
+    generated_at: z.string(),
+  })
+  .extend(TruncationMixin.shape);
 
 // ---------------------------------------------------------------------------
 // Tool I/O — Architecture Overview (closes CRG gap)
@@ -849,16 +913,18 @@ export const HubNodeEntry = z.object({
   file_path: z.string().nullable(),
 });
 
-export const ArchitectureOverviewOutput = z.object({
-  community_count: z.number().int(),
-  node_count: z.number().int(),
-  edge_count: z.number().int(),
-  coupling_matrix: z.array(CouplingCell),
-  risk_index: z.array(CommunityRiskEntry),
-  bridge_nodes: z.array(BridgeNodeEntry),
-  hub_nodes: z.array(HubNodeEntry),
-  captured_at: z.string(),
-});
+export const ArchitectureOverviewOutput = z
+  .object({
+    community_count: z.number().int(),
+    node_count: z.number().int(),
+    edge_count: z.number().int(),
+    coupling_matrix: z.array(CouplingCell),
+    risk_index: z.array(CommunityRiskEntry),
+    bridge_nodes: z.array(BridgeNodeEntry),
+    hub_nodes: z.array(HubNodeEntry),
+    captured_at: z.string(),
+  })
+  .extend(TruncationMixin.shape);
 
 // ---------------------------------------------------------------------------
 // Hook outputs
@@ -978,9 +1044,11 @@ export const SmartQuestion = z.object({
 });
 export type SmartQuestion = z.infer<typeof SmartQuestion>;
 
-export const SmartQuestionsOutput = z.object({
-  questions: z.array(SmartQuestion),
-});
+export const SmartQuestionsOutput = z
+  .object({
+    questions: z.array(SmartQuestion),
+  })
+  .extend(TruncationMixin.shape);
 export type SmartQuestionsOutput = z.infer<typeof SmartQuestionsOutput>;
 
 export const TokenBudgets = {

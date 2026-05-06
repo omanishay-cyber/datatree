@@ -35,6 +35,7 @@ import {
   DriftFindingsInput,
   Finding,
   SeverityEnum,
+  TruncationMixin,
   type Severity,
   type ToolDescriptor,
 } from "../types.ts";
@@ -58,14 +59,16 @@ const ExtendedFinding = Finding.extend({
 });
 type ExtendedFindingT = z.infer<typeof ExtendedFinding>;
 
-const DriftFindingsOutputExtended = z.object({
-  findings: z.array(ExtendedFinding),
-  total_count: z.number().int().nonnegative(),
-  filtered_by: z.object({
-    severity: SeverityEnum.nullable(),
-    scope: z.string().nullable(),
-  }),
-});
+const DriftFindingsOutputExtended = z
+  .object({
+    findings: z.array(ExtendedFinding),
+    total_count: z.number().int().nonnegative(),
+    filtered_by: z.object({
+      severity: SeverityEnum.nullable(),
+      scope: z.string().nullable(),
+    }),
+  })
+  .extend(TruncationMixin.shape);
 
 type DriftFindingsInputT = z.infer<typeof DriftFindingsInput>;
 type DriftFindingsOutputExtendedT = z.infer<typeof DriftFindingsOutputExtended>;
