@@ -29,15 +29,27 @@
 //! crate (CLAUDE.md §"Hard rules").
 
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
+// HIGH-45 split (2026-05-06 audit): StatusCode + json! moved with their
+// only consumers (the health-probe handlers) into api_graph/health.rs.
+// They reappear inside `mod tests` via `use super::*` because the
+// integration tests assert against `StatusCode::OK` and `json!()`-shaped
+// responses; the explicit re-imports below keep that path lint-clean.
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use common::PathManager;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+// HIGH-45 split (2026-05-06 audit): health-probe handlers — api_health,
+// api_daemon_health, voice_stub, stub_handler — extracted into a
+// dedicated submodule to start shrinking the 3,977-LOC god file.
+// build_router() pulls them in via this `use`, so existing callers see
+// no behaviour or wire-shape change. Future commits in v0.4.1 extract
+// projects/, layout/, and graph/ submodules the same way.
+mod health;
+use health::{api_daemon_health, api_health, stub_handler, voice_stub};
 
 /// Optional `?project=<hash>` query param threaded through every
 /// `/api/graph/*` handler. When set the handler resolves the shard at
@@ -242,28 +254,7 @@ pub fn build_router(state: ApiGraphState) -> Router {
         .with_state(state)
 }
 
-/// `GET /api/health` — daemon-side liveness probe used by
-/// `vision/src/api.ts:64`. Mirrors the wire shape of the Bun server's
-/// `/api/health` (see `vision/server.ts:244-253`).
-async fn api_health(State(_state): State<ApiGraphState>) -> impl IntoResponse {
-    // `Date.now()` in JS is unix-millis. We emit unix-millis as `i64`
-    // so the existing TS consumer parses it identically.
-    let ts_ms: i64 = chrono::Utc::now().timestamp_millis();
-    // LOW fix (2026-05-05 audit): drop the internal `phase: "D0"`
-    // milestone code from public health responses. It leaked
-    // pre-release planning state ("D0" = our internal sub-milestone
-    // string) that meant nothing to operators and confused users
-    // reading the JSON response. The other fields (ok/host/port/ts)
-    // carry the actual liveness signal. If a future caller wants to
-    // distinguish daemon flavours we'll add an explicit `version`
-    // field tied to CARGO_PKG_VERSION.
-    Json(json!({
-        "ok": true,
-        "host": "127.0.0.1",
-        "port": 7777,
-        "ts": ts_ms,
-    }))
-}
+// HIGH-45 (2026-05-06 audit): api_health moved to api_graph/health.rs.
 
 /// One discovered shard under `<MNEME_HOME>/projects/<id>/`.
 ///
@@ -518,35 +509,7 @@ async fn api_projects(State(state): State<ApiGraphState>) -> impl IntoResponse {
     })
 }
 
-/// `GET /api/voice` — stubbed voice endpoint, documented as
-/// `phase: "stub"` in v0.3 (CLAUDE.md "Known limitations"). Kept
-/// distinct from the 501 stubs because the wire shape `{enabled,
-/// phase}` is contractual.
-async fn voice_stub() -> impl IntoResponse {
-    Json(json!({
-        "enabled": false,
-        "phase": "stub",
-    }))
-}
-
-/// Generic stub handler for endpoints not yet ported. Returns HTTP 501
-/// with a JSON envelope so the frontend's `placeholderPayload()`
-/// fallback fires cleanly instead of choking on HTML.
-///
-/// LOW fix (2026-05-05 audit): drop the `phase: "D0"` and
-/// `next: "D2-D6"` internal milestone codes from the public 501
-/// envelope. They leaked our planning sub-milestones into responses
-/// users + operators see and meant nothing outside the maintainer
-/// team. The `error: "not_implemented"` carries the only actionable
-/// signal a caller needs.
-async fn stub_handler() -> impl IntoResponse {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({
-            "error": "not_implemented",
-        })),
-    )
-}
+// HIGH-45 (2026-05-06 audit): voice_stub + stub_handler moved to api_graph/health.rs.
 
 // ---------------------------------------------------------------------------
 // F1 D2 — Real `/api/graph/{nodes,edges,status,files,findings}` endpoints
@@ -2979,29 +2942,14 @@ async fn api_graph_hierarchy(
 /*  GET /api/daemon/health — alias for /api/health                      */
 /* -------------------------------------------------------------------- */
 
-/// `GET /api/daemon/health` — alias for `/api/health`. The vision
-/// frontend uses both URLs interchangeably as a daemon liveness probe
-/// (see `vision/src/api/graph.ts:fetchDaemonHealth` and the older
-/// Bun-server `probeDaemon` helper). We mirror the same JSON body so the
-/// frontend doesn't have to discriminate.
-async fn api_daemon_health(State(_state): State<ApiGraphState>) -> impl IntoResponse {
-    let ts_ms: i64 = chrono::Utc::now().timestamp_millis();
-    // LOW fix (2026-05-05 audit): see `api_health` — same drop of
-    // the internal `phase: "D0"` milestone leak. Health alias must
-    // match the canonical /api/health shape exactly.
-    Json(json!({
-        "ok": true,
-        "host": "127.0.0.1",
-        "port": 7777,
-        "ts": ts_ms,
-    }))
-}
+// HIGH-45 (2026-05-06 audit): api_daemon_health moved to api_graph/health.rs.
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use axum::body::Body;
-    use axum::http::Request;
+    use axum::http::{Request, StatusCode};
+    use serde_json::json;
     use tower::ServiceExt; // for `oneshot`
 
     fn test_state() -> ApiGraphState {
