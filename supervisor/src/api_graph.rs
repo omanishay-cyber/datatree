@@ -863,6 +863,57 @@ struct LayoutPosition {
     y: f64,
 }
 
+/// HIGH-22 fix (2026-05-05 audit): in-process layout cache. The
+/// previous implementation ran the full SQL JOIN + Vogel sunflower
+/// computation on every GET. Two rapid SPA tab opens each paid the
+/// full cost. The Item #124 "<500ms first-paint" claim was only true
+/// when the OS page cache was already warm.
+///
+/// Cache key: (project_hash_or_default, limit). The shard's contents
+/// are immutable per `mneme rebuild`; small TTL guards against the
+/// daemon's own watcher reindex changing the node set under us
+/// without an explicit invalidation hook.
+struct LayoutCacheEntry {
+    rows: Vec<LayoutPosition>,
+    inserted_at: std::time::Instant,
+}
+
+static LAYOUT_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<(String, usize), LayoutCacheEntry>>,
+> = std::sync::OnceLock::new();
+
+/// 30-second TTL. Long enough that hopping between tabs hits the
+/// cache; short enough that a fresh build's layout is reflected
+/// without an explicit invalidation call from the watcher.
+const LAYOUT_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn layout_cache_get(project: &str, limit: usize) -> Option<Vec<LayoutPosition>> {
+    let cache = LAYOUT_CACHE.get_or_init(|| std::sync::Mutex::new(Default::default()));
+    let mut guard = cache.lock().ok()?;
+    let key = (project.to_string(), limit);
+    if let Some(entry) = guard.get(&key) {
+        if entry.inserted_at.elapsed() < LAYOUT_CACHE_TTL {
+            return Some(entry.rows.clone());
+        }
+    }
+    // Stale or absent — drop any expired entry to keep the map bounded.
+    guard.remove(&key);
+    None
+}
+
+fn layout_cache_put(project: &str, limit: usize, rows: Vec<LayoutPosition>) {
+    let cache = LAYOUT_CACHE.get_or_init(|| std::sync::Mutex::new(Default::default()));
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(
+            (project.to_string(), limit),
+            LayoutCacheEntry {
+                rows,
+                inserted_at: std::time::Instant::now(),
+            },
+        );
+    }
+}
+
 /// `GET /api/graph/layout` — pre-computed (q, x, y) positions for
 /// the same node window the paired `/api/graph/nodes` call returns.
 async fn api_graph_layout(
@@ -872,6 +923,14 @@ async fn api_graph_layout(
     // Same clamping policy as /nodes + /edges: keeps the daemon's
     // blocking pool from being saturated by a runaway client.
     let limit = q.limit.unwrap_or(2000).min(MAX_GRAPH_LIMIT);
+    let project_key = q.project.as_deref().unwrap_or("__default__").to_string();
+
+    // HIGH-22 fast path: serve from the layout cache if a recent
+    // entry exists. Skips the SQL JOIN + sunflower compute entirely.
+    if let Some(cached) = layout_cache_get(&project_key, limit) {
+        return Json(cached);
+    }
+
     // The SQL pulls (qualified_name, kind, community_id) in the same
     // node window as /nodes, then we run the pure layout function.
     // LEFT JOIN community_membership so nodes without a community
@@ -904,7 +963,9 @@ async fn api_graph_layout(
         })
         .await
         .unwrap_or_default();
-    Json(compute_layout(&raw))
+    let positions = compute_layout(&raw);
+    layout_cache_put(&project_key, limit, positions.clone());
+    Json(positions)
 }
 
 /// Pure deterministic layout function. Public-in-crate so tests can
