@@ -1010,12 +1010,26 @@ if ($UsePreExtracted) {
         exit 1
     }
 
+    # 2026-05-06 VM test: release assets are uploaded as
+    # `mneme-v<tag>-windows-x64.zip` by the multi-arch-release workflow,
+    # but $Asset is the unversioned shorthand `mneme-windows-x64.zip`.
+    # Try the exact match first (v0.3.x compat path), then fall back to
+    # the versioned form, then any zip whose name ends with the suffix.
     $AssetEntry = $Release.assets | Where-Object { $_.name -eq $Asset } | Select-Object -First 1
+    if ($null -eq $AssetEntry) {
+        $verAsset = ('mneme-{0}-windows-x64.zip' -f $Release.tag_name)
+        $AssetEntry = $Release.assets | Where-Object { $_.name -eq $verAsset } | Select-Object -First 1
+    }
+    if ($null -eq $AssetEntry) {
+        $AssetEntry = $Release.assets | Where-Object { $_.name -like '*windows-x64.zip' } | Select-Object -First 1
+    }
     if ($null -eq $AssetEntry) {
         Write-Warn ("{0} not yet attached to release {1}" -f $Asset, $Release.tag_name)
         Write-Warn "       the release workflow may still be building - retry in ~15 min."
         exit 1
     }
+    # Update $Asset to the actual filename so logs + checksum lookup match.
+    $Asset = $AssetEntry.name
     Write-OK ("release {0} - asset {1} ({2:N1} MB)" -f $Release.tag_name, $Asset, ($AssetEntry.size / 1MB))
     $ReleaseTag = $Release.tag_name
 }

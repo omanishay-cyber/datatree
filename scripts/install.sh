@@ -620,6 +620,12 @@ else
 
     # Resolve the asset's browser_download_url without requiring jq. Splits on
     # commas, then picks the line containing the asset name.
+    #
+    # 2026-05-06 VM test: release assets are uploaded as
+    # `mneme-v<tag>-<platform>.tar.gz` by the multi-arch-release workflow,
+    # but ${ASSET} is the unversioned shorthand. Try the exact match
+    # first (v0.3.x compat), then any URL whose path ends with the
+    # platform suffix (e.g. linux-x64.tar.gz / macos-arm64.tar.gz).
     ASSET_URL=$(printf '%s' "${RELEASE_JSON}" \
         | tr ',' '\n' \
         | grep "browser_download_url.*${ASSET}" \
@@ -627,11 +633,24 @@ else
         | sed 's/.*"\(https:[^"]*\)".*/\1/')
 
     if [ -z "${ASSET_URL}" ]; then
+        # Strip the leading "mneme-" so we match both unversioned and
+        # versioned forms via the platform suffix.
+        ASSET_SUFFIX="${ASSET#mneme-}"
+        ASSET_URL=$(printf '%s' "${RELEASE_JSON}" \
+            | tr ',' '\n' \
+            | grep "browser_download_url.*${ASSET_SUFFIX}" \
+            | head -n1 \
+            | sed 's/.*"\(https:[^"]*\)".*/\1/')
+    fi
+
+    if [ -z "${ASSET_URL}" ]; then
         fail "${ASSET} not yet attached to the latest release"
         fail "the release workflow may still be building; retry in ~15 min"
         fail "see: https://github.com/${REPO}/releases"
         exit 1
     fi
+    # Capture the actual asset filename for downstream verification + logs.
+    ASSET=$(printf '%s' "${ASSET_URL}" | sed 's|.*/||')
 
     # Pull the tag for the final summary line. Best-effort; missing tag is fine.
     RELEASE_TAG=$(printf '%s' "${RELEASE_JSON}" \
