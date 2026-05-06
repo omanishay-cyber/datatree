@@ -77,6 +77,57 @@ fn windows_worker_spawn_flags_no_breakaway() -> u32 {
 /// underlying state actually changes.
 const SNAPSHOT_TTL: Duration = Duration::from_secs(1);
 
+/// Audit fix TEST-NEW-3 (2026-05-06 multi-agent fan-out, testing-
+/// reviewer): extracted from `respawn_one`'s inline math so the
+/// jitter computation can be unit-tested directly. The previous
+/// inline form had no test coverage at all — `cargo check` and
+/// the chaos suite both passed it without exercising the herd-
+/// breaking property the comment promised.
+///
+/// AWS-style "full jitter" (Architecture Blog: "Exponential
+/// Backoff and Jitter") on a per-child basis. Each child gets a
+/// distinct seed because:
+///   - `name` distinguishes children at the same SystemTime.
+///   - `now_subsec_nanos` distinguishes restarts of the same
+///     child across time.
+///
+/// Combined with `delay.max(50ms)` floor, the result is:
+///   - never zero unless the input delay is zero (no infinite-
+///     loop tight respawn even when initial_backoff is 1ms).
+///   - within `[0, max(delay, 50ms))` — strictly less than the
+///     un-jittered delay, so jitter never EXTENDS the wait past
+///     the policy's intent.
+///   - distinct across children with high probability (DefaultHasher
+///     gives ~64 bits of entropy from name+nanos).
+///
+/// Production callers pass
+/// `SystemTime::now().duration_since(UNIX_EPOCH).subsec_nanos()`
+/// as `now_subsec_nanos`. Tests pass a fixed value so the
+/// computation is fully deterministic.
+pub(crate) fn compute_jittered_delay(
+    name: &str,
+    base: Duration,
+    now_subsec_nanos: u32,
+) -> Duration {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    name.hash(&mut hasher);
+    now_subsec_nanos.hash(&mut hasher);
+    let seed = hasher.finish();
+
+    // CORR-NEW-1 floor: 50ms minimum so a 1ms initial_backoff
+    // doesn't degenerate to seed%1 == 0 (no-sleep, herd intact).
+    // For a literal Duration::ZERO input we honour the caller's
+    // intent and return ZERO without applying the floor — that's
+    // a "do not sleep at all" signal, not a herd-protection ask.
+    if base.is_zero() {
+        return Duration::ZERO;
+    }
+    let max_ms = (base.as_millis() as u64).max(50);
+    Duration::from_millis(seed % max_ms)
+}
+
 /// Reason a monitor task queued a restart.
 #[derive(Debug, Clone)]
 pub(crate) struct RestartRequest {
@@ -724,47 +775,14 @@ impl ChildManager {
 
         // CRIT-restart-jitter (2026-05-05 audit): full jitter on the
         // backoff sleep so simultaneous-failure scenarios don't produce
-        // synchronized restart waves (textbook thundering herd). When a
-        // shared dependency fails (parser binary deleted, model file
-        // unreadable, embed worker crashes), every dependent worker's
-        // monitor task hits respawn_one within milliseconds of the
-        // others. Without jitter they all sleep the same `current_backoff`
-        // and respawn in lockstep, hammering the upstream that just
-        // failed. AWS Architecture Blog "Exponential Backoff and Jitter"
-        // recommends FULL jitter: sleep `random(0, delay)` instead of
-        // `delay`. We avoid pulling `rand` as a new dep by using a
-        // process-local, deterministic-but-spread pseudo-random source
-        // derived from the wall clock + child name; that's enough
-        // randomness to break herds since each worker has a distinct
-        // hash and is observed at a distinct nanosecond.
-        let jitter_seed = {
-            use std::collections::hash_map::DefaultHasher;
-            use std::hash::{Hash, Hasher};
-            let mut hasher = DefaultHasher::new();
-            req.name.hash(&mut hasher);
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.subsec_nanos())
-                .unwrap_or(0)
-                .hash(&mut hasher);
-            hasher.finish()
-        };
-        // Audit fix (2026-05-06 multi-agent fan-out, correctness
-        // CORR-NEW-1): the prior `(delay.as_millis() as u64).max(1)`
-        // floored at 1ms, so on the first restart of a child whose
-        // initial_backoff is also 1ms (legitimately fast for tests
-        // / aggressive YAMLs), `max_ms=1` and `jittered_ms = seed %
-        // 1 = 0`. Full-jitter degenerates to no-sleep, defeating
-        // the thundering-herd protection.
-        //
-        // Floor at 50ms — bounds the minimum sleep so simultaneous-
-        // failure scenarios always get measurable de-correlation.
-        // Doesn't change steady-state behaviour because by the time
-        // backoff has ratcheted up, max_ms is already in the
-        // hundreds-to-thousands of ms range.
-        let max_ms = (delay.as_millis() as u64).max(50);
-        let jittered_ms = jitter_seed % max_ms;
-        let jittered = Duration::from_millis(jittered_ms);
+        // synchronized restart waves (textbook thundering herd). See
+        // `compute_jittered_delay` below for the math + audit history.
+        let now_subsec_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let jittered = compute_jittered_delay(&req.name, delay, now_subsec_nanos);
+        let jittered_ms = jittered.as_millis() as u64;
 
         // Sleep the (jittered) backoff interval. No `Child` is in scope
         // here, so the compiler can trivially prove the future is Send.

@@ -1431,3 +1431,108 @@ fn banner_not_shown_when_up_to_date_supervisor() {
     };
     assert!(!should_show_banner(&cached, "0.4.1", run_dir));
 }
+
+// ---------------------------------------------------------------------------
+// Audit fix TEST-NEW-3 (2026-05-06 multi-agent fan-out, testing-reviewer):
+// property tests for compute_jittered_delay. The jitter logic was
+// untested before this — `cargo check` and the chaos suite both
+// passed it without exercising the herd-breaking property.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn jitter_zero_input_returns_zero_no_panic() {
+    use crate::manager::compute_jittered_delay;
+    use std::time::Duration;
+    // ZERO input is "do not sleep at all" — bypass the 50ms floor
+    // and honour the caller's intent. Most importantly: don't panic
+    // (the previous inline form's `seed % 0` would have).
+    let out = compute_jittered_delay("worker", Duration::ZERO, 12345);
+    assert_eq!(out, Duration::ZERO);
+}
+
+#[test]
+fn jitter_result_is_strictly_less_than_max_of_base_and_50ms() {
+    use crate::manager::compute_jittered_delay;
+    use std::time::Duration;
+
+    // For each base in {1ms, 49ms, 50ms, 200ms, 5000ms}, jitter
+    // must produce a Duration in [0, max(base, 50ms)).
+    for base_ms in [1u64, 49, 50, 200, 5_000] {
+        let base = Duration::from_millis(base_ms);
+        let upper_bound_ms = base_ms.max(50);
+        for nanos in 0u32..1000 {
+            let out = compute_jittered_delay("worker-x", base, nanos);
+            let out_ms = out.as_millis() as u64;
+            assert!(
+                out_ms < upper_bound_ms,
+                "jitter {out_ms}ms must be strictly < upper bound {upper_bound_ms}ms (base={base_ms}ms, nanos={nanos})",
+            );
+        }
+    }
+}
+
+#[test]
+fn jitter_distinct_names_at_same_time_produce_different_values() {
+    use crate::manager::compute_jittered_delay;
+    use std::collections::HashSet;
+    use std::time::Duration;
+
+    // Synchronised-failure scenario: 10 distinct workers all observe
+    // their crash at the same nanosecond. Without jitter they sleep
+    // identically and respawn in lockstep. With jitter, the seed must
+    // produce distinct values for each name.
+    let base = Duration::from_millis(1000);
+    let now_nanos = 500_000_000u32;
+    let names: Vec<String> = (0..10).map(|i| format!("worker-{i}")).collect();
+    let values: HashSet<u64> = names
+        .iter()
+        .map(|n| compute_jittered_delay(n, base, now_nanos).as_millis() as u64)
+        .collect();
+    // 10 names, 1000ms range, ~1000 possible values: birthday-paradox
+    // collision probability is ≈ (10*9/2) / 1000 ≈ 4.5%. Allow a
+    // very loose lower bound — 5 distinct values (tolerates one
+    // collision pair) — so the test isn't flaky, while still proving
+    // names produce different jitter.
+    assert!(
+        values.len() >= 5,
+        "expected ≥5 distinct jitter values across 10 names, got {} ({values:?})",
+        values.len(),
+    );
+}
+
+#[test]
+fn jitter_floor_kicks_in_for_sub_50ms_base() {
+    use crate::manager::compute_jittered_delay;
+    use std::time::Duration;
+
+    // 1ms initial_backoff (test config / aggressive YAML) used to
+    // collapse to seed%1 == 0. After CORR-NEW-1 + the 50ms floor
+    // the jittered value can range up to 49ms — so across many
+    // names we should observe at least ONE value > 1ms. Without
+    // the floor every output would be 0.
+    let base = Duration::from_millis(1);
+    let names: Vec<String> = (0..20).map(|i| format!("w-{i}")).collect();
+    let max_observed = names
+        .iter()
+        .map(|n| compute_jittered_delay(n, base, 42).as_millis())
+        .max()
+        .unwrap_or(0);
+    assert!(
+        max_observed > 1,
+        "with 50ms floor, at least one jitter sample should exceed 1ms — got max {max_observed}ms",
+    );
+}
+
+#[test]
+fn jitter_is_deterministic_for_fixed_inputs() {
+    use crate::manager::compute_jittered_delay;
+    use std::time::Duration;
+
+    // Same (name, base, nanos) tuple must always yield the same
+    // Duration. This is what makes the function testable and what
+    // makes the per-restart distinction (different `nanos` per
+    // restart attempt) actually break herds.
+    let a = compute_jittered_delay("w", Duration::from_millis(1000), 42);
+    let b = compute_jittered_delay("w", Duration::from_millis(1000), 42);
+    assert_eq!(a, b);
+}
