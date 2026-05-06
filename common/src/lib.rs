@@ -4,6 +4,7 @@
 //! lingua franca between supervisor, store, parsers, scanners, brain,
 //! livebus, multimodal-bridge, and cli.
 
+pub mod build_pipeline;
 pub mod constraint;
 pub mod decision;
 pub mod edge;

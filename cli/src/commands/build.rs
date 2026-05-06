@@ -26,6 +26,7 @@ use brain::leiden::Community as BrainCommunity;
 use brain::wiki::{CommunityInput as WikiCommunityInput, WikiBuilder, WikiSymbol};
 use brain::Embedder;
 use brain::NodeId as BrainNodeId;
+use common::build_pipeline::BuildPipeline as _;
 use common::{ids::ProjectId, layer::DbLayer, paths::PathManager};
 use multimodal::{ExtractedDoc, Registry as MmRegistry};
 use parsers::{
@@ -889,8 +890,38 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // payload) AND `graph.db::nodes` (one row per page, kind='pdf_page',
     // `summary` = page text — so `recall_concept` hits PDF content via the
     // existing nodes_fts index without a schema bump).
-    heartbeat.set_phase("multimodal");
-    let mm_stats = run_multimodal_pass(&store, &project_id, &project).await;
+    // ── Passes 4-20: delegate to DefaultBuildPipeline ────────────────────────
+    //
+    // The pipeline owns the Store, Heartbeat, BuildChildRegistry, and
+    // DefaultLearner; each pass method delegates to the corresponding
+    // private `run_*_pass` helper and accumulates the stats internally.
+    // Heartbeat phase changes stay here in the orchestrator so the 30 s
+    // status lines always name the correct pass — they're not pass logic.
+    //
+    // `BuildContext` bundles the project-path / id / path-manager inputs
+    // that every pass needs, plus the scalars from the parse loop that
+    // the perf / errors passes consume. The `build_errors` vec moves into
+    // the context so `errors_pass` can consume it without requiring an
+    // extra parameter.
+
+    let mut pipeline = DefaultBuildPipeline::new(store, heartbeat, children, convention_learner);
+
+    let mut build_ctx = common::build_pipeline::BuildContext::new(
+        project_id.clone(),
+        project.clone(),
+        paths.clone(),
+        args.inline,
+    );
+    build_ctx.started_at = inline_started;
+    build_ctx.indexed = indexed;
+    build_ctx.node_total = node_total;
+    build_ctx.edge_total = edge_total;
+    build_ctx.build_errors = build_errors;
+
+    // 4. Multimodal pass.
+    pipeline.set_phase("multimodal");
+    pipeline.multimodal_pass(&build_ctx).await;
+    // REMOVED: let mm_stats = run_multimodal_pass(...)
 
     // 4.5. Imports-edge resolver pass (Phase A blast=0 fix). Walks every
     // imports edge whose target_qualified still starts with `import::`
@@ -906,8 +937,9 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     //
     // MUST run before Leiden so community detection clusters by
     // resolved connectivity rather than by pseudo-id text.
-    heartbeat.set_phase("resolve-imports");
-    let resolve_stats = run_resolve_imports_pass(&store, &project_id, &project, &paths).await;
+    // 4.5. Imports-edge resolver pass. MUST run before Leiden.
+    pipeline.set_phase("resolve-imports");
+    pipeline.resolve_imports_pass(&build_ctx).await;
 
     // 4.6. Calls-edge resolver pass (Phase A bench Q3 fix). Walks
     // every calls edge whose target_qualified still starts with
@@ -930,8 +962,9 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     //
     // MUST run before Leiden so community detection clusters by
     // resolved call connectivity rather than by pseudo-id text.
-    heartbeat.set_phase("resolve-calls");
-    let resolve_calls_stats = run_resolve_calls_pass(&store, &project_id, &paths).await;
+    // 4.6. Calls-edge resolver pass. MUST run before Leiden.
+    pipeline.set_phase("resolve-calls");
+    pipeline.resolve_calls_pass(&build_ctx).await;
 
     // 5. Leiden community detection. Reads (source_qualified, target_qualified)
     // pairs out of graph.db::edges, runs the deterministic Rust Leiden solver
@@ -944,8 +977,9 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     //
     // Failure here is non-fatal: clustering is bonus structure on top of a
     // successful raw graph build.
-    heartbeat.set_phase("graph-leiden");
-    let cluster_stats = run_leiden_pass(&store, &project_id, &paths).await;
+    // 5. Leiden community detection.
+    pipeline.set_phase("graph-leiden");
+    pipeline.leiden_pass(&build_ctx).await;
 
     // 6. Embedding pass (P3.4). Reads every substantive node out of
     // graph.db, runs `brain::Embedder::embed_batch` over their textual
@@ -955,8 +989,9 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // table stays empty forever and `mneme recall` degrades silently
     // to keyword-only retrieval. Failure is non-fatal — same contract
     // as the Leiden pass.
-    heartbeat.set_phase("embed");
-    let embedding_stats = run_embedding_pass(&store, &project_id, &paths, &heartbeat).await;
+    // 6. Embedding pass.
+    pipeline.set_phase("embed");
+    pipeline.embedding_pass(&build_ctx).await;
 
     // 7. Audit pass (I1 partial — populate findings.db). Spawns the
     // mneme-scanners worker via the existing audit subprocess fallback
@@ -979,16 +1014,18 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // it look like embed was hanging when the daemon was actually
     // chewing through scanners. Same fix for tests/git/deps/intent/
     // conventions/federated/write-summary below.
-    heartbeat.set_phase("audit");
-    let audit_stats = run_audit_pass(&project, args.inline, &children).await;
+    // 7. Audit pass.
+    pipeline.set_phase("audit");
+    pipeline.audit_pass(&build_ctx).await;
 
     // 8. Tests-shard population (I1). Copies (file_path, framework)
     // from graph.db::nodes where kind='file' AND is_test=1 into
     // tests.db::test_files. K5 already does the heuristic detection
     // during the parse loop; this pass just materialises the result
     // into the canonical shard.
-    heartbeat.set_phase("tests-scan");
-    let tests_stats = run_tests_pass(&store, &project_id, &paths).await;
+    // 8. Tests-shard population.
+    pipeline.set_phase("tests-scan");
+    pipeline.tests_pass(&build_ctx).await;
 
     // 9. Git-shard population (I1). Mines `git log` for commits +
     // file-level changes and `git blame` (sampled) into git.db. Without
@@ -996,16 +1033,18 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // view + decision-recall git-history heuristics had no data.
     // Failure non-fatal: missing git, non-git directory, sparse repo —
     // all just leave git.db empty.
-    heartbeat.set_phase("git-scan");
-    let git_stats = run_git_pass(&store, &project_id, &project).await;
+    // 9. Git-shard population.
+    pipeline.set_phase("git-scan");
+    pipeline.git_pass(&build_ctx).await;
 
     // 10. Deps-shard population (I1). Parses package.json (npm),
     // Cargo.toml (rust workspace + leaf), requirements.txt (python)
     // for top-level dependencies. Populates deps.db.dependencies.
     // Future: pull vulnerabilities via local advisory feed (out of
     // scope this pass).
-    heartbeat.set_phase("deps-scan");
-    let deps_stats = run_deps_pass(&store, &project_id, &project).await;
+    // 10. Deps-shard population.
+    pipeline.set_phase("deps-scan");
+    pipeline.deps_pass(&build_ctx).await;
 
     // 11. Betweenness centrality pass (H6). Sampled Brandes algorithm
     // computes per-node betweenness over the existing graph.db edge
@@ -1013,8 +1052,9 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // previous `betweenness: 0` constant in god_nodes responses with
     // real (or sample-approximated) BC scores. Bounded by source-cap
     // and wall-clock cap so very large graphs degrade gracefully.
-    heartbeat.set_phase("graph-betweenness");
-    let betweenness_stats = run_betweenness_pass(&store, &project_id, &paths).await;
+    // 11. Betweenness centrality.
+    pipeline.set_phase("graph-betweenness");
+    pipeline.betweenness_pass(&build_ctx).await;
 
     // 12. Intent pass (J1). Scans every indexed source file's first 30
     // lines for a `@mneme-intent: <kind>[: <reason>]` magic comment in
@@ -1023,30 +1063,10 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // Files without a magic comment get an inferred row source='git'
     // when git history shows them as long-stable (>1 year unchanged
     // and >2k LOC) — coarse heuristic, marked low-confidence.
-    heartbeat.set_phase("intent");
-    let mut intent_stats = run_intent_pass(&store, &project_id, &project, &paths).await;
-
-    // 12b. J2 — git-history intent heuristics. Mines git.db for files
-    // that look frozen (long-untouched + low churn), deferred (high
-    // TODO/FIXME density + recent churn), or explicitly marked in
-    // commit messages ("verbatim", "do not touch"). Only writes rows
-    // when no annotation row already exists for that file
-    // (annotation-source has priority).
-    run_git_intent_pass(&store, &project_id, &project, &paths, &mut intent_stats).await;
-
-    // 12c. J4 — convention rules from `intent.config.json` at project
-    // root. Each rule is `{glob, intent[, reason]}` — globs apply to
-    // the project-relative file path. Source='convention',
-    // confidence=0.9. Skips files that already have an annotation /
-    // git row.
-    run_convention_intent_pass(&store, &project_id, &project, &paths, &mut intent_stats).await;
-
-    // 12d. J6 — per-directory `INTENT.md` annotations. Each line of
-    // the form `- <filename>: <intent> — <reason>` applies to the
-    // file in the same directory as the INTENT.md. Source='convention'
-    // (it's a team agreement, same bucket as J4). Skips already-set
-    // rows.
-    run_intent_md_pass(&store, &project_id, &project, &paths, &mut intent_stats).await;
+    // 12. Intent pass (J1 / J2 / J4 / J6 — all four sub-passes run inside
+    // the pipeline impl so the accumulated IntentStats is consistent).
+    pipeline.set_phase("intent");
+    pipeline.intent_pass(&build_ctx).await;
 
     // 13. Architecture-snapshot pass (I1 batch 3). Reads graph.db nodes
     // + edges + semantic.db community_membership, runs the existing
@@ -1054,16 +1074,18 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // architecture.db::architecture_snapshots. Append-only — readers
     // pick the newest row. Without this pass architecture.db stayed
     // empty even though the analysis library was already in tree.
-    heartbeat.set_phase("graph-architecture");
-    let architecture_stats = run_architecture_pass(&store, &project_id, &paths).await;
+    // 13. Architecture-snapshot pass.
+    pipeline.set_phase("graph-architecture");
+    pipeline.architecture_pass(&build_ctx).await;
 
     // 14. Conventions pass (I1 batch 3). Materialises the inferred
     // patterns the `convention_learner` accumulated during the file
     // loop into conventions.db::conventions. One row per inferred
     // pattern with a deterministic id (sha256 over kind+payload) so
     // re-runs upsert in place.
-    heartbeat.set_phase("conventions");
-    let conventions_stats = run_conventions_pass(&store, &project_id, &convention_learner).await;
+    // 14. Conventions pass.
+    pipeline.set_phase("conventions");
+    pipeline.conventions_pass(&build_ctx).await;
 
     // 15. Wiki pass (I1 batch 3). For each Leiden community we just
     // materialised in semantic.db::communities, build a markdown wiki
@@ -1074,16 +1096,18 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // betweenness + criticality), so we anchor on community-id and
     // file-path lists; the daemon path can supersede this with richer
     // pages later.
-    heartbeat.set_phase("wiki");
-    let wiki_stats = run_wiki_pass(&store, &project_id, &paths).await;
+    // 15. Wiki pass.
+    pipeline.set_phase("wiki");
+    pipeline.wiki_pass(&build_ctx).await;
 
     // 16. Federated fingerprints pass (I1 batch 3). Trigger the
     // federated scan against the project root so federated.db is
     // populated as a side-effect of `mneme build` instead of requiring
     // an explicit `mneme federated scan`. Local-only — fingerprints
     // never leave the box without the opt-in marker.
-    heartbeat.set_phase("federated");
-    let federated_stats = run_federated_pass(&project_id, &project, &paths).await;
+    // 16. Federated fingerprints pass.
+    pipeline.set_phase("federated");
+    pipeline.federated_pass(&build_ctx).await;
 
     // 17. Perf-baselines pass (I1 batch 3). Capture build-time
     // throughput numbers (files/sec, nodes/sec, total ms) into
@@ -1097,40 +1121,13 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // its own that a per-pass label would just churn the heartbeat
     // tick; rolling them up under `write-summary` matches the user's
     // mental model ("the build is done, it's writing the summary").
-    heartbeat.set_phase("write-summary");
-    let perf_stats = run_perf_pass(
-        &store,
-        &project_id,
-        inline_started.elapsed(),
-        indexed,
-        node_total,
-        edge_total,
-    )
-    .await;
-
-    // 18. Errors pass (I1 batch 3). Persist the parse/read/extract
-    // failures collected during the file loop into errors.db::errors,
-    // deduplicated by `error_hash` (blake3 of message+file). Each
-    // recurrence bumps `encounters` and refreshes `last_seen` via
-    // INSERT … ON CONFLICT DO UPDATE.
-    let errors_stats = run_errors_pass(&store, &project_id, &build_errors).await;
-
-    // 19. Live-state pass (I1 batch 3). The hook layer already writes
-    // file_events for every Edit/Write tool invocation, but a build
-    // run on a fresh shard leaves livestate.db empty until the user
-    // starts editing. Stamp one `build_completed` event so an operator
-    // running `mneme build .` immediately sees a row when they
-    // inspect livestate.db. Subsequent hook writes accumulate on top.
-    let livestate_stats = run_livestate_pass(&store, &project_id, &project).await;
-
-    // 20. Agents pass (I1 batch 3). agents.db::subagent_runs is
-    // populated by the SubagentStop hook (`mneme turn-end --subagent`)
-    // — which is the right primary producer because subagent runs are
-    // per-turn events, not per-build. The `cli/src/commands/turn_end.rs`
-    // path now writes the row; for `mneme build` itself we record a
-    // synthetic "build" run as a smoke marker so the shard isn't 0
-    // rows on a fresh project.
-    let agents_stats = run_agents_pass(&store, &project_id, &project).await;
+    // 17-20. Bookkeeping passes (perf / errors / livestate / agents).
+    // B14.5: single label for all trailing passes.
+    pipeline.set_phase("write-summary");
+    pipeline.perf_pass(&build_ctx).await;
+    pipeline.errors_pass(&build_ctx).await;
+    pipeline.livestate_pass(&build_ctx).await;
+    pipeline.agents_pass(&build_ctx).await;
 
     // 20b. Seed-populate pass (v0.3.2 hotfix #5). Without this pass,
     // `history.db.turns`, `tasks.db.ledger_entries`, and `wiki.db.wiki_pages`
@@ -1144,8 +1141,9 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     //   * wiki.db.wiki_pages        ← README/CHANGELOG/docs/*.md sections
     // Failure non-fatal — a missing git binary or a project with no
     // markdown leaves the corresponding shard empty as before.
-    heartbeat.set_phase("seed-populate");
-    let seed_stats = run_seed_populate_pass(&store, &project_id, &project).await;
+    // 20b. Seed-populate pass.
+    pipeline.set_phase("seed-populate");
+    pipeline.seed_populate_pass(&build_ctx).await;
 
     // Stamp meta.db::projects.last_indexed_at so the staleness nag
     // (audit-L12) can tell users when their recall results are
@@ -1162,9 +1160,33 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     // status lines can't interleave with the (atomic, contiguous)
     // summary output. `Heartbeat::stop` is idempotent — `Drop`
     // handles re-entry safely if a future code path re-uses the
-    // handle.
-    let mut heartbeat = heartbeat;
-    heartbeat.stop();
+    // handle. Stop BEFORE extracting stats so `pipeline` is not
+    // partially-moved while still borrowed.
+    pipeline.stop_heartbeat();
+
+    // Retrieve accumulated stats from the pipeline for the summary block.
+    // Extraction happens after stop_heartbeat() to avoid the partial-move
+    // borrow conflict (stop_heartbeat takes &mut self).
+    let mm_stats = pipeline.mm_stats.unwrap_or_default();
+    let resolve_stats = pipeline.resolve_stats.unwrap_or_default();
+    let resolve_calls_stats = pipeline.resolve_calls_stats.unwrap_or_default();
+    let cluster_stats = pipeline.cluster_stats.unwrap_or_default();
+    let embedding_stats = pipeline.embedding_stats.unwrap_or_default();
+    let audit_stats = pipeline.audit_stats.unwrap_or_default();
+    let tests_stats = pipeline.tests_stats.unwrap_or_default();
+    let git_stats = pipeline.git_stats.unwrap_or_default();
+    let deps_stats = pipeline.deps_stats.unwrap_or_default();
+    let betweenness_stats = pipeline.betweenness_stats.unwrap_or_default();
+    let intent_stats = pipeline.intent_stats.unwrap_or_default();
+    let architecture_stats = pipeline.architecture_stats.unwrap_or_default();
+    let conventions_stats = pipeline.conventions_stats.unwrap_or_default();
+    let wiki_stats = pipeline.wiki_stats.unwrap_or_default();
+    let federated_stats = pipeline.federated_stats.unwrap_or_default();
+    let perf_stats = pipeline.perf_stats.unwrap_or_default();
+    let errors_stats = pipeline.errors_stats.unwrap_or_default();
+    let livestate_stats = pipeline.livestate_stats.unwrap_or_default();
+    let agents_stats = pipeline.agents_stats.unwrap_or_default();
+    let seed_stats = pipeline.seed_stats.unwrap_or_default();
 
     let skipped_total =
         skipped_binary + skipped_unsupported + skipped_gitignore + skipped_too_large;
@@ -1414,6 +1436,235 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
     build_state::clear(&project);
 
     Ok(())
+}
+
+// ── DefaultBuildPipeline ──────────────────────────────────────────────────────
+
+/// `DefaultBuildPipeline` is the concrete implementation of the
+/// [`common::build_pipeline::BuildPipeline`] trait for the in-process inline
+/// build path.
+///
+/// It owns all CLI-specific state that each pass needs beyond the
+/// project/path information in [`common::build_pipeline::BuildContext`]:
+/// the open shard [`Store`], the progress [`Heartbeat`], the
+/// [`BuildChildRegistry`] for subprocess cleanup on Ctrl-C, and the
+/// [`DefaultLearner`] observation table accumulated during the parse loop.
+///
+/// After calling all passes (via
+/// [`common::build_pipeline::run_all`] or manually), callers retrieve
+/// accumulated stats through [`DefaultBuildPipeline::into_summary`].
+pub(crate) struct DefaultBuildPipeline {
+    store: Store,
+    heartbeat: Heartbeat,
+    children: BuildChildRegistry,
+    convention_learner: DefaultLearner,
+    // ── accumulated stats (filled as each pass runs) ──────────────────────
+    // Module-private: only `run_inline` in this same file reads these fields.
+    mm_stats: Option<MultimodalStats>,
+    resolve_stats: Option<ResolveImportsStats>,
+    resolve_calls_stats: Option<ResolveCallsStats>,
+    cluster_stats: Option<LeidenStats>,
+    embedding_stats: Option<EmbeddingStats>,
+    audit_stats: Option<AuditStats>,
+    tests_stats: Option<TestsStats>,
+    git_stats: Option<GitStats>,
+    deps_stats: Option<DepsStats>,
+    betweenness_stats: Option<BetweennessStats>,
+    intent_stats: Option<IntentStats>,
+    architecture_stats: Option<ArchitectureStats>,
+    conventions_stats: Option<ConventionsStats>,
+    wiki_stats: Option<WikiStats>,
+    federated_stats: Option<FederatedStats>,
+    perf_stats: Option<PerfStats>,
+    errors_stats: Option<ErrorsStats>,
+    livestate_stats: Option<LiveStateStats>,
+    agents_stats: Option<AgentsStats>,
+    seed_stats: Option<SeedStats>,
+}
+
+impl DefaultBuildPipeline {
+    /// Construct a new pipeline from the shared resources already created by
+    /// the caller.  Stats start as `None` and are populated as each pass runs.
+    pub(crate) fn new(
+        store: Store,
+        heartbeat: Heartbeat,
+        children: BuildChildRegistry,
+        convention_learner: DefaultLearner,
+    ) -> Self {
+        Self {
+            store,
+            heartbeat,
+            children,
+            convention_learner,
+            mm_stats: None,
+            resolve_stats: None,
+            resolve_calls_stats: None,
+            cluster_stats: None,
+            embedding_stats: None,
+            audit_stats: None,
+            tests_stats: None,
+            git_stats: None,
+            deps_stats: None,
+            betweenness_stats: None,
+            intent_stats: None,
+            architecture_stats: None,
+            conventions_stats: None,
+            wiki_stats: None,
+            federated_stats: None,
+            perf_stats: None,
+            errors_stats: None,
+            livestate_stats: None,
+            agents_stats: None,
+            seed_stats: None,
+        }
+    }
+
+    /// Update the heartbeat phase label.  Called by the orchestrator
+    /// (`run_inline`) before invoking each pass method so the 30-second
+    /// status lines always show the current phase name.
+    pub(crate) fn set_phase(&self, phase: &str) {
+        self.heartbeat.set_phase(phase);
+    }
+
+    /// Stop the background heartbeat task.  Call once, just before printing
+    /// the build-complete summary, so heartbeat lines cannot interleave with
+    /// the summary output.
+    pub(crate) fn stop_heartbeat(&mut self) {
+        self.heartbeat.stop();
+    }
+}
+
+#[allow(async_fn_in_trait)]
+impl common::build_pipeline::BuildPipeline for DefaultBuildPipeline {
+    async fn multimodal_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.mm_stats = Some(run_multimodal_pass(&self.store, &ctx.project_id, &ctx.project).await);
+    }
+
+    async fn resolve_imports_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.resolve_stats = Some(
+            run_resolve_imports_pass(&self.store, &ctx.project_id, &ctx.project, &ctx.paths).await,
+        );
+    }
+
+    async fn resolve_calls_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.resolve_calls_stats =
+            Some(run_resolve_calls_pass(&self.store, &ctx.project_id, &ctx.paths).await);
+    }
+
+    async fn leiden_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.cluster_stats = Some(run_leiden_pass(&self.store, &ctx.project_id, &ctx.paths).await);
+    }
+
+    async fn embedding_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.embedding_stats = Some(
+            run_embedding_pass(&self.store, &ctx.project_id, &ctx.paths, &self.heartbeat).await,
+        );
+    }
+
+    async fn audit_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.audit_stats =
+            Some(run_audit_pass(&ctx.project, ctx.inline_mode, &self.children).await);
+    }
+
+    async fn tests_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.tests_stats = Some(run_tests_pass(&self.store, &ctx.project_id, &ctx.paths).await);
+    }
+
+    async fn git_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.git_stats = Some(run_git_pass(&self.store, &ctx.project_id, &ctx.project).await);
+    }
+
+    async fn deps_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.deps_stats = Some(run_deps_pass(&self.store, &ctx.project_id, &ctx.project).await);
+    }
+
+    async fn betweenness_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.betweenness_stats =
+            Some(run_betweenness_pass(&self.store, &ctx.project_id, &ctx.paths).await);
+    }
+
+    async fn intent_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        let mut stats =
+            run_intent_pass(&self.store, &ctx.project_id, &ctx.project, &ctx.paths).await;
+        run_git_intent_pass(
+            &self.store,
+            &ctx.project_id,
+            &ctx.project,
+            &ctx.paths,
+            &mut stats,
+        )
+        .await;
+        run_convention_intent_pass(
+            &self.store,
+            &ctx.project_id,
+            &ctx.project,
+            &ctx.paths,
+            &mut stats,
+        )
+        .await;
+        run_intent_md_pass(
+            &self.store,
+            &ctx.project_id,
+            &ctx.project,
+            &ctx.paths,
+            &mut stats,
+        )
+        .await;
+        self.intent_stats = Some(stats);
+    }
+
+    async fn architecture_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.architecture_stats =
+            Some(run_architecture_pass(&self.store, &ctx.project_id, &ctx.paths).await);
+    }
+
+    async fn conventions_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.conventions_stats = Some(
+            run_conventions_pass(&self.store, &ctx.project_id, &self.convention_learner).await,
+        );
+    }
+
+    async fn wiki_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.wiki_stats = Some(run_wiki_pass(&self.store, &ctx.project_id, &ctx.paths).await);
+    }
+
+    async fn federated_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.federated_stats =
+            Some(run_federated_pass(&ctx.project_id, &ctx.project, &ctx.paths).await);
+    }
+
+    async fn perf_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.perf_stats = Some(
+            run_perf_pass(
+                &self.store,
+                &ctx.project_id,
+                ctx.started_at.elapsed(),
+                ctx.indexed,
+                ctx.node_total,
+                ctx.edge_total,
+            )
+            .await,
+        );
+    }
+
+    async fn errors_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.errors_stats =
+            Some(run_errors_pass(&self.store, &ctx.project_id, &ctx.build_errors).await);
+    }
+
+    async fn livestate_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.livestate_stats =
+            Some(run_livestate_pass(&self.store, &ctx.project_id, &ctx.project).await);
+    }
+
+    async fn agents_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.agents_stats = Some(run_agents_pass(&self.store, &ctx.project_id, &ctx.project).await);
+    }
+
+    async fn seed_populate_pass(&mut self, ctx: &common::build_pipeline::BuildContext) {
+        self.seed_stats =
+            Some(run_seed_populate_pass(&self.store, &ctx.project_id, &ctx.project).await);
+    }
 }
 
 /// Aggregate stats from the multimodal pass.
