@@ -1383,16 +1383,132 @@ pub(crate) fn format_available_row(
 
 fn line(label: &str, value: &str) {
     let padded_label = format!("{label:<17}");
-    let content = format!("│ {padded_label}: {value}");
-    // Pad to width 59 (inside borders), then add right border.
-    let visible_len = content.chars().count();
+    // Anish 2026-05-06: colorize the value cell by leading status word
+    // so the doctor output reads at a glance. Width math is computed on
+    // the un-styled string so the right-border alignment survives ANSI
+    // escape sequences (which are zero-width but byte-bearing).
+    let unstyled = format!("│ {padded_label}: {value}");
+    let visible_len = unstyled.chars().count();
     let target = 59;
     let pad = if visible_len < target {
         " ".repeat(target - visible_len)
     } else {
         String::new()
     };
-    println!("{content}{pad}│");
+    let styled_value = colorize_status_value(value);
+    let styled_line = format!("│ {padded_label}: {styled_value}");
+    println!("{styled_line}{pad}│");
+}
+
+/// Wrap a doctor value cell in `console::style` based on its leading
+/// status word. The mapping is conservative — only the well-known
+/// banner-ish words (OK, PASS, FAIL, MISSING, WARN, READY) get tint;
+/// everything else passes through plain so we don't over-paint values
+/// that happen to start with a colored substring.
+fn colorize_status_value(value: &str) -> String {
+    let trimmed = value.trim_start();
+    let (color_kind, _len) = leading_status_word(trimmed);
+    match color_kind {
+        StatusColor::Ok => console::style(value).green().to_string(),
+        StatusColor::Warn => console::style(value).yellow().to_string(),
+        StatusColor::Fail => console::style(value).red().to_string(),
+        StatusColor::Info => console::style(value).cyan().to_string(),
+        StatusColor::None => value.to_string(),
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum StatusColor {
+    Ok,
+    Warn,
+    Fail,
+    Info,
+    None,
+}
+
+fn leading_status_word(s: &str) -> (StatusColor, usize) {
+    // Match longer prefixes first so "MISSING" doesn't match "M".
+    const PATTERNS: &[(&str, StatusColor)] = &[
+        ("OK", StatusColor::Ok),
+        ("PASS", StatusColor::Ok),
+        ("READY", StatusColor::Ok),
+        ("CONNECTED", StatusColor::Ok),
+        ("FOUND", StatusColor::Ok),
+        ("RUNNING", StatusColor::Ok),
+        ("ON", StatusColor::Ok),
+        ("YES", StatusColor::Ok),
+        ("FAIL", StatusColor::Fail),
+        ("FAILED", StatusColor::Fail),
+        ("ERROR", StatusColor::Fail),
+        ("MISSING", StatusColor::Fail),
+        ("DOWN", StatusColor::Fail),
+        ("UNREACHABLE", StatusColor::Fail),
+        ("WARN", StatusColor::Warn),
+        ("WARNING", StatusColor::Warn),
+        ("DEGRADED", StatusColor::Warn),
+        ("STALE", StatusColor::Warn),
+        ("OFF", StatusColor::Warn),
+        ("NO", StatusColor::Warn),
+        ("INFO", StatusColor::Info),
+        ("UNKNOWN", StatusColor::Info),
+    ];
+    for (needle, color) in PATTERNS {
+        if s.starts_with(needle) {
+            // Confirm word boundary — next char (if any) is non-alnum.
+            let rest = &s[needle.len()..];
+            let bound = rest
+                .chars()
+                .next()
+                .map(|c| !c.is_alphanumeric() && c != '_')
+                .unwrap_or(true);
+            if bound {
+                return (*color, needle.len());
+            }
+        }
+    }
+    (StatusColor::None, 0)
+}
+
+#[cfg(test)]
+mod color_tests {
+    use super::{leading_status_word, StatusColor};
+
+    #[test]
+    fn ok_words_resolve_to_ok_color() {
+        assert_eq!(leading_status_word("OK").0, StatusColor::Ok);
+        assert_eq!(leading_status_word("PASS").0, StatusColor::Ok);
+        assert_eq!(leading_status_word("READY").0, StatusColor::Ok);
+        assert_eq!(leading_status_word("RUNNING (pid 1234)").0, StatusColor::Ok);
+    }
+
+    #[test]
+    fn fail_words_resolve_to_fail_color() {
+        assert_eq!(leading_status_word("FAIL").0, StatusColor::Fail);
+        assert_eq!(leading_status_word("MISSING (no socket)").0, StatusColor::Fail);
+        assert_eq!(leading_status_word("ERROR opening db").0, StatusColor::Fail);
+    }
+
+    #[test]
+    fn warn_words_resolve_to_warn_color() {
+        assert_eq!(leading_status_word("WARN").0, StatusColor::Warn);
+        assert_eq!(leading_status_word("DEGRADED").0, StatusColor::Warn);
+    }
+
+    #[test]
+    fn unrelated_text_resolves_to_none() {
+        assert_eq!(leading_status_word("v0.4.0").0, StatusColor::None);
+        assert_eq!(leading_status_word("hello").0, StatusColor::None);
+    }
+
+    #[test]
+    fn substring_match_requires_word_boundary() {
+        // "OKAY" must NOT match "OK" because OKAY isn't in our list
+        // and the next char is alphanumeric — the boundary check
+        // protects against this kind of accidental tint.
+        assert_eq!(leading_status_word("OKAY").0, StatusColor::None);
+        // "FAILURE" likewise — we want exact known words.
+        assert_eq!(leading_status_word("FAILURE").0, StatusColor::None);
+    }
 }
 
 /// Spawn a fresh `mneme mcp stdio` child, drive the MCP JSON-RPC
