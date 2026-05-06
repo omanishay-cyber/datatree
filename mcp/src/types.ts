@@ -243,6 +243,17 @@ export const CallGraphOutput = z.object({
 export const FindReferencesInput = z.object({
   symbol: z.string().min(1),
   scope: z.enum(["project", "workspace"]).default("project"),
+  /**
+   * HIGH-44 fix (2026-05-05 audit): pagination is now declared on
+   * the input schema. Hot symbols on a large repo can return
+   * thousands of hits — the audit observed find_references hitting
+   * the Item #118 truncation envelope (which itself violates every
+   * tool's outputSchema). Adding limit + offset gives clients a
+   * proper way to page rather than relying on the truncation
+   * envelope as a backstop.
+   */
+  limit: z.number().int().positive().max(500).default(100),
+  offset: z.number().int().nonnegative().default(0),
 });
 
 export const ReferenceHit = z.object({
@@ -256,6 +267,14 @@ export const ReferenceHit = z.object({
 export const FindReferencesOutput = z.object({
   symbol: z.string(),
   hits: z.array(ReferenceHit),
+  /**
+   * HIGH-44 fix: surface pagination state so clients know whether
+   * to issue a follow-up request.
+   */
+  total: z.number().int().nonnegative(),
+  limit: z.number().int().positive(),
+  offset: z.number().int().nonnegative(),
+  has_more: z.boolean(),
 });
 
 export const DependencyChainInput = z.object({

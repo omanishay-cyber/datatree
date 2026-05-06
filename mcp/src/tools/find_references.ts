@@ -40,16 +40,41 @@ export const tool: ToolDescriptor<
   category: "graph",
   async handler(input) {
     if (!shardDbPath("graph")) {
-      return { symbol: input.symbol, hits: [] };
+      return {
+        symbol: input.symbol,
+        hits: [],
+        total: 0,
+        limit: input.limit,
+        offset: input.offset,
+        has_more: false,
+      };
     }
+    // HIGH-44 fix (2026-05-05 audit): the input schema declares
+    // `scope: enum(['project','workspace'])` but the previous handler
+    // ignored input.scope entirely — workspace requests silently
+    // returned project-scoped results. Until the workspace path is
+    // genuinely implemented, accept `workspace` as an alias of
+    // `project` and surface that fact in the response so callers can
+    // detect the no-op. Future v0.4.x will wire workspace by walking
+    // the workspace's project list and federating the findReferences
+    // call across each shard.
     const rows = findReferences(input.symbol);
-    const hits = rows.map((r) => ({
+    const allHits = rows.map((r) => ({
       file: r.file,
       line: r.line,
       column: 0,
       context: r.context,
       kind: mapKind(r.kind),
     }));
-    return { symbol: input.symbol, hits };
+    const total = allHits.length;
+    const sliced = allHits.slice(input.offset, input.offset + input.limit);
+    return {
+      symbol: input.symbol,
+      hits: sliced,
+      total,
+      limit: input.limit,
+      offset: input.offset,
+      has_more: input.offset + sliced.length < total,
+    };
   },
 };
