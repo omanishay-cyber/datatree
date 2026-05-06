@@ -538,11 +538,37 @@ CREATE INDEX IF NOT EXISTS idx_ledger_session ON ledger_entries(session_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_time ON ledger_entries(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_ledger_kind ON ledger_entries(kind);
 
--- Keyword search over summary + rationale. Populated by
--- `brain::ledger::SqliteLedger::append`.
+-- Keyword search over summary + rationale.
+--
+-- M-5 fix (2026-05-05 audit): the previous schema declared
+-- ledger_entries_fts but offered no link back to ledger_entries —
+-- it was a non-content FTS5 with `text` column that the writer
+-- (brain::ledger::SqliteLedger::append) had to dual-write manually.
+-- Any future writer that forgot the dual write would silently break
+-- search.
+--
+-- Add AFTER INSERT/DELETE/UPDATE triggers so the FTS row is always
+-- synced from the canonical (summary, rationale) values. The rowid
+-- of ledger_entries is the implicit SQLite rowid (separate from the
+-- TEXT `id` PK) — we use that to join FTS hits back to source rows.
 CREATE VIRTUAL TABLE IF NOT EXISTS ledger_entries_fts USING fts5(
     text, tokenize='porter'
 );
+CREATE TRIGGER IF NOT EXISTS ledger_entries_ai AFTER INSERT ON ledger_entries
+BEGIN
+    INSERT INTO ledger_entries_fts(rowid, text)
+    VALUES (new.rowid, new.summary || ' ' || COALESCE(new.rationale, ''));
+END;
+CREATE TRIGGER IF NOT EXISTS ledger_entries_ad AFTER DELETE ON ledger_entries
+BEGIN
+    DELETE FROM ledger_entries_fts WHERE rowid = old.rowid;
+END;
+CREATE TRIGGER IF NOT EXISTS ledger_entries_au AFTER UPDATE ON ledger_entries
+BEGIN
+    DELETE FROM ledger_entries_fts WHERE rowid = old.rowid;
+    INSERT INTO ledger_entries_fts(rowid, text)
+    VALUES (new.rowid, new.summary || ' ' || COALESCE(new.rationale, ''));
+END;
 "#;
 
 const SEMANTIC_SQL: &str = r#"
