@@ -217,11 +217,21 @@ html.no-js #menu-bar .menu-title {
   font-weight: 800;
   font-size: 1.04rem;
   letter-spacing: -0.020em;
-  background: var(--mneme-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent;
+  /* Fallback: measurable solid colour for contrast checkers (WCAG 4.5:1 on --mneme-bg). */
+  color: var(--mneme-green) !important;
+}
+/* HIGH-51: gradient text only applied when the browser supports background-clip:text.
+   Contrast tools that don't support background-clip read the solid fallback above. */
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  html.light #menu-bar .menu-title,
+  html.rust #menu-bar .menu-title,
+  html.no-js #menu-bar .menu-title {
+    background: var(--mneme-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent !important;
+  }
 }
 
 /* Top-bar icon buttons (sidebar toggle, theme picker, search, git). */
@@ -448,13 +458,21 @@ html.no-js .content h1 {
   font-size: clamp(2rem, 4vw, 2.6rem);
   letter-spacing: -0.028em;
   margin: 14px 0 18px;
-  background: var(--mneme-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  /* HIGH-51 fallback: measurable solid colour for contrast checkers. */
+  color: var(--mneme-green);
   display: inline-block;
   line-height: 1.10;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  html.light .content h1,
+  html.rust .content h1,
+  html.no-js .content h1 {
+    background: var(--mneme-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
 }
 
 /* H2 — accent rule under the heading. */
@@ -1087,14 +1105,20 @@ html.rust ::selection {
   line-height: 1.05 !important;
   letter-spacing: -0.030em !important;
   margin: 0 0 14px !important;
-  background: var(--mneme-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent;
+  /* HIGH-51 fallback: measurable solid colour for contrast checkers. */
+  color: var(--mneme-green) !important;
   display: inline-block;
   border-bottom: 0 !important;
   padding-bottom: 0 !important;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .mneme-hero h1.hero-title {
+    background: var(--mneme-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent !important;
+  }
 }
 .mneme-hero h1.hero-title::before { display: none !important; }
 
@@ -1187,12 +1211,18 @@ html.rust ::selection {
   font-size: 1.6rem;
   line-height: 1;
   letter-spacing: -0.020em;
-  background: var(--mneme-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  /* HIGH-51 fallback: measurable solid colour for contrast checkers. */
+  color: var(--mneme-green);
   font-variant-numeric: tabular-nums;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .mneme-stat .num {
+    background: var(--mneme-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
 }
 .mneme-stat .lbl {
   display: block;
@@ -1870,12 +1900,18 @@ html, html.navy, html.coal, html.ayu {
   font-size: 32px;
   line-height: 1;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #16a37c 0%, #0698b8 50%, #2a7ed3 100%);
-  background-size: 200% 200%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  /* HIGH-51 fallback: measurable solid colour for contrast checkers. */
+  color: #16a37c;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .mneme-stat .num {
+    background: linear-gradient(135deg, #16a37c 0%, #0698b8 50%, #2a7ed3 100%);
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
 }
 
 .mneme-stat .lbl,
@@ -2047,12 +2083,18 @@ html, html.navy, html.coal, html.ayu {
   font-weight: 800 !important;
   line-height: 1;
   letter-spacing: -0.02em;
-  background: var(--mneme-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent !important;
+  /* HIGH-51 fallback: measurable solid colour for contrast checkers. */
+  color: var(--mneme-green) !important;
   margin-bottom: 8px !important;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .mneme-read-card .step {
+    background: var(--mneme-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent !important;
+    color: transparent !important;
+  }
 }
 
 .mneme-read-card .step-title {
@@ -2201,12 +2243,18 @@ html, html.navy, html.coal, html.ayu {
   font-size: 1.5rem;
   line-height: 1.05;
   letter-spacing: -0.020em;
-  background: var(--mneme-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  /* HIGH-51 fallback: measurable solid colour for contrast checkers. */
+  color: var(--mneme-green);
   font-variant-numeric: tabular-nums;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .mneme-trust-item .trust-num {
+    background: var(--mneme-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
 }
 
 .mneme-trust-item .trust-lbl {
@@ -2481,19 +2529,25 @@ html, html.navy, html.coal, html.ayu {
 
 .mneme-hero h1.hero-title {
   font-size: clamp(48px, 6.4vw, 84px) !important;
-  background-size: 200% 200% !important;
-  background: linear-gradient(
-    135deg,
-    var(--mneme-green) 0%,
-    var(--mneme-cyan) 35%,
-    var(--mneme-blue) 70%,
-    var(--mneme-green) 100%
-  ) !important;
-  -webkit-background-clip: text !important;
-  background-clip: text !important;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent !important;
+  /* HIGH-51: colour fallback is on the base rule; this block adds animated gradient
+     for supporting browsers and the hue-drift animation for all browsers. */
   animation: mneme-hue-drift 8s ease-in-out infinite;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .mneme-hero h1.hero-title {
+    background-size: 200% 200% !important;
+    background: linear-gradient(
+      135deg,
+      var(--mneme-green) 0%,
+      var(--mneme-cyan) 35%,
+      var(--mneme-blue) 70%,
+      var(--mneme-green) 100%
+    ) !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    color: transparent !important;
+  }
 }
 
 @keyframes mneme-hue-drift {
