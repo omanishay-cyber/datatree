@@ -297,11 +297,18 @@ export function App(): JSX.Element {
   // ErrorBoundary cannot catch hook-order errors above its mount point.
   // Run all hooks first, then return conditionally.
   const grouped = useMemo(() => {
+    // TS-5 fix (2026-05-05 audit): bind the bucket locally so we
+    // don't need a non-null assertion on the next line. The previous
+    // pattern wrote `if (!groups[key]) groups[key] = []; groups[key]!.push(v)`
+    // — the `!` was technically necessary under noUncheckedIndexedAccess
+    // (the type system can't prove the line above narrowed it) but
+    // it's strictly cleaner to bind once and let the local var carry
+    // the non-undefined type through the push.
     const groups: Record<string, typeof VIEWS> = {};
     for (const v of VIEWS) {
       const key = v.group;
-      if (!groups[key]) groups[key] = [];
-      groups[key]!.push(v);
+      const bucket = groups[key] ?? (groups[key] = []);
+      bucket.push(v);
     }
     return groups;
   }, []);
