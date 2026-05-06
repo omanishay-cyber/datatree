@@ -258,14 +258,42 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
             Err(e) => err(e.to_string()),
         },
         Request::QueryRows { q } => {
+            // Audit fix (2026-05-06): CRIT-3 closed `Request::Insert`
+            // but the same arbitrary-SQL vector was still wide open
+            // on QueryRows/Write/WriteBatch. Apply the same allowlist
+            // gate here. QueryRows is read-only; restrict to
+            // `SELECT...` and `WITH...` (CTE) prefixes.
+            if let Err(reason) = validate_query_sql(&q.sql) {
+                return err(format!("store IPC: rejected QueryRows request: {reason}"));
+            }
             let r = store.query.query_rows(q).await;
             wire_from_response(r)
         }
         Request::Write { w } => {
+            // Audit fix (2026-05-06): same allowlist gate as
+            // QueryRows. Write accepts INSERT/UPDATE/DELETE only —
+            // matches the typed mutation semantics of the
+            // store::query::write() path. DDL, PRAGMA, ATTACH, etc.
+            // all fail this gate.
+            if let Err(reason) = validate_write_sql(&w.sql) {
+                return err(format!("store IPC: rejected Write request: {reason}"));
+            }
             let r = store.query.write(w).await;
             wire_from_response(r)
         }
         Request::WriteBatch { ws } => {
+            // Audit fix (2026-05-06): WriteBatch is the most attacker-
+            // friendly variant — N statements per call, each in a
+            // single transaction. Validate every entry's SQL before
+            // dispatch. First failure aborts the whole batch with a
+            // diagnostic so the caller sees which entry failed.
+            for (idx, w) in ws.iter().enumerate() {
+                if let Err(reason) = validate_write_sql(&w.sql) {
+                    return err(format!(
+                        "store IPC: rejected WriteBatch entry [{idx}]: {reason}"
+                    ));
+                }
+            }
             let r = store.query.write_batch(ws).await;
             wire_from_response(r)
         }
@@ -420,9 +448,38 @@ pub fn default_paths() -> PathManager {
 /// - `DROP TABLE nodes` → "not an INSERT"
 /// - `INSERT INTO x VALUES (1); DROP TABLE y` → "multiple statements"
 /// - `INSERT INTO x VALUES (1) -- DROP TABLE y` → "trailing comment"
+/// - `INSERT INTO x VALUES (1) /* ; DROP TABLE y; */` → "block comment"
 /// - `ATTACH DATABASE 'evil.db' AS evil` → "not an INSERT"
 /// - `PRAGMA writable_schema = 1` → "not an INSERT"
 fn validate_insert_sql(sql: &str) -> Result<(), &'static str> {
+    validate_sql_for_kind(sql, SqlKind::Insert)
+}
+
+/// Post-audit (2026-05-06) extension: validators for the OTHER IPC
+/// endpoints that accept user-supplied SQL.
+///
+/// CRIT-3 closed `Request::Insert`. The deep-audit fan-out flagged
+/// that `Request::QueryRows`, `Request::Write`, and
+/// `Request::WriteBatch` ALSO carry free-form `sql: String` fields
+/// that flow into `prepare_cached(&sql)` with no allowlist. Same
+/// attack vector (named-pipe / unix-socket has no peer-credential
+/// check on Windows, any same-user process can DROP TABLE / ATTACH
+/// DATABASE / PRAGMA writable_schema=1). This commit closes the
+/// remaining three doors.
+#[derive(Clone, Copy, Debug)]
+enum SqlKind {
+    /// `INSERT [OR IGNORE/REPLACE] [INTO] ... [RETURNING ...]`
+    Insert,
+    /// SELECT for `Request::QueryRows`. WITH-clause CTE allowed
+    /// because they're read-only too.
+    Select,
+    /// `INSERT | UPDATE | DELETE` for `Request::Write` /
+    /// `Request::WriteBatch`. Read-only DML is intentionally NOT
+    /// allowed here — Write is for mutations only.
+    InsertUpdateDelete,
+}
+
+fn validate_sql_for_kind(sql: &str, kind: SqlKind) -> Result<(), &'static str> {
     let trimmed = sql.trim();
     if trimmed.is_empty() {
         return Err("empty SQL");
@@ -431,22 +488,42 @@ fn validate_insert_sql(sql: &str) -> Result<(), &'static str> {
     // Strip an optional single trailing `;`.
     let body = trimmed.strip_suffix(';').unwrap_or(trimmed).trim_end();
 
-    // Must start with INSERT (case-insensitive). `INSERT OR IGNORE` /
-    // `INSERT OR REPLACE` are accepted because they still begin with
-    // INSERT. `WITH ... INSERT` / `INSERT ... RETURNING` are accepted
-    // (they are still single INSERT statements).
-    let upper_prefix = body
-        .chars()
-        .take(7)
-        .collect::<String>()
-        .to_ascii_uppercase();
-    if !upper_prefix.starts_with("INSERT ") && !upper_prefix.starts_with("INSERT\t") {
-        return Err("not an INSERT");
+    // Audit fix (2026-05-06): accept ALL whitespace classes after the
+    // leading keyword (was previously space/tab only — `INSERT\nINTO`
+    // would false-negative). Use is_whitespace() so newline + CR
+    // pass too.
+    let body_upper: String = body.to_ascii_uppercase();
+    let starts_with_kw = |kw: &str| {
+        body_upper
+            .strip_prefix(kw)
+            .map(|rest| rest.chars().next().is_some_and(|c| c.is_whitespace()))
+            .unwrap_or(false)
+    };
+    let prefix_ok = match kind {
+        SqlKind::Insert => starts_with_kw("INSERT"),
+        SqlKind::Select => {
+            // `WITH ... SELECT` is a SELECT (CTE). Accept either prefix.
+            starts_with_kw("SELECT") || starts_with_kw("WITH")
+        }
+        SqlKind::InsertUpdateDelete => {
+            starts_with_kw("INSERT") || starts_with_kw("UPDATE") || starts_with_kw("DELETE")
+        }
+    };
+    if !prefix_ok {
+        return Err(match kind {
+            SqlKind::Insert => "not an INSERT",
+            SqlKind::Select => "not a SELECT or WITH",
+            SqlKind::InsertUpdateDelete => "not an INSERT/UPDATE/DELETE",
+        });
     }
 
-    // Reject multiple statements. SQLite tolerates a trailing `;` we
-    // already stripped above. Any inner `;` followed by non-whitespace
-    // is a chained statement.
+    // Reject multiple statements + comments that could hide them.
+    // Tracks both `--` line comments and `/* */` block comments now.
+    // Audit fix (2026-05-06): the prior tokenizer skipped block
+    // comments entirely — `INSERT INTO x VALUES (1) /* ; DROP TABLE y */`
+    // would pass even though SQLite parses the trailing ";" inside
+    // the comment as a statement separator depending on driver
+    // configuration. Belt-and-suspenders: reject any `/*`.
     let mut chars = body.chars().peekable();
     let mut in_single_quote = false;
     let mut in_double_quote = false;
@@ -471,11 +548,20 @@ fn validate_insert_sql(sql: &str) -> Result<(), &'static str> {
                 break;
             }
             '-' if !in_single_quote && !in_double_quote => {
-                // Block SQL line comments. Genuine INSERT statements
-                // do not need them; rejecting prevents a comment from
-                // hiding a chained statement.
+                // Block SQL line comments. Genuine DML does not need
+                // them; rejecting prevents a comment from hiding a
+                // chained statement.
                 if chars.peek() == Some(&'-') {
                     return Err("trailing comment");
+                }
+            }
+            '/' if !in_single_quote && !in_double_quote => {
+                // Block SQL block comments. SQLite tolerates them in
+                // some clients but they're unnecessary inside an IPC
+                // wire payload and create a parse-difference between
+                // the validator and the engine.
+                if chars.peek() == Some(&'*') {
+                    return Err("block comment");
                 }
             }
             _ => {}
@@ -483,6 +569,16 @@ fn validate_insert_sql(sql: &str) -> Result<(), &'static str> {
     }
 
     Ok(())
+}
+
+/// Validator wrapper for `Request::Write`.
+fn validate_write_sql(sql: &str) -> Result<(), &'static str> {
+    validate_sql_for_kind(sql, SqlKind::InsertUpdateDelete)
+}
+
+/// Validator wrapper for `Request::QueryRows`.
+fn validate_query_sql(sql: &str) -> Result<(), &'static str> {
+    validate_sql_for_kind(sql, SqlKind::Select)
 }
 
 #[cfg(test)]
@@ -539,5 +635,112 @@ mod validate_insert_sql_tests {
     #[test]
     fn rejects_empty() {
         assert!(validate_insert_sql("   ").is_err());
+    }
+
+    // Audit fix (2026-05-06): coverage for the new validator surface
+    // and the block-comment + multi-whitespace bypasses the audit
+    // flagged.
+
+    #[test]
+    fn rejects_block_comment_in_insert() {
+        assert!(validate_insert_sql("INSERT INTO x VALUES (1) /* DROP TABLE y */").is_err());
+    }
+
+    #[test]
+    fn accepts_newline_after_insert_keyword() {
+        // Whitespace after INSERT must accept all whitespace classes
+        // (newline, tab, CR), not just space/tab.
+        assert!(validate_insert_sql("INSERT\nINTO x VALUES (1)").is_ok());
+        assert!(validate_insert_sql("INSERT\r\nINTO x VALUES (1)").is_ok());
+    }
+
+    #[test]
+    fn validate_query_sql_accepts_select() {
+        use super::validate_query_sql;
+        assert!(validate_query_sql("SELECT 1").is_ok());
+        assert!(validate_query_sql("select id from nodes where x = ?").is_ok());
+    }
+
+    #[test]
+    fn validate_query_sql_accepts_with_cte() {
+        use super::validate_query_sql;
+        assert!(validate_query_sql("WITH x AS (SELECT 1) SELECT * FROM x").is_ok());
+    }
+
+    #[test]
+    fn validate_query_sql_rejects_insert() {
+        use super::validate_query_sql;
+        assert!(validate_query_sql("INSERT INTO x VALUES (1)").is_err());
+    }
+
+    #[test]
+    fn validate_query_sql_rejects_drop() {
+        use super::validate_query_sql;
+        assert!(validate_query_sql("DROP TABLE x").is_err());
+    }
+
+    #[test]
+    fn validate_query_sql_rejects_attach() {
+        use super::validate_query_sql;
+        assert!(validate_query_sql("ATTACH DATABASE 'evil.db' AS evil").is_err());
+    }
+
+    #[test]
+    fn validate_query_sql_rejects_block_comment() {
+        use super::validate_query_sql;
+        assert!(validate_query_sql("SELECT 1 /* DROP TABLE x */").is_err());
+    }
+
+    #[test]
+    fn validate_write_sql_accepts_insert() {
+        use super::validate_write_sql;
+        assert!(validate_write_sql("INSERT INTO x VALUES (1)").is_ok());
+    }
+
+    #[test]
+    fn validate_write_sql_accepts_update() {
+        use super::validate_write_sql;
+        assert!(validate_write_sql("UPDATE x SET a = 1 WHERE b = ?").is_ok());
+    }
+
+    #[test]
+    fn validate_write_sql_accepts_delete() {
+        use super::validate_write_sql;
+        assert!(validate_write_sql("DELETE FROM x WHERE id = ?").is_ok());
+    }
+
+    #[test]
+    fn validate_write_sql_rejects_select() {
+        // Write is for mutations only — SELECT should fail.
+        use super::validate_write_sql;
+        assert!(validate_write_sql("SELECT * FROM x").is_err());
+    }
+
+    #[test]
+    fn validate_write_sql_rejects_drop() {
+        use super::validate_write_sql;
+        assert!(validate_write_sql("DROP TABLE x").is_err());
+    }
+
+    #[test]
+    fn validate_write_sql_rejects_attach() {
+        use super::validate_write_sql;
+        assert!(validate_write_sql("ATTACH DATABASE 'evil.db' AS evil").is_err());
+    }
+
+    #[test]
+    fn validate_write_sql_rejects_chained_statement() {
+        use super::validate_write_sql;
+        assert!(
+            validate_write_sql("UPDATE x SET a = 1; DROP TABLE y").is_err()
+        );
+    }
+
+    #[test]
+    fn validate_write_sql_rejects_block_comment() {
+        use super::validate_write_sql;
+        assert!(
+            validate_write_sql("UPDATE x SET a = 1 /* ; DROP TABLE y; */ WHERE b = ?").is_err()
+        );
     }
 }
