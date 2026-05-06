@@ -2368,6 +2368,7 @@ name = "mneme-cli"
 version = "0.4.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "blake3",
  "chrono",
  "clap",

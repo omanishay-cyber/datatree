@@ -43,6 +43,12 @@ interprocess = { version = "2.2", features = ["tokio"] }
 # and by install.rs for content-addressable manifest backups.
 sha2 = "0.10"
 
+# Base64 — used by uninstall.rs::encode_powershell_command to inline the
+# Windows finalize script via `powershell.exe -EncodedCommand <base64>`,
+# closing the audit NEW-CRIT-4 TOCTOU window that was open while the
+# previous .ps1-on-disk approach lived for ~10 seconds before exec.
+base64 = "0.22"
+
 # Filesystem helpers.
 dirs = "5.0"
 walkdir = "2.5"

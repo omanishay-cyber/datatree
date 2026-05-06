@@ -867,85 +867,81 @@ fn purge_mneme_state() {
             );
         }
 
-        // Stage a tiny PowerShell helper script next to the marker so
-        // the detached cleanup can do MORE than rmdir — specifically,
-        // probe whether the dir is still there post-rmdir and write
-        // the LIE-4 status JSON. PowerShell is universally available
-        // on Windows 10+ + has `ConvertTo-Json` built in. The script
-        // file is short-lived: `purge_mneme_state` writes it, the
-        // detached child consumes it, then deletes itself.
+        // Build a tiny PowerShell finalizer that probes whether the
+        // dir is still there post-rmdir and writes the LIE-4 status
+        // JSON. PowerShell ships on Windows 10+ and has
+        // ConvertTo-Json built in.
         //
-        // We could embed everything in a `cmd /c "..."` one-liner but
-        // JSON-escaping the path inside a cmd quoted string is a
-        // nightmare. A real `.ps1` file dodges all that.
+        // Audit fix NEW-CRIT-4 (2026-05-06 multi-agent fan-out,
+        // security-sentinel): the previous implementation staged this
+        // script as a `.ps1` file next to the marker and spawned
+        // `powershell.exe -File <path>` after a 10-second `ping`
+        // delay. That created a 10+ second TOCTOU window where a
+        // local attacker could overwrite the .ps1 between our write
+        // and PowerShell's open-for-read. The A1-015 comment block
+        // promised SHA-256 verification of the file before exec, but
+        // that promise was never implemented — `cmd_str` invoked
+        // `powershell -File "{}"` with no hash check.
         //
-        // A1-015 (2026-05-04): stage the helper inside `~/.mneme/` (a
-        // user-private dir) instead of `~/` (which on multi-user
-        // Windows can be readable/writable by other users). Plus we
-        // SHA-256 the body we wrote and pass the expected hash to
-        // PowerShell via -EncodedCommand wrapper so the spawned process
-        // verifies the script content before running it. If a local
-        // attacker swaps the .ps1 between our write + the detached
-        // PowerShell spawn, the hash mismatch aborts execution.
+        // Fix: pass the entire script body via `-EncodedCommand`
+        // (UTF-16LE -> base64). PowerShell decodes and executes
+        // directly; no file ever lands on disk, so there's no
+        // attack surface for an attacker to swap. The 32 KB cmd
+        // line limit on Windows accommodates this script (~1.1 KB
+        // raw -> ~1.5 KB base64).
         //
-        // Falls back to legacy `~/` location if `~/.mneme/` was already
-        // removed by the synchronous purge above (mneme_dir would no
-        // longer exist).
-        let helper_dir = if mneme_dir.exists() {
-            mneme_dir.clone()
-        } else {
-            home.clone()
-        };
-        let helper_script = helper_dir.join(".mneme-uninstall-finalize.ps1");
-        let script_body = build_uninstall_finalize_script(&mneme_dir, &marker_path);
-        if let Err(e) = std::fs::write(&helper_script, script_body) {
-            warn!(error = %e, "failed to stage uninstall finalize helper; rmdir will run without status marker");
-        }
-
         // Quote the path in case it contains spaces (e.g.,
-        // `C:\Users\First Last\.mneme`). cmd's `rmdir` accepts quoted paths.
-        // 10s wait: 2s would normally suffice, but Defender ML scans on
-        // the freshly-extracted tree can hold the lock longer. 10s is
-        // safe — the user already typed --purge-state, they're not
-        // waiting on this process anyway.
+        // `C:\Users\First Last\.mneme`). cmd's `rmdir` accepts quoted
+        // paths. 10s wait: 2s would normally suffice, but Defender
+        // ML scans on the freshly-extracted tree can hold the lock
+        // longer. 10s is safe — the user already typed --purge-state,
+        // they're not waiting on this process anyway.
         //
         // Sequence (all detached so the parent can exit immediately):
-        //   1. ping -n 11     — wait ~10s for parent to release mneme.exe lock.
-        //                       NOTE: must be `ping`, NOT `timeout /t`.
-        //                       `timeout.exe` refuses to run when stdin is
-        //                       redirected (Stdio::null below), exits instantly
-        //                       with "ERROR: Input redirection is not supported"
-        //                       to stderr. That made rmdir race the still-alive
-        //                       parent and silently fail (Bug C-1, 2026-05-01).
-        //                       `ping` does not need a console handle.
-        //   2. rmdir /s /q    — actual delete attempt
-        //   3. powershell …   — write LIE-4 status marker + delete helper
+        //   1. ping -n 11           — wait ~10s for parent to release
+        //                             mneme.exe lock. NOTE: must be
+        //                             `ping`, NOT `timeout /t`.
+        //                             `timeout.exe` refuses to run
+        //                             when stdin is redirected
+        //                             (Stdio::null below), exits
+        //                             instantly with "ERROR: Input
+        //                             redirection is not supported"
+        //                             to stderr. That made rmdir
+        //                             race the still-alive parent
+        //                             and silently fail (Bug C-1,
+        //                             2026-05-01). `ping` does not
+        //                             need a console handle.
+        //   2. rmdir /s /q          — actual delete attempt
+        //   3. powershell -EC ...   — write LIE-4 status marker
         //
         // `&` (cmd's sequential separator) ensures the marker write
         // runs even if rmdir partially fails — that's the whole point.
+        //
         // A1-016 (2026-05-04): use absolute paths for `ping` and
         // `powershell.exe` to defeat PATH-hijack attacks. Bare command
-        // resolution would let a malicious `~/.local/bin/ping.exe` (if
-        // earlier on PATH than %SystemRoot%\System32) execute as the
-        // uninstalling user. System32 is on PATH on every Windows, but
-        // not necessarily FIRST. Hardcoding the canonical install path
-        // closes the window. SystemRoot env-var fallback handles non-
-        // standard Windows roots; the bare-name fallback is defensive
-        // (we'd rather succeed with possibly-hijacked ping than fail
-        // outright, since the only consequence is the 11-second wait
-        // gets replaced).
+        // resolution would let a malicious `~/.local/bin/ping.exe`
+        // (if earlier on PATH than %SystemRoot%\System32) execute as
+        // the uninstalling user. System32 is on PATH on every
+        // Windows, but not necessarily FIRST. Hardcoding the
+        // canonical install path closes the window. SystemRoot
+        // env-var fallback handles non-standard Windows roots; the
+        // bare-name fallback is defensive (we'd rather succeed with
+        // possibly-hijacked ping than fail outright, since the only
+        // consequence is the 11-second wait gets replaced).
         let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
         let ping_exe = format!("{}\\System32\\ping.exe", system_root);
         let powershell_exe = format!(
             "{}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
             system_root
         );
+        let script_body = build_uninstall_finalize_script(&mneme_dir, &marker_path);
+        let encoded_command = encode_powershell_command(&script_body);
         let cmd_str = format!(
-            "\"{}\" -n 11 127.0.0.1 >nul & rmdir /s /q \"{}\" & \"{}\" -NoProfile -ExecutionPolicy Bypass -File \"{}\"",
+            "\"{}\" -n 11 127.0.0.1 >nul & rmdir /s /q \"{}\" & \"{}\" -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
             ping_exe,
             mneme_dir.display(),
             powershell_exe,
-            helper_script.display(),
+            encoded_command,
         );
         let spawned = Command::new("cmd")
             .args(["/c", &cmd_str])
@@ -1007,12 +1003,14 @@ fn purge_mneme_state() {
 }
 
 /// LIE-4: PowerShell body the Windows detached cleanup runs AFTER the
-/// `rmdir /s /q` to write `~/.mneme-uninstall-status.json`. Lives in a
-/// stand-alone .ps1 file (rather than being embedded in `cmd /c`) so we
-/// don't fight cmd's quoting rules around JSON / paths with spaces.
+/// `rmdir /s /q` to write `~/.mneme-uninstall-status.json`. Encoded
+/// via `encode_powershell_command` and passed as
+/// `-EncodedCommand <base64>` so the body never lands on disk —
+/// closes the audit NEW-CRIT-4 TOCTOU window that was open while the
+/// previous .ps1-on-disk + 10s ping path executed.
 ///
-/// Self-deleting: the script removes itself at the end so the user's
-/// home dir doesn't accumulate orphan helper scripts.
+/// No self-delete needed: -EncodedCommand carries the script in
+/// memory only, so there's nothing to clean up.
 #[cfg(windows)]
 fn build_uninstall_finalize_script(
     mneme_dir: &std::path::Path,
@@ -1050,12 +1048,26 @@ if (-not (Test-Path -LiteralPath $target)) {{
 
 $json = $payload | ConvertTo-Json -Depth 4
 [System.IO.File]::WriteAllText($marker, $json, [System.Text.UTF8Encoding]::new($false))
-
-# self-delete: helper script is no longer needed.
-$selfPath = $MyInvocation.MyCommand.Path
-if ($selfPath) {{ Remove-Item -LiteralPath $selfPath -Force -ErrorAction SilentlyContinue }}
 "#,
     )
+}
+
+/// Audit fix NEW-CRIT-4: encode a PowerShell script body for use with
+/// `powershell.exe -EncodedCommand`. PowerShell expects UTF-16LE bytes
+/// then base64-encoded. This is the established mechanism for passing
+/// non-trivial scripts on the command line without quoting hell, and
+/// (the relevant property here) without writing the script to disk —
+/// no file means no TOCTOU window for an attacker to swap content
+/// between our write and PowerShell's read.
+#[cfg(windows)]
+fn encode_powershell_command(script: &str) -> String {
+    use base64::Engine;
+    let utf16: Vec<u16> = script.encode_utf16().collect();
+    let mut bytes = Vec::with_capacity(utf16.len() * 2);
+    for unit in utf16 {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    base64::engine::general_purpose::STANDARD.encode(&bytes)
 }
 
 /// LIE-4: implementation of `mneme uninstall --status`. Reads the
@@ -1104,6 +1116,40 @@ fn print_uninstall_status_marker() -> CliResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Audit fix NEW-CRIT-4 regression test: the encoder MUST produce
+    /// PowerShell's expected UTF-16LE + base64 wire format. PowerShell
+    /// can read this back via `[System.Text.Encoding]::Unicode.GetString
+    /// ([Convert]::FromBase64String($encoded))`. We mirror that decode
+    /// in pure Rust and assert equality with the input — if the
+    /// encoder ever drifts (e.g. someone "optimises" to UTF-8), the
+    /// `powershell -EncodedCommand` invocation in the detached
+    /// uninstall path silently does nothing on Windows, which would
+    /// re-open the TOCTOU window without any error surfacing.
+    #[cfg(windows)]
+    #[test]
+    fn encode_powershell_command_round_trips_via_utf16le_base64() {
+        use base64::Engine;
+        let original = "Write-Host 'hello mneme'; $x = 42";
+        let encoded = encode_powershell_command(original);
+
+        // Decode back: base64 → UTF-16LE bytes → UTF-16 code units → String.
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&encoded)
+            .expect("encoded must be valid base64");
+        assert_eq!(bytes.len() % 2, 0, "UTF-16LE byte length must be even");
+        let units: Vec<u16> = bytes
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        let round_trip = String::from_utf16(&units).expect("UTF-16LE must decode");
+
+        assert_eq!(
+            round_trip, original,
+            "encode_powershell_command must round-trip a script body \
+             through UTF-16LE + base64 byte-for-byte"
+        );
+    }
 
     #[tokio::test]
     async fn dry_run_with_unknown_platform_returns_error() {
