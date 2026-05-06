@@ -255,18 +255,16 @@ pub(crate) fn is_symbol_shaped(pattern: &str) -> bool {
 /// would benefit from a blast-radius preview? Source-code extensions
 /// only (no JSON, no images, no Markdown — those are usually data the
 /// user actually wants to read).
+///
+/// MAINT-8 fix (2026-05-06 audit): truth table moved to
+/// `common::source_files` so this and the matching predicate in
+/// `federated.rs` can't drift. See common/src/source_files.rs for
+/// the canonical extension list. (Side effect of consolidation: the
+/// list now includes mjs/cjs/scala/sh/bash/zsh/ps1 too — soft-
+/// redirect hints fire for those file types now, matching what
+/// federated already accepted.)
 pub(crate) fn is_source_file(path: &str) -> bool {
-    let p = path.trim();
-    if p.is_empty() {
-        return false;
-    }
-    // Forward-slash normalization for the suffix check.
-    let lower = p.to_ascii_lowercase().replace('\\', "/");
-    const EXTS: &[&str] = &[
-        ".rs", ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".java", ".kt", ".swift", ".cpp", ".cc",
-        ".c", ".h", ".hpp", ".rb", ".php", ".cs",
-    ];
-    EXTS.iter().any(|ext| lower.ends_with(ext))
+    common::source_files::is_source_file_str(path)
 }
 
 /// Trim long inputs so the injected message stays under control. We

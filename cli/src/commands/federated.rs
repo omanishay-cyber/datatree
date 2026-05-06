@@ -260,15 +260,13 @@ fn optin_marker() -> PathBuf {
 
 /// Very rough source-file filter. Covers the languages we already parse
 /// for Convention Learner output.
+///
+/// MAINT-8 fix (2026-05-06 audit): truth table moved to
+/// `common::source_files` so this and the matching predicate in
+/// `pretool_grep_read.rs` can't drift. See common/src/source_files.rs
+/// for the canonical extension list.
 fn is_source_file(path: &Path) -> bool {
-    const EXTS: &[&str] = &[
-        "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "go", "java", "kt", "swift", "c", "cc",
-        "cpp", "h", "hpp", "rb", "php", "cs", "scala", "sh", "bash", "zsh", "ps1",
-    ];
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|ext| EXTS.contains(&ext))
-        .unwrap_or(false)
+    common::source_files::is_source_file_path(path)
 }
 
 /// Skip vendored / generated dirs that would otherwise flood the index.
