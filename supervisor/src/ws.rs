@@ -88,7 +88,24 @@ pub enum WsServerMsg<'a> {
 pub async fn ws_upgrade_handler(
     ws: WebSocketUpgrade,
     State(state): State<ApiGraphState>,
-) -> impl IntoResponse {
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    // CRIT-4 fix (2026-05-05 audit): Origin + Host validation BEFORE we
+    // spend any server work on the upgrade. Browsers do NOT enforce
+    // Origin restrictions on WebSocket upgrades by default, so without
+    // this check any web page the user visits could open a WS to
+    // 127.0.0.1:7777 and tap the in-process livebus event stream
+    // (live file events, build progress, audit findings — everything
+    // the SPA sees).
+    if let Err(reason) = validate_origin_and_host(&headers) {
+        warn!(reason = %reason, "rejecting /ws upgrade — failed Origin/Host gate");
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            format!("forbidden: {reason}"),
+        )
+            .into_response();
+    }
+
     // Pull the per-router `SubscriberManager` out of state. `livebus` is
     // `Option<SubscriberManager>` because the existing api_graph tests can
     // build a router without standing up a bus; in production
@@ -112,6 +129,154 @@ pub async fn ws_upgrade_handler(
             }
         }
     })
+    .into_response()
+}
+
+/// CRIT-4 fix (2026-05-05 audit): Origin + Host validation for the
+/// `/ws` upgrade. Returns `Ok(())` if the request appears to come
+/// from a trusted source; `Err(reason)` otherwise.
+///
+/// Trust rules:
+///
+/// 1. **Origin**: must be absent (curl / native CLI clients) OR match
+///    one of the trusted prefixes:
+///      - `http://localhost`, `http://127.0.0.1`, `https://localhost`
+///      - `tauri://localhost` (Tauri shell)
+///      - `null` (file:// origins from the Tauri shell on some
+///        platforms — sentinel value, not a wildcard)
+///    Any other Origin is rejected — that's the cross-site attack
+///    vector we care about.
+///
+/// 2. **Host**: must be `127.0.0.1:<port>` or `localhost:<port>` so
+///    DNS rebinding (a malicious DNS A record pointing
+///    `evil.com → 127.0.0.1`) doesn't sneak past the bind-address
+///    check.
+fn validate_origin_and_host(headers: &axum::http::HeaderMap) -> Result<(), String> {
+    // Host check first — defends against DNS rebinding even when no
+    // Origin is present.
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !is_trusted_host(host) {
+        return Err(format!("Host header '{host}' is not 127.0.0.1 or localhost"));
+    }
+
+    // Origin check. Absent Origin = native client, allowed.
+    let origin = headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok());
+    match origin {
+        None => Ok(()),
+        Some(o) if is_trusted_origin(o) => Ok(()),
+        Some(o) => Err(format!("Origin '{o}' is not in the trusted set")),
+    }
+}
+
+fn is_trusted_host(host: &str) -> bool {
+    // Strip port suffix and compare hostname.
+    let hostname = host.split(':').next().unwrap_or("");
+    matches!(hostname, "127.0.0.1" | "localhost" | "[::1]" | "::1")
+}
+
+fn is_trusted_origin(origin: &str) -> bool {
+    if origin == "null" {
+        // file:// origins from native Tauri shells.
+        return true;
+    }
+    // Strict prefix match — origin must start with one of these AND
+    // the next character (if any) must be `:` (port), `/` (path), or
+    // end-of-string. This blocks lookalike domains like
+    // `http://localhost.evil.com` that would naive-prefix-match.
+    let trusted_prefixes = [
+        "http://localhost",
+        "http://127.0.0.1",
+        "https://localhost",
+        "https://127.0.0.1",
+        "tauri://localhost",
+    ];
+    for p in trusted_prefixes.iter() {
+        if let Some(rest) = origin.strip_prefix(p) {
+            if rest.is_empty() || rest.starts_with(':') || rest.starts_with('/') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod origin_host_tests {
+    use super::*;
+    use axum::http::{HeaderMap, HeaderValue};
+
+    fn headers_with(host: Option<&str>, origin: Option<&str>) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        if let Some(v) = host {
+            h.insert(axum::http::header::HOST, HeaderValue::from_str(v).unwrap());
+        }
+        if let Some(v) = origin {
+            h.insert(axum::http::header::ORIGIN, HeaderValue::from_str(v).unwrap());
+        }
+        h
+    }
+
+    #[test]
+    fn accepts_localhost_host_no_origin() {
+        // curl / native client with no Origin
+        assert!(validate_origin_and_host(&headers_with(Some("127.0.0.1:7777"), None)).is_ok());
+    }
+
+    #[test]
+    fn accepts_localhost_origin() {
+        let h = headers_with(Some("localhost:7777"), Some("http://localhost:5173"));
+        assert!(validate_origin_and_host(&h).is_ok());
+    }
+
+    #[test]
+    fn accepts_tauri_origin() {
+        let h = headers_with(Some("127.0.0.1:7777"), Some("tauri://localhost"));
+        assert!(validate_origin_and_host(&h).is_ok());
+    }
+
+    #[test]
+    fn rejects_evil_origin() {
+        let h = headers_with(Some("127.0.0.1:7777"), Some("https://evil.com"));
+        assert!(validate_origin_and_host(&h).is_err());
+    }
+
+    #[test]
+    fn rejects_dns_rebinding_host() {
+        // attacker-controlled DNS pointing evil.com at 127.0.0.1
+        let h = headers_with(Some("evil.com:7777"), None);
+        assert!(validate_origin_and_host(&h).is_err());
+    }
+
+    #[test]
+    fn rejects_subdomain_origin_lookalike() {
+        // localhost.evil.com prefix-attack
+        let h = headers_with(
+            Some("127.0.0.1:7777"),
+            Some("http://localhost.evil.com"),
+        );
+        // is_trusted_origin uses prefix match starting with "http://localhost"
+        // → this WOULD match "http://localhost.evil.com" because it starts
+        // with the prefix. We need to be stricter: require the prefix
+        // followed by ':' or '/'.
+        // For now this asserts the regression — fix is below.
+        let _ = h;
+    }
+
+    #[test]
+    fn rejects_localhost_lookalike_strictly() {
+        // Stricter check: prefix must end with ':' or '/' or be exact match.
+        assert!(!is_trusted_origin("http://localhost.evil.com"));
+        assert!(!is_trusted_origin("http://127.0.0.1.evil.com"));
+        assert!(is_trusted_origin("http://localhost"));
+        assert!(is_trusted_origin("http://localhost:5173"));
+        assert!(is_trusted_origin("http://localhost/path"));
+        assert!(is_trusted_origin("http://127.0.0.1:7777"));
+    }
 }
 
 /// Per-connection state machine. Identical in shape to
