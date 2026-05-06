@@ -731,9 +731,7 @@ mod validate_insert_sql_tests {
     #[test]
     fn validate_write_sql_rejects_chained_statement() {
         use super::validate_write_sql;
-        assert!(
-            validate_write_sql("UPDATE x SET a = 1; DROP TABLE y").is_err()
-        );
+        assert!(validate_write_sql("UPDATE x SET a = 1; DROP TABLE y").is_err());
     }
 
     #[test]

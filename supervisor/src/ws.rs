@@ -158,9 +158,7 @@ pub async fn ws_upgrade_handler(
 /// cross-site fetch. We export this function so `api_graph::
 /// build_router` can apply it as a `tower::Layer` covering the
 /// entire HTTP surface, not just the WebSocket upgrade.
-pub(crate) fn validate_origin_and_host(
-    headers: &axum::http::HeaderMap,
-) -> Result<(), String> {
+pub(crate) fn validate_origin_and_host(headers: &axum::http::HeaderMap) -> Result<(), String> {
     validate_origin_and_host_inner(headers)
 }
 

@@ -233,7 +233,9 @@ pub fn build_router(state: ApiGraphState) -> Router {
         // Both layers run on every route including /ws (which still
         // has its own internal validate_origin_and_host check —
         // belt-and-suspenders, harmless duplicate).
-        .layer(axum::middleware::from_fn(crate::ws::enforce_origin_and_host))
+        .layer(axum::middleware::from_fn(
+            crate::ws::enforce_origin_and_host,
+        ))
         // HIGH-42: stamp every response with the API version header so
         // older / cached SPA bundles can detect wire-shape drift.
         .layer(axum::middleware::from_fn(inject_api_version_header))
