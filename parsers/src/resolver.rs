@@ -287,15 +287,25 @@ impl RustResolver {
 pub fn rust_file_prefix(relative_path: &str) -> String {
     // Normalise separators — Windows callers may pass backslashes.
     let normalised = relative_path.replace('\\', "/");
-    // Find the last `src/` in the path and treat everything after
-    // it as the module path. This handles workspace members
-    // (`cli/src/commands/build.rs` → `commands/build.rs`) and the
-    // single-crate case (`src/manager.rs` → `manager.rs`)
-    // identically.
-    let after_src = match normalised.rfind("src/") {
-        Some(i) => &normalised[i + 4..],
+    // L fix (2026-05-05 audit): walk segments and pick the FIRST
+    // `src` segment after the workspace root, not the LAST. The
+    // previous `rfind("src/")` broke on nested workspace members
+    // literally named `src` (e.g. `crates/src/foo/src/lib.rs` →
+    // pre-fix would produce `crate::lib.rs` instead of
+    // `crate::foo::lib.rs`). Also rfind matched any `src/` substring,
+    // including paths like `mysrc/foo.rs` that aren't legitimate
+    // Cargo crate roots — segment-walking is also stricter on that.
+    let segments: Vec<&str> = normalised.split('/').collect();
+    let after_src_idx = segments.iter().position(|s| *s == "src");
+    let after_src_idx = match after_src_idx {
+        Some(i) => i + 1, // segment index AFTER `src`
         None => return String::new(),
     };
+    if after_src_idx >= segments.len() {
+        return String::new();
+    }
+    let after_src = segments[after_src_idx..].join("/");
+    let after_src = after_src.as_str();
     // Strip the .rs extension.
     let trimmed = after_src.strip_suffix(".rs").unwrap_or(after_src);
     // `lib`, `main`, and `mod` are the canonical "this IS the
