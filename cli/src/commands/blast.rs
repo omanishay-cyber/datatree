@@ -18,7 +18,9 @@ use std::path::PathBuf;
 use tracing::info;
 
 use crate::commands::build::make_client;
-use crate::commands::ipc_helpers::{graph_db_path, resolve_project_root};
+use crate::commands::ipc_helpers::{
+    graph_db_path, resolve_project_root, try_ipc_dispatch, IpcDispatch,
+};
 use crate::error::{CliError, CliResult};
 use crate::ipc::{IpcRequest, IpcResponse};
 use common::query::BlastItem;
@@ -68,34 +70,35 @@ pub async fn run(args: BlastArgs, socket_override: Option<PathBuf>) -> CliResult
         args.depth as usize
     };
 
+    // HIGH-48 (2026-05-06, 2026-05-05 audit): consolidated IPC dispatch via
+    // cli::ipc_helpers::try_ipc_dispatch. Error arms are shared; success arm
+    // is inline here because it is specific to blast (BlastResults variant).
     let client = make_client(socket_override);
-    if client.is_running().await {
-        let req = IpcRequest::Blast {
-            project: project_root.clone(),
-            target: args.target.clone(),
-            depth,
-        };
-        match client.request(req).await {
-            Ok(IpcResponse::BlastResults { impacted }) => {
+    let req = IpcRequest::Blast {
+        project: project_root.clone(),
+        target: args.target.clone(),
+        depth,
+    };
+    let outcome = try_ipc_dispatch(
+        &client,
+        req,
+        |resp| match resp {
+            IpcResponse::BlastResults { impacted } => {
                 info!(
                     source = "supervisor",
                     count = impacted.len(),
                     "blast served"
                 );
                 print_layers_from_items(&args.target, &impacted, depth);
-                return Ok(());
+                Some(Ok(()))
             }
-            Ok(IpcResponse::Error { message }) => {
-                return Err(CliError::Supervisor(message));
-            }
-            Ok(other) => {
-                tracing::warn!(?other, "unexpected IPC response; falling back to direct-db");
-            }
-            Err(CliError::Ipc(msg)) => {
-                tracing::warn!(error = %msg, "supervisor IPC failed; falling back to direct-db");
-            }
-            Err(e) => return Err(e),
-        }
+            _ => None,
+        },
+        |_| false,
+    )
+    .await?;
+    if outcome == IpcDispatch::Done {
+        return Ok(());
     }
 
     // Direct-DB fallback — identical to the v0.3.1 behaviour.

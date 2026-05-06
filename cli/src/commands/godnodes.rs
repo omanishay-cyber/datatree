@@ -15,7 +15,9 @@ use std::path::PathBuf;
 use tracing::info;
 
 use crate::commands::build::make_client;
-use crate::commands::ipc_helpers::{graph_db_path, resolve_project_root};
+use crate::commands::ipc_helpers::{
+    graph_db_path, resolve_project_root, try_ipc_dispatch, IpcDispatch,
+};
 use crate::error::{CliError, CliResult};
 use crate::ipc::{IpcRequest, IpcResponse};
 use common::query::GodNode;
@@ -38,33 +40,34 @@ pub struct GodNodesArgs {
 pub async fn run(args: GodNodesArgs, socket_override: Option<PathBuf>) -> CliResult<()> {
     let project_root = resolve_project_root(args.project.clone());
 
+    // HIGH-48 (2026-05-06, 2026-05-05 audit): consolidated IPC dispatch via
+    // cli::ipc_helpers::try_ipc_dispatch. Error arms are shared; success arm
+    // is inline here because it is specific to godnodes (GodNodesResults variant).
     let client = make_client(socket_override);
-    if client.is_running().await {
-        let req = IpcRequest::GodNodes {
-            project: project_root.clone(),
-            n: args.n as usize,
-        };
-        match client.request(req).await {
-            Ok(IpcResponse::GodNodesResults { nodes }) => {
+    let req = IpcRequest::GodNodes {
+        project: project_root.clone(),
+        n: args.n as usize,
+    };
+    let outcome = try_ipc_dispatch(
+        &client,
+        req,
+        |resp| match resp {
+            IpcResponse::GodNodesResults { nodes } => {
                 info!(
                     source = "supervisor",
                     count = nodes.len(),
                     "godnodes served"
                 );
                 print_gods(&nodes);
-                return Ok(());
+                Some(Ok(()))
             }
-            Ok(IpcResponse::Error { message }) => {
-                return Err(CliError::Supervisor(message));
-            }
-            Ok(other) => {
-                tracing::warn!(?other, "unexpected IPC response; falling back to direct-db");
-            }
-            Err(CliError::Ipc(msg)) => {
-                tracing::warn!(error = %msg, "supervisor IPC failed; falling back to direct-db");
-            }
-            Err(e) => return Err(e),
-        }
+            _ => None,
+        },
+        |_| false,
+    )
+    .await?;
+    if outcome == IpcDispatch::Done {
+        return Ok(());
     }
 
     // Direct-DB fallback.

@@ -25,12 +25,21 @@
 //! three names (`resolve_project_root`, `paths_graph_db`, `live_graph_db`).
 //! They now live here as the single canonical implementation. All five
 //! commands import from this module and their local copies are deleted.
+//!
+//! ## HIGH-48 fix (2026-05-06, 2026-05-05 audit): IPC dispatch boilerplate
+//!
+//! The try-IPC-then-fallback pattern (check is_running, request, handle
+//! error arms, fall back to direct-DB) was duplicated three times across
+//! blast.rs, godnodes.rs, and recall.rs. The shared error arms and
+//! supervisor-not-running check now live in [`try_ipc_dispatch`]. The
+//! success arm stays inline in each command because it varies per-command
+//! (different IpcResponse variant, different result processing).
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::error::{CliError, CliResult};
-use crate::ipc::IpcClient;
+use crate::ipc::{IpcClient, IpcRequest, IpcResponse};
 use common::{ids::ProjectId, paths::PathManager};
 
 /// B-001: per-round-trip timeout for build-pipeline IPC. The default
@@ -116,4 +125,81 @@ pub(crate) fn graph_db_path(root: &Path) -> CliResult<PathBuf> {
     })?;
     let paths = PathManager::default_root();
     Ok(paths.project_root(&id).join("graph.db"))
+}
+
+// ---------------------------------------------------------------------------
+// HIGH-48 (2026-05-06, 2026-05-05 audit): consolidated IPC dispatch
+// ---------------------------------------------------------------------------
+
+/// Outcome of a [`try_ipc_dispatch`] call.
+///
+/// The caller checks this to decide whether to proceed to the direct-DB
+/// fallback or return early.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum IpcDispatch {
+    /// IPC handled the request — caller should return `Ok(())` immediately.
+    Done,
+    /// IPC was not running or had a transient error — caller should run the
+    /// direct-DB fallback path.
+    Fallback,
+}
+
+/// Attempt to service a request via the supervisor IPC, handling the three
+/// error arms that are identical across blast.rs, godnodes.rs, and recall.rs:
+///
+/// - Supervisor not running → `Fallback`
+/// - `Ok(Error { message })` → surface as `CliError::Supervisor`
+/// - `Ok(unexpected variant)` → warn, `Fallback`
+/// - `Err(Ipc)` → warn, `Fallback`
+/// - `Err(other)` checked by `extra_transient` → warn, `Fallback` (recall A1-030)
+/// - `Err(other)` not transient → propagate
+///
+/// The **success arm** is caller-supplied via `on_success`. It receives the
+/// full `IpcResponse`. Return `Some(Ok(()))` to signal the response was
+/// handled; return `Some(Err(e))` to propagate an error from the handler;
+/// return `None` to treat the variant as unexpected (warn + `Fallback`).
+///
+/// `extra_transient` is an additional predicate for errors that should also
+/// fall back rather than surface. Pass `|_| false` (or the unit closure
+/// `|_| false`) for blast and godnodes. Recall passes a closure that
+/// catches wire-decode errors (A1-030, 2026-05-04).
+///
+/// HIGH-48 (2026-05-06, 2026-05-05 audit): consolidated from blast.rs,
+/// godnodes.rs, recall.rs.
+pub(crate) async fn try_ipc_dispatch<F, E>(
+    client: &IpcClient,
+    req: IpcRequest,
+    on_success: F,
+    extra_transient: E,
+) -> CliResult<IpcDispatch>
+where
+    F: FnOnce(IpcResponse) -> Option<CliResult<()>>,
+    E: Fn(&CliError) -> bool,
+{
+    if !client.is_running().await {
+        return Ok(IpcDispatch::Fallback);
+    }
+    match client.request(req).await {
+        Ok(IpcResponse::Error { message }) => Err(CliError::Supervisor(message)),
+        Ok(resp) => match on_success(resp) {
+            Some(Ok(())) => Ok(IpcDispatch::Done),
+            Some(Err(e)) => Err(e),
+            None => {
+                tracing::warn!("unexpected IPC response; falling back to direct-db");
+                Ok(IpcDispatch::Fallback)
+            }
+        },
+        Err(CliError::Ipc(msg)) => {
+            tracing::warn!(error = %msg, "supervisor IPC failed; falling back to direct-db");
+            Ok(IpcDispatch::Fallback)
+        }
+        Err(ref e) if extra_transient(e) => {
+            tracing::warn!(
+                error = %e,
+                "supervisor IPC transient error; falling back to direct-db"
+            );
+            Ok(IpcDispatch::Fallback)
+        }
+        Err(e) => Err(e),
+    }
 }

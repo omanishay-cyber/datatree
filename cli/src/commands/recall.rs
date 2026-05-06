@@ -21,7 +21,9 @@ use std::sync::OnceLock;
 use tracing::info;
 
 use crate::commands::build::{embedding_model_present, make_client};
-use crate::commands::ipc_helpers::{graph_db_path, resolve_project_root};
+use crate::commands::ipc_helpers::{
+    graph_db_path, resolve_project_root, try_ipc_dispatch, IpcDispatch,
+};
 use crate::error::{CliError, CliResult};
 use crate::ipc::{IpcRequest, IpcResponse};
 use common::query::RecallHit;
@@ -109,52 +111,45 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
     // it twice if IPC fails.
     let project_root = resolve_project_root(args.project.clone());
 
+    // HIGH-48 (2026-05-06, 2026-05-05 audit): consolidated IPC dispatch via
+    // cli::ipc_helpers::try_ipc_dispatch. Error arms are shared; success arm
+    // is inline here because it is specific to recall (RecallResults variant).
+    // A1-030 (2026-05-04): wire-decode errors are passed as extra_transient so
+    // they fall back to direct-DB instead of surfacing.
     let client = make_client(socket_override);
-    if client.is_running().await {
-        let req = IpcRequest::Recall {
-            project: project_root.clone(),
-            query: args.query.clone(),
-            limit: args.limit as usize,
-            filter_type: args.kind.clone(),
-        };
-        match client.request(req).await {
-            Ok(IpcResponse::RecallResults { hits }) => {
+    let req = IpcRequest::Recall {
+        project: project_root.clone(),
+        query: args.query.clone(),
+        limit: args.limit as usize,
+        filter_type: args.kind.clone(),
+    };
+    let outcome = try_ipc_dispatch(
+        &client,
+        req,
+        |resp| match resp {
+            IpcResponse::RecallResults { hits } => {
                 info!(source = "supervisor", count = hits.len(), "recall served");
                 print_hits(&hits, &args.query);
-                return Ok(());
+                Some(Ok(()))
             }
-            Ok(IpcResponse::Error { message }) => {
-                // The supervisor answered, but the shard lookup failed
-                // on its side (e.g. graph.db missing). Surface it — do
-                // not mask with a direct-DB attempt that would fail the
-                // same way with a different error message.
-                return Err(CliError::Supervisor(message));
-            }
-            Ok(other) => {
-                // An unexpected variant (old supervisor? wire skew?).
-                // Drop to the direct-DB path rather than crash.
-                tracing::warn!(?other, "unexpected IPC response; falling back to direct-db");
-            }
-            Err(CliError::Ipc(msg)) => {
-                // IO-level problem: pipe gone, timeout. Fall through.
-                tracing::warn!(error = %msg, "supervisor IPC failed; falling back to direct-db");
-            }
-            // A1-030 (2026-05-04): broaden fallback to malformed-wire
-            // errors. Previously CliError::Other was treated as "real
-            // error, surface it" but a corrupted shard or wire skew
-            // would surface CliError::Other("decode failed: ...") --
-            // which the file's contract (line 81-85) promises will
-            // fall back to direct-db. Match the documented contract.
-            Err(CliError::Other(msg))
-                if msg.contains("decode")
+            _ => None,
+        },
+        // A1-030: broaden fallback to malformed-wire errors. A corrupted shard
+        // or wire skew surfaces as CliError::Other("decode failed: ..."); we
+        // fall back to direct-DB instead of surfacing the error.
+        |e| match e {
+            CliError::Other(msg) => {
+                msg.contains("decode")
                     || msg.contains("EOF")
                     || msg.contains("unexpected end")
-                    || msg.contains("invalid utf") =>
-            {
-                tracing::warn!(error = %msg, "supervisor wire decode failed; falling back to direct-db");
+                    || msg.contains("invalid utf")
             }
-            Err(e) => return Err(e),
-        }
+            _ => false,
+        },
+    )
+    .await?;
+    if outcome == IpcDispatch::Done {
+        return Ok(());
     }
 
     // Direct-DB fallback — bit-for-bit the v0.3.1 behaviour.
