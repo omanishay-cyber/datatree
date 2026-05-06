@@ -112,6 +112,14 @@ pub struct BM25Index {
     texts: Vec<String>,
     /// Opaque ids for each doc.
     ids: Vec<String>,
+    /// Audit fix HIGH-23 (2026-05-06, 2026-05-05 audit): inverted
+    /// index from term -> doc indices that contain it. Replaces the
+    /// previous full-corpus scan in `search()` (every query iterated
+    /// every document, O(N) per query). Build cost amortises across
+    /// queries; search becomes O(query_tokens * avg_postings_len)
+    /// which on a typical mneme ledger (a few thousand entries) is
+    /// 10-100x faster on the recall hot path.
+    postings: HashMap<String, Vec<usize>>,
 }
 
 #[derive(Debug, Default)]
@@ -137,8 +145,17 @@ impl BM25Index {
             }
             entry.len = tokens.len() as u32;
             total_len += entry.len as u64;
+            let doc_idx = idx.docs.len();
             for t in entry.terms.keys() {
                 *df.entry(t.clone()).or_insert(0) += 1;
+                // Audit fix HIGH-23: append this doc's index to the
+                // postings list for every distinct term it contains.
+                // The HashMap entry is created on first encounter;
+                // append-only growth keeps build cost O(total_terms).
+                idx.postings
+                    .entry(t.clone())
+                    .or_default()
+                    .push(doc_idx);
             }
             idx.texts.push(text);
             idx.ids.push(id);
@@ -160,6 +177,15 @@ impl BM25Index {
 
     /// BM25 score for a free-form query. Returns `(doc_id, score)` pairs
     /// sorted by descending score. Docs with a zero score are omitted.
+    ///
+    /// Audit fix HIGH-23 (2026-05-06, 2026-05-05 audit): use the
+    /// inverted-index `postings` to visit only docs that contain at
+    /// least one query term, instead of scanning every doc in the
+    /// corpus. We still need to look up each candidate doc's term
+    /// frequency from the per-doc HashMap to score correctly, but
+    /// the candidate set shrinks from N (corpus size) to
+    /// |union of postings for query terms|. Typical recall queries
+    /// have 1-4 tokens; the savings compound as the corpus grows.
     pub fn search(&self, query: &str, top_k: usize) -> Vec<(String, f32)> {
         if self.docs.is_empty() || top_k == 0 {
             return Vec::new();
@@ -167,8 +193,22 @@ impl BM25Index {
         const K1: f32 = 1.5;
         const B: f32 = 0.75;
         let q_tokens = tokenize(query);
-        let mut scored: Vec<(usize, f32)> = Vec::with_capacity(self.docs.len());
-        for (i, doc) in self.docs.iter().enumerate() {
+
+        // Build candidate set from inverted-index postings: any doc
+        // that contains at least one query token. Tokens missing
+        // entirely from the corpus contribute no postings, hence
+        // no candidates — exactly the docs we'd have skipped in the
+        // old loop's `if tf == 0.0 { continue; }` branch.
+        let mut candidate: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        for t in &q_tokens {
+            if let Some(posting) = self.postings.get(t) {
+                candidate.extend(posting.iter().copied());
+            }
+        }
+
+        let mut scored: Vec<(usize, f32)> = Vec::with_capacity(candidate.len());
+        for i in candidate {
+            let doc = &self.docs[i];
             let mut s = 0f32;
             for t in &q_tokens {
                 let tf = *doc.terms.get(t).unwrap_or(&0) as f32;

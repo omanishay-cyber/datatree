@@ -81,9 +81,27 @@ struct Inner {
     /// Held under its own short-lived mutex so cache reads stay lock-free
     /// on the DashMap fast path.
     cache_order: Mutex<std::collections::VecDeque<[u8; 32]>>,
+    /// Audit fix HIGH-25 (2026-05-06, 2026-05-05 audit): cached
+    /// backend kind tag (0=Uninitialized, 1=Real, 2=Fallback). The
+    /// previous `is_ready()` and `backend_name()` both acquired the
+    /// inference Mutex on `backend` to read the variant tag — when
+    /// inference was running, both calls blocked for the full
+    /// embed time (multi-second on a cold ORT session). Health
+    /// probes, `mneme doctor`, and the daemon's status endpoint
+    /// all suffered.
+    ///
+    /// The kind only changes at construction time (Uninitialized →
+    /// Real or Fallback), so an AtomicU8 read is sufficient and
+    /// gives lock-free observation. `backend_name()` and
+    /// `is_ready()` now hit this atomic instead of the Mutex.
+    backend_kind: std::sync::atomic::AtomicU8,
     model_path: PathBuf,
     tokenizer_path: PathBuf,
 }
+
+const BACKEND_KIND_UNINITIALIZED: u8 = 0;
+const BACKEND_KIND_REAL: u8 = 1;
+const BACKEND_KIND_FALLBACK: u8 = 2;
 
 impl std::fmt::Debug for Embedder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -131,7 +149,10 @@ impl Embedder {
         };
 
         // Eager init. Try real model first, fall back to hashing trick.
-        {
+        // Capture the resulting kind tag for the AtomicU8 below
+        // (HIGH-25): we need the value AFTER the lock is released
+        // so the Inner constructor can stamp the cache.
+        let kind_tag = {
             let mut guard = backend.lock();
             if matches!(*guard, Backend::Uninitialized) {
                 *guard = Backend::load(model_path, tokenizer_path);
@@ -149,7 +170,12 @@ impl Embedder {
                     Backend::Uninitialized => unreachable!(),
                 }
             }
-        }
+            match &*guard {
+                Backend::Real(_) => BACKEND_KIND_REAL,
+                Backend::Fallback(_) => BACKEND_KIND_FALLBACK,
+                Backend::Uninitialized => BACKEND_KIND_UNINITIALIZED,
+            }
+        };
 
         Ok(Self {
             inner: Arc::new(Inner {
@@ -158,6 +184,7 @@ impl Embedder {
                 cache_order: Mutex::new(std::collections::VecDeque::with_capacity(
                     EMBED_CACHE_CAPACITY,
                 )),
+                backend_kind: std::sync::atomic::AtomicU8::new(kind_tag),
                 model_path: model_path.to_path_buf(),
                 tokenizer_path: tokenizer_path.to_path_buf(),
             }),
@@ -167,16 +194,30 @@ impl Embedder {
     /// True iff the real transformer backend is active. When false, the
     /// embedder is in fallback (hashing-trick) mode — still functional but
     /// lower retrieval quality.
+    ///
+    /// Audit fix HIGH-25 (2026-05-06): lock-free read via the cached
+    /// `backend_kind` atomic. The kind only changes at construction
+    /// time so a Relaxed load is sufficient — we don't need acquire
+    /// semantics because we're not synchronising with the inference
+    /// state, just reading a stable tag.
     pub fn is_ready(&self) -> bool {
-        matches!(*self.inner.backend.lock(), Backend::Real(_))
+        self.inner
+            .backend_kind
+            .load(std::sync::atomic::Ordering::Relaxed)
+            == BACKEND_KIND_REAL
     }
 
     /// Name of the active backend: `"bge-small-en-v1.5"` or `"hashing-trick"`.
+    /// HIGH-25: same lock-free path as `is_ready`.
     pub fn backend_name(&self) -> &'static str {
-        match *self.inner.backend.lock() {
-            Backend::Real(_) => "bge-small-en-v1.5",
-            Backend::Fallback(_) => "hashing-trick",
-            Backend::Uninitialized => "uninitialized",
+        match self
+            .inner
+            .backend_kind
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            BACKEND_KIND_REAL => "bge-small-en-v1.5",
+            BACKEND_KIND_FALLBACK => "hashing-trick",
+            _ => "uninitialized",
         }
     }
 
@@ -391,40 +432,60 @@ impl RealBackend {
         // BUG-A2-004 fix: gate the env mutation behind a one-shot OnceCell
         // so even if `try_new` is called from multiple threads (post-A2-003
         // any thread can hit a fresh path), the env-set executes EXACTLY
-        // ONCE for the whole process. POSIX `setenv`/Windows
-        // `SetEnvironmentVariable` are not thread-safe with concurrent
-        // `getenv`; serialising through OnceCell + the existing
-        // GLOBAL_BACKENDS mutex ensures `ort::init()` (called by
-        // `Session::builder`) cannot race a writer.
-        static ORT_DYLIB_INIT: OnceCell<()> = OnceCell::new();
-        ORT_DYLIB_INIT.get_or_init(|| {
-            if std::env::var_os("ORT_DYLIB_PATH").is_some() {
-                return;
-            }
-            let Ok(exe) = std::env::current_exe() else {
-                return;
-            };
-            let Some(dir) = exe.parent() else {
-                return;
-            };
-            let candidate = dir.join("onnxruntime.dll");
-            if !candidate.exists() {
-                return;
-            }
-            // SAFETY: gated by `ORT_DYLIB_INIT.get_or_init` (runs at most
-            // once) and by the outer `GLOBAL_BACKENDS` per-key Mutex
-            // (held across this `Backend::load` call). No other code in
-            // brain reads or writes ORT_DYLIB_PATH, and no thread can
-            // observe `ort::init()` (which reads the env) until the
-            // current thread releases the Mutex below.
-            unsafe {
-                std::env::set_var("ORT_DYLIB_PATH", &candidate);
-            }
-            tracing::info!(
-                ort_dylib_path = %candidate.display(),
-                "pinned ORT_DYLIB_PATH to bundled onnxruntime.dll"
-            );
-        });
+        // ONCE for the whole process.
+        //
+        // Audit fix HIGH-54 (2026-05-06, 2026-05-05 audit, soundness):
+        // gate the ENTIRE ORT_DYLIB_INIT block on `#[cfg(windows)]`.
+        // The bundled-DLL path lookup at runtime checks for
+        // `onnxruntime.dll` specifically — on POSIX this file never
+        // exists, so the early-return at `candidate.exists()` would
+        // skip the unsafe set_var anyway. But the audit's concern is
+        // SOUNDNESS, not runtime: POSIX `setenv` is fundamentally
+        // unsafe with concurrent `getenv` from ORT/tokio threads, so
+        // even a code path that never executes still has the unsafe
+        // block in scope. Compile it OUT on POSIX and the soundness
+        // window closes by construction. Windows `SetEnvironmentVariable`
+        // is thread-safe (per the documented EnvironmentBlock semantics),
+        // so the OnceCell + outer GLOBAL_BACKENDS Mutex remains the
+        // correct coordination there.
+        #[cfg(windows)]
+        {
+            static ORT_DYLIB_INIT: OnceCell<()> = OnceCell::new();
+            ORT_DYLIB_INIT.get_or_init(|| {
+                if std::env::var_os("ORT_DYLIB_PATH").is_some() {
+                    return;
+                }
+                let Ok(exe) = std::env::current_exe() else {
+                    return;
+                };
+                let Some(dir) = exe.parent() else {
+                    return;
+                };
+                let candidate = dir.join("onnxruntime.dll");
+                if !candidate.exists() {
+                    return;
+                }
+                // SAFETY (Windows-only): gated by ORT_DYLIB_INIT.get_or_init
+                // (runs at most once) and by the outer `GLOBAL_BACKENDS`
+                // per-key Mutex (held across this `Backend::load` call).
+                // SetEnvironmentVariable is thread-safe on Windows; no
+                // other code in brain reads or writes ORT_DYLIB_PATH, and
+                // no thread can observe `ort::init()` (which reads the
+                // env) until the current thread releases the Mutex below.
+                unsafe {
+                    std::env::set_var("ORT_DYLIB_PATH", &candidate);
+                }
+                tracing::info!(
+                    ort_dylib_path = %candidate.display(),
+                    "pinned ORT_DYLIB_PATH to bundled onnxruntime.dll"
+                );
+            });
+        }
+        // POSIX: ORT loads onnxruntime.{so,dylib} via the system
+        // dynamic-loader (LD_LIBRARY_PATH / DYLD_FALLBACK_LIBRARY_PATH /
+        // rpath baked into the ort crate's link line). We don't poke
+        // env vars from here — that would race POSIX getenv from
+        // tokio worker threads.
 
         // Dynamic ORT loading. Honors ORT_DYLIB_PATH (set above on
         // Windows) if present, otherwise searches PATH / LD_LIBRARY_PATH
