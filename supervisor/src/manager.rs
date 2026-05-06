@@ -502,8 +502,18 @@ impl ChildManager {
             error!(child = %name, "restart channel closed; cannot queue respawn");
             // Bug L: surface the dropped request via the per-child
             // gauge so `mneme doctor` and Prometheus scrapers see it.
+            //
+            // HIGH-7 fix (2026-05-05 audit): also roll the status BACK
+            // from Restarting → Stopped. Previously we set Restarting
+            // BEFORE the send and never reverted on send failure —
+            // result: a phantom Restarting child forever in /health
+            // that would never actually restart (the channel is closed,
+            // there's nothing to drain it). The supervisor is shutting
+            // down anyway in the channel-closed case; Stopped is the
+            // accurate terminal state.
             let mut h = handle.lock().await;
             h.restart_dropped_count = h.restart_dropped_count.saturating_add(1);
+            h.status = ChildStatus::Stopped;
         } else {
             debug!(child = %name, exit_code, "restart request queued");
         }
