@@ -181,14 +181,16 @@ export const tool: ToolDescriptor<
         risk,
       };
     } catch (err) {
-      // Graceful: if the shard isn't built yet, return an empty radius
-      // with a hint in the symbols list.
+      // L fix (2026-05-05 audit): graceful empty radius + structured
+      // error in the optional `error` field. The previous version
+      // smuggled the error string as a fake entry in
+      // affected_symbols, which made callers iterate over what they
+      // thought was a list of symbol names and see error text
+      // instead. Output schema declares `error: z.string().optional()`.
       return {
         target: input.target,
         affected_files: [],
-        affected_symbols: [
-          `(mneme not yet built — run mneme build .\` first; ${errMsg(err)})`,
-        ],
+        affected_symbols: [],
         test_files: [],
         total_count: 0,
         critical_paths: [],
@@ -197,6 +199,7 @@ export const tool: ToolDescriptor<
         tests_affected: [],
         decisions_assumed: [],
         risk: "low",
+        error: `mneme not yet built — run \`mneme build .\` first; ${errMsg(err)}`,
       };
     }
   },

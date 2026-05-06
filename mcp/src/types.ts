@@ -214,6 +214,15 @@ export const BlastRadiusOutput = z.object({
   test_files: z.array(z.string()),
   total_count: z.number().int(),
   critical_paths: z.array(z.string()).default([]),
+  /**
+   * L fix (2026-05-05 audit): structured error reporting. Previously
+   * blast_radius smuggled the error string as an entry in
+   * affected_symbols, which made callers iterate over what they
+   * thought was a list of symbol names and see error text instead.
+   * The new optional `error` field surfaces the failure cleanly so
+   * downstream code can branch on its presence.
+   */
+  error: z.string().optional(),
 });
 
 export const CallGraphInput = z.object({
