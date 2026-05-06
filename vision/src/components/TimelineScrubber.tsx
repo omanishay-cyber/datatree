@@ -26,6 +26,13 @@ export function TimelineScrubber(): JSX.Element {
 
   useEffect(() => {
     const ac = new AbortController();
+    // HIGH-FE-4 fix (2026-05-05 audit): the previous version had no
+    // `cancelled` flag and no AbortError discrimination in the .then
+    // chain. If the response body was already buffered when abort
+    // fired, .then would still run and `setCommits(mapped)` would
+    // set state on an unmounted component, producing React's
+    // "Cannot update state on unmounted component" warning.
+    let cancelled = false;
     // Bug #227 (CHS 2026-05-04): /api/graph?view=git-history was a stub
     // that returned 501. The real commits endpoint is /api/graph/commits
     // and returns Vec<CommitRowOut> { sha, author, date (ISO), message,
@@ -35,6 +42,7 @@ export function TimelineScrubber(): JSX.Element {
     fetch(withProject(API_BASE + "/api/graph/commits"), { signal: ac.signal })
       .then((r) => (r.ok ? r.json() : []))
       .then((rows: Array<{ sha: string; date: string; message: string }>) => {
+        if (cancelled) return;
         if (!Array.isArray(rows) || rows.length === 0) return;
         const mapped: CommitMark[] = rows
           .map((c) => ({
@@ -46,10 +54,19 @@ export function TimelineScrubber(): JSX.Element {
           .sort((a, b) => a.ts - b.ts);
         if (mapped.length > 0) setCommits(mapped);
       })
-      .catch(() => {
-        /* keep placeholder */
+      .catch((err: unknown) => {
+        // Distinguish AbortError (expected on unmount) from real
+        // fetch failures so future debugging surfaces the latter.
+        if ((err as Error)?.name === "AbortError") return;
+        // Real failure — keep placeholder + log silently. Calls to
+        // setState skipped because we're either still mounted (and
+        // placeholder is already showing) or already unmounted
+        // (cancelled === true).
       });
-    return () => ac.abort();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
   }, []);
 
   const hasRange = commits.length >= 2;
