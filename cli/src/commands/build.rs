@@ -2765,6 +2765,14 @@ async fn run_resolve_imports_pass(
     drop(conn);
     stats.total_imports_edges = edges.len();
 
+    // Audit fix PERF-NEW-4 (2026-05-06 multi-agent fan-out): collect
+    // all UPDATE ops first, then run a single batch_inject. The
+    // prior shape was one IPC round-trip per resolved edge; on a
+    // TS-heavy project with 5k+ imports edges that was the dominant
+    // cost of the resolve pass.
+    let mut update_ops: Vec<InjectOp> = Vec::new();
+    let update_sql = "UPDATE edges SET target_qualified = ?1 WHERE id = ?2";
+
     for (edge_id, _old_target, extra_json, importer_path) in edges {
         // Pull the unresolved string from the JSON in `extra`. This may
         // be either a clean module path (`./app`, `./app#App`,
@@ -2818,33 +2826,21 @@ async fn run_resolve_imports_pass(
         let target_qn = resolve_module_to_qn(&candidate, &file_by_path);
 
         if let Some(target_qn) = target_qn {
-            // UPDATE the edge through the per-shard writer task.
-            // Honours the single-writer invariant — store::Inject is
-            // the canonical write surface for graph.db.
-            let sql = "UPDATE edges SET target_qualified = ?1 WHERE id = ?2";
+            // Queue an UPDATE op; flushed in a single batch_inject
+            // after the loop. Honours the single-writer invariant —
+            // store::Inject is the canonical write surface for
+            // graph.db.
             let params = vec![
                 serde_json::Value::String(target_qn),
                 serde_json::Value::Number(edge_id.into()),
             ];
-            let resp = store
-                .inject
-                .insert(
-                    project_id,
-                    DbLayer::Graph,
-                    sql,
-                    params,
-                    InjectOptions {
-                        emit_event: false,
-                        audit: false,
-                        ..InjectOptions::default()
-                    },
-                )
-                .await;
-            if resp.success {
-                stats.resolved += 1;
-            } else {
-                stats.unresolved_relative += 1;
-            }
+            update_ops.push(InjectOp::Update {
+                project: project_id.clone(),
+                layer: DbLayer::Graph,
+                sql: update_sql.to_string(),
+                params,
+            });
+            stats.resolved += 1;
         } else if module_clean.starts_with('.')
             || module_clean.starts_with('/')
             || is_windows_abs(&module_clean)
@@ -2856,6 +2852,29 @@ async fn run_resolve_imports_pass(
             // Bare package name (`lodash`, `react`, `numpy`) with no
             // local file. Expected for npm / pypi / crates.io deps.
             stats.unresolved_bare += 1;
+        }
+    }
+
+    if !update_ops.is_empty() {
+        let resp = store
+            .inject
+            .batch_inject(
+                update_ops,
+                InjectOptions {
+                    emit_event: false,
+                    audit: false,
+                    ..InjectOptions::default()
+                },
+            )
+            .await;
+        if !resp.success {
+            // Whole-batch failure: roll the resolved count back into
+            // unresolved_relative so the user sees that we tried but
+            // the writer task rejected. Per-edge failure isolation
+            // would require a different IPC contract; for now,
+            // surface the gap.
+            stats.unresolved_relative += stats.resolved;
+            stats.resolved = 0;
         }
     }
 
@@ -2987,6 +3006,14 @@ async fn run_resolve_calls_pass(
     drop(conn);
     stats.total_calls_edges = edges.len();
 
+    // Audit fix PERF-NEW-4 (2026-05-06 multi-agent fan-out): same
+    // batch shape as run_resolve_imports_pass — collect UPDATE ops,
+    // flush once. Pre-fix, every resolved call edge fired its own
+    // IPC round-trip; on a Rust workspace with 8k+ unresolved call
+    // edges this was ~30s of pure round-trip overhead.
+    let mut update_ops: Vec<InjectOp> = Vec::new();
+    let update_sql = "UPDATE edges SET target_qualified = ?1 WHERE id = ?2";
+
     for (edge_id, extra_json, caller_file) in edges {
         // Pull the raw callee text out of `extra.unresolved`. The
         // parser writes this on every call edge; if it's missing
@@ -3018,19 +3045,26 @@ async fn run_resolve_calls_pass(
             continue;
         };
 
-        // UPDATE the edge through the per-shard writer task.
-        let sql = "UPDATE edges SET target_qualified = ?1 WHERE id = ?2";
+        // Queue an UPDATE op; flushed in a single batch_inject
+        // after the loop.
         let params = vec![
             serde_json::Value::String(target_qn),
             serde_json::Value::Number(edge_id.into()),
         ];
+        update_ops.push(InjectOp::Update {
+            project: project_id.clone(),
+            layer: DbLayer::Graph,
+            sql: update_sql.to_string(),
+            params,
+        });
+        stats.resolved += 1;
+    }
+
+    if !update_ops.is_empty() {
         let resp = store
             .inject
-            .insert(
-                project_id,
-                DbLayer::Graph,
-                sql,
-                params,
+            .batch_inject(
+                update_ops,
                 InjectOptions {
                     emit_event: false,
                     audit: false,
@@ -3038,13 +3072,13 @@ async fn run_resolve_calls_pass(
                 },
             )
             .await;
-        if resp.success {
-            stats.resolved += 1;
-        } else {
-            // UPDATE failure (lock contention, schema drift) — count
-            // as external so the user sees the gap; don't crash the
-            // build over a single edge.
-            stats.unresolved_external += 1;
+        if !resp.success {
+            // Whole-batch UPDATE failure (lock contention, schema
+            // drift) — fold the resolved count back into the
+            // external bucket so the user sees the gap rather
+            // than mis-reporting success.
+            stats.unresolved_external += stats.resolved;
+            stats.resolved = 0;
         }
     }
 
@@ -4186,6 +4220,15 @@ async fn run_betweenness_pass(
     }
 
     // Persist (only nodes with non-zero BC; the rest stay at default 0).
+    //
+    // Audit fix PERF-NEW-3 (2026-05-06 multi-agent fan-out): batch
+    // the per-node centrality inserts. Even with sampling, a 50k-
+    // node graph produces several thousand non-zero BC values
+    // (every node on a sampled shortest path); each was previously
+    // its own IPC round-trip.
+    let sql = "INSERT OR REPLACE INTO node_centrality(qualified_name, betweenness, sample_size) \
+               VALUES(?1, ?2, ?3)";
+    let mut ops: Vec<InjectOp> = Vec::new();
     for (i, score) in bc.iter().enumerate() {
         if *score <= 0.0 {
             continue;
@@ -4193,9 +4236,6 @@ async fn run_betweenness_pass(
         if *score > stats.top_score {
             stats.top_score = *score;
         }
-        let sql =
-            "INSERT OR REPLACE INTO node_centrality(qualified_name, betweenness, sample_size) \
-                   VALUES(?1, ?2, ?3)";
         let params = vec![
             serde_json::Value::String(idx_to_name[i].clone()),
             serde_json::Value::Number(
@@ -4203,13 +4243,19 @@ async fn run_betweenness_pass(
             ),
             serde_json::Value::Number((stats.sources_sampled as i64).into()),
         ];
+        ops.push(InjectOp::Insert {
+            project: project_id.clone(),
+            layer: DbLayer::Graph,
+            sql: sql.to_string(),
+            params,
+        });
+    }
+    let queued = ops.len();
+    if queued > 0 {
         let resp = store
             .inject
-            .insert(
-                project_id,
-                DbLayer::Graph,
-                sql,
-                params,
+            .batch_inject(
+                ops,
                 InjectOptions {
                     emit_event: false,
                     audit: false,
@@ -4218,7 +4264,9 @@ async fn run_betweenness_pass(
             )
             .await;
         if resp.success {
-            stats.nodes_scored += 1;
+            // INSERT OR REPLACE on a UNIQUE-keyed table: every
+            // queued op corresponds to one persisted row.
+            stats.nodes_scored = queued;
         }
     }
 
@@ -4307,6 +4355,14 @@ async fn run_git_pass(store: &Store, project_id: &ProjectId, project: &Path) -> 
         return stats;
     }
 
+    // Audit fix PERF-NEW-5 (2026-05-06 multi-agent fan-out): batch
+    // the up-to-5000 commit inserts into a single batch_inject.
+    // Pre-fix, a fresh build on a 5000-commit repo did 5000 IPC
+    // round-trips just for this loop, dominating the git pass's
+    // wall time even though the underlying SQLite work is trivial.
+    let commits_sql = "INSERT OR IGNORE INTO commits(sha, author_name, author_email, committed_at, message, parent_sha) \
+                       VALUES(?1, ?2, ?3, ?4, ?5, ?6)";
+    let mut commit_ops: Vec<InjectOp> = Vec::with_capacity(lines.len());
     for line in &lines {
         // sha|author|email|epoch|parent|subject  (subject can contain |)
         let parts: Vec<&str> = line.splitn(6, '|').collect();
@@ -4328,8 +4384,6 @@ async fn run_git_pass(store: &Store, project_id: &ProjectId, project: &Path) -> 
         // Take only first parent if there are multiple (merge commits)
         let parent_sha: Option<&str> = parent.split_whitespace().next().filter(|s| !s.is_empty());
 
-        let sql = "INSERT OR IGNORE INTO commits(sha, author_name, author_email, committed_at, message, parent_sha) \
-                   VALUES(?1, ?2, ?3, ?4, ?5, ?6)";
         let params = vec![
             serde_json::Value::String(sha.to_string()),
             serde_json::Value::String(author_name.to_string()),
@@ -4341,13 +4395,19 @@ async fn run_git_pass(store: &Store, project_id: &ProjectId, project: &Path) -> 
                 None => serde_json::Value::Null,
             },
         ];
+        commit_ops.push(InjectOp::Insert {
+            project: project_id.clone(),
+            layer: DbLayer::Git,
+            sql: commits_sql.to_string(),
+            params,
+        });
+    }
+    let commits_queued = commit_ops.len();
+    if commits_queued > 0 {
         let resp = store
             .inject
-            .insert(
-                project_id,
-                DbLayer::Git,
-                sql,
-                params,
+            .batch_inject(
+                commit_ops,
                 InjectOptions {
                     emit_event: false,
                     audit: false,
@@ -4356,13 +4416,23 @@ async fn run_git_pass(store: &Store, project_id: &ProjectId, project: &Path) -> 
             )
             .await;
         if resp.success {
-            stats.commits_written += 1;
+            stats.commits_written = commits_queued;
         }
     }
 
-    // commit_files: cap at 500 most-recent commits to keep build time
-    // bounded. Older commits get a row in commits but no per-file
-    // numstat — re-runnable.
+    // commit_files: cap at 500 most-recent commits to keep build
+    // time bounded. Older commits get a row in commits but no
+    // per-file numstat — re-runnable.
+    //
+    // Audit fix PERF-NEW-5 (cont.): batch ALL commit_files across
+    // all 500 commits into one batch_inject. Pre-fix, 500 commits
+    // × ~10 files/commit was 5000 round-trips. The git subprocess
+    // (`git show --numstat`) still runs once per commit (we can't
+    // batch git invocations from here without restructuring), but
+    // the SQLite path is now a single transaction.
+    let cf_sql = "INSERT OR IGNORE INTO commit_files(sha, file_path, additions, deletions) \
+                  VALUES(?1, ?2, ?3, ?4)";
+    let mut cf_ops: Vec<InjectOp> = Vec::new();
     for line in lines.iter().take(500) {
         let parts: Vec<&str> = line.splitn(6, '|').collect();
         if parts.len() < 6 {
@@ -4387,31 +4457,35 @@ async fn run_git_pass(store: &Store, project_id: &ProjectId, project: &Path) -> 
             let adds: i64 = parts[0].parse().unwrap_or(0);
             let dels: i64 = parts[1].parse().unwrap_or(0);
             let path = parts[2];
-            let sql = "INSERT OR IGNORE INTO commit_files(sha, file_path, additions, deletions) \
-                       VALUES(?1, ?2, ?3, ?4)";
             let params = vec![
                 serde_json::Value::String(sha.to_string()),
                 serde_json::Value::String(path.to_string()),
                 serde_json::Value::Number(adds.into()),
                 serde_json::Value::Number(dels.into()),
             ];
-            let resp = store
-                .inject
-                .insert(
-                    project_id,
-                    DbLayer::Git,
-                    sql,
-                    params,
-                    InjectOptions {
-                        emit_event: false,
-                        audit: false,
-                        ..InjectOptions::default()
-                    },
-                )
-                .await;
-            if resp.success {
-                stats.commit_files_written += 1;
-            }
+            cf_ops.push(InjectOp::Insert {
+                project: project_id.clone(),
+                layer: DbLayer::Git,
+                sql: cf_sql.to_string(),
+                params,
+            });
+        }
+    }
+    let cf_queued = cf_ops.len();
+    if cf_queued > 0 {
+        let resp = store
+            .inject
+            .batch_inject(
+                cf_ops,
+                InjectOptions {
+                    emit_event: false,
+                    audit: false,
+                    ..InjectOptions::default()
+                },
+            )
+            .await;
+        if resp.success {
+            stats.commit_files_written = cf_queued;
         }
     }
 
