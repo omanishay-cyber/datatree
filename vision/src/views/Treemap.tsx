@@ -91,7 +91,12 @@ export function Treemap(): JSX.Element {
           .hierarchy<TreemapDatum>(data)
           .sum((d) => d.value ?? 0)
           .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
-        d3
+        // L11 fix (2026-05-05 audit): bind the laid-out root to its
+        // post-layout type. d3.treemap() mutates and returns root with
+        // x0/y0/x1/y1 fields populated, so the right type is
+        // HierarchyRectangularNode<TreemapDatum>. Single binding here =
+        // zero downstream `as d3.HierarchyRectangularNode<...>` casts.
+        const positioned = d3
           .treemap<TreemapDatum>()
           .size([width, height])
           .paddingOuter(2)
@@ -103,7 +108,7 @@ export function Treemap(): JSX.Element {
         // unknown languages get the gray.
         const languages = Array.from(
           new Set(
-            root
+            positioned
               .leaves()
               .map((l) => (l.data.language as string | null | undefined) ?? "unknown"),
           ),
@@ -117,9 +122,9 @@ export function Treemap(): JSX.Element {
         // user can read directory structure inside the treemap. CRG
         // doesn't do this; graphify does, and it's the single biggest
         // legibility win.
-        const parents = root
+        const parents = positioned
           .descendants()
-          .filter((d) => d.depth > 0 && d.children) as d3.HierarchyRectangularNode<TreemapDatum>[];
+          .filter((d) => d.depth > 0 && d.children);
         const pCell = svg
           .append("g")
           .attr("class", "vz-treemap-parents")
@@ -142,7 +147,7 @@ export function Treemap(): JSX.Element {
           .attr("font-weight", 600)
           .text((d) => fitLabel(d.data.name, d.x1 - d.x0));
 
-        const leaves = root.leaves() as d3.HierarchyRectangularNode<TreemapDatum>[];
+        const leaves = positioned.leaves();
         const cell = svg
           .append("g")
           .attr("class", "vz-treemap-leaves")

@@ -66,7 +66,12 @@ export function Sunburst(): JSX.Element {
         // which slammed depth-1 wedges to the origin and produced the
         // "not circling — looks like a flat blob" symptom the user
         // reported.
-        d3
+        // L11 fix (2026-05-05 audit): bind the laid-out root to its
+        // post-layout type. d3.partition() mutates and returns root
+        // with x0/x1/y0/y1 fields populated, so the right type is
+        // HierarchyRectangularNode<FileTreeNode>. Single binding =
+        // zero downstream `as d3.HierarchyRectangularNode<...>` casts.
+        const positioned = d3
           .partition<FileTreeNode>()
           .size([2 * Math.PI, radius - innerCutout])(root);
 
@@ -86,7 +91,7 @@ export function Sunburst(): JSX.Element {
         // rows for the ordinal scale; descendants inherit from their
         // depth-1 ancestor so each "wedge" reads as one color family
         // with depth-driven opacity to differentiate sub-rings.
-        const topNames = root.children?.map((c) => c.data.name) ?? [];
+        const topNames = positioned.children?.map((c) => c.data.name) ?? [];
         const color = d3
           .scaleOrdinal<string>()
           .domain(topNames)
@@ -106,9 +111,9 @@ export function Sunburst(): JSX.Element {
           .attr("stroke", "rgba(122, 138, 166, 0.12)")
           .attr("stroke-width", 1);
 
-        const descendants = root
+        const descendants = positioned
           .descendants()
-          .filter((d) => d.depth > 0) as d3.HierarchyRectangularNode<FileTreeNode>[];
+          .filter((d) => d.depth > 0);
 
         const wedge = svg
           .append("g")
