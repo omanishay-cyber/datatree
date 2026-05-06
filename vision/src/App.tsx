@@ -323,8 +323,29 @@ export function App(): JSX.Element {
 
   const ActiveView = getView(activeView).component;
 
+  // LOW fix (2026-05-05 audit): debounce view-switch clicks. Each
+  // view that uses WebGL (ForceGalaxy/Sigma, ProjectGalaxy3D/deck.gl,
+  // Sunburst's canvas back-end) creates and tears down a WebGL
+  // context on mount/unmount. Browsers cap concurrent WebGL contexts
+  // (Chromium: 16, Firefox: 16) and rapid switching faster than
+  // teardown finishes leaks contexts; eventually the next view fails
+  // to acquire one and renders blank with the WARNING:Too many
+  // active WebGL contexts message in DevTools.
+  //
+  // 150ms is below the JND for "feels responsive" on UI clicks but
+  // long enough that triple-clicking through the nav doesn't stack
+  // mounts. The ref tracks the last pick so we only honour the
+  // latest in any 150ms burst — same pattern Linear / Notion use for
+  // their chrome-tab switchers.
+  const pickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onPickView = (id: ViewId): void => {
-    setActiveView(id);
+    if (pickTimerRef.current !== null) {
+      clearTimeout(pickTimerRef.current);
+    }
+    pickTimerRef.current = setTimeout(() => {
+      setActiveView(id);
+      pickTimerRef.current = null;
+    }, 150);
   };
 
   return (
