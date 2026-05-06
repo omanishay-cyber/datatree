@@ -1167,6 +1167,39 @@ fn extract_tar_gz(archive: &Path, dest: &Path) -> CliResult<()> {
     {
         let mut entry =
             entry.map_err(|e| CliError::Other(format!("entry: {} {e}", archive.display())))?;
+
+        // Audit fix HIGH-16 (2026-05-06, 2026-05-05 audit):
+        // explicitly reject Symlink and Hardlink entry types. The
+        // earlier hardening (line 1148) covers PATH-TRAVERSAL via
+        // unpack_in's contained-path check, but it does NOT block
+        // legitimate-shape archives that contain Symlink/Hardlink
+        // entries — `unpack_in` happily creates them via
+        // std::os::unix::fs::symlink + std::fs::hard_link. A
+        // malicious release archive could ship a Hardlink entry
+        // "bin/mneme.exe" → "/etc/passwd"; on the next file write
+        // that goes through the same logical path, the user's
+        // /etc/passwd would be clobbered. The matching ZIP-side
+        // defense at line 1095 (A1-023) rejects symlinks via
+        // unix_mode S_IFLNK; this is the tar parallel.
+        //
+        // Mneme's release tarballs are flat directory + file
+        // payloads ONLY (see scripts/stage-release-zip.ps1) — there
+        // is no legitimate reason for a symlink or hardlink in our
+        // archives. Refuse loudly.
+        let entry_type = entry.header().entry_type();
+        if entry_type.is_symlink() || entry_type.is_hard_link() {
+            return Err(CliError::Other(format!(
+                "untar {}: refusing to extract {:?} entry {} \
+                 — mneme tarballs ship only regular files + dirs",
+                archive.display(),
+                entry_type,
+                entry
+                    .path()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|_| "<invalid path>".to_string()),
+            )));
+        }
+
         // unpack_in returns Ok(false) when the entry's path resolves
         // outside `dest` (path traversal); we treat that as an error
         // rather than a silent skip so a tampered archive fails loud.
