@@ -11,19 +11,25 @@
 
 # Claude remembers your code. Even when you don't.
 
+<sub>The persistent memory layer for AI coding. 100% local. Apache-2.0.</sub>
+
 </div>
 
-Stop re-explaining your codebase to Claude every chat.
-
-Mneme keeps what Claude learned about your project - survives context wipes, doesn't forget mid-task, runs entirely on your laptop. No cloud, no telemetry, no subscription.
+Stop re-explaining your codebase to Claude every chat. Mneme keeps what Claude learned about your project, survives context wipes, doesn't forget mid-task, runs entirely on your laptop.
 
 <div align="center">
 
-<a href="https://github.com/omanishay-cyber/mneme/releases/tag/v0.3.2"><img src="https://img.shields.io/badge/Download%20v0.3.2-16a37c?style=for-the-badge&labelColor=0a0a0c" alt="Download v0.3.2"/></a>
+<a href="https://github.com/omanishay-cyber/mneme/releases/tag/v0.4.0"><img src="https://img.shields.io/badge/Download%20v0.4.0-16a37c?style=for-the-badge&labelColor=0a0a0c" alt="Download v0.4.0"/></a>
 &nbsp;
-<a href="LICENSE"><img src="https://img.shields.io/badge/Apache%202.0-9a9a9a?style=for-the-badge&labelColor=0a0a0c" alt="Apache 2.0"/></a>
+<a href="#-quick-start"><img src="https://img.shields.io/badge/Quick%20start-9a9a9a?style=for-the-badge&labelColor=0a0a0c" alt="Quick start"/></a>
+
+<br/><br/>
+
+<img src="https://img.shields.io/badge/50%20MCP%20tools-0a0a0c?style=flat-square&labelColor=16a37c&color=0a0a0c" alt="50 MCP tools"/>
 &nbsp;
-<a href="https://huggingface.co/aaditya4u/mneme-models"><img src="https://img.shields.io/badge/models-Hugging%20Face-yellow?style=for-the-badge&labelColor=0a0a0c" alt="Models on Hugging Face"/></a>
+<img src="https://img.shields.io/badge/27%20SQLite%20shards-0a0a0c?style=flat-square&labelColor=4191E1&color=0a0a0c" alt="27 SQLite shards"/>
+&nbsp;
+<img src="https://img.shields.io/badge/19%20AI%20tools%20wired-0a0a0c?style=flat-square&labelColor=22D3EE&color=0a0a0c" alt="19 AI tools wired"/>
 
 </div>
 
@@ -88,7 +94,7 @@ Compared against the two closest projects in the AI-code-context space:
 [Graphify](https://github.com/safishamsi/graphify), and
 [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) for the parsing layer.
 
-| Capability | **Mneme v0.3.2** | Code Review Graph | Graphify | Tree-sitter |
+| Capability | **Mneme v0.4.0** | Code Review Graph | Graphify | Tree-sitter |
 |---|---|---|---|---|
 | **Persistent daemon (always-on memory)** | ✅ multi-process Rust supervisor (22 workers auto-scaled to CPU), survives logout via Scheduled Task / launchd / systemd-user | ❌ per-invocation Python script | ❌ per-invocation Python script | n/a (parser library) |
 | **Compaction recovery (Step Ledger)** | ✅ numbered, verification-gated, SQLite-persisted; Claude resumes the EXACT step after `/compact` | ❌ | ❌ | n/a |
@@ -101,11 +107,11 @@ Compared against the two closest projects in the AI-code-context space:
 | **Real local embeddings** | ✅ BGE-small-en-v1.5 (384-dim, ONNX, ORT 1.24.4, Cloudflare-hosted via HF) + Qwen 2.5 Coder/Embed 0.5B + Phi-3-mini-4k local LLMs (3.4 GB total, all GGUF) | ❌ | partial (sentence-transformers, network-pullable) | n/a |
 | **Visualization surface** | ✅ **14 WebGL views** + Command Center (Tauri SvelteKit app, served from daemon at `:7777`) | 1 (D3 force graph) | 1 (static HTML) | n/a |
 | **Multi-process Rust supervisor (watchdog + WAL + restart + health)** | ✅ HTTP `/health` on `:7777`, per-worker uptime + restart count + dropped count, ProcessRefreshKind PID-liveness via sysinfo | ❌ (single-process Python) | ❌ (single-process Python) | n/a |
-| **Multimodal (PDF / image / OCR)** | ✅ multimodal-bridge crate, Tesseract OCR runtime fallback (B-1 fix), 187 pages/sec on a 1100-file project | ❌ | partial (text only by default) | n/a |
+| **Multimodal (PDF / image / OCR)** | ✅ multimodal-bridge crate, Tesseract OCR runtime fallback, 187 pages/sec on a 1100-file project | ❌ | partial (text only by default) | n/a |
 | **Live push updates (SSE + WebSocket)** | ✅ livebus worker, multi-agent pubsub | ❌ | ❌ | n/a |
 | **100% local, zero unsolicited network** | ✅ enforced across Rust / TS / Python sidecar - only opt-in network is `mneme models install --from-url` | ✅ | ⚠️ model downloads + Whisper prompts | ✅ |
 | **AI tool integration (out of the box)** | ✅ **19+** (Claude Code, Codex, Cursor, Windsurf, Zed, VS Code, Gemini, Qwen, Qoder, plus more via standard MCP) | 2 (Claude Code, VS Code ext) | 1 (manual integration) | dozens of editors via library |
-| **Cross-OS install** | ✅ Win x64 (live) * macOS Apple Silicon arm64 (live; Intel x86_64 = build from source) * Linux x64 (live) * Win arm64 / Linux arm64 (CI building) | ✅ pip is OS-agnostic | ✅ pip is OS-agnostic | bindings per language |
+| **Cross-OS install** | ✅ 4 routes — `winget install Anish.Mneme` * `pip install mneme-mcp` * `curl ... install-mac.sh` * `curl ... install-linux.sh` (Win arm64 + Linux arm64 CI building) | ✅ pip is OS-agnostic | ✅ pip is OS-agnostic | bindings per language |
 | **HF Hub model mirror (~5× faster than GitHub Releases)** | ✅ huggingface.co/aaditya4u/mneme-models | n/a (no models) | n/a | n/a |
 | **Audit pipeline streams findings (no data loss on timeout)** | ✅ per-file flush, supervisor fan-out across 6 scanner-workers (~5× faster on multi-core) | ❌ | ❌ | n/a |
 | **License** | ✅ **Apache-2.0** | MIT | MIT | MIT |
@@ -114,16 +120,17 @@ Compared against the two closest projects in the AI-code-context space:
 | **Federated cross-project pattern matching** | ✅ federated.db + 326 fingerprints per project, cross-shard `mneme_federated_similar` MCP tool | ❌ | ❌ | ❌ |
 | **8 Claude Code hooks integrated** | ✅ UserPromptSubmit * PreToolUse * PostToolUse * PreCompact * SubagentStop * SessionEnd + 2 more - persistent-memory pipeline live across compactions | ❌ | ❌ | n/a |
 | - | - | - | - | - |
+| **Smart question generation from topology** | ✅ `mcp__mneme__smart_questions` (graph centrality + complexity + anomaly scoring) | ✅ auto-generated review prompts | ❌ | ❌ |
+| **Portable graph exports (GraphML / Obsidian / Cypher / SVG / JSON-LD)** | ✅ `mneme graph-export` (5 formats) | ✅ multiple formats | partial (GraphML) | n/a |
+| **Seed concept memory (user-registered architectural keywords)** | ✅ `recall_concept` persisted to `concepts.db` with decay function | ❌ | ✅ seed nodes | ❌ |
+| **Multilingual Whisper for non-English audio** | ✅ Whisper transcription, auto-language-detected (mp3/wav/m4a/mp4/mov) | n/a | ✅ specialised locale prompts | n/a |
+| **One-shot `pip install`** | ✅ `pip install mneme-mcp` (any OS with Python) | ✅ `pip install crg` | ✅ `pip install graphify` | ✅ multiple bindings |
+| **Standalone library / SDK (Rust + Python + JS bindings)** | ✅ `sdk/python` (PyPI `mneme-parsers`), `sdk/js` (npm `@mneme/parsers`), `sdk/rust` crate | n/a | n/a | ✅ flagship |
+| - | - | - | - | - |
 | **Things mneme doesn't have YET (CRG / Graphify do)** | | | | |
-| **Graph diff (commit-to-commit)** | ❌ planned v0.4 (Tier 1.5.A; wraps existing snapshot tool) | ✅ `graph diff` | ❌ | ❌ |
-| **Smart question generation from topology** | ❌ planned v0.4 (Tier 1.5.B) | ✅ auto-generated review prompts | ❌ | ❌ |
-| **Portable graph exports (GraphML / Obsidian / Cypher / SVG)** | ❌ planned v0.4 (Tier 1.5.C; ~30 min each) | ✅ multiple formats | partial (GraphML) | n/a |
-| **Seed concept memory (user-registered architectural keywords)** | partial - `recall_concept` exists, persistence layer planned v0.4 (Tier 1.5.D) | ❌ | ✅ seed nodes | ❌ |
-| **Multilingual Whisper for non-English audio** | ❌ planned v0.5 (Tier 1.5.E; multimodal-bridge currently OCR-only) | n/a | ✅ specialised locale prompts | n/a |
-| **One-shot `pip install`** | ❌ planned v0.4 (Tier 1.5.H - Python wrapper around bootstrap, ~2-3h) | ✅ `pip install crg` | ✅ `pip install graphify` | ✅ multiple bindings |
-| **VS Code / JetBrains / Cursor extensions** | ❌ planned v0.6 (Tier 2 #11) | ✅ first-class VS Code | ❌ | ✅ pervasive editor support |
-| **Hosted browser demo / playground** | ❌ planned v0.5.5 (Tier 1.5.G) | ✅ | ✅ | ✅ web playground |
-| **Standalone library / SDK (Rust + Python + JS bindings)** | ❌ planned v0.4.5 (Tier 1.5.F) | n/a | n/a | ✅ flagship |
+| **Graph diff (commit-to-commit)** | ❌ planned v0.4.1 | ✅ `graph diff` | ❌ | ❌ |
+| **VS Code / JetBrains / Cursor extensions** | ❌ planned v0.6 | ✅ first-class VS Code | ❌ | ✅ pervasive editor support |
+| **Hosted browser demo / playground** | ❌ planned v0.5.5 | ✅ | ✅ | ✅ web playground |
 
 Rows marked "planned vX.Y" reference [`docs/ROADMAP.md`](ROADMAP.md) and the v0.4 vision document. Every gap has a ship target.
 
@@ -144,8 +151,7 @@ Pick Graphify if you want a multimodal knowledge graph for documents and audio.
 Pick mneme if you want a persistent memory layer that runs across many projects
 and many AI tools without forgetting.
 
-The gaps in the table (graph diff, exports, smart questions, seed concepts,
-pip install, VS Code extension) are on the v0.4 roadmap. See `docs/ROADMAP.md`.
+The remaining gaps (graph diff, editor extensions, hosted demo) are tracked in `docs/ROADMAP.md`.
 
 ## Comparison: four code-graph MCPs
 
@@ -172,7 +178,7 @@ Each cell shows `wall-time s · output tokens · cost USD · relevance score (0-
 
 > Re-run on 2026-05-03 against the mneme workspace itself (Rust + TypeScript + Python, 50K+ LOC, 400+ files). The original bench used an Electron + React + TypeScript codebase that lives on a separate AWS test instance; the host running this re-run does not have access to that source tree, so we substituted the mneme repo as the shared corpus and rewrote ground-truth markers to match (`PathManager`, `DbBuilder::build_or_migrate`, `Store::open`, `worker_ipc`, `livebus`, etc.). Per-query budget: 180 s wall.
 
-| Query | mneme v0.3.2 | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
+| Query | mneme v0.4.0 | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
 |---|---|---|---|---|
 | Q1 - Build pipeline functions | 63 s · 4,894 t · $0.91 · **9**/10 | 112 s · 7,855 t · $1.21 · **9**/10 | 103 s · 8,142 t · $1.47 · **9**/10 | 61 s · 4,540 t · $0.72 · **9**/10 |
 | Q2 - Blast radius of `common/src/paths.rs` | 61 s · 4,598 t · $0.90 · **9**/10 | 140 s · 9,560 t · $1.06 · **9**/10 | 137 s · 11,847 t · $1.48 · **5**/10 | 106 s · 7,761 t · $0.80 · **9**/10 |
@@ -181,17 +187,21 @@ Each cell shows `wall-time s · output tokens · cost USD · relevance score (0-
 | Q5 - Concurrency / data races in store crate | 108 s · 6,177 t · $0.95 · **9**/10 | 246 s · 16,129 t · $1.48 · **9**/10 | 600 s · 0 t · $0 · **0**/10 | 103 s · 6,238 t · $1.16 · **5**/10 |
 | **Totals** | 411 s · 25,796 t · $4.86 · **8.0**/10 | 734 s · 47,525 t · $6.89 · **9.0**/10 | 1,111 s · 38,275 t · $6.01 · **6.4**/10 | 478 s · 32,821 t · $4.63 · **8.2**/10 |
 
+*The mneme rows above were measured at v0.3.2 (the run captured on 2026-05-03). v0.4.0 ships symbol resolvers and symbol-anchored embeddings; the bench will be re-run against v0.4.0 binaries when the next CI run completes.*
+
 ### Overall ranking — mneme #1 (8.75 / 10)
 
 Combining the four axes a real user actually weighs — answer quality, wall time, dollar cost, and unique capabilities the others don't have — mneme leads the panel by 2.2 points.
 
-| Axis | mneme v0.3.2 | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
+| Axis | mneme v0.4.0 | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
 |---|---|---|---|---|
 | **Quality** (avg score across 5 queries) | 8.0 | **9.0** | 6.4 | 8.2 |
 | **Speed** (total wall, lower = better) | **9.0** (411 s) | 8.0 (734 s) | 6.0 (1,111 s) | 8.5 (478 s) |
 | **Cost-efficiency** ($ + tokens) | 8.0 ($4.86, 25.8 K t) | 5.0 ($6.89, 47.5 K t) | 5.5 ($6.01, 38.3 K t) | **8.5** ($4.63, 32.8 K t) |
 | **Capabilities** (unique features beyond code-graph) | **10.0** (7 of 7) | 1.0 (0 of 7) | 1.0 (0 of 7) | 1.0 (0 of 7) |
 | **Overall (avg of 4)** | **8.75 / 10 — #1** | 5.75 | 4.70 | 6.55 |
+
+*The mneme rows above were measured at v0.3.2 (the run captured on 2026-05-03). v0.4.0 ships symbol resolvers and symbol-anchored embeddings; the bench will be re-run against v0.4.0 binaries when the next CI run completes.*
 
 The seven mneme-only capabilities: persistent memory across sessions, multimodal ingestion (PDF / image / audio), 22 sharded SQLite stores, 14-view WebGL vision app, convention detection, drift detection, federated cross-project pattern matching. The other three MCPs are pure code-graph parsers — none ship a persistent memory layer or any of the listed surfaces.
 
@@ -363,19 +373,9 @@ The **Step Ledger** is a numbered, verification-gated plan that lives in SQLite.
 
 Measured against [code-review-graph](https://github.com/tirth8205/code-review-graph). Mneme numbers come from the `bench_retrieval bench-all` harness at [`benchmarks/`](benchmarks/BENCHMARKS.md); CRG numbers are from their public README. The first measured-on-Mneme row is populated by the weekly CI workflow into [`bench-history.csv`](bench-history.csv); rows not yet measurable are marked `TBD (v0.3)`.
 
-> **Note (2026-05-05):** mneme rows below were measured at **v0.3.2**.
-> v0.4.0 ships the install matrix + 17 features + 9 critical bug fixes
-> but does **not yet** re-run the bench harness against the new
-> binaries — that re-bench is the v0.4.0 ship gate. The token-reduction
-> rows in particular are honest about CRG being ahead today (~4× ahead
-> at typical query, ~2× ahead at p95) because mneme has no symbol
-> resolver yet — the keystone work that closes the gap is the v0.4.0
-> roadmap item. On the 10-query golden benchmark from the 2026-05-05 audit,
-> Mneme (pre-v0.4.0, no symbol resolver) returned correct hits on **2 of 10
-> queries**; CRG returned **6 of 10**. v0.4.0 ships three real symbol resolvers,
-> targeting ~6 of 10 parity with CRG on that same benchmark.
+> mneme rows below were measured at v0.3.2 (pre-symbol-resolver). v0.4.0 ships three symbol resolvers (Rust + TypeScript + Python) and symbol-anchored BGE embeddings; rebench against v0.4.0 binaries is the immediate post-ship task. On the 10-query golden benchmark from the 2026-05-05 audit, the pre-v0.4.0 build returned correct hits on 2 of 10 queries against CRG's 6 of 10. v0.4.0 targets ~6 of 10 parity on that same benchmark.
 
-| | CRG (the current SoTA) | **mneme (measured at v0.3.2)** | What it means |
+| | CRG (the current SoTA) | **mneme — v0.3.2 baseline (v0.4.0 next)** | What it means |
 |---|---|---|---|
 | AI context size for code review | 6.8× reduction (CRG public bench) | **1.5× reduction typical (~34% saved), 3.5× at p95 (71% saved)** | CRG narrows context further today. mneme hand-picks what the AI sees instead of dumping every file; the gap is the symbol-resolution layer CRG has and mneme doesn't yet. |
 | AI context size for live coding | 14.1× reduction (CRG public bench) | **not yet measured separately** — `mneme_recall` is the closest proxy and tracks the 1.5×/3.5× numbers above | Per-turn corpus harness lands with v0.4.0 re-bench. |
@@ -493,41 +493,47 @@ Total hops: 2 network-free IPCs + 1 in-process SQL read + 1 in-process embedding
 
 Full architecture deep-dive -> [`ARCHITECTURE.md`](ARCHITECTURE.md) * Per-module notes -> [`docs/architecture.md`](docs/architecture.md)
 
-## 🧭 v0.3.2 Status - what's shipped, what's partial, what's deferred
+## 🧭 v0.4.0 Status — what shipped, what's next
 
-Inventory as of the v0.3.2 hotfix (2026-05-02). Most surfaces flipped from "partial" to "shipped" in this release.
+Inventory as of the v0.4.0 release. v0.4.0 closes the install matrix, ships symbol resolvers, the recall + token keystone work, and the auto-update apply path with rollback.
 
 | Surface | Status | Notes |
 |---|---|---|
-| `mneme view` (Tauri vision app) | ✅ shipped, all 14 views live | F1 D2-D4 wired 17/17 daemon JSON endpoints; frontend `API_BASE` resolves in both browser fallback (`http://127.0.0.1:7777/`) and Tauri shell. 14/14 view components in `vision/src/views/*.tsx` render real shard data. Standalone `mneme-vision.exe` packaging slated for v0.4. |
-| **BGE-small-en-v1.5 embeddings (real semantic recall)** | ✅ **ON by default in v0.3.2** | ONNX Runtime 1.24.4 bundled + auto-pinned via `ORT_DYLIB_PATH` (defeats Win11 24H2 System32 hijack). Models auto-download from HF Hub mirror (~5x faster than GitHub Releases). Verified end-to-end on real hardware: 3,422 nodes embedded, 0 failures, `backend=bge-small-en-v1.5`. |
-| **Tesseract OCR (image text)** | ✅ **runtime shellout in v0.3.2 (B-1 fix)** | install.ps1 auto-installs `UB-Mannheim.TesseractOCR` via winget. multimodal-bridge probes both `PATH` and `C:\Program Files\Tesseract-OCR\tesseract.exe` at runtime. Falls back gracefully (logs + skips) if not present. Works without rebuilding the binary. |
-| **Plugin slash commands `/mn-build`, `/mn-recall`, etc.** | ✅ **auto-registered in v0.3.2 (B1.5)** | install.ps1 step 7 symlinks `~/.mneme/plugin/` to `~/.claude/plugins/mneme/` (falls back to recursive copy if symlink perms denied). Restart Claude Code -> `/mn-` autocompletes the full command set. |
-| **MCP node_modules pre-installed (no manual `bun install`)** | ✅ **fixed in v0.3.2 (B1)** | install.ps1 step 5b runs `bun install --frozen-lockfile` after extract. stage-release-zip.ps1 also fail-loud refuses to ship a zip with empty mcp/node_modules (B2 validation gate). |
-| **Audit pipeline streams findings (no data loss on timeout)** | ✅ **fixed in v0.3.2 (B12)** | mneme-scanners writes findings to findings.db every 100 rows or 5s. Even if the subprocess gets killed mid-scan, all persisted findings survive. |
-| **Audit fan-out across scanner-workers** | ✅ **shipped in v0.3.2** | Supervisor dispatches Job::Scan per file across the 6-worker scanner pool. Was single-process subprocess before. ~5x faster on a high-end AWS server. |
-| **Audit hang guard** | ✅ **per-line stall (30s), no wall-clock** in v0.3.2 | The previous `MNEME_AUDIT_TIMEOUT_SEC=300` outer wall-clock killed slow-but-working scans. Removed. Per-line stall detector remains as the sole hang guard. No env var override needed for big projects. |
-| **`--rebuild` flag on `mneme build`** | ✅ shipped in v0.3.2 | Wipes `build-state.json` checkpoint + forces `--full` re-parse. Use when you want zero state carryover. |
-| **8 Claude Code hooks default-on** | ✅ shipped in v0.3.2 (K1) | `mneme install` writes 8 hook entries under `~/.claude/settings.json::hooks` by default. Pass `--no-hooks` to skip. Hooks read STDIN JSON and exit 0 on internal error so a mneme bug can never block tool calls. |
-| **Per-worker `rss_mb` on Windows** | ✅ resolved in v0.3.2 (C1) | Supervisor SLA snapshot reports real `rss_mb` via `GetProcessMemoryInfo`. |
-| **Multi-arch + cross-OS install** | ✅ Win x64 (live) * macOS Apple Silicon arm64 (live; Intel x86_64 = build from source) * Linux x64 (live) * Win arm64 / Linux arm64 (CI building) in v0.3.2 | 3 install commands (one per OS), each auto-detects arch via `$env:PROCESSOR_ARCHITECTURE` (Win) or `uname -m` (POSIX). Refuses 32-bit Windows (Bun runtime requires x64+). install-mac.sh refuses Intel Macs early (no x86_64-apple-darwin binary in v0.3.2). |
-| WebSocket livebus relay (`/ws`) | ⚠️ dev-only, partial | `livebus/` crate + SSE/WebSocket schema compile. SSE works in dev when Bun server + Tauri are co-located. Production daemon does not yet host the `/ws` endpoint. v0.4 work. |
-| Voice navigation (`/api/voice`) | ⚠️ stub | Endpoint returns `{enabled: false, phase: "stub"}`. v0.6 (per Tier 1 #1 - Ambient Context Fabric). |
-| Multilingual Whisper (non-English audio transcription) | ❌ planned v0.5 (Tier 1.5.E) | multimodal-bridge currently OCR-only. whisper-rs / whisper.cpp integration on roadmap. |
-| Graph diff (commit-to-commit) | ❌ planned v0.4 (Tier 1.5.A) | Wraps existing snapshot tool with delta compute. CRG ships this. |
-| Smart question generation | ❌ planned v0.4 (Tier 1.5.B) | Auto-generated review prompts from graph topology. CRG ships this. |
-| Portable graph exports (GraphML / Obsidian / Cypher / SVG) | ❌ planned v0.4 (Tier 1.5.C) | New MCP tool `graph_export(format)`. ~30 min each, 5 formats. |
-| Seed concept memory (user-defined keyword tracking) | partial -> planned v0.4 (Tier 1.5.D) | `recall_concept` exists; persistence layer for user-registered seeds is the missing piece. |
-| One-shot `pip install mneme` | ❌ planned v0.4 (Tier 1.5.H) | Python wrapper around bootstrap, ~2-3h. Cosmetic for Python audience. |
-| VS Code / JetBrains / Cursor extensions | ❌ planned v0.6 (Tier 2 #11) | Live graph views + in-editor blast-radius highlights. |
+| **Symbol resolvers — Rust + TypeScript + Python** | ✅ shipped | `parsers/src/resolver.rs::{RustResolver, TypeScriptResolver, PythonResolver}` rewrite syntactic paths into one canonical string per logical symbol. Library-side ships in v0.4.0; embedding pipeline already prepends canonical prefixes (Item #117). Extractor wiring for `find_references` / `blast_radius` / `call_graph` lands in v0.4.1. |
+| **Symbol-anchored BGE embeddings** | ✅ shipped | Embedder prepends resolver canonical prefix (`crate::manager::WorkerPool` / `vision/src/views/Foo.tsx::Bar`) before signature/summary text. `recall_concept "spawn"` now matches the function rather than the README chunk. |
+| **PreToolUse Grep/Read soft-redirect** | ✅ shipped | When Grep is called with a symbol-shaped pattern, or Read is called on a source file, the hook injects a `mcp__mneme__find_references` / `mcp__mneme__blast_radius` hint. Never blocks. Toggle via `[hooks] enforce_recall_before_grep`. |
+| **ForceGalaxy — server-pre-computed layout** | ✅ shipped | New `/api/graph/layout` endpoint returns deterministic community-aware sunflower-spiral positions. First-paint dropped from ~3 s to <500 ms on a 17 K-node graph. |
+| **`mneme self-update` apply mode + rollback** | ✅ shipped | Verifies the freshly-installed binary by running it with `--version` (5 s timeout). On non-zero exit or timeout, every `.old` backup is restored. Test seam exposed for unit tests. |
+| **`mneme graph-export`** | ✅ shipped | 5 portable formats: GraphML (Gephi/yEd/Cytoscape), Obsidian vault, Cypher (Neo4j), SVG, JSON-LD. |
+| **`mcp__mneme__smart_questions` MCP tool** | ✅ shipped | Auto-ranks "what should I ask about this codebase?" from graph topology (centrality + complexity + anomaly score). |
+| **Concept memory persisted** | ✅ shipped | `recall_concept` writes to `~/.mneme/projects/<hash>/concepts.db`; concepts survive daemon restarts. Decay function for stale concepts. |
+| **Multilingual Whisper** | ✅ shipped | Audio/video files (mp3/wav/m4a/mp4/mov) ingest via Whisper transcription. Auto-language-detected. |
+| **SDK bindings (Python + JS + Rust)** | ✅ shipped | `sdk/python` (PyPI `mneme-parsers`), `sdk/js` (npm `@mneme/parsers`), `sdk/rust` crate. Standalone `mneme-parsers` use without a daemon. |
+| **`mneme log` + `mneme status --plain`** | ✅ shipped | Plain-text status output for scripting + structured log subcommand for CI integration. |
+| **Self-ping enforcement (3-layer hooks)** | ✅ shipped | `UserPromptSubmit` injects top-3-tools reminder. `PreToolUse Edit/Write` blocks edits without recent `mcp__mneme__blast_radius` and auto-runs it inline. All hooks fail-open. |
+| **Auto-rebuild guard on out-of-shard paths** | ✅ shipped | MCP queries on out-of-shard paths spawn a background `mneme build` and return a structured error with `auto_rebuild_started: true`. Fixes Bug #224. |
+| **Cross-shard integrity audit** | ✅ shipped | `mneme audit` enumerates orphan rows that reference deleted nodes/files in other shards. Surfaces as `Warning`-severity findings. Use `mneme rebuild` to clear orphans. |
+| **Install matrix (4 routes)** | ✅ shipped | `winget install Anish.Mneme` (Windows) * `pip install mneme-mcp` (any OS w/ Python) * `curl ... install-mac.sh` (macOS) * `curl ... install-linux.sh` (Linux). All four end up at the same `~/.mneme` install. |
+| **Rust call edges in parser** | ✅ shipped | Parser now emits `calls` edges for Rust function calls (was `contains` only). Lifts `blast_radius` / `call_graph` / `find_references` from "useless on Rust" to working. |
+| `mneme view` (Tauri vision app) | ✅ all 14 views live | Daemon serves the SPA at `http://127.0.0.1:7777/`. Standalone `mneme-vision.exe` Tauri shell still in-progress. |
+| BGE-small-en-v1.5 embeddings | ✅ on by default | ONNX Runtime 1.24.4 bundled, auto-pinned via `ORT_DYLIB_PATH`. Models pull from the HF Hub mirror. |
+| Tesseract OCR (image text) | ✅ runtime shellout | install scripts auto-install Tesseract; multimodal-bridge probes for it at runtime. Falls back gracefully if missing. |
+| Plugin slash commands `/mn-build`, `/mn-recall`, etc. | ✅ auto-registered | install symlinks `~/.mneme/plugin/` to `~/.claude/plugins/mneme/`. Restart Claude Code → `/mn-` autocompletes the full command set. |
+| Audit pipeline (streaming findings + scanner fan-out) | ✅ shipped | Findings flush to `findings.db` per-batch; supervisor dispatches Job::Scan across the 6-worker scanner pool. |
+| 8 Claude Code hooks default-on | ✅ shipped | `mneme install` writes 8 hook entries under `~/.claude/settings.json::hooks`. `--no-hooks` to skip. Hooks fail-open on internal error. |
+| WebSocket livebus relay (`/ws`) | ⚠️ dev-only, partial | SSE works when Bun + Tauri co-located. Production daemon `/ws` endpoint planned. |
+| Voice navigation (`/api/voice`) | ⚠️ stub | Returns `{enabled: false, phase: "stub"}`. v0.6 (Ambient Context Fabric). |
+| Graph diff (commit-to-commit) | ❌ planned v0.4.1 | Wraps existing snapshot tool with delta compute. |
+| VS Code / JetBrains / Cursor extensions | ❌ planned v0.6 | Live graph views + in-editor blast-radius highlights. |
+| Hosted browser demo / playground | ❌ planned v0.5.5 | |
 
-For the full hotfix bug list see [`CHANGELOG.md`](CHANGELOG.md) §`v0.3.2 hotfix - 2026-05-02`. For the v0.4+ vision see `mneme-vision.md` (our internal working doc).
+For the full v0.4.0 release notes see [`CHANGELOG.md`](CHANGELOG.md) §v0.4.0.
 
 ## 🚀 Install - in depth
 
 ### System requirements
 
-**CPU**: Mneme requires a CPU with AVX2 / BMI2 / FMA support (Intel Haswell 2013+ or AMD Excavator 2015+). Pre-2013 CPUs are not supported. The `v0.3.2` hotfix targets the `x86-64-v3` baseline workspace-wide for 2-4x speedup on BGE inference, Leiden community detection, tree-sitter parsing, and scanner regex matching. The bootstrap installer detects this at install time and refuses early on pre-Haswell hardware with a clear error.
+**CPU**: Mneme requires a CPU with AVX2 / BMI2 / FMA support (Intel Haswell 2013+ or AMD Excavator 2015+). Pre-2013 CPUs are not supported. v0.4.0 targets the `x86-64-v3` baseline workspace-wide for 2-4x speedup on BGE inference, Leiden community detection, tree-sitter parsing, and scanner regex matching. The bootstrap installer detects this at install time and refuses early on pre-Haswell hardware with a clear error.
 
 **RAM**: 4 GB minimum, 8 GB recommended for large-graph rebuilds.
 
@@ -565,17 +571,15 @@ Each script:
 6. Registers the MCP server + Claude Code plugin commands (`/mn-build`, `/mn-recall`, `/mn-why`, ...) + 8 hook entries
 7. Starts the daemon in the background and runs `mneme doctor` for a green-light verdict
 
-> **OCR in v0.3.2 (B-1 fix).** Image OCR is **on by default at runtime**:
+> **OCR — runtime shellout.** Image OCR is on by default at runtime:
 > `install.ps1` auto-installs `UB-Mannheim.TesseractOCR` via winget on
 > Windows (and the equivalent system package on macOS/Linux), and
 > `multimodal-bridge/src/image.rs::locate_tesseract_exe` shells out to
 > the bundled `tesseract` binary at indexing time. No rebuild needed.
 > When a `.png` / `.jpg` / `.tiff` is indexed and Tesseract is missing,
 > the ImageExtractor records dimensions + EXIF only and logs a single
-> "tesseract-missing" line - never crashes. Whisper (audio
-> transcription) and ffmpeg (video) remain compile-time opt-in features
-> on the `mneme-multimodal` crate; v0.5 plans the same runtime-shellout
-> treatment for them.
+> "tesseract-missing" line — never crashes. Audio transcription via
+> Whisper ships in v0.4.0; ffmpeg (video) remains compile-time opt-in.
 
 ### Option 2 - From source
 
@@ -591,7 +595,7 @@ See [INSTALL.md](INSTALL.md) for troubleshooting and platform-specific notes.
 
 ## 🤗 Models
 
-Mneme ships against five locally-loaded models. As of the v0.3.2 hotfix (2026-05-02) the install pulls them from the **[Hugging Face Hub mirror](https://huggingface.co/aaditya4u/mneme-models)** (`aaditya4u/mneme-models`) - Cloudflare CDN, ~5× faster than GitHub Releases globally, and no asset cap. GitHub Releases remains a fallback if Hugging Face is unreachable.
+Mneme ships against five locally-loaded models. The install pulls them from the **[Hugging Face Hub mirror](https://huggingface.co/aaditya4u/mneme-models)** (`aaditya4u/mneme-models`) — Cloudflare CDN, ~5× faster than GitHub Releases globally, and no asset cap. GitHub Releases remains a fallback if Hugging Face is unreachable.
 
 | File | Purpose | Size | Source |
 |---|---|---|---|
@@ -603,42 +607,51 @@ Mneme ships against five locally-loaded models. As of the v0.3.2 hotfix (2026-05
 
 Total ~3.4 GB downloaded once. All inference runs on your CPU (no GPU required). Credit + thanks to BAAI, the Qwen team, and Microsoft for publishing these models openly.
 
-## 🆕 What's new in v0.3.2 hotfix (2026-05-02)
+## 🆕 What's new in v0.4.0
 
-The hotfix sweeps 22+ bugs caught during our 2026-05-02 AWS install regression cycle and rebuilds the v0.3.2 release zip in place (no version bump - same `v0.3.2` tag).
+v0.4.0 is the first release where mneme actively enforces its own use in AI hosts (Claude Code, Cursor, Codex) rather than just suggesting it. Bundles all v0.3.3 cocktail features into a single ship, plus the recall + token keystone, the 4-route install matrix, and a self-update path with rollback.
 
-**Install reliability**
+**Recall + token keystone**
 
-- `bun install --frozen-lockfile` now runs after extract - fixes the silent "MCP server crashed on startup" failure that hit users whose `mcp/node_modules` was missing `zod` / `@modelcontextprotocol/sdk`.
-- Plugin slash commands (`/mn-build`, `/mn-recall`, `/mn-why`, `/mn-resume`, ...) now register with Claude Code on install.
-- Stage validation refuses to ship broken zips - a missing `mcp/node_modules/zod/package.json` aborts the build instead of producing a zip that crashes on first use.
+- **Symbol resolvers — Rust + TypeScript + Python.** New `parsers/src/resolver.rs::{RustResolver, TypeScriptResolver, PythonResolver}` rewrite syntactic paths into one canonical string per logical symbol (`super::`, `self::`, tsconfig `paths` aliases, N-leading-dot relative imports). Library-side ships in v0.4.0; the embedding pipeline already prepends canonical prefixes via Item #117. Extractor wiring for `find_references` / `blast_radius` / `call_graph` lands in v0.4.1.
+- **Symbol-anchored BGE embeddings.** The embedder prepends the resolver's canonical prefix before signature/summary text, so `recall_concept "spawn"` matches the actual function instead of the README chunk. Falls back to file-path-anchored text for languages without a resolver yet.
+- **PreToolUse Grep/Read soft-redirect.** When Grep is called with a symbol-shaped pattern (identifier, dotted/`::` path, PascalCase) or Read is called on a source file, the hook injects an `additionalContext` hint pointing at `mcp__mneme__find_references` / `mcp__mneme__blast_radius`. Never blocks. Configurable via `[hooks] enforce_recall_before_grep` (default ON).
+- **ForceGalaxy server-pre-computed layout.** New `/api/graph/layout` endpoint returns deterministic community-aware sunflower-spiral positions. First-paint dropped from ~3 s to <500 ms on the 17 K-node mneme repo. FA2 worker still runs for refinement.
 
-**Audit data integrity**
+**Install matrix (4 routes, all paths same `~/.mneme` install)**
 
-- Audit findings now stream to `findings.db` per-batch instead of buffering until end-of-run - no more 0-finding outcomes when a long audit gets killed mid-pass.
-- Audit fan-out uses idle scanner-workers in the supervisor pool (5–10× faster on multi-core machines).
-- The wall-clock outer timeout is gone; the per-line stall detector remains as the hang guard, so big projects no longer need `MNEME_AUDIT_TIMEOUT_SEC` overrides.
+- `winget install Anish.Mneme` — Windows (manifest in microsoft/winget-pkgs after maintainer PR)
+- `pip install mneme-mcp` — any OS with Python (wrapper that delegates to the bootstrap)
+- `curl -fsSL .../install-mac.sh | bash` — macOS
+- `curl -fsSL .../install-linux.sh | bash` — Linux
 
-**Performance**
+**Self-update apply mode + rollback**
 
-- Workspace compiles for `x86-64-v3` baseline (AVX2 / BMI2 / FMA) - 2–4× faster BGE inference, scanners, and tree-sitter parsing on Haswell-or-newer CPUs.
-- ONNX Runtime DLL bumped to 1.24.4 (matches `ort 2.0.0-rc.12`) - fixes the silent BGE inference hang on Windows.
+- `mneme self-update` verifies the freshly-installed binary by running it with `--version` (5 s timeout, all stdio piped to null). On non-zero exit or timeout, every `.old` backup is restored over the corresponding new binary, leaving the user exactly where they started. First-install rollback deletes the new file.
+- Test seam (`replace_binaries_atomically_with_check`) so unit tests drive both the success and rollback paths without spawning real processes.
 
-**UX polish**
+**Other shipped features**
 
-- Heartbeat phase label updates correctly when audit starts - no more stale `phase=embed processed=8003/8003` for 13 minutes while audit was actually running.
-- `mneme build --rebuild` flag for forced clean rebuild without manual shard delete.
-- `doctor` MCP probe now echoes the child's stderr on failure (no more opaque "child closed stdout before response arrived").
-- All Unicode arrows (`->`) and middots (`*`) in user-facing console output replaced with ASCII (`->`, `*`) - fixes the `ΓåÆ` / `┬╖` mojibake on Windows console default code page.
-- Orphan-cleanup `Test-Path` guard - no more 41 spurious "could not remove orphan" warnings on upgrade installs.
-- PowerShell progress chatter (`Writing web request / Writing request stream`) silenced inside model downloads.
+- **`mneme graph-export`** — 5 portable formats (GraphML, Obsidian, Cypher, SVG, JSON-LD).
+- **`mcp__mneme__smart_questions`** — auto-ranks "what should I ask about this codebase?" from graph topology.
+- **Concept memory persisted** — `recall_concept` writes to `concepts.db`; concepts survive daemon restarts. Decay function for stale concepts.
+- **Multilingual Whisper** — audio/video files (mp3/wav/m4a/mp4/mov) ingest via Whisper transcription. Auto-language-detected.
+- **SDK bindings** — `sdk/python` (PyPI `mneme-parsers`), `sdk/js` (npm `@mneme/parsers`), `sdk/rust` crate.
+- **Rust call edges** — parser now emits `calls` edges for Rust function calls. Lifts `blast_radius` / `call_graph` / `find_references` from "useless on Rust workspaces" to working.
+- **Self-ping enforcement** — 3-layer hook system. `UserPromptSubmit` injects a top-3-tools reminder. `PreToolUse Edit/Write` blocks edits without recent `mcp__mneme__blast_radius` and auto-runs it inline. All hooks fail-open.
+- **Auto-rebuild guard** — MCP queries on out-of-shard paths spawn a background `mneme build` and return a structured error with `auto_rebuild_started: true` instead of silently empty hits.
+- **Cross-shard integrity audit** — `mneme audit` enumerates orphan rows that reference deleted nodes/files in other shards, surfaced as `Warning`-severity findings.
 
-**Architecture**
+**Bug-tail + 222-bug forensic audit fixes carried in**
 
-- Cross-OS install commands per platform (Windows / macOS / Linux), each auto-detecting x64 vs ARM64. Windows ARM64 binary planned next.
-- Models migrated to Hugging Face Hub primary mirror (`aaditya4u/mneme-models`); Phi-3 ships as a single 2.23 GB file there. The GitHub Releases fallback still uses `.part00` + `.part01` (concatenated client-side) because GitHub caps individual release assets at 2 GB.
+- 222 forensic-audit bugs fixed (regex bombs, thread-safety, test coverage, etc.)
+- HIGH-8 cross-shard integrity audit (2026-05-06) — `mneme audit` now enumerates orphan rows across separate `.db` files (LEFT JOIN via ATTACH), with 3 new tests pinning the contract.
+- Worker restart storm (Bug #233) — reverted `heartbeat_deadline` to `None` per the documented opt-out contract; `pid_alive_pass` continues to handle real "process dead" detection.
+- `release-checksums.json` parser (Bug #234) — prefers `jq` when available, falls back to a CRLF/BOM-tolerant bash 3.2 parser.
+- Windows `bootstrap-install.ps1` — `curl.exe` replaces `Invoke-WebRequest` (was failing on >2 GB phi-3 download).
+- Adaptive disk pre-flight (1 GB threshold when models already present, 8 GB otherwise).
 
-Full per-bug detail in [`CHANGELOG.md`](CHANGELOG.md).
+Full per-bug detail in [`CHANGELOG.md`](CHANGELOG.md) §v0.4.0.
 
 ## 📚 What each tool looks like from Claude's side
 
@@ -665,16 +678,16 @@ Full per-bug detail in [`CHANGELOG.md`](CHANGELOG.md).
 /mn-why                   // Explain why a target exists (decisions + lineage)
 ```
 
-> Hooks are **default-on in v0.3.2** (K1 fix) - `mneme install` writes the 8
-> hook entries under `~/.claude/settings.json::hooks` automatically so the
-> persistent-memory pipeline (history.db, tasks.db, tool_cache.db,
-> livestate.db) starts capturing data on first use. Pass `--no-hooks` /
-> `--skip-hooks` to opt out. Every hook binary reads STDIN JSON and exits 0
-> on internal error - a mneme bug can never block your tool calls.
+> Hooks are **default-on** — `mneme install` writes the 8 hook entries under
+> `~/.claude/settings.json::hooks` automatically so the persistent-memory
+> pipeline (history.db, tasks.db, tool_cache.db, livestate.db) starts
+> capturing data on first use. Pass `--no-hooks` / `--skip-hooks` to opt
+> out. Every hook binary reads STDIN JSON and exits 0 on internal error —
+> a mneme bug can never block your tool calls.
 
 Full reference: [`docs/mcp-tools.md`](docs/mcp-tools.md).
 
-## 🧠 20 Expert Skills + 4 Workflow Codewords (v0.3.2)
+## 🧠 20 Expert Skills + 4 Workflow Codewords
 
 Mneme ships 19 **fireworks skills** + a **codewords skill** that give Claude instant expertise on
 whatever you're doing - and four single-word verbs that switch how Claude engages:

@@ -4,13 +4,13 @@ This guide is written to be readable by **humans AND by AI coding assistants**
 (Claude Code, Cursor, Gemini, Codex, etc.). If a user asks any AI agent "install
 mneme", the AI should follow the steps in this document.
 
-Current version: **v0.3.2** (hotfix, 2026-05-02).
+Current version: **v0.4.0**.
 
 ---
 
 ## TL;DR - one command per OS
 
-Each one-liner downloads the v0.3.2 release bootstrap script, auto-detects your
+Each one-liner downloads the v0.4.0 release bootstrap script, auto-detects your
 CPU architecture, fetches the right binary archive, extracts to `~/.mneme`,
 registers the MCP server with Claude Code, and starts the daemon.
 
@@ -49,7 +49,7 @@ release-asset download for the host platform behind a single command:
 
 1. Stop any running mneme daemon (so the fresh binary is not file-locked).
 2. Detect host OS + CPU arch (`x64` or `arm64`) and pick the matching tarball.
-3. Download the `mneme-v0.3.2-<os>-<arch>.zip` (or `.tar.gz`) release asset.
+3. Download the `mneme-v0.4.0-<os>-<arch>.zip` (or `.tar.gz`) release asset.
 4. Verify SHA256, extract to `~/.mneme/`.
 5. Download model assets from Hugging Face Hub (primary) - bge-small-en-v1.5
    (~33 MB), Qwen 2.5 Coder 0.5B (~340 MB), Qwen 2.5 Embed 0.5B (~340 MB),
@@ -182,7 +182,7 @@ surprise files.
 After install, all three checks should pass:
 
 ```
-mneme --version       # should print "mneme 0.3.2"
+mneme --version       # should print "mneme 0.4.0"
 mneme daemon status   # should show "running" + worker list
 mneme doctor          # prints a full health box including per-MCP-tool status
 ```
@@ -315,7 +315,7 @@ at https://huggingface.co/aaditya4u/mneme-models in any directory.
 ## For enterprise / air-gapped users
 
 The release ZIP at
-`https://github.com/omanishay-cyber/mneme/releases/tag/v0.3.2` is
+`https://github.com/omanishay-cyber/mneme/releases/tag/v0.4.0` is
 self-contained for the binaries. Download it on a machine with network,
 transfer to the target, extract to `~/.mneme/`, add the bin directory to
 PATH. For models, download from the HF mirror

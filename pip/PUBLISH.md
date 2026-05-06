@@ -35,8 +35,8 @@ python -m pip install --upgrade build twine
 python -m build
 ```
 
-That writes `dist/mnemeos-0.3.2-py3-none-any.whl` and
-`dist/mnemeos-0.3.2.tar.gz`.
+That writes `dist/mnemeos-0.4.0-py3-none-any.whl` and
+`dist/mnemeos-0.4.0.tar.gz`.
 
 ## Smoke test the wheel
 
@@ -44,7 +44,7 @@ In a throwaway venv:
 
 ```bash
 python -m venv /tmp/check-mnemeos
-/tmp/check-mnemeos/bin/python -m pip install dist/mnemeos-0.3.2-py3-none-any.whl
+/tmp/check-mnemeos/bin/python -m pip install dist/mnemeos-0.4.0-py3-none-any.whl
 /tmp/check-mnemeos/bin/mnemeos --check
 ```
 

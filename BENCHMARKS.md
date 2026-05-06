@@ -2,15 +2,16 @@
 
 > **STALE NUMBERS WARNING — read first.**
 > Every measurement in this file is a **v0.2.0** number. The current
-> codebase is **v0.3.2**. A v0.3.2 re-run is pending and parked under
+> codebase is **v0.4.0**. A v0.4.0 re-run is pending and parked under
 > `docs/REMAINING_WORK.md`.
 >
-> Treat the tables below as a v0.2.0 baseline only. Real-world v0.3.2
-> performance is materially better in several axes (x86-64-v3 baseline
-> for 2-4x faster BGE inference, ORT 1.24.4 fixing the Windows BGE hang,
-> scanner fan-out for 5-10x faster audit, scan-done markers, regex
-> bomb fixes). Do not cite these numbers as the v0.3.2 product story
-> without re-running the harness against a v0.3.2 build.
+> Treat the tables below as a v0.2.0 baseline only. Real-world v0.4.0
+> performance is materially better in several axes (three symbol
+> resolvers + symbol-anchored BGE embeddings closing the recall gap,
+> x86-64-v3 baseline for 2-4× faster BGE inference, ORT 1.24.4 fixing
+> the Windows BGE hang, scanner fan-out for 5-10× faster audit, regex
+> bomb fixes). Do not cite these numbers as the v0.4.0 product story
+> without re-running the harness against a v0.4.0 build.
 >
 > Bug DOC-7 (2026-05-01) opened the gap; bug A9-015 (2026-05-04)
 > hardened this disclaimer. Re-run harness owner: see
@@ -18,7 +19,7 @@
 
 Run date: **2026-04-23** (historical - pre-v0.3.0)
 Git SHA: `164948ccee36f74ee303ec25d0d67565fae0d96c`
-Harness version: `bench_retrieval` v0.2 (`benchmarks` crate, workspace v0.2.0 at the time of this run; current workspace is v0.3.2)
+Harness version: `bench_retrieval` v0.2 (`benchmarks` crate, workspace v0.2.0 at the time of this run; current workspace is v0.4.0)
 Raw results: [`benchmarks/results/2026-04-23.csv`](benchmarks/results/2026-04-23.csv) + [`benchmarks/results/2026-04-23.json`](benchmarks/results/2026-04-23.json)
 Baseline: none - this is the **first recorded local run** of the full `bench-all` suite against the mneme repository itself.
 
@@ -485,7 +486,7 @@ re-measured on 2026-05-02 after switching the MCP wrapper from the
 autotrigger fork (broken on `fastmcp 3.x`) to the official `graphifyy 0.6.7+`
 stdio server (`graphify.serve`).
 
-| Query | mneme v0.3.2 | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
+| Query | mneme v0.3.2 baseline | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
 |---|---|---|---|---|
 | Q1 build pipeline functions | 63 s · 4,894 t · $0.91 · **9**/10 | 112 s · 7,855 t · $1.21 · **9**/10 | 103 s · 8,142 t · $1.47 · **9**/10 | 61 s · 4,540 t · $0.72 · **9**/10 |
 | Q2 blast radius of `common/src/paths.rs` | 61 s · 4,598 t · $0.90 · **9**/10 | 140 s · 9,560 t · $1.06 · **9**/10 | 137 s · 11,847 t · $1.48 · **5**/10 | 106 s · 7,761 t · $0.80 · **9**/10 |

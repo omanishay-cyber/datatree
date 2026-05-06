@@ -29,10 +29,10 @@
     "name": "mneme",
     "operatingSystem": "Windows, macOS, Linux",
     "applicationCategory": "DeveloperApplication",
-    "softwareVersion": "0.3.2",
+    "softwareVersion": "0.4.0",
     "license": "https://www.apache.org/licenses/LICENSE-2.0",
     "url": "https://omanishay-cyber.github.io/mneme/",
-    "downloadUrl": "https://github.com/omanishay-cyber/mneme/releases/tag/v0.3.2",
+    "downloadUrl": "https://github.com/omanishay-cyber/mneme/releases/tag/v0.4.0",
     "description": "Persistent memory layer for AI coding. Survives Claude context wipes. Runs entirely local. Works with 19 AI tools.",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Person", "name": "Anish Trivedi & Kruti Trivedi" }
@@ -1655,7 +1655,7 @@
           <path d="M8 22 L8 12 L11 12 L16 18 L21 12 L24 12 L24 22" stroke="#16a37c" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
           <circle cx="16" cy="9.5" r="1.4" fill="#16a37c"/>
         </svg>
-        <span class="version-pill">v0.3.2 · live</span>
+        <span class="version-pill">v0.4.0 · live</span>
         <a class="hero-stars" href="https://github.com/omanishay-cyber/mneme"
            aria-label="Star mneme on GitHub">
           <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
@@ -1670,7 +1670,7 @@
       <p class="subtag">Stop re-explaining your codebase every chat. Mneme keeps what Claude learned about your project - survives context wipes, doesn't forget mid-task, runs entirely on your machine. No cloud. No telemetry. No subscription.</p>
 
       <div class="cta-row">
-        <a class="cta cta-primary" href="https://github.com/omanishay-cyber/mneme/releases/tag/v0.3.2">Download v0.3.2 →</a>
+        <a class="cta cta-primary" href="https://github.com/omanishay-cyber/mneme/releases/tag/v0.4.0">Download v0.4.0 →</a>
         <a class="cta cta-secondary" href="https://github.com/omanishay-cyber/mneme">View on GitHub</a>
       </div>
 
@@ -1808,7 +1808,7 @@
       </div>
 
       <div class="install-foot">
-        Downloads the v0.3.2 release, extracts to <code>~/.mneme</code>, pulls 5 model files (~3.4 GB) from the Hugging Face Hub mirror at <a href="https://huggingface.co/aaditya4u/mneme-models">aaditya4u/mneme-models</a> (GitHub Releases as fallback), registers the MCP server + 8 hooks + plugin slash commands with Claude Code.
+        Downloads the v0.4.0 release, extracts to <code>~/.mneme</code>, pulls 5 model files (~3.4 GB) from the Hugging Face Hub mirror at <a href="https://huggingface.co/aaditya4u/mneme-models">aaditya4u/mneme-models</a> (GitHub Releases as fallback), registers the MCP server + 8 hooks + plugin slash commands with Claude Code.
         Restart Claude after install. Verify with <code>mneme doctor</code> and <code>claude mcp list</code>.<br/>
         Requires AVX2/BMI2/FMA (Intel Haswell 2013+ / AMD Excavator 2015+). Full details: <a href="https://github.com/omanishay-cyber/mneme/blob/main/INSTALL.md">INSTALL.md</a>.
       </div>
@@ -1940,7 +1940,7 @@
           </tr>
           <tr>
             <td class="cmp-q">Smart semantic search (not just keyword)?</td>
-            <td class="cmp-mneme"><span class="cmp-yes">YES</span> - real BGE-small-en-v1.5 ONNX embeddings on by default in v0.3.2 (auto-pulled from HF Hub mirror)</td>
+            <td class="cmp-mneme"><span class="cmp-yes">YES</span> - real BGE-small-en-v1.5 ONNX embeddings on by default (auto-pulled from HF Hub mirror)</td>
             <td><span class="cmp-no">No</span> (keyword only)</td>
             <td><span class="cmp-mid">Partial</span> - pulls models from network</td>
             <td><span class="cmp-no">No</span></td>
@@ -2040,13 +2040,14 @@
 
     <h3 class="cmp-h3">Benchmark (2026-05-02)</h3>
     <p class="lead">Claude Code 2.1.126 pointed at the mneme workspace itself (Rust + TypeScript + Python, 50K+ LOC, 400+ files) on a Windows 11 AWS test instance, with the same 5 questions through each MCP, isolated via <code>--strict-mcp-config</code>. Same model, same prompt, same project. Score is auto-counted against a hand-curated ground-truth of mneme symbols (<code>PathManager</code>, <code>DbBuilder::build_or_migrate</code>, <code>Store::open</code>, <code>worker_ipc</code>, <code>livebus</code>, etc.; 0-10 scale). Per-query budget: 600 s wall.</p>
+    <p class="lead" style="opacity:0.78;font-size:0.92em;">Mneme rows below are the v0.3.2 baseline measured on 2026-05-03. v0.4.0 ships three symbol resolvers (Rust + TypeScript + Python) and symbol-anchored BGE embeddings; the rebench against v0.4.0 binaries lands in the next weekly CI run.</p>
 
     <div class="cmp-wrap">
       <table class="bench-table">
         <thead>
           <tr>
             <th>Query</th>
-            <th>mneme v0.3.2</th>
+            <th>mneme v0.3.2 baseline</th>
             <th>tree-sitter v0.7.0</th>
             <th>CRG v2.3.2</th>
             <th>graphify v0.3.0</th>
@@ -2116,7 +2117,7 @@
         <thead>
           <tr>
             <th>Axis</th>
-            <th>mneme v0.3.2</th>
+            <th>mneme v0.3.2 baseline</th>
             <th>tree-sitter v0.7.0</th>
             <th>CRG v2.3.2</th>
             <th>graphify v0.3.0</th>

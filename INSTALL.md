@@ -1,4 +1,4 @@
-# INSTALL.md - mneme v0.3.2 (hotfix 2026-05-02)
+# INSTALL.md - mneme v0.4.0
 
 Three ways to use mneme:
 
@@ -28,7 +28,7 @@ iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/boots
 curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-mac.sh | bash
 ```
 
-> **Intel Macs (x86_64) are not supported in v0.3.2.** v0.3.2 ships only an `aarch64-apple-darwin` binary. Intel Mac users must build from source: `git clone` + `cargo build --release --workspace`. Native Intel Mac binaries may return in a later release if GitHub-hosted runner capacity recovers.
+> **Intel Macs (x86_64): build from source.** The current release ships only an `aarch64-apple-darwin` binary. Intel Mac users: `git clone` + `cargo build --release --workspace`. Native Intel Mac binaries may return in a later release if GitHub-hosted runner capacity recovers.
 
 ### Linux (x64 / ARM64)
 
@@ -54,7 +54,7 @@ The PyPI distribution name is `mnemeos` (the bare `mneme` was claimed on PyPI in
 
 | Requirement | Detail |
 |---|---|
-| **OS** | 64-bit Windows 10/11 (x64 live, arm64 in CI build), macOS 14+ Apple Silicon (arm64 live; Intel x86_64 build-from-source only in v0.3.2), Ubuntu 22.04+ / Debian / Fedora (x64 live, arm64 in CI build) |
+| **OS** | 64-bit Windows 10/11 (x64 live, arm64 in CI build), macOS 14+ Apple Silicon (arm64 live; Intel x86_64 build-from-source only), Ubuntu 22.04+ / Debian / Fedora (x64 live, arm64 in CI build) |
 | **CPU baseline** | x86-64-v3 - AVX2 / BMI2 / FMA. Intel Haswell (2013+) or AMD Excavator (2015+). Almost every PC sold since 2013 qualifies. The bootstrap refuses pre-Haswell hardware with a clear error. |
 | **Disk** | 5 GB free (binaries ~250 MB, models ~3.4 GB, room for first project's shards) |
 | **Privileges** | No admin needed. Defender exclusions are added best-effort if elevated; install proceeds without them otherwise. |
@@ -70,9 +70,9 @@ Use this when you have the `mneme final` home zip and want to install the binary
 # 1. Open PowerShell (any user, no admin needed)
 # 2. Extract the home zip wherever you want, then:
 cd "<extracted-path>\mneme final 2026-04-29\release"
-Expand-Archive -Path mneme-v0.3.2-windows-x64.zip -DestinationPath "$env:USERPROFILE\.mneme" -Force
+Expand-Archive -Path mneme-v0.4.0-windows-x64.zip -DestinationPath "$env:USERPROFILE\.mneme" -Force
 cd "$env:USERPROFILE\.mneme"
-.\scripts\install.ps1 -LocalZip "<extracted-path>\mneme final 2026-04-29\release\mneme-v0.3.2-windows-x64.zip"
+.\scripts\install.ps1 -LocalZip "<extracted-path>\mneme final 2026-04-29\release\mneme-v0.4.0-windows-x64.zip"
 ```
 
 Either path - the installer:
@@ -85,14 +85,14 @@ Either path - the installer:
 6. Adds Defender exclusions for `~/.mneme` and `~/.claude` (best-effort if not elevated)
 7. Pulls 5 model files from the [Hugging Face Hub mirror](https://huggingface.co/aaditya4u/mneme-models) (`bge-small-en-v1.5.onnx` + `tokenizer.json` + `qwen-embed-0.5b.gguf` + `qwen-coder-0.5b.gguf` + `phi-3-mini-4k.gguf` as a single 2.23 GB file - no part-merge anymore), with GitHub Releases as automatic fallback
 8. Starts the mneme daemon in the background
-9. Registers the mneme MCP server with Claude Code: writes the `mcpServers.mneme` entry to `~/.claude.json` AND, by default (K1 fix in v0.3.2), writes the 8 mneme hook entries under `~/.claude/settings.json::hooks` so the persistent-memory pipeline (history.db, tasks.db, tool_cache.db, livestate.db) actually fills. Pass `--no-hooks` / `--skip-hooks` to opt out. Hook bodies are crash-safe: every hook binary reads STDIN JSON and exits 0 on any internal error, so a mneme bug can never block your tool calls.
+9. Registers the mneme MCP server with Claude Code: writes the `mcpServers.mneme` entry to `~/.claude.json` AND writes the 8 mneme hook entries under `~/.claude/settings.json::hooks` so the persistent-memory pipeline (history.db, tasks.db, tool_cache.db, livestate.db) actually fills. Pass `--no-hooks` / `--skip-hooks` to opt out. Hook bodies are crash-safe: every hook binary reads STDIN JSON and exits 0 on any internal error, so a mneme bug can never block your tool calls.
 10. Registers the mneme **plugin slash commands** (`/mn-build`, `/mn-recall`, `/mn-why`, `/mn-resume`, `/mn-blast`, `/mn-doctor`, ...) with Claude Code so they show up in autocomplete (B1.5 hotfix 2026-05-02)
 11. Verifies post-install: every required binary present, daemon responding, MCP probe green
 
 **To verify it worked:**
 
 ```powershell
-mneme --version           # should print 0.3.2
+mneme --version           # should print 0.4.0
 mneme doctor              # full diagnostic boxes (Bun, Node, Git, MSVC, ~/.mneme, ~/.claude)
 mneme cache du            # show what mneme is using on disk
 claude mcp list           # should show: mneme: ✓ Connected
@@ -154,7 +154,7 @@ a fresh box, but without re-running the full installer.
 ```powershell
 mneme self-update                 # stop daemon, fetch latest release, verify, swap, restart
 mneme self-update --dry-run       # show what would happen, change nothing
-mneme self-update --pin 0.3.2     # pin to a specific version instead of "latest"
+mneme self-update --pin 0.4.0     # pin to a specific version instead of "latest"
 mneme self-update --allow-unsigned
                                   # skip signature verification (DEV use only — prefer SHA-256)
 ```
@@ -342,19 +342,19 @@ data the views would render.
 
 ---
 
-## v0.3 Known Limitations
+## Known Limitations
 
-Mirrors the canonical table in [`CLAUDE.md`](CLAUDE.md) §"Known limitations in v0.3" (lines 55-78). v0.3.2 changes are reflected below.
+Mirrors the canonical table in [`CLAUDE.md`](CLAUDE.md) §"Known limitations". Status reflects the current release.
 
 | Surface | Status | Notes |
 |---|---|---|
 | `mneme view` (Tauri vision app) | shipped (vision SPA at static/vision/; mneme-vision.exe in bin payload; SPA fallback via explicit-route handler) | F1 D2-D4 wired all 17 daemon JSON endpoints + frontend `API_BASE`; 14/14 view components in `vision/src/views/*.tsx` consume real shard data. Browser fallback at `http://127.0.0.1:7777/` serves the dashboard via the cached-`Arc<[u8]>` explicit-route handler at `supervisor/src/health.rs:317-411` (Wave 3 Agent M, cycle-3 EC2 verified). |
 | WebSocket livebus relay (`/ws`) | dev-only, partial | `livebus/` crate compiles + SSE/WebSocket schema defined, but production daemon does not host the `/ws` endpoint. Used only in dev when both Bun server and Tauri are local. |
 | Voice navigation (`/api/voice`) | stub | Endpoint returns `{enabled: false, phase: "stub"}`. No voice recognition wired. |
-| Per-worker `rss_mb` on Windows | resolved (C1 in v0.3.2) | Supervisor SLA snapshot now reports real `rss_mb` values on Windows via `GetProcessMemoryInfo`. Previously always `0`. |
-| Tesseract OCR (image text) | **on by default at runtime in v0.3.2 (B-1 fix)** | install.ps1 auto-installs `UB-Mannheim.TesseractOCR` via winget on Windows (and the OS package on macOS/Linux). multimodal-bridge probes both `PATH` and `C:\Program Files\Tesseract-OCR\tesseract.exe` at runtime and shells out. No rebuild needed. Falls back gracefully (logs + skips) if Tesseract isn't found. Whisper / ffmpeg remain compile-time opt-in - planned for v0.5. |
-| Real BGE-small ONNX embeddings | **on by default in v0.3.2** | The bootstrap pulls 5 model files (~3.4 GB) from the HF Hub mirror at install time. ONNX Runtime 1.24.4 is bundled in `~/.mneme/bin/onnxruntime.dll`; `brain` auto-pins `ORT_DYLIB_PATH` to it on first BGE call (defeats Win11 24H2 System32 hijack). Set `MNEME_FORCE_HASH_EMBED=1` to bypass BGE if you need the pure-Rust hashing-trick fallback for any reason. |
-| Claude Code hooks | default-on (K1 fix in v0.3.2) | `mneme install` now writes the 8 hook entries under `~/.claude/settings.json::hooks` by default. Without hooks the persistent-memory pipeline (history.db, tasks.db, tool_cache.db, livestate.db) stays empty. To skip, pass `--no-hooks` / `--skip-hooks`. Every hook binary reads STDIN JSON and exits 0 on internal error - a mneme bug can never block the user's tool calls. |
+| Per-worker `rss_mb` on Windows | resolved | Supervisor SLA snapshot reports real `rss_mb` values on Windows via `GetProcessMemoryInfo`. |
+| Tesseract OCR (image text) | **on by default at runtime** | install.ps1 auto-installs `UB-Mannheim.TesseractOCR` via winget on Windows (and the OS package on macOS/Linux). multimodal-bridge probes both `PATH` and `C:\Program Files\Tesseract-OCR\tesseract.exe` at runtime and shells out. No rebuild needed. Falls back gracefully (logs + skips) if Tesseract isn't found. Whisper / ffmpeg remain compile-time opt-in — planned for v0.5. |
+| Real BGE-small ONNX embeddings | **on by default** | The bootstrap pulls 5 model files (~3.4 GB) from the HF Hub mirror at install time. ONNX Runtime 1.24.4 is bundled in `~/.mneme/bin/onnxruntime.dll`; `brain` auto-pins `ORT_DYLIB_PATH` to it on first BGE call (defeats Win11 24H2 System32 hijack). Set `MNEME_FORCE_HASH_EMBED=1` to bypass BGE if you need the pure-Rust hashing-trick fallback. |
+| Claude Code hooks | default-on | `mneme install` writes the 8 hook entries under `~/.claude/settings.json::hooks` by default. Without hooks the persistent-memory pipeline (history.db, tasks.db, tool_cache.db, livestate.db) stays empty. To skip, pass `--no-hooks` / `--skip-hooks`. Every hook binary reads STDIN JSON and exits 0 on internal error — a mneme bug can never block the user's tool calls. |
 
 For the full list of what shipped, see `docs-and-memory/V0.3.0-WHATS-IN.md`. For phase-A categorisation of remaining issues, see `docs-and-memory/phase-a-issues.md`.
 

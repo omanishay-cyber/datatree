@@ -1,12 +1,23 @@
 # Mneme Roadmap
 
-Public milestones. Current version: **v0.3.2** (hotfix 2026-05-03). Updated 2026-05-03.
+Public milestones. Current version: **v0.4.0**. Updated 2026-05-06.
 
 Detailed engineering backlog lives in [`docs/dev/v0.4-backlog.md`](docs/dev/v0.4-backlog.md).
 
 ---
 
 ## Shipped
+
+### v0.4.0 — recall + token keystone (2026-05-05)
+
+- **Three symbol resolvers** — Rust, TypeScript/JavaScript, Python. Each rewrites syntactic paths (`super::`, `crate::`, tsconfig `paths`, N-leading-dot Python relative imports) into one canonical string per logical symbol. Library-level in v0.4.0 (graph-side wiring deferred to v0.4.1; embed-side wiring is live now).
+- **Symbol-anchored BGE embeddings** — embedder prepends the resolver's canonical prefix before signature/summary text, so `recall_concept "spawn"` matches the actual function instead of the README chunk.
+- **PreToolUse Grep/Read soft-redirect** — when Grep is called with a symbol-shaped pattern, or Read is called on a source file, the hook injects an `additionalContext` hint pointing at `find_references` / `blast_radius`. Never blocks.
+- **Server-pre-computed ForceGalaxy layout** — `/api/graph/layout` returns deterministic community-aware sunflower-spiral positions. ForceGalaxy first-paint drops from ~3 s to <500 ms on the mneme repo (17 K nodes).
+- **Auto-update apply mode + post-swap health check + rollback** — `mneme self-update` verifies the freshly-installed binary by running it with `--version` (5 s timeout); on failure every `.old` backup restores cleanly.
+- **Install matrix — 4 routes** — `winget install Anish.Mneme` (and `Anish.Mnemeos` brand alias), `pip install mnemeos`, `curl install-linux.sh | bash`, `curl install-mac.sh | bash`. All paths same `~/.mneme` install.
+- **Tool surface — 50 MCP tools** — 5 portable graph exports (GraphML, Obsidian, Cypher, SVG, JSON-LD), `smart_questions`, persistent `recall_concept`, multilingual Whisper transcription, SDK bindings (`sdk/python` pyo3, `sdk/js` napi-rs, `sdk/rust` crate), Rust call edges in the parser.
+- **Bug-tail** — 222 forensic-audit findings closed (worker restart storm, regex bombs, schema drift, cross-shard integrity audit, install-script versioned asset name resolution, `release-checksums.json` BSD-grep + BOM/CRLF compatibility).
 
 ### v0.3.2 hotfix-2 - MCP tool surface + bench fairness (2026-05-03)
 
@@ -64,7 +75,7 @@ Detailed engineering backlog lives in [`docs/dev/v0.4-backlog.md`](docs/dev/v0.4
   flags - see `docs-and-memory/phase-a-issues.md` and ROADMAP I-20).
   Supervised multi-process architecture.
 - Known critical install bugs - see CHANGELOG entry for v0.3.1.
-- Note: as of v0.3.2 the tool count is **48** and image OCR ships
+- Note: as of v0.4.0 the tool count is **50** and image OCR ships
   on-by-default via runtime shellout (B-1 fix); BGE-small ONNX
   embeddings are also on-by-default (auto-pulled from the HF Hub
   mirror). The opt-in language above is historical for v0.3.0.
