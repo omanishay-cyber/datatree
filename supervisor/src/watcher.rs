@@ -75,7 +75,7 @@ pub enum ChangeKind {
 
 /// Snapshot of watcher-wide performance counters. Surfaced by the SLA
 /// dashboard so `mneme daemon status` can show the p95 latency.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct WatcherStats {
     /// Total debounced re-index jobs that ran to completion.
     pub total_reindexed: u64,
@@ -83,6 +83,13 @@ pub struct WatcherStats {
     pub total_ignored: u64,
     /// Total delete events processed.
     pub total_deletes: u64,
+    /// M-7 fix (2026-05-05 audit): total events dropped because the
+    /// debounce-queue HashMap was at MAX_PENDING (default 65,536).
+    /// Each drop means one file may be silently un-indexed until the
+    /// next manual `mneme rebuild`. Operators should alert on
+    /// non-zero values and investigate either an editor that fires
+    /// pathological save bursts or a too-low MNEME_WATCHER_MAX_PENDING.
+    pub total_dropped_overflow: u64,
     /// p50 latency in milliseconds.
     pub p50_ms: u64,
     /// p95 latency in milliseconds.
@@ -90,6 +97,7 @@ pub struct WatcherStats {
     /// p99 latency in milliseconds.
     pub p99_ms: u64,
     /// The most recent 256 latency samples. Used to recompute percentiles.
+    #[serde(skip)]
     samples_ms: Vec<u64>,
 }
 
@@ -268,6 +276,15 @@ pub async fn run_watcher_with_bus(
                         Some(Ok(ev)) => {
                             for path in classify_event(&ev, &root_for_debounce, &stats_for_debounce) {
                                 if pending.len() >= pending_cap {
+                                    // M-7 fix (2026-05-05 audit): track the drop in
+                                    // WatcherStats.total_dropped_overflow so operators see it
+                                    // on /health and `mneme doctor`. Without this the only
+                                    // signal was a warn! log line that's easy to miss.
+                                    {
+                                        let mut s = stats_for_debounce.0.lock();
+                                        s.total_dropped_overflow =
+                                            s.total_dropped_overflow.saturating_add(1);
+                                    }
                                     warn!(pending = pending.len(), cap = pending_cap, "debounce queue full; dropping event");
                                     continue;
                                 }
