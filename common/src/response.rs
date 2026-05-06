@@ -91,7 +91,17 @@ fn variant_detail(e: &DbError) -> Option<String> {
             Some(format!("{{\"expected\":{},\"found\":{}}}", expected, found))
         }
         DbError::DiskFull { available_bytes } => {
-            Some(format!("{{\"available_bytes\":{}}}", available_bytes))
+            // LOW fix (2026-05-05): emit `null` instead of `0` when the
+            // value is unknown. Prior behaviour (`available_bytes: 0`)
+            // was indistinguishable from "literally 0 bytes free" —
+            // operators couldn't tell the two cases apart in logs.
+            Some(format!(
+                "{{\"available_bytes\":{}}}",
+                match available_bytes {
+                    Some(b) => b.to_string(),
+                    None => "null".to_string(),
+                }
+            ))
         }
         DbError::InternalPanic { backtrace } => {
             Some(format!("{{\"backtrace\":{}}}", json_str(backtrace)))

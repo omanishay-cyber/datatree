@@ -25,3 +25,9 @@ rusqlite.workspace = true
 # every worker already runs a tokio runtime.
 tokio.workspace = true
 interprocess.workspace = true
+
+# Used only by `DbError::disk_full_for_path` to query free space on
+# the destination filesystem when SQLITE_FULL fires. cli + store
+# already pull fs2 0.4 for their own file locks; this just shares
+# the same dep.
+fs2 = "0.4"

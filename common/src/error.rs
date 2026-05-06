@@ -48,8 +48,22 @@ pub enum DbError {
     #[error("serialization failure")]
     SerializationFailure,
 
-    #[error("disk full: {available_bytes} bytes free")]
-    DiskFull { available_bytes: u64 },
+    /// SQLITE_FULL: the destination filesystem cannot accept any more
+    /// writes. `available_bytes` is the free space at the moment the
+    /// error was observed, or `None` when the From<rusqlite::Error>
+    /// conversion produced this variant — that conversion has no path
+    /// context, so it cannot stat the filesystem. Callers that DO know
+    /// the path (e.g. inject.rs after a `conn.execute()` failure) can
+    /// build this variant directly via `disk_full_for_path()` to fill
+    /// in the real number.
+    ///
+    /// LOW fix (2026-05-05 audit): the type previously hard-coded
+    /// `available_bytes: 0`, which read as "the filesystem has zero
+    /// free bytes" rather than "we don't know". Operators couldn't
+    /// distinguish "literally full" from "we lost the path on the way
+    /// out the door". `Option` makes the unknown case honest.
+    #[error("disk full: {} bytes free", available_bytes.map_or_else(|| "unknown".to_string(), |b| b.to_string()))]
+    DiskFull { available_bytes: Option<u64> },
 
     #[error("permission denied")]
     PermissionDenied,
@@ -59,6 +73,22 @@ pub enum DbError {
 
     #[error("rusqlite: {0}")]
     Sqlite(String),
+}
+
+impl DbError {
+    /// Build a `DbError::DiskFull` with the real free-space number for
+    /// `path`'s filesystem. Falls back to `None` (unknown) on stat
+    /// failure — the caller already knows the disk is full, so
+    /// reporting "unknown free bytes" instead of crashing the whole
+    /// error path is the right behaviour. Best-effort stat: uses
+    /// `fs2::available_space` when `fs2` is in the dep tree, else
+    /// `None`.
+    pub fn disk_full_for_path(path: &std::path::Path) -> Self {
+        let bytes = fs2::available_space(path).ok();
+        DbError::DiskFull {
+            available_bytes: bytes,
+        }
+    }
 }
 
 impl From<rusqlite::Error> for DbError {
@@ -73,7 +103,11 @@ impl From<rusqlite::Error> for DbError {
                 rusqlite::ErrorCode::ReadOnly | rusqlite::ErrorCode::PermissionDenied => {
                     return DbError::PermissionDenied
                 }
-                rusqlite::ErrorCode::DiskFull => return DbError::DiskFull { available_bytes: 0 },
+                rusqlite::ErrorCode::DiskFull => {
+                    return DbError::DiskFull {
+                        available_bytes: None,
+                    }
+                }
                 _ => {}
             }
         }
