@@ -1141,12 +1141,19 @@ mod tests {
         );
         // Sanity: HOOK_SPECS itself can have more entries than 8 because
         // some events get multiple registrations (e.g. UserPromptSubmit:
-        // self-ping + inject; PreToolUse: pre-tool + edit-write-gate +
-        // grep-read-skeleton). Pin the current total so future additions
-        // are deliberate rather than accidental.
+        // self-ping + inject; PreToolUse: pre-tool + grep-read).
+        // Pin the current total so future additions are deliberate
+        // rather than accidental.
+        //
+        // Drift fix (2026-05-06): MAINT-4 unregistered the
+        // pretool-edit-write skeleton (was 11 entries → 10) but the
+        // assertion below wasn't updated at the same time. Aligning
+        // now. If a future commit re-registers the gate (or any new
+        // hook), bump this number AND the install banner in the same
+        // PR — that's the contract this test enforces.
         assert_eq!(
             HOOK_SPECS.len(),
-            11,
+            10,
             "HOOK_SPECS length changed — update this assertion + the install banner"
         );
     }

@@ -3554,6 +3554,25 @@ async fn run_convention_intent_pass(
         None => return,
     };
 
+    // Audit fix (2026-05-06, additional N+1): the prior
+    // implementation issued one IPC inject.insert call per matching
+    // (file, rule) pair — for projects with thousands of files and
+    // multiple rules, that's thousands of round-trips through the
+    // supervisor + writer task. Convert to batch_inject: collect
+    // all (file, intent, reason) tuples in a single pass through
+    // the rules, then submit a single batch.
+    //
+    // The batch path uses an explicit transaction (see
+    // store/src/query.rs:WriteCmd::Batch), so the whole pass
+    // becomes atomic — either every conventions match commits or
+    // none do. That's a strict improvement over the per-row
+    // autocommit semantics (a SIGKILL mid-pass previously left the
+    // shard in a half-applied state).
+    use store::inject::InjectOp;
+    let sql = "INSERT OR IGNORE INTO file_intent(file_path, intent, reason, source, confidence) \
+               VALUES(?1, ?2, ?3, 'convention', 0.9)";
+    let mut ops: Vec<InjectOp> = Vec::new();
+    let mut to_claim: Vec<String> = Vec::new();
     for fp in files {
         if claimed.contains(&fp) {
             continue;
@@ -3564,8 +3583,6 @@ async fn run_convention_intent_pass(
                 continue;
             }
             if simple_glob_match(&rule.glob, &rel) {
-                let sql = "INSERT OR IGNORE INTO file_intent(file_path, intent, reason, source, confidence) \
-                           VALUES(?1, ?2, ?3, 'convention', 0.9)";
                 let params = vec![
                     serde_json::Value::String(fp.clone()),
                     serde_json::Value::String(rule.intent.clone()),
@@ -3577,28 +3594,37 @@ async fn run_convention_intent_pass(
                         )),
                     },
                 ];
-                let resp = store
-                    .inject
-                    .insert(
-                        project_id,
-                        DbLayer::Memory,
-                        sql,
-                        params,
-                        InjectOptions {
-                            emit_event: false,
-                            audit: false,
-                            ..InjectOptions::default()
-                        },
-                    )
-                    .await;
-                if resp.success {
-                    claimed.insert(fp.clone());
-                    stats.convention_count += 1;
-                    stats.total_written += 1;
-                }
+                ops.push(InjectOp::Insert {
+                    project: project_id.clone(),
+                    layer: DbLayer::Memory,
+                    sql: sql.to_string(),
+                    params,
+                });
+                to_claim.push(fp.clone());
                 // First matching rule wins for this file.
                 break;
             }
+        }
+    }
+    if ops.is_empty() {
+        return;
+    }
+    let resp = store
+        .inject
+        .batch_inject(
+            ops,
+            InjectOptions {
+                emit_event: false,
+                audit: false,
+                ..InjectOptions::default()
+            },
+        )
+        .await;
+    if resp.success {
+        for fp in to_claim {
+            claimed.insert(fp);
+            stats.convention_count += 1;
+            stats.total_written += 1;
         }
     }
 }
