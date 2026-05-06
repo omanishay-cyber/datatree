@@ -89,7 +89,12 @@ const MNEME_HOME = join(homedir(), ".mneme");
  *   - null / empty → null
  *   - absolute Windows path (`C:\…` / `\\?\…` / `\\server\…`) → null
  *   - absolute POSIX path (starts with `/`) → null
- *   - any segment equals `..` → null
+ *   - any segment equals `..` or `.` → null
+ *   - contains NUL byte (`\0`) → null
+ *   - contains any other ASCII control char (`\x01-\x1f`, `\x7f`) → null
+ *   - contains percent-encoded traversal (`%2e%2e`, `%2f`, `%5c`)
+ *     case-insensitive → null
+ *   - contains fullwidth Unicode dot/slash (U+FF0E / U+FF0F) → null
  *   - otherwise → return the path unchanged
  *
  * This is a filter, not a transformation: callers see `null` instead of
@@ -100,21 +105,58 @@ const MNEME_HOME = join(homedir(), ".mneme");
  * additionally verifies the project hash exists in MNEME_HOME), but
  * an additive layer for the bun:sqlite read path that bypasses the
  * supervisor.
+ *
+ * Audit fix (2026-05-06 multi-agent fan-out): the original M-4
+ * implementation only rejected absolute paths + raw `..` segments,
+ * leaving four bypass classes that all reach the same dangerous
+ * downstream behaviour:
+ *   - NUL byte truncation: "src/safe.rs\0/etc/passwd" passed checks
+ *     because the string-level `..` scan didn't fire, but most
+ *     syscalls + downstream loggers truncate at \0, leaving an
+ *     attacker-controlled path. Found by security-sentinel agent.
+ *   - URL-encoded traversal: "src/%2e%2e/etc" passed the \0-segment
+ *     check, but if any consumer URL-decodes (e.g. a vision SPA
+ *     deep-link, or a file-tree route handler) it becomes "src/../etc".
+ *   - Fullwidth Unicode: U+FF0E ("．") + U+FF0F ("／") render
+ *     identically to "." + "/" in many fonts and some Windows path
+ *     APIs treat them as equivalent after NFKC normalization (which
+ *     happens implicitly in NTFS short-name resolution).
+ *   - Lone `.` segment: not as severe as `..`, but leaks "current
+ *     dir" semantics; the rule is "no segments that aren't real
+ *     filenames".
  */
 export function boundFilePath(p: string | null | undefined): string | null {
   if (p == null) return null;
   const s = String(p).trim();
   if (s.length === 0) return null;
+  // Reject any ASCII control character (incl. NUL). Path-truncation
+  // bypass + log-injection vector. Range covers \x00-\x1f and \x7f.
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(s)) return null;
+  // Reject percent-encoded traversal markers (case-insensitive). A
+  // path that gets URL-decoded downstream (vision deep-links,
+  // tree-walk handlers) would re-introduce the literal `..` / `/`
+  // / `\` we're already filtering — block at the encoded layer.
+  if (/%(?:2e|2f|5c)/i.test(s)) return null;
+  // Reject fullwidth Unicode dot/slash. NFKC normalisation in some
+  // Windows path APIs equates these with ASCII `.` and `/`,
+  // bypassing the segment check below. Found in path-traversal
+  // CTFs going back to 2018 (e.g. uap-core URL-rewriter chains).
+  if (/[．／]/.test(s)) return null;
   // Windows absolute (drive-letter or UNC).
   if (/^[A-Za-z]:[\\/]/.test(s)) return null;
   if (s.startsWith("\\\\")) return null;
   // POSIX absolute.
   if (s.startsWith("/")) return null;
-  // Any segment equal to `..`. Split on both separators so Windows-
-  // backslash paths get caught too.
+  // Any segment equal to `..` or `.`. Split on both separators so
+  // Windows-backslash paths get caught too. Lone `.` segment is
+  // benign in `path.join` but signals "this isn't a real filename"
+  // and is a frequent source of path-confusion bugs (e.g. the
+  // node:path "trailing dot stripped on Windows" trap), so we
+  // refuse it here for defense-in-depth.
   const segments = s.split(/[\\/]/);
   for (const seg of segments) {
-    if (seg === "..") return null;
+    if (seg === ".." || seg === ".") return null;
   }
   return s;
 }

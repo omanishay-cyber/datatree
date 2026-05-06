@@ -64,4 +64,52 @@ describe("boundFilePath", () => {
     expect(boundFilePath("  src/lib.rs  ")).toBe("src/lib.rs");
     expect(boundFilePath("\tvision/foo.ts\n")).toBe("vision/foo.ts");
   });
+
+  // Audit fix (2026-05-06 multi-agent fan-out, security-sentinel):
+  // four bypass classes the original M-4 filter missed.
+
+  it("rejects NUL byte (path truncation bypass)", () => {
+    expect(boundFilePath("src/lib.rs\0/etc/passwd")).toBeNull();
+    expect(boundFilePath("\0")).toBeNull();
+    // After the trim() leading/trailing NULs would be stripped if
+    // \0 counted as whitespace, but it doesn't — make sure we
+    // catch interior NULs explicitly.
+    expect(boundFilePath("src\0lib.rs")).toBeNull();
+  });
+
+  it("rejects other ASCII control characters (log injection)", () => {
+    expect(boundFilePath("src/\x01lib.rs")).toBeNull();
+    expect(boundFilePath("src/\x1blib.rs")).toBeNull();
+    expect(boundFilePath("src/\x7flib.rs")).toBeNull();
+  });
+
+  it("rejects percent-encoded traversal markers", () => {
+    expect(boundFilePath("src/%2e%2e/etc")).toBeNull();
+    expect(boundFilePath("src/%2E%2E/etc")).toBeNull();
+    expect(boundFilePath("src%2flib.rs")).toBeNull();
+    expect(boundFilePath("src%5clib.rs")).toBeNull();
+  });
+
+  it("rejects fullwidth Unicode dot/slash (NFKC bypass)", () => {
+    // U+FF0E fullwidth full stop + U+FF0F fullwidth solidus.
+    expect(boundFilePath("src/．．/etc")).toBeNull();
+    expect(boundFilePath("src／lib.rs")).toBeNull();
+    expect(boundFilePath("．．")).toBeNull();
+  });
+
+  it("rejects lone `.` segments", () => {
+    expect(boundFilePath("./src/lib.rs")).toBeNull();
+    expect(boundFilePath(".")).toBeNull();
+    expect(boundFilePath("src/./lib.rs")).toBeNull();
+  });
+
+  it("does NOT reject filenames that contain dot characters legitimately", () => {
+    // Hidden files (start with .) are valid file names — but
+    // ".env" is a single segment, not a "." segment, so it should
+    // pass.
+    expect(boundFilePath(".env")).toBe(".env");
+    expect(boundFilePath("src/.gitignore")).toBe("src/.gitignore");
+    // Mid-name dot is fine.
+    expect(boundFilePath("README.md")).toBe("README.md");
+  });
 });

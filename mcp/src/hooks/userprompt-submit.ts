@@ -82,6 +82,22 @@ function classifyPromptIntent(prompt: string): PromptIntent {
   // Code signals: any token from the broad code-vocabulary list. We
   // keep this list narrow enough that "code" doesn't swallow casual
   // chat but wide enough that real engineering questions hit it.
+  //
+  // Audit fix (2026-05-06 multi-agent fan-out, super-debugger): the
+  // original list omitted history-investigation cues ("why",
+  // "decision", "history", "last time"). A prompt like "why was
+  // this decision made last time?" is exactly the case where
+  // mneme_recall should fire, but the classifier was returning
+  // "simple" and short-circuiting the reminder entirely. The
+  // failing test "puts mneme_recall first for why/history prompts"
+  // surfaced this — it asserted the bullet list contained
+  // mneme_recall, but additionalContext was empty. Same root cause
+  // for "still returns 3 tools for a short generic prompt": after
+  // Item #119 introduced the simple/code/resume tiers, the test's
+  // "hello" prompt correctly maps to "simple" and the test was
+  // updated; the why/history-prompt test is fixed by adding the
+  // missing classifier signals here so mneme_recall has a path to
+  // surface.
   const codeSignals = [
     "function",
     "method",
@@ -127,6 +143,17 @@ function classifyPromptIntent(prompt: string): PromptIntent {
     "push",
     "merge",
     "rebase",
+    // History / decision investigation: prompts asking WHY a thing
+    // was done, or what was decided / discussed / tried previously.
+    // These are exactly the cases where mneme_recall is the right
+    // answer; without these signals the classifier skipped them.
+    "why",
+    "decision",
+    "history",
+    "previous",
+    "last time",
+    "remember",
+    "recall",
     ".ts",
     ".tsx",
     ".js",

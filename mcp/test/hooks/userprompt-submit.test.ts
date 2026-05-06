@@ -119,8 +119,23 @@ describe("userprompt-submit — tool ranking", () => {
     expect(ctx).toContain("mcp__mneme__find_references");
   });
 
-  it("still returns 3 tools for a short generic prompt", async () => {
+  it("emits empty context for a simple-intent prompt (Item #119 contract)", async () => {
+    // Audit fix (2026-05-06): Item #119 introduced simple/code/resume
+    // tiers; "hello" correctly classifies as "simple" and pays zero
+    // tokens. The previous version of this test asserted 3 bullets,
+    // which was the pre-Item-#119 contract — every prompt got a
+    // reminder block regardless of intent. Updated to match current
+    // behaviour. A non-simple prompt's 3-bullet shape is covered by
+    // the existing "puts mneme_recall first…" / "ranks edit prompts
+    // toward blast_radius" tests.
     const result = await runUserPromptSubmit(makeArgs("hello"));
+    expect(result.hook_specific.additionalContext).toBe("");
+  });
+
+  it("returns 3 tools for a code-intent generic prompt", async () => {
+    // A generic code-flavoured prompt with no specific keyword
+    // should still backfill 3 tools by priority order.
+    const result = await runUserPromptSubmit(makeArgs("edit something"));
     const ctx = result.hook_specific.additionalContext;
     const bullets = [...ctx.matchAll(/^\s+•\s+mcp__mneme__/gm)];
     expect(bullets).toHaveLength(3);
