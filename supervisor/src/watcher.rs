@@ -341,9 +341,21 @@ pub async fn run_watcher_with_bus(
     // `cargo fmt` on a workspace) would spawn 10K concurrent tasks all
     // contending for the parser pool (size 4) and the per-project
     // store writer. Worst-case the debouncer's MAX_PENDING (~65K) was
-    // the only ceiling. Cap at parser_pool_size * 2 so we keep the
-    // pool saturated without piling up scheduler / memory pressure.
-    let reindex_cap: usize = (4_usize).saturating_mul(2);
+    // the only ceiling.
+    //
+    // LOW fix (2026-05-06 audit follow-up): the cap was hardcoded to
+    // 8 (parser_pool_size 4 × 2) regardless of actual machine. On a
+    // 32-core machine that's a 4× under-utilization on mass-save
+    // bursts; on a 2-core machine it's saturating contention.
+    // Derive from `available_parallelism()`-clamped parser pool size
+    // so the cap scales with the real machine. We still cap the
+    // upper bound at 16 since per-file IO + parse cost dominates
+    // beyond that and queueing further tasks just burns scheduler
+    // budget.
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let reindex_cap: usize = cores.saturating_mul(2).clamp(4, 16);
     let reindex_limiter = Arc::new(tokio::sync::Semaphore::new(reindex_cap));
     // BUG-A4-014: project token used for in-process bus events. The
     // hashed ProjectId is the canonical token; if it cannot be rendered
