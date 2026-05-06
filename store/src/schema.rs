@@ -427,6 +427,23 @@ CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, timestamp);
 CREATE VIRTUAL TABLE IF NOT EXISTS turns_fts USING fts5(
     content, content='turns', content_rowid='id', tokenize='porter'
 );
+-- DB-3 fix (2026-05-05 audit): external-content FTS5 tables do NOT
+-- auto-sync. The shadow tables drift on every INSERT/UPDATE/DELETE
+-- to the base table that doesn't also touch the FTS table. Mirror
+-- the pattern from GRAPH_SQL.nodes_fts (schema.rs ~279-292).
+CREATE TRIGGER IF NOT EXISTS turns_ai AFTER INSERT ON turns
+BEGIN
+    INSERT INTO turns_fts(rowid, content) VALUES (new.id, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS turns_ad AFTER DELETE ON turns
+BEGIN
+    INSERT INTO turns_fts(turns_fts, rowid, content) VALUES('delete', old.id, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS turns_au AFTER UPDATE ON turns
+BEGIN
+    INSERT INTO turns_fts(turns_fts, rowid, content) VALUES('delete', old.id, old.content);
+    INSERT INTO turns_fts(rowid, content) VALUES (new.id, new.content);
+END;
 
 CREATE TABLE IF NOT EXISTS decisions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -709,6 +726,26 @@ CREATE INDEX IF NOT EXISTS idx_media_type ON media(media_type);
 CREATE VIRTUAL TABLE IF NOT EXISTS media_fts USING fts5(
     extracted_text, transcript, content='media', content_rowid='id', tokenize='porter'
 );
+-- DB-3 fix (2026-05-05 audit): same external-content FTS5 sync
+-- problem as turns_fts. Without these triggers, media_fts silently
+-- diverges from media on every write.
+CREATE TRIGGER IF NOT EXISTS media_ai AFTER INSERT ON media
+BEGIN
+    INSERT INTO media_fts(rowid, extracted_text, transcript)
+    VALUES (new.id, new.extracted_text, new.transcript);
+END;
+CREATE TRIGGER IF NOT EXISTS media_ad AFTER DELETE ON media
+BEGIN
+    INSERT INTO media_fts(media_fts, rowid, extracted_text, transcript)
+    VALUES('delete', old.id, old.extracted_text, old.transcript);
+END;
+CREATE TRIGGER IF NOT EXISTS media_au AFTER UPDATE ON media
+BEGIN
+    INSERT INTO media_fts(media_fts, rowid, extracted_text, transcript)
+    VALUES('delete', old.id, old.extracted_text, old.transcript);
+    INSERT INTO media_fts(rowid, extracted_text, transcript)
+    VALUES (new.id, new.extracted_text, new.transcript);
+END;
 
 CREATE TABLE IF NOT EXISTS screenshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
