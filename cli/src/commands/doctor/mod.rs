@@ -233,10 +233,15 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
                 .get("status")
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown");
+            // HIGH-4 + HIGH-5 fix (2026-05-06 audit): count `dead` and
+            // `degraded` against the failed bucket. Without this the
+            // top-line summary would say "40 total (40 up)" when in
+            // reality 34 were stuck Degraded — the exact misreport
+            // pattern that hid the live-PC failure for so long.
             match status {
                 "running" | "healthy" => running += 1,
                 "pending" | "starting" => pending += 1,
-                "failed" | "crashed" => failed += 1,
+                "failed" | "crashed" | "dead" | "degraded" => failed += 1,
                 _ => {}
             }
             if let Some(r) = child.get("restart_count").and_then(|v| v.as_u64()) {
@@ -278,10 +283,15 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
                 .get("restart_dropped_count")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
+            // HIGH-4 + HIGH-5 fix (2026-05-06 audit): treat `dead` and
+            // `degraded` as their own glyphs so a stuck worker is
+            // visible at a glance — the previous catch-all `?` blended
+            // them into "unknown enum variant" and nobody noticed.
             let mark = match status {
                 "running" | "healthy" => "✓",
                 "pending" | "starting" => "...",
-                "failed" | "crashed" => "✗",
+                "failed" | "crashed" | "dead" => "✗",
+                "degraded" => "⚠",
                 _ => "?",
             };
             let uptime_str = if uptime_ms > 0 {
@@ -316,10 +326,42 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
             } else {
                 String::new()
             };
+            // HIGH-4 fix: surface the 24h cumulative restart count
+            // when it diverges from the lifetime count. A worker
+            // showing `restarts=180  restarts_24h=180` is in the
+            // slow-drip flap pattern and is approaching the per-24h
+            // cap (50 by default — flips Dead at 51). Hide when zero
+            // OR when 24h count == lifetime count AND lifetime is
+            // small (< 10) to keep the steady-state line clean.
+            let restarts_24h = child
+                .get("restart_count_24h")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let restart_24h_suffix =
+                if restarts_24h > 0 && (restarts_24h != restarts || restarts >= 10) {
+                    format!("  restarts_24h={restarts_24h}")
+                } else {
+                    String::new()
+                };
+            // HIGH-5 fix: surface the Degraded-dwell time so an
+            // operator can see a stuck worker before the 30-minute
+            // soak fires the recovery respawn. Only renders when the
+            // child is actually Degraded (the field is None
+            // otherwise per the snapshot serde shape).
+            let degraded_for_secs = child
+                .get("degraded_for_secs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let degraded_suffix = if status == "degraded" && degraded_for_secs > 0 {
+                let mins = degraded_for_secs / 60;
+                format!("  degraded_for={mins}m")
+            } else {
+                String::new()
+            };
             line(
                 &format!("{mark} {name}"),
                 &format!(
-                    "status={status:<9}  pid={pid:<6}  uptime={uptime_str:<6}  restarts={restarts}  dropped={dropped}{queue_suffix}{latency_suffix}"
+                    "status={status:<9}  pid={pid:<6}  uptime={uptime_str:<6}  restarts={restarts}  dropped={dropped}{restart_24h_suffix}{degraded_suffix}{queue_suffix}{latency_suffix}"
                 ),
             );
         }
