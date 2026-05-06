@@ -129,6 +129,15 @@ jobs:
         working-directory: vision
         run: bun run build
 
+      # F20 fix (2026-05-05 audit): release builds MUST NOT enable
+      # `--features test-hooks`. That feature exposes K10 chaos-test
+      # entry points (panic injection, fs-full simulation, debug
+      # restart channels) gated behind
+      # `#[cfg(any(test, feature = "test-hooks"))]`. Production
+      # binaries built without the feature have those code paths
+      # absent entirely. Do NOT add `--features test-hooks` here
+      # — chaos tests run from ci.yml's separate "Chaos tests" job
+      # against debug binaries.
       - name: Build Rust workspace (release)
         run: cargo build --workspace --release --target ${{ matrix.target }}
 
