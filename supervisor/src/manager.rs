@@ -620,7 +620,7 @@ impl ChildManager {
     /// that a transient boot-time crash sequence won't trip it but
     /// strict enough that a chronically-failing worker stops burning
     /// CPU/log/spawn-syscall budget forever.
-    const MAX_TOTAL_RESTARTS: u64 = 200;
+    pub(crate) const MAX_TOTAL_RESTARTS: u64 = 200;
 
     async fn respawn_one(self: &Arc<Self>, req: &RestartRequest) -> Result<(), SupervisorError> {
         let policy = self.config.default_restart_policy.clone();

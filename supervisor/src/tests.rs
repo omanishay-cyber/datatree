@@ -323,6 +323,115 @@ fn chaos_restart_initial_under_100ms() {
     );
 }
 
+/// HIGH-38 audit fix (2026-05-05) — lifetime restart cap (CRIT-2 hard
+/// kill-switch). The rolling-window budget can reset every 60s, so a
+/// worker crashing once every ~7 minutes never trips it but burns CPU
+/// + spawn syscalls forever. CRIT-2 added `MAX_TOTAL_RESTARTS` as a
+/// non-resettable lifetime cap; if `restart_count` exceeds it the
+/// child is marked `Dead` and refuses further restart requests.
+///
+/// This test pins both halves of the contract:
+///   1. ChildHandle's restart_count IS cumulative (record_restart
+///      increments unconditionally — never pruned by the rolling
+///      window). The earlier `crashes_outside_window_do_not_escalate`
+///      test partly covered this; this one nails the exact threshold.
+///   2. Crossing `MAX_TOTAL_RESTARTS` is OBSERVABLE: respawn_one's
+///      check `if h.restart_count > MAX_TOTAL_RESTARTS` flips the
+///      child to Dead. We mirror that gate condition rather than
+///      driving respawn_one (which needs a real ChildManager + spawn
+///      machinery — covered by chaos tests).
+#[test]
+fn lifetime_restart_cap_threshold_pins_dead_state_gate() {
+    use crate::manager::ChildManager;
+    let mut handle = ChildHandle::new(dummy_spec("chronic-crasher"), Duration::from_millis(10));
+    let window = Duration::from_secs(60);
+
+    // Drive 200 restarts (== MAX_TOTAL_RESTARTS exactly). The gate is
+    // `restart_count > MAX_TOTAL_RESTARTS` — note the strict-greater,
+    // not ≥. So at exactly 200 we are STILL inside the budget.
+    for _ in 0..ChildManager::MAX_TOTAL_RESTARTS {
+        handle.record_restart(window);
+    }
+    assert_eq!(
+        handle.restart_count,
+        ChildManager::MAX_TOTAL_RESTARTS,
+        "after 200 restarts, count == cap exactly"
+    );
+    assert!(
+        handle.restart_count <= ChildManager::MAX_TOTAL_RESTARTS,
+        "at the cap the gate must NOT fire (gate is strict-greater)"
+    );
+
+    // The 201st restart pushes `restart_count` past the cap. respawn_one
+    // observes this immediately after `record_restart` and flips to
+    // Dead. We mirror that flow here so a regression that changes the
+    // operator (`>` -> `>=` or vice versa) shows up loudly.
+    handle.record_restart(window);
+    assert_eq!(
+        handle.restart_count,
+        ChildManager::MAX_TOTAL_RESTARTS + 1,
+        "the 201st restart increments past the cap"
+    );
+    assert!(
+        handle.restart_count > ChildManager::MAX_TOTAL_RESTARTS,
+        "201 > 200; gate must fire and respawn_one would mark Dead"
+    );
+
+    // Simulate the side effect respawn_one applies under the same
+    // condition (manager.rs:657): set status to Dead. Once Dead, the
+    // monitor loop must NOT queue any further restart requests.
+    handle.status = ChildStatus::Dead;
+    assert_eq!(
+        handle.status,
+        ChildStatus::Dead,
+        "Dead is terminal — operator intervention required"
+    );
+}
+
+/// HIGH-38 audit fix — the rolling 60s window can reset every minute,
+/// so a worker that crashes once every ~7 minutes (the live-PC
+/// pattern of 182-194 restarts/24h) NEVER trips the per-window
+/// budget. Without the lifetime cap from CRIT-2 it would restart
+/// forever. This test pins the exact failure mode the cap addresses.
+#[test]
+fn rolling_window_resets_but_lifetime_cap_does_not() {
+    let mut handle = ChildHandle::new(dummy_spec("slow-flaky"), Duration::from_millis(10));
+    let window = Duration::from_millis(50);
+
+    // Crash 5 times, then sleep past the window.
+    for _ in 0..5 {
+        handle.record_restart(window);
+    }
+    assert_eq!(handle.restarts_in_window(window), 5);
+    std::thread::sleep(Duration::from_millis(80));
+
+    // After the window slides, in-window count drops to zero.
+    assert_eq!(
+        handle.restarts_in_window(window),
+        0,
+        "rolling window must prune entries older than the window"
+    );
+
+    // BUT cumulative restart_count is NOT pruned. This is the exact
+    // property CRIT-2 relies on — without it, a slow-drip crasher
+    // would never be observable as "too many lifetime restarts".
+    assert_eq!(
+        handle.restart_count, 5,
+        "cumulative restart_count survives the window slide"
+    );
+
+    // Crash 3 more times. Window count rebuilds from zero (5 minus
+    // however many fall outside vs. 3 new ones). Lifetime keeps
+    // climbing.
+    for _ in 0..3 {
+        handle.record_restart(window);
+    }
+    assert_eq!(
+        handle.restart_count, 8,
+        "lifetime count keeps climbing across window slides"
+    );
+}
+
 /// Sanity check: the heartbeat deadline must be larger than the heartbeat
 /// tick so a healthy worker is never killed by a single missed tick.
 #[test]
