@@ -3,6 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Audit fix (2026-05-06): add Content-Security-Policy meta tag.
+      Vision is a local-only SPA that loads its own JS + CSS from the
+      same daemon HTTP server (127.0.0.1:7777). It needs:
+        - default-src 'self'   — block external resources by default
+        - script-src 'self'    — load JS only from the daemon
+        - style-src 'self' 'unsafe-inline' — Vite injects HMR styles
+          inline during dev, and several libraries (Sigma, deck.gl
+          tooltips) use inline CSS. 'unsafe-inline' is unavoidable
+          here; risk is bounded by vision being local-only.
+        - connect-src 'self' ws: wss: — fetch + WebSocket to daemon
+        - img-src 'self' data:    — favicons + inline SVG patterns
+        - font-src 'self'         — bundled fonts
+        - object-src 'none'       — no plugins ever
+        - base-uri 'self'         — neutralize <base href> injection
+        - frame-ancestors 'none'  — refuse to be iframed
+      No external CDN; vision is offline-clean.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" />
     <!-- A6-021: vision is dark-only by design today; light theme is
          on the v0.4 roadmap. Advertising both via `dark light` makes
          browsers render OS-dark form controls on light-OS users. -->
