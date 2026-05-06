@@ -152,10 +152,7 @@ impl BM25Index {
                 // postings list for every distinct term it contains.
                 // The HashMap entry is created on first encounter;
                 // append-only growth keeps build cost O(total_terms).
-                idx.postings
-                    .entry(t.clone())
-                    .or_default()
-                    .push(doc_idx);
+                idx.postings.entry(t.clone()).or_default().push(doc_idx);
             }
             idx.texts.push(text);
             idx.ids.push(id);
