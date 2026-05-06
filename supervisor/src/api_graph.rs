@@ -117,6 +117,30 @@ impl ApiGraphState {
     }
 }
 
+/// HIGH-42 fix (2026-05-05 audit): Mneme HTTP API version. Every
+/// `/api/*` response carries `X-Mneme-Api-Version: <this number>`
+/// so older Vision SPA bundles cached against an older daemon
+/// (or vice versa via Tauri auto-update) can detect a wire-shape
+/// drift. v0.4.0 is API version "2" because Item #111 silently
+/// changed `/api/graph/edges` semantics and Item #124 added
+/// `/api/graph/layout` since v0.3.x's "1" surface.
+pub const MNEME_API_VERSION: &str = "2";
+
+/// Header injection middleware. Attaches X-Mneme-Api-Version to
+/// every response that flows through the api router.
+async fn inject_api_version_header(
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> impl IntoResponse {
+    let mut response = next.run(req).await;
+    if let Ok(value) = axum::http::HeaderValue::from_str(MNEME_API_VERSION) {
+        response
+            .headers_mut()
+            .insert("x-mneme-api-version", value);
+    }
+    response
+}
+
 /// Construct the `/api/graph/*` skeleton router.
 ///
 /// Mounts the full 17-endpoint surface so the frontend can connect to
@@ -193,6 +217,9 @@ pub fn build_router(state: ApiGraphState) -> Router {
         // Without this route the vision SPA's livebus subscription falls
         // back to placeholder data on every load.
         .route("/ws", get(crate::ws::ws_upgrade_handler))
+        // HIGH-42: stamp every response with the API version header so
+        // older / cached SPA bundles can detect wire-shape drift.
+        .layer(axum::middleware::from_fn(inject_api_version_header))
         .with_state(state)
 }
 
