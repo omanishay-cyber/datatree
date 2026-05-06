@@ -278,6 +278,21 @@ fn apply_pragmas(conn: &Connection) -> DtResult<()> {
     conn.pragma_update(None, "mmap_size", 268435456_i64)
         .map_err(DbError::from)?; // 256MB
 
+    // M-6 fix (2026-05-05 audit): incremental auto-vacuum so shards
+    // don't grow forever between manual `mneme cache gc` runs. With
+    // 26 per-project shards running append-heavy workloads
+    // (ledger_entries, file_events, audit_log, telemetry.calls,
+    // corpus_items), free pages accumulate indefinitely. Incremental
+    // mode reclaims space gradually as deletes happen, without
+    // requiring an exclusive VACUUM lock.
+    //
+    // Note: auto_vacuum only takes effect on fresh databases. Shards
+    // created before this commit need a one-time `mneme cache gc` to
+    // convert. Once converted, subsequent deletes auto-reclaim. This
+    // pragma is idempotent on already-incremental databases (no-op).
+    conn.pragma_update(None, "auto_vacuum", "INCREMENTAL")
+        .map_err(DbError::from)?;
+
     // Bug F-8 (2026-05-01): cap WAL auto-checkpoint at 200 pages
     // (~800 KB) instead of the SQLite default of 1000 pages (~4 MB).
     // On the build pipeline (1287 files → 13K+ nodes → 70K+ edges)
