@@ -174,8 +174,16 @@ impl DefaultQuery {
             c.pragma_update(None, "temp_store", "MEMORY")?;
             Ok(())
         });
+        // HIGH-31 fix (2026-05-05 audit): cap the per-shard read pool
+        // at 16 connections regardless of CPU count. The previous
+        // formula `cpu * 2` produced 64 connections on a 32-core
+        // machine — × 26 shards = 1,664 SQLite handles, each holding
+        // a 256 MB mmap mapping. The mneme idle RAM target (<500 MB)
+        // is impossible to hit at that scale. 16 readers per shard is
+        // already well above the realistic concurrent-read demand.
+        let max_pool = (num_cpus_or(4) * 2).min(16) as u32;
         let pool = Pool::builder()
-            .max_size((num_cpus_or(4) * 2) as u32)
+            .max_size(max_pool)
             .build(mgr)
             .map_err(|e| DtError::Internal(format!("r2d2: {}", e)))?;
         map.insert(key, pool.clone());
