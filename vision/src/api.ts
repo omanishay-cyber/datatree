@@ -66,12 +66,40 @@ function buildUrl(path: string, params: Record<string, string | number | boolean
   return API_BASE + rel;
 }
 
+/**
+ * HIGH-41 fix (2026-05-05 audit): the previous implementation was a
+ * pure type assertion `(await res.json()) as GraphPayload`. If the
+ * daemon returned `{}` or `null` (e.g. a 200 with empty body during
+ * a fresh install or a partial response from a misbehaving proxy),
+ * downstream `.nodes` / `.edges` reads would throw at runtime with
+ * "Cannot read property of undefined". sibling api/graph.ts goes to
+ * extreme lengths with isPlainObject + Array.isArray for the same
+ * surface; api.ts was the unguarded twin.
+ *
+ * Validate the shape before returning. Fall back to placeholderPayload
+ * on malformed responses just like network errors already do.
+ */
+function isPlainObject(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
+function looksLikeGraphPayload(x: unknown): x is GraphPayload {
+  return isPlainObject(x) && Array.isArray(x.nodes) && Array.isArray(x.edges);
+}
+
 export async function fetchGraph(view: ViewId, options: FetchOptions = {}): Promise<GraphPayload> {
   const url = buildUrl("/api/graph", { view, ...(options.params ?? {}) });
   try {
     const res = await fetch(url, { signal: options.signal, headers: DEFAULT_HEADERS });
     if (!res.ok) throw new Error(`graph fetch failed: ${res.status}`);
-    const json = (await res.json()) as GraphPayload;
+    const json: unknown = await res.json();
+    if (!looksLikeGraphPayload(json)) {
+      // Daemon returned an unexpected shape (empty {}, null, an
+      // error envelope, etc.). Treat as a soft failure so views
+      // still render the placeholder rather than crashing on
+      // `.nodes` access.
+      return placeholderPayload(view, new Error("daemon response missing nodes/edges"));
+    }
     return json;
   } catch (err) {
     if ((err as Error).name === "AbortError") throw err;
@@ -80,10 +108,28 @@ export async function fetchGraph(view: ViewId, options: FetchOptions = {}): Prom
   }
 }
 
+/**
+ * HIGH-41 fix: same defensive-narrowing treatment as fetchGraph.
+ * The /api/health response is small + stable, but if a misconfigured
+ * proxy returns HTML or the daemon is mid-restart returning a
+ * partial body, we want false-with-Date.now()-ts instead of an
+ * unhandled exception that breaks the SPA's daemon-ok indicator.
+ */
+function looksLikeHealthPayload(x: unknown): x is { ok: boolean; ts: number } {
+  return (
+    isPlainObject(x) && typeof x.ok === "boolean" && typeof x.ts === "number"
+  );
+}
+
 export async function fetchHealth(): Promise<{ ok: boolean; ts: number }> {
   try {
     const res = await fetch(API_BASE + "/api/health");
-    return (await res.json()) as { ok: boolean; ts: number };
+    if (!res.ok) return { ok: false, ts: Date.now() };
+    const json: unknown = await res.json();
+    if (!looksLikeHealthPayload(json)) {
+      return { ok: false, ts: Date.now() };
+    }
+    return json;
   } catch {
     return { ok: false, ts: Date.now() };
   }
