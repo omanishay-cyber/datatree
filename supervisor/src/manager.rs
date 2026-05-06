@@ -653,7 +653,16 @@ impl ChildManager {
             // restart. The watchdog's pid_alive_pass + monitor_child
             // exit-handler will see Dead next time around and stop
             // queueing.
-            if h.restart_count > Self::MAX_TOTAL_RESTARTS {
+            //
+            // Audit fix (2026-05-06 multi-agent fan-out, correctness
+            // CORR-NEW-2): change strict `>` to `>=` so the cap is
+            // the actual cap. Strict-greater allowed ONE extra
+            // restart past MAX_TOTAL_RESTARTS — the 201st attempt
+            // (when the cap is 200) was still permitted. With `>=`,
+            // the 200th restart fires; the 201st would be blocked.
+            // Aligns the runtime with the documented "200-restart
+            // lifetime cap" contract.
+            if h.restart_count >= Self::MAX_TOTAL_RESTARTS {
                 h.status = ChildStatus::Dead;
                 error!(
                     child = %req.name,
@@ -740,7 +749,20 @@ impl ChildManager {
                 .hash(&mut hasher);
             hasher.finish()
         };
-        let max_ms = (delay.as_millis() as u64).max(1);
+        // Audit fix (2026-05-06 multi-agent fan-out, correctness
+        // CORR-NEW-1): the prior `(delay.as_millis() as u64).max(1)`
+        // floored at 1ms, so on the first restart of a child whose
+        // initial_backoff is also 1ms (legitimately fast for tests
+        // / aggressive YAMLs), `max_ms=1` and `jittered_ms = seed %
+        // 1 = 0`. Full-jitter degenerates to no-sleep, defeating
+        // the thundering-herd protection.
+        //
+        // Floor at 50ms — bounds the minimum sleep so simultaneous-
+        // failure scenarios always get measurable de-correlation.
+        // Doesn't change steady-state behaviour because by the time
+        // backoff has ratcheted up, max_ms is already in the
+        // hundreds-to-thousands of ms range.
+        let max_ms = (delay.as_millis() as u64).max(50);
         let jittered_ms = jitter_seed % max_ms;
         let jittered = Duration::from_millis(jittered_ms);
 

@@ -336,45 +336,51 @@ fn chaos_restart_initial_under_100ms() {
 ///      window). The earlier `crashes_outside_window_do_not_escalate`
 ///      test partly covered this; this one nails the exact threshold.
 ///   2. Crossing `MAX_TOTAL_RESTARTS` is OBSERVABLE: respawn_one's
-///      check `if h.restart_count > MAX_TOTAL_RESTARTS` flips the
+///      check `if h.restart_count >= MAX_TOTAL_RESTARTS` flips the
 ///      child to Dead. We mirror that gate condition rather than
 ///      driving respawn_one (which needs a real ChildManager + spawn
 ///      machinery — covered by chaos tests).
+///
+/// Audit fix follow-up (2026-05-06 multi-agent fan-out, correctness
+/// CORR-NEW-2): the gate operator was tightened from strict `>` to
+/// `>=`. The prior strict-greater allowed ONE extra restart past the
+/// documented cap (cap=200 meant 201 attempts permitted). The test
+/// previously asserted the off-by-one as a feature; now it asserts
+/// the cap behaves as documented.
 #[test]
 fn lifetime_restart_cap_threshold_pins_dead_state_gate() {
     use crate::manager::ChildManager;
     let mut handle = ChildHandle::new(dummy_spec("chronic-crasher"), Duration::from_millis(10));
     let window = Duration::from_secs(60);
 
-    // Drive 200 restarts (== MAX_TOTAL_RESTARTS exactly). The gate is
-    // `restart_count > MAX_TOTAL_RESTARTS` — note the strict-greater,
-    // not ≥. So at exactly 200 we are STILL inside the budget.
-    for _ in 0..ChildManager::MAX_TOTAL_RESTARTS {
+    // Drive 199 restarts (== MAX_TOTAL_RESTARTS - 1). The gate fires
+    // at `restart_count >= MAX_TOTAL_RESTARTS`, so at 199 we're still
+    // strictly under and a respawn would be permitted.
+    for _ in 0..(ChildManager::MAX_TOTAL_RESTARTS - 1) {
         handle.record_restart(window);
     }
     assert_eq!(
         handle.restart_count,
-        ChildManager::MAX_TOTAL_RESTARTS,
-        "after 200 restarts, count == cap exactly"
+        ChildManager::MAX_TOTAL_RESTARTS - 1,
+        "after MAX-1 restarts, count is one below the cap"
     );
     assert!(
-        handle.restart_count <= ChildManager::MAX_TOTAL_RESTARTS,
-        "at the cap the gate must NOT fire (gate is strict-greater)"
+        handle.restart_count < ChildManager::MAX_TOTAL_RESTARTS,
+        "still strictly under the cap; gate does NOT fire yet"
     );
 
-    // The 201st restart pushes `restart_count` past the cap. respawn_one
-    // observes this immediately after `record_restart` and flips to
-    // Dead. We mirror that flow here so a regression that changes the
-    // operator (`>` -> `>=` or vice versa) shows up loudly.
+    // The 200th restart hits the cap exactly. With `>=`, respawn_one
+    // flips to Dead at this point — no extra restart permitted past
+    // the documented cap.
     handle.record_restart(window);
     assert_eq!(
         handle.restart_count,
-        ChildManager::MAX_TOTAL_RESTARTS + 1,
-        "the 201st restart increments past the cap"
+        ChildManager::MAX_TOTAL_RESTARTS,
+        "after 200th restart, count == cap exactly"
     );
     assert!(
-        handle.restart_count > ChildManager::MAX_TOTAL_RESTARTS,
-        "201 > 200; gate must fire and respawn_one would mark Dead"
+        handle.restart_count >= ChildManager::MAX_TOTAL_RESTARTS,
+        "at the cap, gate must fire; respawn_one would mark Dead"
     );
 
     // Simulate the side effect respawn_one applies under the same
