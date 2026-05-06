@@ -248,22 +248,42 @@ export function ForceGalaxy(): JSX.Element {
         // already shows non-random clustering instead of a uniform dot
         // cloud. Worker still stops itself after 5s to avoid burning
         // CPU for the entire lifetime of the tab.
+        // HIGH-FE-7 (2026-05-05 audit): React 18 StrictMode mounts effects
+        // twice. The previous version checked `cancelled` only after the
+        // /api/graph fetch — between that check and worker creation a
+        // second mount could fire its cleanup, which would clear the
+        // (still-null) ref, then the first mount would proceed to create
+        // a worker for a sigma that's about to be torn down. Re-check
+        // cancelled HERE so a torn-down mount never leaves a worker
+        // alive.
+        if (cancelled) return;
         if (g.order > 0) {
           const fa2Worker = new FA2Layout(g, {
             settings: { gravity: 1, scalingRatio: 8 },
           });
           fa2Worker.start();
           fa2WorkerRef.current = fa2Worker;
+          // The safety timeout closes over `fa2Worker` directly, NOT
+          // `fa2WorkerRef.current`. If a later mount has overwritten the
+          // ref by the time this fires, reading the ref would kill the
+          // OTHER mount's worker — exactly the StrictMode double-mount
+          // race HIGH-FE-7 documents. Killing the local closure
+          // reference is correct: it's the worker this mount created,
+          // and the cleanup function below also clears the ref iff it
+          // still points to this worker.
           fa2TimeoutRef.current = window.setTimeout(() => {
-            const w = fa2WorkerRef.current;
-            if (!w) return;
             try {
-              if (w.isRunning()) w.stop();
-              w.kill();
+              if (fa2Worker.isRunning()) fa2Worker.stop();
+              fa2Worker.kill();
             } catch {
               /* already stopped/killed — ignore */
             }
-            fa2WorkerRef.current = null;
+            // Only clear the ref if this mount's worker is still the
+            // one being tracked. Otherwise a newer mount owns the ref
+            // and we must not null it out from underneath them.
+            if (fa2WorkerRef.current === fa2Worker) {
+              fa2WorkerRef.current = null;
+            }
             fa2TimeoutRef.current = null;
           }, 5000);
         }
