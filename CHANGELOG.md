@@ -49,6 +49,27 @@ The audit comparing mneme to CRG and graphify (2026-05-05) identified one root c
 
 ### Fixed — critical bug tail (this session)
 
+- **HIGH-8 cross-shard integrity audit (2026-05-06)** — `mneme audit` now enumerates
+  orphan rows that reference deleted nodes or files in other shards. SQLite cannot
+  enforce foreign keys across separate `.db` files; when a file is removed from
+  `graph.db` its referencing rows in `findings.db`, `refactors.db`, `tests.db`, etc.
+  become orphans silently. The new `store/src/integrity.rs::cross_shard_integrity_audit`
+  function opens each relevant source shard read-only, ATTACHes the target shard, and
+  runs a LEFT JOIN query to detect dangling values. The full reference matrix checked:
+  `findings.file → graph.files.path`, `community_membership.node_qualified →
+  graph.nodes.qualified_name`, `test_coverage.function_qualified →
+  graph.nodes.qualified_name`, `refactor_proposals.file → graph.files.path`,
+  `refactor_proposals.symbol → graph.nodes.qualified_name`, `file_events.file_path →
+  graph.files.path`, `corpus_items.file_path → graph.files.path`,
+  `commit_files.file_path → graph.files.path`, `errors.file_path → graph.files.path`,
+  `wiki_pages.community_id → semantic.communities.id`. Orphans surface as
+  `Warning`-severity findings with `rule_id = "cross_shard_orphan.<layer>.<column>"`
+  in the audit summary table. Use `mneme rebuild` to clear orphans. No `ON DELETE`
+  actions were added — cross-shard FK enforcement is inherent to the multi-SQLite
+  architecture; this audit makes the problem visible so the operator can decide.
+  3 new tests in `store/src/integrity.rs`: empty-shards → 0 orphans, planted orphan →
+  exactly 1 reported, valid + orphan row → only orphan reported.
+
 - **Bug #233 / NEW-D worker restart storm** — `BUG-A4-003` had set `heartbeat_deadline: Some(60s)` on every worker spec without wiring `worker_ipc::heartbeat()` emit, so every worker was force-killed at the 60s mark and respawned forever (visible as 40+ orphan procs and 100+ supervisor restarts in `mneme doctor`). Reverted to `None` per the documented S-PHASE NEW-055 opt-out contract; `pid_alive_pass` continues to handle real "process dead" detection. Regression test pins the contract.
 - **Bug #234 release-checksums.json bash parser** — `lib-common.sh::load_hash_manifest` was reporting "0 pinned files" against an 11-entry manifest because BSD grep on macOS treats `\s` as literal `s`, and PowerShell-generated JSON had UTF-8 BOM + CRLF that defeated the `,?$` anchor. Now prefers `jq` when available, falls back to a CRLF/BOM-tolerant bash 3.2 parser. 11/11 entries load.
 - **Bug #224 auto-rebuild on path change** — see "Added" section above.
