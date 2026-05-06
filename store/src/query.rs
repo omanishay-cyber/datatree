@@ -300,23 +300,20 @@ impl DbQuery for DefaultQuery {
     async fn write_batch(&self, ws: Vec<Write>) -> Response<BatchSummary> {
         let start = std::time::Instant::now();
         let layer = ws.first().map(|w| w.layer).unwrap_or(DbLayer::Audit);
-        let project = match ws.first() {
-            Some(w) => w.project.clone(),
-            None => {
-                return Response::ok(
-                    BatchSummary {
-                        total_rows_affected: 0,
-                    },
-                    ResponseMeta {
-                        latency_ms: 0,
-                        cache_hit: false,
-                        source_db: layer,
-                        query_id: Uuid::new_v4(),
-                        schema_version: SCHEMA_VERSION,
-                    },
-                )
-            }
-        };
+        if ws.is_empty() {
+            return Response::ok(
+                BatchSummary {
+                    total_rows_affected: 0,
+                },
+                ResponseMeta {
+                    latency_ms: 0,
+                    cache_hit: false,
+                    source_db: layer,
+                    query_id: Uuid::new_v4(),
+                    schema_version: SCHEMA_VERSION,
+                },
+            );
+        }
         let meta = |layer| ResponseMeta {
             latency_ms: start.elapsed().as_millis() as u64,
             cache_hit: false,
@@ -324,13 +321,29 @@ impl DbQuery for DefaultQuery {
             query_id: Uuid::new_v4(),
             schema_version: SCHEMA_VERSION,
         };
-        // Group by layer; each batch goes to its writer task
-        let mut by_layer: HashMap<DbLayer, Vec<(String, Vec<serde_json::Value>)>> = HashMap::new();
+        // Audit fix (2026-05-06 multi-agent fan-out, super-debugger
+        // Bug 2): the prior implementation grouped by `layer` only
+        // and reused `ws.first().project` for every writer dispatch.
+        // Per-Write `project` fields were silently discarded — a
+        // multi-project batch would route every row to project_a's
+        // shard regardless of the requested project, with
+        // `success: true` and zero diagnostic. Latent today (the
+        // only caller is run_convention_intent_pass which uses one
+        // project) but a real data-corruption hazard for any future
+        // cross-project batch caller.
+        //
+        // Group by (project, layer) so each shard's writer task
+        // receives only its own rows.
+        let mut by_shard: HashMap<(ProjectId, DbLayer), Vec<(String, Vec<serde_json::Value>)>> =
+            HashMap::new();
         for w in ws {
-            by_layer.entry(w.layer).or_default().push((w.sql, w.params));
+            by_shard
+                .entry((w.project, w.layer))
+                .or_default()
+                .push((w.sql, w.params));
         }
         let mut total = 0usize;
-        for (layer, items) in by_layer {
+        for ((project, layer), items) in by_shard {
             let tx = self.writer(&project, layer).await;
             let (rtx, rrx) = oneshot::channel();
             // M15 — same time-bounded send for batch writes.
@@ -429,21 +442,42 @@ impl DbQuery for DefaultQuery {
 
 fn spawn_writer_task(path: PathBuf, mut rx: mpsc::Receiver<WriteCmd>) {
     tokio::task::spawn_blocking(move || {
-        // CRIT-14 fix (2026-05-05 audit): take the per-project file lock
-        // BEFORE opening the SQLite connection so the supervisor's
-        // writer task is mutually exclusive with the CLI's BuildLock
-        // (cli/src/build_lock.rs). Without this, two writer tasks
-        // (supervisor watch-build + CLI `mneme build`) could open the
-        // same graph.db, each spawn their own writer, and race on
-        // FTS5 rebuild + INSERT OR REPLACE — producing duplicate
-        // qualified_name rows that survive the UNIQUE constraint via
-        // the trigger DELETE-then-INSERT pattern.
+        // CRIT-14 fix (2026-05-05 audit): take a file lock BEFORE
+        // opening the SQLite connection so this writer task is
+        // mutually exclusive across processes. Without this, two
+        // writer tasks (supervisor watch-build + CLI `mneme build`)
+        // could open the same shard, each spawn their own writer,
+        // and race on FTS5 rebuild + INSERT OR REPLACE — producing
+        // duplicate qualified_name rows that survive the UNIQUE
+        // constraint via the trigger DELETE-then-INSERT pattern.
         //
-        // Lock path: `<shard_dir>/.lock`, identical location used by
-        // the CLI's BuildLock. fs2 maps to LockFileEx on Windows and
-        // flock on Unix, so the cross-process semantics are correct
-        // on both platforms.
-        let lock_path = path.parent().map(|p| p.join(".lock"));
+        // Audit fix (2026-05-06 multi-agent fan-out, super-debugger
+        // root-cause-analysis Bug 1): the original CRIT-14 fix used
+        // `<project_root>/.lock` — one lock file shared by EVERY
+        // shard of the project. This fully serialised intra-process
+        // writer tasks for distinct shards (graph + semantic + audit
+        // + ...), causing the second shard's writer to wait 5 min
+        // on the first shard's writer (the writer task holds the
+        // lock for its entire lifetime, which is forever). This is
+        // the exact root cause of the long-standing wiki_db /
+        // architecture_db test failures: seed_graph spawned the
+        // graph writer (acquired .lock), then seed_semantic tried
+        // to spawn the semantic writer (waited 5 min on .lock,
+        // never started), and the eventual run_wiki_pass /
+        // run_architecture_pass found semantic.db empty.
+        //
+        // Per-shard lock file: `<shard_dir>/.<shard>.db.lock`. Same
+        // cross-process exclusion (one process per shard file at a
+        // time) but distinct shards get distinct OS locks, so they
+        // run concurrently as the daemon expects. The CLI's own
+        // `<project>/.lock` from cli/src/build_lock.rs is a
+        // separate file and a separate concern (build-wide lock,
+        // not per-shard) — the two layers no longer collide.
+        let lock_path = path.parent().and_then(|parent| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .map(|name| parent.join(format!(".{name}.lock")))
+        });
         let _lock_guard = if let Some(lock_path) = lock_path {
             match acquire_writer_lock(&lock_path) {
                 Ok(guard) => Some(guard),
