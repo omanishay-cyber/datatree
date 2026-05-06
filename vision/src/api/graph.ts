@@ -299,16 +299,40 @@ function pickError(...candidates: unknown[]): string | undefined {
   return undefined;
 }
 
-/** Normalize any "row-style" payload to `{ <key>: T[], error? }`. */
-function asArrayEnvelope<T>(raw: unknown, key: string): { items: T[]; error?: string } {
+/**
+ * Normalize any "row-style" payload to `{ <key>: T[], error? }`.
+ *
+ * HIGH-39 fix (2026-05-05 audit): the previous implementation
+ * narrowed with `Array.isArray(raw)` then cast `raw as T[]` with
+ * zero per-element validation. Once the array check passed, every
+ * element was asserted to be T — the daemon could ship a single
+ * malformed row and downstream consumers (ForceGalaxy, SankeyTypeFlow,
+ * etc.) would throw on the first field access.
+ *
+ * The optional `guard` parameter takes a per-element predicate.
+ * When supplied, elements that fail the guard are filtered out
+ * silently (the caller's view degrades gracefully — fewer rows,
+ * not a full crash). Callers without a guard get the legacy
+ * pass-through behaviour to avoid breaking change.
+ */
+function asArrayEnvelope<T>(
+  raw: unknown,
+  key: string,
+  guard?: (x: unknown) => x is T,
+): { items: T[]; error?: string } {
+  const filterMaybe = (rows: unknown[]): T[] => {
+    if (!guard) return rows as T[];
+    return rows.filter((r): r is T => guard(r));
+  };
+
   // Already an array — server returned bare rows.
   if (Array.isArray(raw)) {
-    return { items: raw as T[] };
+    return { items: filterMaybe(raw) };
   }
   // Envelope shape — pull the named field, but only if it's an array.
   if (isPlainObject(raw)) {
     const inner = raw[key];
-    const items = Array.isArray(inner) ? (inner as T[]) : [];
+    const items = Array.isArray(inner) ? filterMaybe(inner) : [];
     const err = pickError(raw);
     return err ? { items, error: err } : { items };
   }
@@ -368,10 +392,28 @@ function describeFetchErr(err: unknown): string {
   return String(err);
 }
 
+// HIGH-39 fix (2026-05-05 audit): per-element guards for the two
+// hottest consumers (ForceGalaxy reads nodes.id and edges.source/target
+// without pre-flight checks). Other callers degrade gracefully via
+// the legacy untyped pass-through path.
+function isGraphNode(x: unknown): x is GraphNode {
+  return isPlainObject(x) && typeof x.id === "string" && x.id.length > 0;
+}
+
+function isGraphEdge(x: unknown): x is GraphEdge {
+  return (
+    isPlainObject(x) &&
+    typeof x.source === "string" &&
+    x.source.length > 0 &&
+    typeof x.target === "string" &&
+    x.target.length > 0
+  );
+}
+
 export async function fetchNodes(signal?: AbortSignal, limit = 2000): Promise<NodesResponse> {
   try {
     const raw = await getJsonRaw(`/api/graph/nodes?limit=${limit}`, signal);
-    const { items, error } = asArrayEnvelope<GraphNode>(raw, "nodes");
+    const { items, error } = asArrayEnvelope<GraphNode>(raw, "nodes", isGraphNode);
     return error ? { nodes: items, error } : { nodes: items };
   } catch (err) {
     return { nodes: [], error: describeFetchErr(err) };
@@ -381,7 +423,7 @@ export async function fetchNodes(signal?: AbortSignal, limit = 2000): Promise<No
 export async function fetchEdges(signal?: AbortSignal, limit = 8000): Promise<EdgesResponse> {
   try {
     const raw = await getJsonRaw(`/api/graph/edges?limit=${limit}`, signal);
-    const { items, error } = asArrayEnvelope<GraphEdge>(raw, "edges");
+    const { items, error } = asArrayEnvelope<GraphEdge>(raw, "edges", isGraphEdge);
     return error ? { edges: items, error } : { edges: items };
   } catch (err) {
     return { edges: [], error: describeFetchErr(err) };
