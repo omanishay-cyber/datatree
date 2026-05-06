@@ -196,10 +196,29 @@ impl Drop for BuildLock {
             let _ = FileExt::unlock(&file);
             drop(file);
         }
-        // Remove the lock file. Any racing process that hits
-        // try_lock_exclusive() between unlock + remove will simply
-        // re-create the file via OpenOptions::create above — safe.
-        let _ = std::fs::remove_file(&self.path);
+        // LOW fix (2026-05-05 audit): do NOT remove the lock file on
+        // drop. The previous behaviour had a race window:
+        //
+        //   1. Process A unlocks the file (lock released).
+        //   2. Process B opens the same path, calls
+        //      try_lock_exclusive on the EXISTING inode, succeeds.
+        //   3. Process A's remove_file unlinks the inode.
+        //   4. Process C opens the same path via OpenOptions::create,
+        //      gets a NEW inode, calls try_lock_exclusive on the new
+        //      inode, succeeds.
+        //   5. B and C both believe they hold the lock — race.
+        //
+        // POSIX flock + LockFileEx are per-inode (POSIX) / per-file-
+        // handle (Windows). Unlinking a locked file does NOT
+        // invalidate its lock for processes that already have a
+        // handle, but it allows a fresh open() to land on a different
+        // inode (POSIX) or get delete-pending semantics (Windows),
+        // both of which break mutual exclusion.
+        //
+        // The lock file is just an anchor — leaving it on disk costs
+        // a few bytes and is the canonical pattern (e.g. /var/run/
+        // *.pid, .git/index.lock, etc. all stay around between
+        // acquisitions).
     }
 }
 
@@ -410,18 +429,32 @@ mod tests {
         );
     }
 
+    /// LOW fix (2026-05-05 audit): we no longer remove the lock file
+    /// on Drop because the unlink-after-unlock window broke mutual
+    /// exclusion under concurrent acquire (see the comment in
+    /// `impl Drop for BuildLock`). The previous test asserted the
+    /// file was removed, which directly contradicted the new
+    /// behaviour. Replace it with the inverted contract: the lock
+    /// file MUST persist across Drop so subsequent acquisitions hit
+    /// the same inode and the OS lock semantics stay intact.
     #[test]
-    fn lock_file_is_removed_on_drop() {
+    fn lock_file_persists_across_drop() {
         let (_guard, root) = fixture_root();
         let lock_path = {
             let lock = BuildLock::acquire("delta", &root, Duration::ZERO).expect("first acquire");
             lock.path().to_path_buf()
         };
         assert!(
-            !lock_path.exists(),
-            "lock file should have been removed on Drop, still at {}",
+            lock_path.exists(),
+            "lock file must persist across Drop so concurrent acquirers \
+             see the same inode; missing at {}",
             lock_path.display()
         );
+
+        // Belt-and-suspenders: a second acquire on the existing file
+        // must succeed (no stale-lock state remains after Drop).
+        let _lock2 =
+            BuildLock::acquire("delta", &root, Duration::ZERO).expect("re-acquire after drop");
     }
 
     #[test]
