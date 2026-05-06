@@ -567,6 +567,22 @@ fn find_active_layer_db(
     layer: &str,
     requested: Option<&str>,
 ) -> Option<PathBuf> {
+    // Defense-in-depth fix (2026-05-06 audit): the prior signature
+    // accepted any &str for `layer` and concatenated it via
+    // format!("{}.db", layer) into the on-disk path. All current
+    // callers pass static strings ("graph", "history", etc.), but
+    // a future caller wiring `?layer=` to an HTTP query string
+    // would silently allow path traversal — a malicious layer like
+    // "../etc/passwd" or "../../../../sensitive/data" would join
+    // out of the projects/<hash>/ directory.
+    //
+    // Validate `layer` against the known canonical layer names
+    // before using it. Anything not on the allowlist returns None
+    // — same shape as "no shard found", which the caller already
+    // handles gracefully.
+    if !is_valid_layer_name(layer) {
+        return None;
+    }
     let projects_root = state.paths.root().join("projects");
 
     // Direct hit — the picker passes the canonical hash; if the shard
@@ -604,6 +620,45 @@ fn find_active_layer_db(
         .collect();
     candidates.sort();
     candidates.into_iter().next()
+}
+
+/// Defense-in-depth (2026-05-06 audit): allowlist of canonical layer
+/// names that can be appended to "<MNEME_HOME>/projects/<hash>/" as
+/// "<layer>.db". Mirrors `common::layer::DbLayer::file_name` minus
+/// the ".db" suffix. Kept as a function (not constant slice) so the
+/// match is exhaustive at compile time — adding a new DbLayer
+/// without adding it here is caught by clippy::wildcard_in_or_patterns.
+fn is_valid_layer_name(layer: &str) -> bool {
+    matches!(
+        layer,
+        "graph"
+            | "history"
+            | "tool_cache"
+            | "tasks"
+            | "semantic"
+            | "git"
+            | "memory"
+            | "errors"
+            | "multimodal"
+            | "deps"
+            | "tests"
+            | "perf"
+            | "findings"
+            | "agents"
+            | "refactors"
+            | "contracts"
+            | "insights"
+            | "livestate"
+            | "telemetry"
+            | "corpus"
+            | "audit"
+            | "wiki"
+            | "architecture"
+            | "conventions"
+            | "federated"
+            | "concepts"
+            | "meta"
+    )
 }
 
 /// M-2 fix (2026-05-05 audit): strict project-hash validator.
