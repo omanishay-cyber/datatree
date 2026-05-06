@@ -3416,6 +3416,69 @@ async fn run_git_intent_pass(
     let one_year_ago = now - chrono::Duration::days(365);
     let ninety_days_ago = now - chrono::Duration::days(90);
 
+    // Audit fix HIGH-28 (2026-05-06, 2026-05-05 audit): the prior
+    // implementation ran a per-file query inside the loop, each
+    // with a CORRELATED subquery counting commit_files for the
+    // commit's sha. On a 30k-file project that fired 30k+ queries,
+    // each O(log N) at best — wall time grew quadratic-ish on
+    // larger repos.
+    //
+    // Pre-load every file path's latest commit into a single
+    // HashMap via two queries:
+    //   1. WITH-CTE that picks the most-recent commit per file
+    //      path (one row per distinct file_path). Linear in the
+    //      number of (commit, file) tuples, not files-times-commits.
+    //   2. A SHA -> file_count map so the per-row "files in this
+    //      commit" lookup is O(1) instead of a subquery.
+    //
+    // The per-file loop then becomes a HashMap::get on the
+    // candidate paths — no SQL per iteration.
+    use std::collections::HashMap;
+    let latest_by_path: HashMap<String, (String, String, String)> = {
+        // (file_path -> (committed_at, message, sha))
+        let mut out: HashMap<String, (String, String, String)> = HashMap::new();
+        let sql = "WITH latest AS ( \
+                       SELECT cf.file_path, c.sha, c.committed_at, c.message, \
+                              ROW_NUMBER() OVER ( \
+                                  PARTITION BY cf.file_path \
+                                  ORDER BY c.committed_at DESC \
+                              ) AS rn \
+                       FROM commits c \
+                       JOIN commit_files cf ON cf.sha = c.sha \
+                   ) \
+                   SELECT file_path, committed_at, message, sha \
+                   FROM latest WHERE rn = 1";
+        if let Ok(mut stmt) = conn.prepare(sql) {
+            if let Ok(rows) = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            }) {
+                for row in rows.flatten() {
+                    out.insert(row.0, (row.1, row.2, row.3));
+                }
+            }
+        }
+        out
+    };
+    let files_per_sha: HashMap<String, i64> = {
+        let mut out: HashMap<String, i64> = HashMap::new();
+        let sql = "SELECT sha, COUNT(*) FROM commit_files GROUP BY sha";
+        if let Ok(mut stmt) = conn.prepare(sql) {
+            if let Ok(rows) =
+                stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+            {
+                for row in rows.flatten() {
+                    out.insert(row.0, row.1);
+                }
+            }
+        }
+        out
+    };
+
     for fp in files {
         if claimed.contains(&fp) {
             continue;
@@ -3423,24 +3486,12 @@ async fn run_git_intent_pass(
 
         let candidates = candidate_git_paths(&fp, project);
 
+        // In-memory lookup replacing the prior per-file SQL query.
         let row: Option<(String, String, i64)> = candidates.iter().find_map(|key| {
-            conn.query_row(
-                "SELECT c.committed_at, c.message, \
-                        (SELECT COUNT(*) FROM commit_files cf2 WHERE cf2.sha=c.sha) \
-                 FROM commits c \
-                 JOIN commit_files cf ON cf.sha = c.sha \
-                 WHERE cf.file_path = ?1 \
-                 ORDER BY c.committed_at DESC LIMIT 1",
-                [key.as_str()],
-                |r| {
-                    Ok((
-                        r.get::<_, String>(0)?,
-                        r.get::<_, String>(1)?,
-                        r.get::<_, i64>(2)?,
-                    ))
-                },
-            )
-            .ok()
+            latest_by_path.get(key.as_str()).map(|(at, msg, sha)| {
+                let count = files_per_sha.get(sha.as_str()).copied().unwrap_or(0);
+                (at.clone(), msg.clone(), count)
+            })
         });
 
         let Some((committed_at, message, files_in_commit)) = row else {
