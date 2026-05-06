@@ -17,11 +17,18 @@ targets = [
 # Run via the GitHub-hosted RUSTSEC advisory database. Refresh on every CI run.
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/RustSec/advisory-db"]
-# v0.1 records but does not enforce. v0.2 flips things to "deny". Today we
-# want visibility without blocking CI.
-# cargo-deny 0.15+ accepts "all" | "workspace" | "transitive" | "none" on
-# `unmaintained` (old "warn" is gone). "all" is the most permissive + logs.
-yanked = "warn"
+# HIGH-15 fix (2026-05-05 audit): tighten enforcement.
+#
+# Yanked crates are a real-world warning — when a crate author yanks
+# a release it is usually because they noticed a security issue or
+# correctness bug after publishing. Flipping to "deny" forces a
+# response (either bump the version or add an explicit ignore with
+# rationale).
+#
+# `unmaintained = "all"` was visibility-only ("show me all unmaintained
+# crates so I can plan migrations"). Keeping that behaviour but the
+# yanked check is now a hard-stop.
+yanked = "deny"
 unmaintained = "all"
 ignore = [
     # paste — upstream author archived the repo; alternatives (pastey,
