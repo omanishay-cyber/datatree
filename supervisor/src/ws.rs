@@ -159,7 +159,9 @@ fn validate_origin_and_host(headers: &axum::http::HeaderMap) -> Result<(), Strin
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     if !is_trusted_host(host) {
-        return Err(format!("Host header '{host}' is not 127.0.0.1 or localhost"));
+        return Err(format!(
+            "Host header '{host}' is not 127.0.0.1 or localhost"
+        ));
     }
 
     // Origin check. Absent Origin = native client, allowed.
@@ -216,7 +218,10 @@ mod origin_host_tests {
             h.insert(axum::http::header::HOST, HeaderValue::from_str(v).unwrap());
         }
         if let Some(v) = origin {
-            h.insert(axum::http::header::ORIGIN, HeaderValue::from_str(v).unwrap());
+            h.insert(
+                axum::http::header::ORIGIN,
+                HeaderValue::from_str(v).unwrap(),
+            );
         }
         h
     }
@@ -255,10 +260,7 @@ mod origin_host_tests {
     #[test]
     fn rejects_subdomain_origin_lookalike() {
         // localhost.evil.com prefix-attack
-        let h = headers_with(
-            Some("127.0.0.1:7777"),
-            Some("http://localhost.evil.com"),
-        );
+        let h = headers_with(Some("127.0.0.1:7777"), Some("http://localhost.evil.com"));
         // is_trusted_origin uses prefix match starting with "http://localhost"
         // → this WOULD match "http://localhost.evil.com" because it starts
         // with the prefix. We need to be stricter: require the prefix

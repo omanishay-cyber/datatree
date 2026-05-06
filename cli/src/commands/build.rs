@@ -1844,8 +1844,7 @@ async fn run_leiden_pass(
         // Same pattern as the per-file graph batch in CRIT-12 — uses
         // the existing batch_inject API + INSERT OR IGNORE so a
         // duplicate membership row is benign.
-        let mem_sql =
-            "INSERT OR IGNORE INTO community_membership(community_id, node_qualified) \
+        let mem_sql = "INSERT OR IGNORE INTO community_membership(community_id, node_qualified) \
                        VALUES(?1, ?2)";
         let mut member_ops: Vec<InjectOp> = Vec::with_capacity(comm.members.len());
         for member in &comm.members {

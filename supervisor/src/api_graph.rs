@@ -136,9 +136,7 @@ async fn inject_api_version_header(
 ) -> impl IntoResponse {
     let mut response = next.run(req).await;
     if let Ok(value) = axum::http::HeaderValue::from_str(MNEME_API_VERSION) {
-        response
-            .headers_mut()
-            .insert("x-mneme-api-version", value);
+        response.headers_mut().insert("x-mneme-api-version", value);
     }
     response
 }

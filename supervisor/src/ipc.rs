@@ -779,9 +779,7 @@ async fn dispatch(
                 "md-ingest",
                 "multimodal-",
             ];
-            if pool.is_empty()
-                || !POOL_ALLOWLIST.iter().any(|p| pool.starts_with(p))
-            {
+            if pool.is_empty() || !POOL_ALLOWLIST.iter().any(|p| pool.starts_with(p)) {
                 return ControlResponse::Error {
                     message: format!(
                         "Dispatch rejected: pool '{}' is not in the worker allowlist",

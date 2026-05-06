@@ -291,9 +291,7 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
             // DDL (DROP / ALTER / CREATE), connection-affecting pragmas,
             // and ATTACH / DETACH all fail this gate.
             if let Err(reason) = validate_insert_sql(&sql) {
-                return err(format!(
-                    "store IPC: rejected Insert request: {reason}"
-                ));
+                return err(format!("store IPC: rejected Insert request: {reason}"));
             }
             let r = store
                 .inject
@@ -498,16 +496,12 @@ mod validate_insert_sql_tests {
 
     #[test]
     fn accepts_insert_or_ignore() {
-        assert!(
-            validate_insert_sql("insert or ignore into edges (a, b) values (?, ?)").is_ok()
-        );
+        assert!(validate_insert_sql("insert or ignore into edges (a, b) values (?, ?)").is_ok());
     }
 
     #[test]
     fn accepts_with_returning_and_trailing_semicolon() {
-        assert!(
-            validate_insert_sql("INSERT INTO x (a) VALUES (?) RETURNING id;").is_ok()
-        );
+        assert!(validate_insert_sql("INSERT INTO x (a) VALUES (?) RETURNING id;").is_ok());
     }
 
     #[test]
@@ -527,25 +521,19 @@ mod validate_insert_sql_tests {
 
     #[test]
     fn rejects_chained_statement() {
-        assert!(
-            validate_insert_sql("INSERT INTO x VALUES (1); DROP TABLE y").is_err()
-        );
+        assert!(validate_insert_sql("INSERT INTO x VALUES (1); DROP TABLE y").is_err());
     }
 
     #[test]
     fn rejects_line_comment_chain() {
-        assert!(
-            validate_insert_sql("INSERT INTO x VALUES (1) -- DROP TABLE y").is_err()
-        );
+        assert!(validate_insert_sql("INSERT INTO x VALUES (1) -- DROP TABLE y").is_err());
     }
 
     #[test]
     fn allows_semicolon_inside_string_literal() {
         // Semicolon inside a quoted string is part of the data, not a
         // statement separator.
-        assert!(
-            validate_insert_sql("INSERT INTO x (msg) VALUES ('hello;world')").is_ok()
-        );
+        assert!(validate_insert_sql("INSERT INTO x (msg) VALUES ('hello;world')").is_ok());
     }
 
     #[test]

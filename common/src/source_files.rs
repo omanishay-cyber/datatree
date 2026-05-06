@@ -25,24 +25,15 @@ use std::path::Path;
 /// no leading dot. Sorted by language family for diff readability.
 pub const SOURCE_FILE_EXTENSIONS: &[&str] = &[
     // Rust
-    "rs",
-    // TypeScript / JavaScript family (incl. ESM/CJS variants)
-    "ts", "tsx", "js", "jsx", "mjs", "cjs",
-    // Python
-    "py",
-    // Go
-    "go",
-    // JVM
-    "java", "kt", "scala",
-    // Apple
-    "swift",
-    // C / C++
-    "c", "cc", "cpp", "h", "hpp",
-    // Other dynamic
-    "rb", "php",
-    // .NET
-    "cs",
-    // Shells
+    "rs", // TypeScript / JavaScript family (incl. ESM/CJS variants)
+    "ts", "tsx", "js", "jsx", "mjs", "cjs", // Python
+    "py",  // Go
+    "go",  // JVM
+    "java", "kt", "scala", // Apple
+    "swift", // C / C++
+    "c", "cc", "cpp", "h", "hpp", // Other dynamic
+    "rb", "php", // .NET
+    "cs",  // Shells
     "sh", "bash", "zsh", "ps1",
 ];
 

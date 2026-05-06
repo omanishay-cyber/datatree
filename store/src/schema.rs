@@ -218,7 +218,8 @@ mod column_exists_tests {
     #[test]
     fn returns_true_when_column_present() {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("CREATE TABLE foo (a INTEGER, b TEXT)").unwrap();
+        conn.execute_batch("CREATE TABLE foo (a INTEGER, b TEXT)")
+            .unwrap();
         assert!(column_exists(&conn, "foo", "a").unwrap());
         assert!(column_exists(&conn, "foo", "b").unwrap());
     }
@@ -233,7 +234,8 @@ mod column_exists_tests {
     #[test]
     fn case_insensitive_column_match() {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("CREATE TABLE foo (FooBar INTEGER)").unwrap();
+        conn.execute_batch("CREATE TABLE foo (FooBar INTEGER)")
+            .unwrap();
         assert!(column_exists(&conn, "foo", "foobar").unwrap());
         assert!(column_exists(&conn, "foo", "FOOBAR").unwrap());
     }

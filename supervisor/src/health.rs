@@ -258,9 +258,7 @@ impl HealthServer {
                     self.port,
                     self.port,
                 );
-                eprintln!(
-                    "ERROR: mneme-daemon health server bind failed on {addr}: {e}"
-                );
+                eprintln!("ERROR: mneme-daemon health server bind failed on {addr}: {e}");
                 eprintln!(
                     "       The daemon is still running — CLI commands work — but \
                      vision UI / /health / /api/graph are unreachable."
@@ -275,9 +273,9 @@ impl HealthServer {
                 // state dir doesn't exist or is not writable, fall
                 // through silently. The eprintln above is the
                 // primary signal; the sentinel is belt-and-suspenders.
-                if let Some(home) = std::env::var_os("MNEME_HOME").or_else(|| {
-                    dirs::home_dir().map(|h| h.join(".mneme").into_os_string())
-                }) {
+                if let Some(home) = std::env::var_os("MNEME_HOME")
+                    .or_else(|| dirs::home_dir().map(|h| h.join(".mneme").into_os_string()))
+                {
                     let state_dir = std::path::PathBuf::from(home).join("state");
                     let _ = std::fs::create_dir_all(&state_dir);
                     let _ = std::fs::write(

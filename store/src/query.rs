@@ -393,7 +393,10 @@ impl DbQuery for DefaultQuery {
     async fn invalidate_project(&self, project: &ProjectId) {
         let to_drop_readers: Vec<ShardKey> = {
             let map = self.readers.read().await;
-            map.keys().filter(|k| &k.project == project).cloned().collect()
+            map.keys()
+                .filter(|k| &k.project == project)
+                .cloned()
+                .collect()
         };
         if !to_drop_readers.is_empty() {
             let mut map = self.readers.write().await;
@@ -403,7 +406,10 @@ impl DbQuery for DefaultQuery {
         }
         let to_drop_writers: Vec<ShardKey> = {
             let map = self.writers.read().await;
-            map.keys().filter(|k| &k.project == project).cloned().collect()
+            map.keys()
+                .filter(|k| &k.project == project)
+                .cloned()
+                .collect()
         };
         if !to_drop_writers.is_empty() {
             let mut map = self.writers.write().await;
@@ -594,10 +600,7 @@ mod hex_tests {
         // Compare against the format! version we replaced for a
         // fixed-but-arbitrary byte sequence.
         let bytes: Vec<u8> = (0u8..=255).collect();
-        let expected: String = bytes
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect();
+        let expected: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
         assert_eq!(hex(&bytes), expected);
     }
 }

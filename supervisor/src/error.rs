@@ -104,7 +104,9 @@ pub enum SupervisorError {
     ///
     /// Always recoverable — caller should retry with a different
     /// worker (the dead one will be restarted by monitor_child).
-    #[error("child '{name}' stdin closed (worker exited?) — caller should retry with another worker")]
+    #[error(
+        "child '{name}' stdin closed (worker exited?) — caller should retry with another worker"
+    )]
     WorkerStdinClosed {
         /// Worker name whose stdin pipe was found closed.
         name: String,

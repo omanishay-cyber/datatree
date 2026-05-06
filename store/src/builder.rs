@@ -239,11 +239,9 @@ fn seed_nodes_fts(conn: &Connection) -> DtResult<()> {
     // index is populated; we're not in the upgrade scenario this
     // function exists for, so skip the (expensive) MATCH probe.
     let fts_has_any: bool = conn
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM nodes_fts LIMIT 1)",
-            [],
-            |r| r.get::<_, i64>(0).map(|n| n != 0),
-        )
+        .query_row("SELECT EXISTS(SELECT 1 FROM nodes_fts LIMIT 1)", [], |r| {
+            r.get::<_, i64>(0).map(|n| n != 0)
+        })
         .unwrap_or(false);
     if fts_has_any {
         return Ok(());
@@ -252,11 +250,9 @@ fn seed_nodes_fts(conn: &Connection) -> DtResult<()> {
     // Fast-path #2: equally O(1) — if the base table has no rows then
     // the FTS index is correctly empty and there's nothing to seed.
     let nodes_has_any: bool = conn
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM nodes LIMIT 1)",
-            [],
-            |r| r.get::<_, i64>(0).map(|n| n != 0),
-        )
+        .query_row("SELECT EXISTS(SELECT 1 FROM nodes LIMIT 1)", [], |r| {
+            r.get::<_, i64>(0).map(|n| n != 0)
+        })
         .unwrap_or(false);
     if !nodes_has_any {
         return Ok(());
@@ -367,11 +363,9 @@ fn record_version(conn: &Connection) -> DtResult<()> {
     //     upper layer can refuse the connection and prompt the user
     //     to rebuild. This mirrors the migration runner's contract.
     let existing: Option<u32> = conn
-        .query_row(
-            "SELECT version FROM schema_version LIMIT 1",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT version FROM schema_version LIMIT 1", [], |r| {
+            r.get(0)
+        })
         .optional()
         .map_err(DbError::from)?;
     match existing {
@@ -475,9 +469,9 @@ fn rename_with_retry(src: &Path, dst: &Path) -> DtResult<()> {
             }
         }
     }
-    Err(DtError::Io(
-        last_err.unwrap_or_else(|| std::io::Error::other("rename failed with no captured error")),
-    ))
+    Err(DtError::Io(last_err.unwrap_or_else(|| {
+        std::io::Error::other("rename failed with no captured error")
+    })))
 }
 
 #[cfg(test)]
