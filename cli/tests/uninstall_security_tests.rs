@@ -18,7 +18,10 @@ use mneme_cli::commands::uninstall::sanitize_mneme_home;
 use std::path::Path;
 
 #[test]
+#[cfg(windows)]
 fn rejects_ampersand_command_chain() {
+    // Windows-only: tests cmd.exe metachar attack via MNEME_HOME path.
+    // On POSIX, the legacy path doesn't shell-out so the test is moot.
     let evil = Path::new(r"C:\Users\Public\foo & calc.exe");
     let result = sanitize_mneme_home(evil);
     assert!(result.is_err());
@@ -100,7 +103,10 @@ fn rejects_nul_byte() {
 }
 
 #[test]
+#[cfg(windows)]
 fn rejects_wildcard_asterisk() {
+    // Windows-only: PowerShell glob wildcards via Remove-Item path.
+    // POSIX paths permit literal asterisks so the test is Windows-scoped.
     let evil = Path::new(r"C:\Users\*\Documents");
     let r = sanitize_mneme_home(evil);
     assert!(r.is_err());
