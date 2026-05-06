@@ -45,6 +45,11 @@ parking_lot = "0.12"
 # (LockFileEx on Windows, flock on Unix).
 fs2 = "0.4"
 
+# HIGH-18 fix (2026-05-06 audit A09): redact credential-shaped params
+# from --verbose IPC trace logs. Reuses the workspace-pinned regex
+# crate the CLI secrets_redact module already depends on.
+regex = { workspace = true }
+
 [features]
 default = []
 # K10 chaos-test-only hooks. Off by default. When enabled, the builder
