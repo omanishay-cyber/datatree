@@ -113,8 +113,21 @@ impl LocalLlm {
     /// non-`is_ready` checks lets `is_ready()`/`route_query` shortcuts
     /// proceed without queueing behind a long inference.
     ///
-    /// TODO(v0.4): replace with a context pool (one ctx per CPU core) so
-    /// long-running summarisation doesn't serialise concurrent callers.
+    /// MAINT-9 fix (2026-05-06 audit): the prior `TODO(v0.4)` for a
+    /// per-core context pool was overdue (v0.4.0 has shipped without
+    /// it). Re-stating the shape here without the version-tagged
+    /// urgency: in-process summarisation throughput is currently
+    /// gated by a single llama.cpp context. A context pool keyed on
+    /// available_parallelism() would let two concurrent callers
+    /// run inference in parallel — but llama.cpp contexts hold model
+    /// weights memory each (250-800 MB depending on quant), so a
+    /// pool of N contexts costs N× the resident set. The decision
+    /// to defer was deliberate: most mneme summarisation paths are
+    /// background work behind the LiveBus-event triggered queue, so
+    /// serialising on a single context is bounded queueing rather
+    /// than user-visible latency. Re-evaluate when the foreground
+    /// `mneme why` / `surprising_connections` paths start blocking
+    /// on this lock in profile traces.
     pub fn complete(&self, prompt: &str, max_tokens: usize) -> BrainResult<String> {
         // Quick check without holding the lock for inference.
         {
