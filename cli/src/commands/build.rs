@@ -5059,64 +5059,20 @@ fn hex_sha256(bytes: &[u8]) -> String {
     s
 }
 
-/// Resolve `project` to an absolute, canonicalised path. Falls back to
-/// CWD if the user passed nothing.
-pub(crate) fn resolve_project(arg: Option<PathBuf>) -> CliResult<PathBuf> {
-    let raw = arg.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let canonical = std::fs::canonicalize(&raw).unwrap_or(raw);
-    Ok(canonical)
-}
-
-/// Build an IPC client honoring `--socket` overrides.
-pub(crate) fn make_client(socket_override: Option<PathBuf>) -> IpcClient {
-    match socket_override {
-        Some(p) => IpcClient::new(p),
-        None => IpcClient::default_path(),
-    }
-}
-
-/// B-001/B-002: build pipeline variant of [`make_client`]. The build
-/// pipeline must NEVER auto-spawn a second `mneme-daemon` on connect
-/// failure, and every per-call round-trip must be tightly bounded so a
-/// stuck supervisor surfaces as a fast error instead of a 74-minute
-/// hang. The constants live here so every build-pipeline IPC call
-/// (`run_dispatched` job submit, watchdog poll, etc.) shares the same
-/// budget.
-///
-/// ## Hooks NEVER auto-spawn either (Bug E, 2026-04-29)
-///
-/// The hook commands (`mneme inject` / `pre_tool` / `post_tool` /
-/// `session_*` / `turn_end`) used to use the default auto-spawn path.
-/// **That decision is reversed.** The supervisor not being up means
-/// mneme is intentionally inactive; the user runs `mneme daemon start`
-/// to activate context capture. Hooks must NOT ambush the user with a
-/// daemon they didn't ask for.
-///
-/// The pre-fix behaviour was the root of the resurrection loop on
-/// our AWS test host (postmortem 2026-04-29 §3.E + §12.5): every Claude
-/// Code tool call fired ~9 hooks, each connect-failure spawned a
-/// `mneme daemon start`, and combined with Bug D (visible cmd-window
-/// storm) that produced 22 cmd windows per tool call.
-///
-/// Today the only auto-spawn caller is `make_client` itself, used by
-/// commands the user explicitly types (`mneme recall`, `mneme blast`,
-/// `mneme step`, `mneme audit`, etc.) — those still benefit from the
-/// "supervisor wakes up on first query" UX. Hooks use
-/// [`crate::hook_payload::make_hook_client`] which sets
-/// [`IpcClient::with_no_autospawn`].
-pub(crate) fn make_client_for_build(socket_override: Option<PathBuf>) -> IpcClient {
-    make_client(socket_override)
-        .with_no_autospawn()
-        .with_timeout(BUILD_IPC_TIMEOUT)
-}
-
-/// B-001: per-round-trip timeout for build-pipeline IPC. The default
-/// `IpcClient` budget is 120s; that's appropriate for hooks but lets a
-/// wedged supervisor turn `mneme build` into a 74-minute hang (as
-/// observed on EC2 2026-04-27). 5s is generous for a JSON round-trip
-/// against a healthy supervisor and forces a fast fallback when one
-/// isn't.
-pub(crate) const BUILD_IPC_TIMEOUT: Duration = Duration::from_secs(5);
+// CRIT-15 fix (2026-05-05 audit): IPC helpers moved to
+// `crate::commands::ipc_helpers` so they're no longer load-bearing
+// utilities buried inside this 8,368-line build pipeline file. The
+// audit found 9 unrelated commands importing them via
+// `crate::commands::build::{make_client, ...}`, which made build.rs a
+// de-facto utility crate.
+//
+// The re-exports below keep the existing 9 callers compiling while
+// they migrate to `crate::commands::ipc_helpers::*` directly. New
+// code should NOT use `build::make_client`; use `ipc_helpers::make_client`.
+#[allow(unused_imports)]
+pub(crate) use crate::commands::ipc_helpers::{
+    make_client, make_client_for_build, resolve_project, BUILD_IPC_TIMEOUT,
+};
 
 /// Pretty-print any [`IpcResponse`] variant, surface [`IpcResponse::Error`]
 /// as a [`CliError::Supervisor`]. Used by every IPC-bound command.

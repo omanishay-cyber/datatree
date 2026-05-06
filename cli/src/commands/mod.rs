@@ -21,6 +21,10 @@ pub mod graphify;
 pub mod history;
 pub mod inject;
 pub mod install;
+// CRIT-15 (2026-05-05 audit): cross-cutting IPC helpers extracted out
+// of build.rs (8,368 lines) so they no longer make build.rs a
+// de-facto utility crate. See ipc_helpers.rs header for migration.
+pub mod ipc_helpers;
 pub mod models;
 pub mod post_tool;
 pub mod pre_tool;
