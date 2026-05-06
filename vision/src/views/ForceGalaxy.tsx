@@ -77,6 +77,13 @@ export function ForceGalaxy(): JSX.Element {
   // at mount) read the *current* value without us re-creating the
   // reducer closures on every state change.
   const hoveredRef = useRef<string | null>(null);
+
+  // HIGH-FE-3 fix (2026-05-05 audit): pre-pulse color stash, keyed by
+  // node id. See the pulse useEffect below for the correctness
+  // argument; tl;dr two LiveEvents on the same node within 400ms
+  // used to lock the node permanently green because the second
+  // effect read green as its own "original".
+  const pulseOriginalsRef = useRef<Map<string, unknown>>(new Map());
   const [, forceRender] = useState<number>(0);
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -380,6 +387,18 @@ export function ForceGalaxy(): JSX.Element {
   }, []);
 
   // Pulse nodes when livebus reports edits.
+  //
+  // HIGH-FE-3 fix (2026-05-05 audit): the previous version captured
+  // `original` synchronously inside the effect closure. When two
+  // LiveEvents fired against the same node within the 400ms timeout
+  // window, the second effect read the green pulse-in-progress as
+  // its own "original" and locked the node bright green permanently
+  // (the cleanup of the first effect cleared its OWN timer, but the
+  // second effect's restore wrote green back over green and stuck).
+  //
+  // Track the genuine pre-pulse color in a ref keyed by node id and
+  // restore from THAT, so back-to-back events on the same node
+  // collapse correctly.
   useEffect(() => {
     const sigma = sigmaRef.current;
     if (!sigma) return;
@@ -387,10 +406,29 @@ export function ForceGalaxy(): JSX.Element {
     if (!last?.nodeId) return;
     const graph = sigma.getGraph();
     if (!graph.hasNode(last.nodeId)) return;
-    const original = graph.getNodeAttribute(last.nodeId, "color");
-    graph.setNodeAttribute(last.nodeId, "color", "#41E1B5");
+
+    const nodeId = last.nodeId;
+    // Only stash the original on the FIRST pulse for this node
+    // within the 400ms window. If pulseOriginalsRef already has an
+    // entry, a prior pulse is still in flight and `nodeId` is
+    // currently set to the green pulse color — do NOT overwrite the
+    // stash with green.
+    const existing = pulseOriginalsRef.current.get(nodeId);
+    if (existing === undefined) {
+      pulseOriginalsRef.current.set(
+        nodeId,
+        graph.getNodeAttribute(nodeId, "color"),
+      );
+    }
+    graph.setNodeAttribute(nodeId, "color", "#41E1B5");
     const t = setTimeout(() => {
-      if (graph.hasNode(last.nodeId!)) graph.setNodeAttribute(last.nodeId!, "color", original);
+      if (graph.hasNode(nodeId)) {
+        const stashed = pulseOriginalsRef.current.get(nodeId);
+        if (stashed !== undefined) {
+          graph.setNodeAttribute(nodeId, "color", stashed);
+          pulseOriginalsRef.current.delete(nodeId);
+        }
+      }
     }, 400);
     return () => clearTimeout(t);
   }, [liveEvents]);
