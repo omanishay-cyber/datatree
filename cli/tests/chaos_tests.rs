@@ -250,12 +250,37 @@ async fn worker_crash_mid_build_supervisor_restarts() {
         );
     } else {
         // No log written - this can happen on a CI runner that killed
-        // the daemon before it could flush. We treat this as a soft
-        // signal (the daemon DID spawn and accept the flag, which the
-        // test was already proving structurally). Emit a clear note
-        // so any future failure is debuggable.
+        // the daemon before it could flush.
+        //
+        // Audit fix TEST-NEW-7 (2026-05-06 multi-agent fan-out,
+        // testing-reviewer): the previous behaviour was "always
+        // emit a WARN and pass". That made the test silent on a
+        // runner where the daemon failed to spawn AT ALL, masking
+        // a real K10 regression behind a yellow line. We now split:
+        //
+        //   * MNEME_TEST_REQUIRE_LOG=1: hard-fail on a missing log.
+        //     Set this on Linux/macOS CI where tracing's non-blocking
+        //     appender flushes reliably. Locks down the
+        //     "always-passes-on-CI-too" gap.
+        //   * default: keep the lenient soft-WARN behaviour. Windows
+        //     CI runners + dev laptops still see the yellow line and
+        //     don't false-fail on platform-specific flush timing.
+        //
+        // The structural assertions earlier in the test (daemon
+        // spawn + socket name + flag plumbing) still ran; reaching
+        // this branch means the daemon DID spawn. We're only
+        // tightening "spawned AND restart-loop ran" vs "spawned AND
+        // no log evidence either way".
+        if std::env::var("MNEME_TEST_REQUIRE_LOG").as_deref() == Ok("1") {
+            panic!(
+                "[A10-012] supervisor.log absent at {} but MNEME_TEST_REQUIRE_LOG=1. \
+                 Set this env var only on platforms where tracing flush is reliable \
+                 (Linux + macOS); Windows runners use the default lenient mode.",
+                log_path.display(),
+            );
+        }
         eprintln!(
-            "[A10-012] WARN: supervisor.log not present at {} - daemon may have been killed before tracing's non-blocking appender flushed. The test still passes if the daemon spawned (which it did, given we reached this assertion).",
+            "[A10-012] WARN: supervisor.log not present at {} - daemon may have been killed before tracing's non-blocking appender flushed. The test still passes if the daemon spawned (which it did, given we reached this assertion). Set MNEME_TEST_REQUIRE_LOG=1 to promote this to a hard failure on platforms where tracing flush is reliable.",
             log_path.display(),
         );
     }
