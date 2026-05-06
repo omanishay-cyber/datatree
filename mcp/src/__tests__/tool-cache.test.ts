@@ -1,8 +1,11 @@
 // mcp/src/__tests__/tool-cache.test.ts
 //
-// Coverage for the negative cache that wraps MCP tool invocations.
-// Item #121 (2026-05-05). Six axes: hit, miss, mutating-tool bypass,
-// TTL expiry, LRU eviction, key stability across argument orderings.
+// Coverage for the positive response cache that wraps MCP tool
+// invocations. Item #121 (2026-05-05). Six axes: hit, miss,
+// mutating-tool bypass, TTL expiry, LRU eviction, key stability
+// across argument orderings.
+// (Historical "negative cache" misnomer corrected per the
+// 2026-05-06 audit — see tool-cache.ts header for the full note.)
 
 import { describe, it, expect } from "bun:test";
 import { ToolCache, NEVER_CACHE, wrapCachedResult } from "../tool-cache.ts";

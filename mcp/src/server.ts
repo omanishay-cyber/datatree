@@ -216,10 +216,12 @@ export class MnemeMcpServer {
   private server: Server;
   private transport: StdioServerTransport | null = null;
   private ctx: ToolContext;
-  // Item #121 (2026-05-05): negative cache for read-only tool calls.
-  // Mutating tools (snapshot/rebuild/audit/etc.) are skipped via the
-  // NEVER_CACHE list inside ToolCache itself. Default 256 entries / 5
-  // minutes — see tool-cache.ts for the rationale.
+  // Item #121 (2026-05-05): positive response cache for read-only
+  // tool calls. Mutating tools (snapshot/rebuild/audit/etc.) are
+  // skipped via the NEVER_CACHE list inside ToolCache itself.
+  // Default 256 entries / 5 minutes — see tool-cache.ts for the
+  // rationale and the LOW-fix audit note about the prior
+  // "negative cache" misnomer.
   private toolCache: ToolCache;
 
   constructor(ctx: ToolContext) {

@@ -1,10 +1,20 @@
 // mcp/src/tool-cache.ts
 //
-// Negative-cache layer for MCP tool invocations. Token-savings work
-// per the v0.4.0 plan (Item #121): Claude often re-asks the same
-// recall / blast / graph question within a few minutes. Each repeat
-// burns the same daemon SQL + the same response tokens. With this
-// LRU in front of the registry, repeats become free.
+// LOW fix (2026-05-06 audit): the v0.4.0 plan (Item #121) and the
+// historical comment here called this a "negative cache". That's
+// wrong — a negative cache memoises "this lookup found nothing"
+// markers (e.g. DNS NXDOMAIN, query-with-zero-results) so repeat
+// queries skip the upstream call. This module memoises SUCCESSFUL
+// tool outputs and explicitly skips errors ("Errors do NOT get
+// cached"), which is the textbook definition of a positive
+// (response) cache. The semantics were always correct; only the
+// label was wrong. Updated to match what the code actually does.
+//
+// Positive response cache for MCP tool invocations. Token-savings
+// work per the v0.4.0 plan (Item #121): Claude often re-asks the
+// same recall / blast / graph question within a few minutes. Each
+// repeat burns the same daemon SQL + the same response tokens.
+// With this LRU in front of the registry, repeats become free.
 //
 // Cache semantics:
 //   - Keyed on (toolName, deterministic JSON.stringify(args)).
