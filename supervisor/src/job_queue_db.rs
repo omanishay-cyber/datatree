@@ -87,6 +87,19 @@ impl DurableJobQueue {
             SupervisorError::Other(format!("open jobs.db at {}: {e}", db_path.display()))
         })?;
 
+        // Audit fix (2026-05-06 multi-agent fan-out, reliability
+        // REL-NEW-1): set busy_timeout BEFORE the WAL pragma so the
+        // pragma write itself gets the retry budget. CRIT-13 covered
+        // store/builder, brain/ledger, brain/concept_store, and the
+        // store writer task — but jobs.db at this site was missed.
+        // Without this, any race between the writer mutex flush and
+        // a checkpoint surfaces as instant SQLITE_BUSY and the
+        // caller treats persistence failure as 'job evaporates'.
+        // 5000ms matches the canonical block in
+        // store/src/builder.rs::apply_pragmas.
+        conn.busy_timeout(std::time::Duration::from_millis(5000))
+            .map_err(|e| SupervisorError::Other(format!("set busy_timeout: {e}")))?;
+
         // WAL + NORMAL — see module-level perf budget.
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(|e| SupervisorError::Other(format!("set WAL: {e}")))?;

@@ -1891,6 +1891,18 @@ mod query_runner {
                     OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
                 )
                 .map_err(|e| format!("open {}: {e}", db.display()))?;
+                // Audit fix (2026-05-06 multi-agent fan-out,
+                // reliability REL-NEW-6): the IPC read connection
+                // cache is the hot path for Recall/Blast/GodNodes.
+                // Without busy_timeout, a reader hitting a
+                // writer-checkpoint window sees instant SQLITE_BUSY
+                // and the caller bails. 5000ms matches the canonical
+                // pattern in store/src/builder.rs::apply_pragmas
+                // and the read pool init in store/src/query.rs.
+                // Best-effort: a pragma failure on a read-only
+                // connection is rare but we don't fail the cache
+                // insert over it.
+                let _ = conn.busy_timeout(std::time::Duration::from_millis(5000));
                 let h = Arc::new(Mutex::new(conn));
                 map.insert(db.to_path_buf(), h.clone());
                 h

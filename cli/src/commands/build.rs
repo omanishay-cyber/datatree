@@ -6269,18 +6269,19 @@ async fn run_federated_pass(
     stats
 }
 
-/// Mirror of `cli/src/commands/federated.rs::is_source_file`. Kept
-/// duplicated to avoid coupling the build path to the federated CLI
-/// module's private helpers.
+/// Audit fix (2026-05-06 multi-agent fan-out, MAINT-NEW-1): MAINT-8
+/// consolidated `is_source_file` from `federated.rs` and
+/// `pretool_grep_read.rs` into `common::source_files`, but missed
+/// this third copy in the build module. The original "kept
+/// duplicated to avoid coupling" rationale was the exact failure
+/// mode the consolidation was meant to eliminate — three truth
+/// tables drift, the build path silently disagrees with the
+/// federated path. Plus the inline EXTS used a case-sensitive
+/// `EXTS.contains(&ext)` so `Foo.RS` would NOT match — latent bug
+/// on case-preserving filesystems. The common helper handles
+/// case-insensitivity.
 fn is_federated_source(path: &Path) -> bool {
-    const EXTS: &[&str] = &[
-        "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "go", "java", "kt", "swift", "c", "cc",
-        "cpp", "h", "hpp", "rb", "php", "cs", "scala", "sh", "bash", "zsh", "ps1",
-    ];
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|ext| EXTS.contains(&ext))
-        .unwrap_or(false)
+    common::source_files::is_source_file_path(path)
 }
 
 /// Mirror of `cli/src/commands/federated.rs::pattern_kind_for`.
