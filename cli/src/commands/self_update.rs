@@ -470,6 +470,112 @@ impl SemverCmp {
 /// suffixes were stripped before compare), so a user on rc1 was told
 /// "already on the latest" when stable v0.3.3 shipped -- they stayed
 /// on rc1 forever.
+/// L fix (2026-05-05 audit): semver-compliant pre-release comparison.
+///
+/// Splits each suffix on `.` and compares identifiers pairwise:
+/// - if both look numeric, parse as u64 and compare numerically
+/// - otherwise compare lexically
+/// - shorter prefix loses if all leading identifiers are equal
+///
+/// Examples:
+///   compare_prerelease("rc2",   "rc10")  -> Less   (rc10 is newer)
+///   compare_prerelease("rc10",  "rc2")   -> Greater
+///   compare_prerelease("alpha", "beta")  -> Less
+///   compare_prerelease("rc.2",  "rc.10") -> Less
+///   compare_prerelease("rc1",   "rc1")   -> Equal
+///
+/// Note: this is still a simplified subset of semver. A pre-release
+/// like `rc2-extra` is treated as a single identifier "rc2-extra"
+/// because the calling parser already split on the FIRST `-`. Good
+/// enough for mneme's tag scheme (vX.Y.Z[-rcN]).
+fn compare_prerelease(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let a_parts: Vec<&str> = a.split('.').collect();
+    let b_parts: Vec<&str> = b.split('.').collect();
+    for i in 0..a_parts.len().max(b_parts.len()) {
+        match (a_parts.get(i), b_parts.get(i)) {
+            (Some(ap), Some(bp)) => {
+                // Try numeric compare first by parsing trailing digits
+                // off any rc-style prefix (so rc2 vs rc10 work).
+                let cmp = match (extract_numeric(ap), extract_numeric(bp)) {
+                    (Some((ap_pre, ap_n)), Some((bp_pre, bp_n))) if ap_pre == bp_pre => {
+                        ap_n.cmp(&bp_n)
+                    }
+                    _ => ap.cmp(bp),
+                };
+                if cmp != Ordering::Equal {
+                    return cmp;
+                }
+            }
+            (Some(_), None) => return Ordering::Greater,
+            (None, Some(_)) => return Ordering::Less,
+            (None, None) => unreachable!(),
+        }
+    }
+    Ordering::Equal
+}
+
+/// Helper: split a pre-release identifier into (alphabetic prefix,
+/// trailing number). Returns None if there's no trailing number.
+/// Examples:
+///   "rc10"  -> Some(("rc", 10))
+///   "alpha" -> None
+///   "10"    -> Some(("", 10))   — all-digit ids parse with empty prefix
+fn extract_numeric(s: &str) -> Option<(String, u64)> {
+    if s.is_empty() {
+        return None;
+    }
+    // Find the position of the last non-digit byte (if any). If all
+    // bytes are digits, split_at = 0 so the prefix is "" and the
+    // entire string is the number.
+    let split_at = match s.bytes().rposition(|b| !b.is_ascii_digit()) {
+        Some(pos) => pos + 1,
+        None => 0, // all digits
+    };
+    if split_at >= s.len() {
+        // The string ends with a non-digit (e.g. "rc"). No trailing
+        // number to extract.
+        return None;
+    }
+    let (prefix, digits) = s.split_at(split_at);
+    let n = digits.parse::<u64>().ok()?;
+    Some((prefix.to_string(), n))
+}
+
+#[cfg(test)]
+mod compare_prerelease_tests {
+    use super::compare_prerelease;
+    use std::cmp::Ordering;
+
+    #[test]
+    fn rc10_is_newer_than_rc2() {
+        assert_eq!(compare_prerelease("rc10", "rc2"), Ordering::Greater);
+        assert_eq!(compare_prerelease("rc2", "rc10"), Ordering::Less);
+    }
+
+    #[test]
+    fn equal_pre_releases_are_equal() {
+        assert_eq!(compare_prerelease("rc1", "rc1"), Ordering::Equal);
+        assert_eq!(compare_prerelease("alpha", "alpha"), Ordering::Equal);
+    }
+
+    #[test]
+    fn alpha_less_than_beta() {
+        assert_eq!(compare_prerelease("alpha", "beta"), Ordering::Less);
+    }
+
+    #[test]
+    fn dotted_pre_release_comparison() {
+        assert_eq!(compare_prerelease("rc.2", "rc.10"), Ordering::Less);
+        assert_eq!(compare_prerelease("rc.10", "rc.2"), Ordering::Greater);
+    }
+
+    #[test]
+    fn longer_loses_if_prefix_equal() {
+        assert_eq!(compare_prerelease("rc1", "rc1.beta"), Ordering::Less);
+    }
+}
+
 pub fn compare_semver(installed: &str, latest: &str) -> CliResult<SemverCmp> {
     let parse = |v: &str| -> CliResult<((u64, u64, u64), Option<String>)> {
         // Strip build metadata first (after `+`), it's not significant
@@ -508,8 +614,14 @@ pub fn compare_semver(installed: &str, latest: &str) -> CliResult<SemverCmp> {
     use std::cmp::Ordering;
     let final_cmp = match inst_core.cmp(&late_core) {
         Ordering::Equal => match (inst_pre.as_deref(), late_pre.as_deref()) {
-            // Both pre-release: lex-compare suffixes.
-            (Some(a), Some(b)) => a.cmp(b),
+            // Both pre-release: compare per semver spec — split each
+            // suffix into dot-separated identifiers and compare them
+            // pairwise. Numeric identifiers compare numerically;
+            // alphanumeric compare lexically. The previous version
+            // used plain string compare which produced rc10 < rc2
+            // (lex '1' < '2') — caught by audit finding L
+            // / C-11 (correctness-reviewer).
+            (Some(a), Some(b)) => compare_prerelease(a, b),
             // Inst is pre-release, latest is release: inst is older.
             (Some(_), None) => Ordering::Less,
             // Inst is release, latest is pre-release: inst is newer.
