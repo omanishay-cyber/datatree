@@ -112,6 +112,19 @@ export function ProjectGalaxy3D(): JSX.Element {
           pickable: true,
         });
 
+        // LOW fix (2026-05-05 audit): re-check `cancelled` and
+        // containerRef BEFORE constructing Deck. The previous
+        // `cancelled` check was only at line 68 (after fetch). Between
+        // that check and Deck construction we run several
+        // milliseconds of JS work building the points array; if the
+        // user navigated away (or a StrictMode double-mount fired its
+        // cleanup) during that window, we'd construct a Deck that's
+        // immediately leaked because the cleanup ran before deckRef
+        // got the new value. Symptoms: WebGL context exhaustion after
+        // rapid view switches, "deck.gl finalize-during-init"
+        // warnings.
+        if (cancelled || !containerRef.current) return;
+
         // Bug #NEW-G (2026-05-04): user-reported "round map globe should
         // zoom in/out and drag should rotate, instead it moves 1D, so
         // it's not 3D." The fix is making drag-to-rotate the primary
