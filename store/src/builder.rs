@@ -389,6 +389,49 @@ fn record_version(conn: &Connection) -> DtResult<()> {
 
 fn register_project(paths: &PathManager, id: &ProjectId, root: &Path, name: &str) -> DtResult<()> {
     let conn = Connection::open(paths.meta_db()).map_err(DbError::from)?;
+
+    // Audit fix HIGH-10 (2026-05-06, 2026-05-05 audit): the prior
+    // `ON CONFLICT(id) DO UPDATE SET root = excluded.root` silently
+    // overwrote the stored root path on every register. Two
+    // distinct callsites passing the same ProjectId but DIFFERENT
+    // root strings (canonicalization difference, symlink resolution
+    // drift, Windows long-path prefix) would mask the divergence —
+    // the second call wins, but no operator signal exists.
+    //
+    // ProjectId is SHA-256 of the canonical path so a collision
+    // SHOULD be impossible without a canonicalization bug. When we
+    // see one, we want a loud signal, not a silent overwrite.
+    //
+    // Strategy:
+    //   1. Look up the existing row (if any) BEFORE the upsert.
+    //   2. If the existing root differs from the new root, log a
+    //      warn! with both paths so operators see the drift.
+    //   3. Then proceed with the original ON CONFLICT semantics
+    //      (still update root + name + schema_version) so legitimate
+    //      "project moved on disk" workflows aren't broken.
+    let new_root = root.to_string_lossy().to_string();
+    let existing_root: Option<String> = conn
+        .query_row(
+            "SELECT root FROM projects WHERE id = ?1",
+            rusqlite::params![id.as_str()],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(DbError::from)?;
+    if let Some(prev) = existing_root.as_deref() {
+        if prev != new_root {
+            tracing::warn!(
+                project_id = %id.as_str(),
+                previous_root = %prev,
+                new_root = %new_root,
+                "register_project: stored root differs from incoming root \
+                 — overwriting (project may have moved on disk, OR a \
+                 ProjectId canonicalization bug is masking distinct paths). \
+                 Run `mneme rebuild` if recall results look stale."
+            );
+        }
+    }
+
     conn.execute(
         "INSERT INTO projects(id, root, name, schema_version)
          VALUES(?1, ?2, ?3, ?4)
@@ -396,7 +439,7 @@ fn register_project(paths: &PathManager, id: &ProjectId, root: &Path, name: &str
            root = excluded.root,
            name = excluded.name,
            schema_version = excluded.schema_version",
-        rusqlite::params![id.as_str(), root.to_string_lossy(), name, SCHEMA_VERSION],
+        rusqlite::params![id.as_str(), new_root, name, SCHEMA_VERSION],
     )
     .map_err(DbError::from)?;
     Ok(())
