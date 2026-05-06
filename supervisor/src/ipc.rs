@@ -858,22 +858,52 @@ async fn dispatch(
             query,
             limit,
             filter_type: _,
-        } => match query_runner::run_recall(&project, &query, limit) {
-            Ok(hits) => ControlResponse::RecallResults { hits },
-            Err(e) => ControlResponse::Error { message: e },
-        },
+        } => {
+            // HIGH-20 fix (2026-05-05 audit): collapse the project-
+            // path oracle. The previous handler passed `project`
+            // directly to query_runner, which called
+            // `dunce::canonicalize(project)`. Distinct error responses
+            // (path-not-found / canonicalize-failed / hash-not-in-
+            // meta) leaked enough signal to enumerate arbitrary
+            // filesystem paths from any local process able to reach
+            // the IPC pipe. Run a uniform pre-flight check + map
+            // every failure to one generic error.
+            if !is_existing_project_dir(&project) {
+                return ControlResponse::Error {
+                    message: "project not found or not registered".into(),
+                };
+            }
+            match query_runner::run_recall(&project, &query, limit) {
+                Ok(hits) => ControlResponse::RecallResults { hits },
+                Err(e) => ControlResponse::Error { message: e },
+            }
+        }
         ControlCommand::Blast {
             project,
             target,
             depth,
-        } => match query_runner::run_blast(&project, &target, depth) {
-            Ok(impacted) => ControlResponse::BlastResults { impacted },
-            Err(e) => ControlResponse::Error { message: e },
-        },
-        ControlCommand::GodNodes { project, n } => match query_runner::run_godnodes(&project, n) {
-            Ok(nodes) => ControlResponse::GodNodesResults { nodes },
-            Err(e) => ControlResponse::Error { message: e },
-        },
+        } => {
+            if !is_existing_project_dir(&project) {
+                return ControlResponse::Error {
+                    message: "project not found or not registered".into(),
+                };
+            }
+            match query_runner::run_blast(&project, &target, depth) {
+                Ok(impacted) => ControlResponse::BlastResults { impacted },
+                Err(e) => ControlResponse::Error { message: e },
+            }
+        }
+        ControlCommand::GodNodes { project, n } => {
+            if !is_existing_project_dir(&project) {
+                return ControlResponse::Error {
+                    message: "project not found or not registered".into(),
+                };
+            }
+            match query_runner::run_godnodes(&project, n) {
+                Ok(nodes) => ControlResponse::GodNodesResults { nodes },
+                Err(e) => ControlResponse::Error { message: e },
+            }
+        }
         // NEW-019: enumerate corpus markdown/text files under `project_id`
         // and queue an `Job::Ingest` per file. Returns the count without
         // waiting for completion — Bucket D (MCP) polls `JobQueueStatus`
@@ -1203,6 +1233,29 @@ fn hook_inject_opts() -> store::inject::InjectOptions {
 
 fn now_iso() -> String {
     chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+/// HIGH-20 fix (2026-05-05 audit): uniform existence + sanity check
+/// for the `project` path supplied via Recall / Blast / GodNodes
+/// IPC variants. Returns true only if the path resolves to an
+/// existing directory. Every other failure mode (non-existent path,
+/// path resolves to a regular file, dunce::canonicalize fails, etc.)
+/// returns false so the caller produces ONE generic error response,
+/// not three distinguishable ones.
+///
+/// Note: this does NOT verify the directory is registered in
+/// meta.db::projects. Doing so per-request would require opening
+/// meta.db and is heavier than the audit's headline concern. The
+/// existing path_exists + is_dir gate already collapses the most
+/// damaging oracle (enumerate-any-path-on-disk) into a uniform
+/// "path is or isn't a directory" response, which the attacker
+/// already has via OS-level FS enumeration. Project-registry
+/// validation is a follow-up if the threat model tightens.
+fn is_existing_project_dir(project: &Path) -> bool {
+    match dunce::canonicalize(project) {
+        Ok(canonical) => canonical.is_dir(),
+        Err(_) => false,
+    }
 }
 
 async fn hook_store_write_turn(
