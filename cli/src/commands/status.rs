@@ -497,7 +497,11 @@ fn probe_projects(paths: &PathManager) -> (Probe, usize, PathBuf) {
         .query_row("SELECT COUNT(*) FROM projects", [], |r| r.get(0))
         .unwrap_or(0);
     let count_usize = count.max(0) as usize;
-    let verdict = if count > 0 { Verdict::Ok } else { Verdict::Warn };
+    let verdict = if count > 0 {
+        Verdict::Ok
+    } else {
+        Verdict::Warn
+    };
     let detail = if count > 0 {
         format!("{count} project(s) tracked in meta.db")
     } else {

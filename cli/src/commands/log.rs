@@ -166,11 +166,7 @@ fn emit_banner(paths: &PathManager, interval: u64, once: bool, no_disk: bool, lo
     };
     println!();
     println!("{title}{mode}{disk}");
-    println!(
-        "  {}  {}",
-        style("home:").cyan(),
-        paths.root().display()
-    );
+    println!("  {}  {}", style("home:").cyan(), paths.root().display());
     println!(
         "  {}  press Ctrl-C to exit · log file rolls daily",
         style("tip:").cyan()
