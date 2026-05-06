@@ -2688,6 +2688,18 @@ html, html.navy, html.coal, html.ayu {
   to   { transform: translateX(-50%); }
 }
 
+/* A11Y-9 fix (2026-05-05 audit): WCAG 2.2.2 requires that any motion
+   lasting more than 5s must be pausable. The marquee runs 38s/cycle
+   continuously and previously stopped only on prefers-reduced-motion.
+   Pause on hover and on keyboard focus (focus-within) so users with
+   vestibular sensitivities can hold it still without leaving the page
+   or changing OS settings. The marquee is also aria-hidden in markup
+   since the keywords are redundant with the hero stats below. */
+.mneme-marquee:hover .mneme-marquee-track,
+.mneme-marquee:focus-within .mneme-marquee-track {
+  animation-play-state: paused;
+}
+
 /* ----- Animated CTA primary ----- subtle glow + arrow translate -------- */
 
 .mneme-cta-primary {
