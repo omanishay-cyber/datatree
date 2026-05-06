@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use tracing::{debug, info, warn};
 
 use common::{
@@ -352,11 +352,44 @@ fn apply_pragmas(conn: &Connection) -> DtResult<()> {
 }
 
 fn record_version(conn: &Connection) -> DtResult<()> {
-    conn.execute(
-        "INSERT OR IGNORE INTO schema_version(version) VALUES(?1)",
-        rusqlite::params![SCHEMA_VERSION],
-    )
-    .map_err(DbError::from)?;
+    // LOW fix (2026-05-05 audit): the prior `INSERT OR IGNORE` was
+    // dangerously quiet — if schema_version already had a row with a
+    // DIFFERENT version (a bug in migrations, a partial upgrade, a
+    // data corruption), the IGNORE silently did nothing and the
+    // shard kept running with the wrong stamp. Real version conflicts
+    // are recoverable via mneme rebuild but only if we surface them
+    // first.
+    //
+    // Now: read the current version, branch on it.
+    //   - No row: INSERT — fresh shard, stamp it.
+    //   - Same version: no-op (idempotent re-bootstrap).
+    //   - Different version: return DbError::SchemaMismatch so the
+    //     upper layer can refuse the connection and prompt the user
+    //     to rebuild. This mirrors the migration runner's contract.
+    let existing: Option<u32> = conn
+        .query_row(
+            "SELECT version FROM schema_version LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(DbError::from)?;
+    match existing {
+        None => {
+            conn.execute(
+                "INSERT INTO schema_version(version) VALUES(?1)",
+                rusqlite::params![SCHEMA_VERSION],
+            )
+            .map_err(DbError::from)?;
+        }
+        Some(v) if v == SCHEMA_VERSION => { /* idempotent */ }
+        Some(v) => {
+            return Err(DtError::Db(DbError::SchemaMismatch {
+                expected: SCHEMA_VERSION,
+                found: v,
+            }));
+        }
+    }
     Ok(())
 }
 
