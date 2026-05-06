@@ -1838,25 +1838,37 @@ async fn run_leiden_pass(
             continue;
         }
 
+        // HIGH-30 fix (2026-05-05 audit): batch all member inserts for
+        // this community through batch_inject so we replace ~60
+        // serial autocommits per community with one transaction.
+        // Same pattern as the per-file graph batch in CRIT-12 — uses
+        // the existing batch_inject API + INSERT OR IGNORE so a
+        // duplicate membership row is benign.
+        let mem_sql =
+            "INSERT OR IGNORE INTO community_membership(community_id, node_qualified) \
+                       VALUES(?1, ?2)";
+        let mut member_ops: Vec<InjectOp> = Vec::with_capacity(comm.members.len());
         for member in &comm.members {
             let qn = match id_to_name.get(&member.as_u128()) {
                 Some(s) => s.clone(),
                 None => continue,
             };
-            let mem_sql =
-                "INSERT OR IGNORE INTO community_membership(community_id, node_qualified) \
-                           VALUES(?1, ?2)";
-            let mem_params = vec![
-                serde_json::Value::Number(community_row_id.into()),
-                serde_json::Value::String(qn),
-            ];
+            member_ops.push(InjectOp::Insert {
+                project: project_id.clone(),
+                layer: DbLayer::Semantic,
+                sql: mem_sql.to_string(),
+                params: vec![
+                    serde_json::Value::Number(community_row_id.into()),
+                    serde_json::Value::String(qn),
+                ],
+            });
+        }
+        let member_count = member_ops.len();
+        if member_count > 0 {
             let resp = store
                 .inject
-                .insert(
-                    project_id,
-                    DbLayer::Semantic,
-                    mem_sql,
-                    mem_params,
+                .batch_inject(
+                    member_ops,
                     InjectOptions {
                         emit_event: false,
                         audit: false,
@@ -1865,7 +1877,14 @@ async fn run_leiden_pass(
                 )
                 .await;
             if resp.success {
-                stats.members += 1;
+                stats.members += member_count;
+            } else {
+                warn!(
+                    community_id = comm.id,
+                    members = member_count,
+                    error = ?resp.error,
+                    "community_membership batch insert failed"
+                );
             }
         }
     }
