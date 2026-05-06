@@ -99,12 +99,27 @@ export function capResult(value: unknown, maxBytes: number): unknown {
   const previewBudget = Math.max(maxBytes - reservedForEnvelope, 512);
   const preview = json.slice(0, previewBudget);
 
+  // Audit fix HIGH-43 (2026-05-06): the previous shape
+  // `{ _truncated, original_bytes, max_bytes, hint, preview }`
+  // violated every tool's published outputSchema. MCP clients
+  // that strictly validated the response (per the spec) would
+  // reject a successful-but-too-big result as malformed because
+  // none of the tool schemas declare `_truncated` as a valid
+  // top-level field.
+  //
+  // Switch to the error-envelope shape `{ error: "..." }` that
+  // ALREADY bypasses the cap above (line 90) and is the
+  // canonical mneme MCP convention for "the call ran but the
+  // result is unusable". Embed the original size + budget +
+  // preview in the error string so the AI host gets the same
+  // recovery info, just under a uniformly-validatable shape.
   return {
-    _truncated: true,
-    original_bytes: json.length,
-    max_bytes: maxBytes,
-    hint: "tool result exceeded the budget. Re-call with `detail: \"full\"` for more (capped to 16 KB), or use a more specific tool to drill into the part you need.",
-    preview,
+    error:
+      `tool result exceeded the byte budget ` +
+      `(${json.length} bytes > ${maxBytes} cap). ` +
+      `Re-call with \`detail: "full"\` for more (capped to 16 KB), ` +
+      `or use a more specific tool to drill into the part you need. ` +
+      `Preview (first ${preview.length} bytes): ${preview}`,
   };
 }
 

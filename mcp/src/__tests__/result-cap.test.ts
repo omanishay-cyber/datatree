@@ -20,19 +20,28 @@ describe("capResult", () => {
     expect(capResult(small, DEFAULT_MAX_BYTES)).toBe(small);
   });
 
-  it("truncates oversized results into a _truncated envelope", () => {
-    // Build something definitely past 4 KB.
+  it("truncates oversized results into an error-envelope (HIGH-43)", () => {
+    // Audit fix HIGH-43 (2026-05-06): the cap previously returned
+    // a `{ _truncated, original_bytes, max_bytes, hint, preview }`
+    // shape that violated every tool's published outputSchema.
+    // Now it returns a `{ error: "..." }` envelope — the same
+    // canonical shape used elsewhere in the MCP layer for
+    // unrecoverable conditions, and the same shape that ALREADY
+    // bypasses the cap at the top of capResult().
     const big = { items: Array.from({ length: 5000 }, (_, i) => `item-${i}`) };
     const capped = capResult(big, 1024) as Record<string, unknown>;
-    expect(capped["_truncated"]).toBe(true);
-    expect(typeof capped["original_bytes"]).toBe("number");
-    expect((capped["original_bytes"] as number) > 1024).toBe(true);
-    expect(capped["max_bytes"]).toBe(1024);
-    expect(typeof capped["preview"]).toBe("string");
-    // The wrapped envelope itself must stay close to budget — no
-    // runaway. Allow ~256 bytes of envelope overhead (the constant
-    // matches result-cap.ts's reservedForEnvelope).
-    expect(JSON.stringify(capped).length).toBeLessThan(1024 + 256);
+    expect(typeof capped["error"]).toBe("string");
+    const err = capped["error"] as string;
+    // Error message must surface the original size + cap so the AI
+    // host can plan its next call (re-call with detail=full, or
+    // narrow the query).
+    expect(err).toContain("exceeded");
+    expect(err).toContain(String(1024));
+    // Must include a preview prefix of the original payload.
+    expect(err).toContain("Preview");
+    // The envelope itself must still be close to budget — no
+    // runaway when the user payload is multi-KB.
+    expect(JSON.stringify(capped).length).toBeLessThan(1024 + 512);
   });
 
   it("passes through error envelopes unchanged regardless of size", () => {
@@ -44,15 +53,22 @@ describe("capResult", () => {
     expect(capResult(env, 1024)).toBe(env);
   });
 
-  it("preview text is a non-trivial slice of the original", () => {
+  it("preview text is a non-trivial slice of the original (HIGH-43)", () => {
+    // Same shape change as above: preview is now embedded inside
+    // the `error` string rather than a separate top-level field.
+    // We still verify the non-triviality contract.
     const big = { payload: "a".repeat(20_000) };
     const capped = capResult(big, 2048) as Record<string, unknown>;
-    const preview = capped["preview"] as string;
-    expect(preview.length).toBeGreaterThan(512);
-    // Preview is a JSON-string slice so it should start with the
-    // serialized form's opening — not a meaningful invariant on its
-    // own, but a useful sanity check.
-    expect(preview.startsWith("{")).toBe(true);
+    const err = capped["error"] as string;
+    expect(typeof err).toBe("string");
+    // Cap reserves 256 bytes for envelope, so previewBudget = 1792.
+    // Error string carries the preview verbatim plus prose; it must
+    // exceed the half-budget.
+    expect(err.length).toBeGreaterThan(1024);
+    // Error string must reference Preview + the JSON-shaped payload
+    // (preview slice begins with `{` since the input is an object).
+    expect(err).toContain("Preview");
+    expect(err).toContain("{");
   });
 });
 
