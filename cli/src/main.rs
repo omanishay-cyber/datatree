@@ -120,6 +120,9 @@ enum Command {
     SelfUpdate(commands::self_update::SelfUpdateArgs),
     /// Print graph stats / drift findings count / last build time.
     Status(commands::status::StatusArgs),
+    /// Live always-alive health stream — every wire's state shown
+    /// continuously with timestamps, persisted to ~/.mneme/log/.
+    Log(commands::log::LogArgs),
     /// Open the vision app (Tauri or browser).
     View(commands::view::ViewArgs),
     /// Run all configured scanners.
@@ -302,6 +305,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
         Command::Update(args) => commands::update::run(args, socket_override).await,
         Command::SelfUpdate(args) => commands::self_update::run(args, verbose_count).await,
         Command::Status(args) => commands::status::run(args, socket_override).await,
+        Command::Log(args) => commands::log::run(args, socket_override).await,
         Command::View(args) => commands::view::run(args).await,
         Command::Audit(args) => commands::audit::run(args, socket_override).await,
         Command::Recall(args) => commands::recall::run(args, socket_override).await,
