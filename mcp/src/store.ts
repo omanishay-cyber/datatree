@@ -23,6 +23,50 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
 import { errMsg } from "./errors.ts";
 
+/**
+ * TS-7 fix (2026-05-05 audit): centralised wrapper around the
+ * `db.prepare(...).all()` cast pattern. The 40+ existing call sites
+ * each did `... as Array<{...}>` directly on bun:sqlite's unknown[]
+ * return type. A schema migration or a column rename surfaces as
+ * `undefined` reads downstream, NOT as a type error at the call site.
+ *
+ * `rowsAs<T>(stmt, ...params)` calls `.all()` and casts to T[].
+ * In dev/test (NODE_ENV !== 'production'), it additionally inspects
+ * the first row's keys and warns if any expected key (passed via
+ * `expectKeys`) is missing — surfacing schema drift loudly.
+ *
+ * Existing callers continue to work without migrating; the helper is
+ * additive. New code (and gradual refactors) should prefer it.
+ */
+export function rowsAs<T>(
+  stmt: import("bun:sqlite").Statement,
+  params: unknown[] = [],
+  expectKeys?: ReadonlyArray<keyof T & string>,
+): T[] {
+  const rows = stmt.all(...(params as never[])) as unknown as T[];
+  if (
+    expectKeys &&
+    expectKeys.length > 0 &&
+    rows.length > 0 &&
+    typeof process !== "undefined" &&
+    process.env.NODE_ENV !== "production"
+  ) {
+    const first = rows[0] as Record<string, unknown>;
+    const missing = expectKeys.filter((k) => !(k in first));
+    if (missing.length > 0) {
+      // Don't throw — surface via stderr so the caller's flow
+      // continues but operators see schema drift in CI logs.
+      // Production builds skip the check entirely (the env-var
+      // gate above evaluates to false).
+      console.error(
+        `[mneme-mcp] rowsAs schema drift: row missing keys ${JSON.stringify(missing)}; ` +
+          `available keys: ${JSON.stringify(Object.keys(first))}`,
+      );
+    }
+  }
+  return rows;
+}
+
 // Bug TS-2 (2026-05-01): hoisted these imports out of inline `require()`
 // calls. The previous `require("node:fs")` inside function bodies worked
 // in Bun (which polyfills CJS-in-ESM) but would crash under strict Node
