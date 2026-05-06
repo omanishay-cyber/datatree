@@ -1016,6 +1016,21 @@ CREATE TABLE IF NOT EXISTS audit_log (
     happened_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_audit_layer_time ON audit_log(layer, happened_at);
+-- HIGH-9 fix (2026-05-05 audit): unique index on (actor='idempotency',
+-- target). The injector's idempotency check (store/src/inject.rs:148)
+-- reads audit_log for prior `actor='idempotency'` rows then INSERTs
+-- the new entry. The read+write pair is NOT atomic — two concurrent
+-- injects with the same idempotency_key both read empty, both
+-- INSERT, and the work runs twice.
+--
+-- A partial UNIQUE index on (target) WHERE actor='idempotency'
+-- closes the race: a duplicate INSERT now fails the constraint, and
+-- the caller can either INSERT OR IGNORE or detect the failure and
+-- short-circuit with the OK-already-applied path. Existing rows
+-- without idempotency markers are unaffected (the WHERE clause
+-- excludes them from the unique constraint).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_idempotency
+    ON audit_log(target) WHERE actor = 'idempotency';
 "#;
 
 const WIKI_SQL: &str = r#"
