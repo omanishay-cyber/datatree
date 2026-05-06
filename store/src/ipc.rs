@@ -314,7 +314,21 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
         Request::Restore { project, snapshot } => {
             let id = common::ids::SnapshotId::from_str(snapshot);
             match store.lifecycle.restore(&project, id).await {
-                Ok(()) => ok(serde_json::Value::Null),
+                Ok(()) => {
+                    // LOW fix (2026-05-05 audit): drop cached
+                    // reader/writer pools so subsequent queries hit
+                    // the freshly-restored shard file. Without this,
+                    // r2d2 connections still point at the OLD inode
+                    // (which restore renamed to .pre-restore.<ts>)
+                    // and reads return data from the snapshot the
+                    // user just rolled back FROM, not the one they
+                    // rolled back TO. Defense-in-depth — the
+                    // online_backup path inside restore() already
+                    // produces a self-consistent file at the canonical
+                    // path; this just makes sure callers see it.
+                    store.query.invalidate_project(&project).await;
+                    ok(serde_json::Value::Null)
+                }
                 Err(e) => err(e.to_string()),
             }
         }

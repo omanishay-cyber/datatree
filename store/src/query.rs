@@ -81,6 +81,22 @@ pub trait DbQuery {
     async fn query_rows(&self, q: Query) -> Response<Vec<serde_json::Value>>;
     async fn write(&self, w: Write) -> Response<WriteSummary>;
     async fn write_batch(&self, ws: Vec<Write>) -> Response<BatchSummary>;
+
+    /// LOW fix (2026-05-05 audit): drop cached read/write pools for a
+    /// project so the next access opens fresh connections.
+    ///
+    /// Why this exists: the r2d2 read pool and writer-task channel
+    /// are cached per (project, layer) and outlive any one shard
+    /// file. After a `mneme rebuild` (or `lifecycle::restore`) the
+    /// underlying graph.db is renamed to `graph.archived.<ts>` and a
+    /// new graph.db is written at the same path. Existing pool
+    /// connections still point at the OLD inode (POSIX) or open file
+    /// handle (Windows), so subsequent reads see the archived data
+    /// instead of the rebuild output.
+    ///
+    /// Default impl is a no-op so test doubles + alternative
+    /// implementations don't have to care; DefaultQuery overrides it.
+    async fn invalidate_project(&self, _project: &ProjectId) {}
 }
 
 /// Default impl: per-shard MPSC writer task + per-shard r2d2 read pool.
@@ -358,6 +374,50 @@ impl DbQuery for DefaultQuery {
             },
             meta(layer),
         )
+    }
+
+    /// LOW fix (2026-05-05 audit): drop ALL cached pools/writers for
+    /// `project` so subsequent reads/writes open against the
+    /// freshly-created shard file. Called by lifecycle::rebuild and
+    /// lifecycle::restore — both rename the underlying file out from
+    /// under any cached connections.
+    ///
+    /// We iterate the readers/writers maps under their respective
+    /// write locks and drop entries whose ShardKey.project matches.
+    /// Dropping the writer Sender gracefully closes the writer
+    /// task's channel — the spawn_blocking task observes
+    /// `rx.recv()` returning None and exits cleanly. r2d2 Pool drops
+    /// close all idle connections immediately and detach in-flight
+    /// connections so they're closed when their lease ends (no risk
+    /// of holding the OLD inode open beyond the in-flight query).
+    async fn invalidate_project(&self, project: &ProjectId) {
+        let to_drop_readers: Vec<ShardKey> = {
+            let map = self.readers.read().await;
+            map.keys().filter(|k| &k.project == project).cloned().collect()
+        };
+        if !to_drop_readers.is_empty() {
+            let mut map = self.readers.write().await;
+            for key in &to_drop_readers {
+                map.remove(key);
+            }
+        }
+        let to_drop_writers: Vec<ShardKey> = {
+            let map = self.writers.read().await;
+            map.keys().filter(|k| &k.project == project).cloned().collect()
+        };
+        if !to_drop_writers.is_empty() {
+            let mut map = self.writers.write().await;
+            for key in &to_drop_writers {
+                // Dropping the Sender closes the writer-task's channel.
+                map.remove(key);
+            }
+        }
+        tracing::info!(
+            project = %project,
+            readers_dropped = to_drop_readers.len(),
+            writers_dropped = to_drop_writers.len(),
+            "invalidated cached shard pools after rebuild/restore"
+        );
     }
 }
 
