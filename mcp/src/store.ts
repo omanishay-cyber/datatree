@@ -75,6 +75,51 @@ export function rowsAs<T>(
 const MNEME_HOME = join(homedir(), ".mneme");
 
 /**
+ * M-4 fix (2026-05-06 audit): MCP tool responses include `file_path`
+ * values from `nodes.file_path` in graph.db. The build pipeline stores
+ * these as project-relative paths, but a misbehaving indexer (or a
+ * symlinked source tree) could in principle produce absolute paths or
+ * `..`-bearing values that escape the project root. When the AI sees
+ * such paths it might try to Read them, which on the local install
+ * means reading files OUTSIDE the user's project (e.g., system files
+ * or other projects' shards).
+ *
+ * Defense-in-depth: every file_path that flows out of mcp/store.ts
+ * runs through `boundFilePath`. Behaviour:
+ *   - null / empty → null
+ *   - absolute Windows path (`C:\…` / `\\?\…` / `\\server\…`) → null
+ *   - absolute POSIX path (starts with `/`) → null
+ *   - any segment equals `..` → null
+ *   - otherwise → return the path unchanged
+ *
+ * This is a filter, not a transformation: callers see `null` instead of
+ * a path that escapes. `null` is already a valid value in every tool
+ * schema (paths can be missing when a node isn't bound to a file).
+ *
+ * NOT a substitute for the supervisor-side path validation (which
+ * additionally verifies the project hash exists in MNEME_HOME), but
+ * an additive layer for the bun:sqlite read path that bypasses the
+ * supervisor.
+ */
+export function boundFilePath(p: string | null | undefined): string | null {
+  if (p == null) return null;
+  const s = String(p).trim();
+  if (s.length === 0) return null;
+  // Windows absolute (drive-letter or UNC).
+  if (/^[A-Za-z]:[\\/]/.test(s)) return null;
+  if (s.startsWith("\\\\")) return null;
+  // POSIX absolute.
+  if (s.startsWith("/")) return null;
+  // Any segment equal to `..`. Split on both separators so Windows-
+  // backslash paths get caught too.
+  const segments = s.split(/[\\/]/);
+  for (const seg of segments) {
+    if (seg === "..") return null;
+  }
+  return s;
+}
+
+/**
  * Hash an absolute project path to its ProjectId (matches Rust
  * `ProjectId::from_path` which SHA-256s the canonical path).
  *

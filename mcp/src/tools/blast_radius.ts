@@ -17,7 +17,7 @@ import {
   BlastRadiusInput,
   type ToolDescriptor,
 } from "../types.ts";
-import { blastRadius } from "../store.ts";
+import { blastRadius, boundFilePath } from "../store.ts";
 import { errMsg } from "../errors.ts";
 
 // ---------------------------------------------------------------------------
@@ -130,8 +130,14 @@ export const tool: ToolDescriptor<
         // see real file paths instead of opaque `n_*` IDs. Fall back
         // to the qualified_name only when both file_path and name
         // are null (a synthetic / unresolved node).
+        //
+        // M-4 fix (2026-05-06 audit): bound file_path through
+        // boundFilePath() so an indexer bug or symlinked source
+        // tree can't smuggle absolute paths or .. escapes into the
+        // tool response. Bounded paths return null; bounded null is
+        // already a valid value in every consumer schema.
         const display = r.name ?? r.node;
-        const filePath = r.file_path ?? null;
+        const filePath = boundFilePath(r.file_path);
 
         if (r.kind === "file") {
           affected_files.push(filePath ?? r.node);

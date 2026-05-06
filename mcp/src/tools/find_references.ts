@@ -17,7 +17,7 @@ import {
   FindReferencesOutput,
   type ToolDescriptor,
 } from "../types.ts";
-import { findReferences, shardDbPath } from "../store.ts";
+import { boundFilePath, findReferences, shardDbPath } from "../store.ts";
 
 type HitKind = "definition" | "call" | "import" | "usage";
 
@@ -59,13 +59,26 @@ export const tool: ToolDescriptor<
     // the workspace's project list and federating the findReferences
     // call across each shard.
     const rows = findReferences(input.symbol);
-    const allHits = rows.map((r) => ({
-      file: r.file,
-      line: r.line,
-      column: 0,
-      context: r.context,
-      kind: mapKind(r.kind),
-    }));
+    // M-4 fix (2026-05-06 audit): bound every file path through
+    // boundFilePath() so an absolute or `..`-bearing path can't
+    // smuggle out via the response. ReferenceHit.file is non-
+    // nullable (z.string()), so we DROP rows whose path bounds out
+    // — a hit with a suspect path isn't useful to the AI anyway,
+    // and the silent drop is preferable to leaking the path or
+    // failing schema validation on the whole response.
+    const allHits = rows
+      .map((r) => {
+        const safeFile = boundFilePath(r.file);
+        if (safeFile === null) return null;
+        return {
+          file: safeFile,
+          line: r.line,
+          column: 0,
+          context: r.context,
+          kind: mapKind(r.kind),
+        };
+      })
+      .filter((h): h is NonNullable<typeof h> => h !== null);
     const total = allHits.length;
     const sliced = allHits.slice(input.offset, input.offset + input.limit);
     return {
