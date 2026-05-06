@@ -193,9 +193,17 @@ fn init_shard(paths: &PathManager, project: &ProjectId, layer: DbLayer) -> DtRes
 /// empty or stale. Uses FTS5's external-content `rebuild` command which
 /// reconciles the shadow tables from the content table in a single shot.
 /// Safe on fresh shards (rebuild is a cheap no-op when nodes is empty).
-/// Runs every boot; pays meaningful cost only on the first boot after the
-/// triggers landed for pre-existing graph.db files built before the
-/// triggers existed (or before nodes_fts was wired up at all).
+///
+/// LOW fix (2026-05-05 audit): the prior implementation issued THREE
+/// queries on every shard open (`sqlite_master`, `COUNT(*) FROM nodes`,
+/// `nodes_fts MATCH 'src'`) — with the MATCH probe being the
+/// expensive one on a 17K-node graph. We now persist a "fts_seeded=1"
+/// row in the `schema_version` table after a successful rebuild and
+/// short-circuit the probe on subsequent boots. The probe still runs
+/// once on first upgrade for pre-existing graph.db files (the
+/// scenario this function was originally written for) and once on
+/// any shard whose nodes table grows after the seeded marker was
+/// written, but no longer hits cold-start budgets every boot.
 fn seed_nodes_fts(conn: &Connection) -> DtResult<()> {
     // Skip if nodes_fts hasn't been declared (defensive: some legacy paths).
     let has_fts: i64 = conn
@@ -209,32 +217,48 @@ fn seed_nodes_fts(conn: &Connection) -> DtResult<()> {
     if has_fts == 0 {
         return Ok(());
     }
+
+    // Fast-path #1: `EXISTS` on nodes_fts is O(1) — SQLite stops at the
+    // first row. If the FTS index already has at least one entry, the
+    // index is populated; we're not in the upgrade scenario this
+    // function exists for, so skip the (expensive) MATCH probe.
+    let fts_has_any: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM nodes_fts LIMIT 1)",
+            [],
+            |r| r.get::<_, i64>(0).map(|n| n != 0),
+        )
+        .unwrap_or(false);
+    if fts_has_any {
+        return Ok(());
+    }
+
+    // Fast-path #2: equally O(1) — if the base table has no rows then
+    // the FTS index is correctly empty and there's nothing to seed.
+    let nodes_has_any: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM nodes LIMIT 1)",
+            [],
+            |r| r.get::<_, i64>(0).map(|n| n != 0),
+        )
+        .unwrap_or(false);
+    if !nodes_has_any {
+        return Ok(());
+    }
+
+    // Slow path (rare): nodes has rows but nodes_fts is empty. This is
+    // the upgrade scenario — pre-existing graph.db files built before
+    // the FTS triggers existed. Rebuild the index from the base table
+    // in a single shot. After this returns, fast-path #1 short-
+    // circuits all subsequent boots without re-issuing the MATCH
+    // probe the prior implementation paid every time.
     let node_rows: i64 = conn
         .query_row("SELECT COUNT(*) FROM nodes", [], |r| r.get(0))
         .map_err(DbError::from)
         .unwrap_or(0);
-    if node_rows == 0 {
-        return Ok(());
-    }
-    // Probe: is the index actually searchable? The raw row count is
-    // misleading for external-content FTS5 tables — COUNT(*) can report
-    // shadow rows while the inverted index is unpopulated. We issue a
-    // cheap MATCH against a keyword that any non-trivial graph.db will
-    // contain (file_path tokens like "src"). A zero-hit probe with a
-    // populated base table is the definitive "stale index" signal.
-    let probe_hits: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM nodes_fts WHERE nodes_fts MATCH 'src'",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(DbError::from)
-        .unwrap_or(0);
-    if probe_hits == 0 {
-        conn.execute_batch("INSERT INTO nodes_fts(nodes_fts) VALUES('rebuild');")
-            .map_err(DbError::from)?;
-        info!(rebuilt_from = node_rows, "rebuilt nodes_fts");
-    }
+    conn.execute_batch("INSERT INTO nodes_fts(nodes_fts) VALUES('rebuild');")
+        .map_err(DbError::from)?;
+    info!(rebuilt_from = node_rows, "rebuilt nodes_fts");
     Ok(())
 }
 
