@@ -87,6 +87,18 @@ impl DbLayer {
     }
 
     pub fn all_per_project() -> &'static [DbLayer] {
+        // LOW fix (2026-05-05 audit): exclude the 5 phantom layers
+        // (Refactors, Contracts, Insights, Telemetry, Corpus) from
+        // the per-project bootstrap list. They were declared in the
+        // enum + had schema SQL, but nothing reads or writes them —
+        // every fresh install paid the cost of creating + opening 5
+        // empty SQLite files plus the FK / pragma machinery for each.
+        //
+        // The enum variants are kept for backward compatibility with
+        // serialized data (logs, IPC payloads, etc. that might
+        // reference them by name) and future re-introduction. If we
+        // ever wire one of them up, add it back to this list and the
+        // init_shard path will pick it up automatically.
         &[
             Self::Graph,
             Self::History,
@@ -102,12 +114,7 @@ impl DbLayer {
             Self::Perf,
             Self::Findings,
             Self::Agents,
-            Self::Refactors,
-            Self::Contracts,
-            Self::Insights,
             Self::LiveState,
-            Self::Telemetry,
-            Self::Corpus,
             Self::Audit,
             Self::Wiki,
             Self::Architecture,
