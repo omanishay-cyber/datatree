@@ -684,6 +684,28 @@ impl ChildManager {
                     window_secs: policy.budget_window.as_secs(),
                 });
             }
+            // LOW fix (2026-05-05 audit): reset current_backoff to
+            // initial_backoff if the worker has been stable for at
+            // least 5 minutes. Without this, a worker that had a
+            // flaky boot (driving current_backoff up to max_backoff)
+            // and then ran cleanly for hours would still hit the
+            // inflated backoff on the next crash, taking max_backoff
+            // to recover from a transient failure that's months
+            // apart from the original flap. The 5-minute threshold
+            // matches typical supervised-process patterns: anything
+            // running cleanly for 5min+ is "back to healthy".
+            const STABLE_UPTIME_RESET: Duration = Duration::from_secs(300);
+            if h.current_uptime() >= STABLE_UPTIME_RESET
+                && h.current_backoff > policy.initial_backoff
+            {
+                tracing::info!(
+                    child = %req.name,
+                    uptime_secs = h.current_uptime().as_secs(),
+                    prior_backoff_ms = h.current_backoff.as_millis(),
+                    "stable uptime reached; resetting current_backoff to initial",
+                );
+                h.current_backoff = policy.initial_backoff;
+            }
             let next = (h.current_backoff.as_millis() as f32 * policy.backoff_multiplier) as u64;
             let capped = next.min(policy.max_backoff.as_millis() as u64);
             let delay = h.current_backoff;
