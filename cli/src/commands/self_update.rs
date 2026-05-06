@@ -2267,6 +2267,74 @@ mod tests {
     }
 
     // -----------------------------------------------------------------
+    // HIGH-37 audit fix (2026-05-05) — rollback restoring from
+    // `.deleteme` leftover when `.old` is missing.
+    //
+    // CRIT-8 disambiguated the `backup: None` branch into:
+    //   (a) genuine first-install — delete the new file
+    //   (b) Windows .deleteme fallback — restore from .deleteme
+    //
+    // The mixed-state test above only covers branch (a). Branch (b)
+    // had zero coverage, which means a regression that re-introduced
+    // the pre-CRIT-8 "delete and walk away" behaviour would not be
+    // caught. This test pins it.
+    //
+    // Scenario: `swap_one_binary` previously failed to rename `.old`
+    // and fell through to the .deleteme path, so the live binary now
+    // points at the new bytes and a `.deleteme` leftover holds the
+    // old bytes. The post-swap health check fails. rollback_swaps
+    // must rename `.deleteme` back over `current` so the user keeps
+    // a working binary.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn rollback_restores_from_deleteme_when_old_is_missing() {
+        let td = tempfile::tempdir().expect("tempdir");
+        let target = td.path().join("target");
+        fs::create_dir_all(&target).unwrap();
+
+        let cur = target.join(exe_name("mneme"));
+        // Use with_extension so the path matches what `swap_one_binary`
+        // produces and what `rollback_swaps` looks up. On Windows this
+        // turns "mneme.exe" into "mneme.deleteme" (NOT
+        // "mneme.exe.deleteme") — `with_extension` REPLACES the
+        // extension. The earlier draft of this test used the wrong
+        // path and rollback_swaps couldn't find the .deleteme file.
+        let deleteme = cur.with_extension("deleteme");
+
+        // "New" content sits at the live path; the .deleteme leftover
+        // holds the old bytes the user wants restored.
+        make_dummy_exe(&cur, b"NEW-FAILED-INSTALL");
+        make_dummy_exe(&deleteme, b"OLD-RESTORE-FROM-DELETEME");
+
+        // backup: None mirrors what swap_one_binary returns after
+        // taking the .deleteme fallback (see CRIT-8 comment in
+        // rollback_swaps).
+        let swaps = vec![BinarySwap {
+            current: cur.clone(),
+            backup: None,
+        }];
+
+        rollback_swaps(&swaps, false);
+
+        assert!(
+            cur.exists(),
+            "current must hold the restored binary, not be deleted"
+        );
+        assert_eq!(
+            fs::read(&cur).unwrap(),
+            b"OLD-RESTORE-FROM-DELETEME",
+            "current must hold the .deleteme bytes (old, working binary), \
+             not the failed new bytes"
+        );
+        assert!(
+            !deleteme.exists(),
+            ".deleteme must be consumed by the restore rename — leaving it \
+             behind would mean the next install picks up a stale leftover"
+        );
+    }
+
+    // -----------------------------------------------------------------
     // T-P0-01 audit fix — health_check_new_binary against a real
     // process. The closure-injection seam (replace_binaries_atomically_
     // with_check) lets the rollback tests skip spawning real binaries,
