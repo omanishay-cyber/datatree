@@ -2441,6 +2441,10 @@ async fn api_graph_hierarchy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // HIGH-45 split: compute_layout + LayoutPosition now live in the
+    // sibling layout submodule. Re-import them here so the existing
+    // pure-function test suite (lines 2461+) keeps working unchanged.
+    use super::layout::{compute_layout, LayoutPosition};
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use serde_json::json;

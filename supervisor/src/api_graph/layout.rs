@@ -29,9 +29,9 @@ use super::{with_layer_db_sync, ApiGraphState, ProjectQuery, MAX_GRAPH_LIMIT};
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub(super) struct LayoutPosition {
     /// Node qualified_name — joins with `/api/graph/nodes` on `id`.
-    pub(super) q: String,
-    pub(super) x: f64,
-    pub(super) y: f64,
+    pub q: String,
+    pub x: f64,
+    pub y: f64,
 }
 
 /// HIGH-22 fix (2026-05-05 audit): in-process layout cache. The
@@ -175,14 +175,15 @@ pub(super) async fn api_graph_layout(
     Json(positions)
 }
 
-/// Pure deterministic layout function. Public-in-crate so tests can
-/// exercise it without a database round-trip.
+/// Pure deterministic layout function. Visible to the api_graph parent
+/// module so its compute_layout test suite can exercise it without a
+/// database round-trip.
 ///
 /// Input: `(qualified_name, kind, community_id_or_none)` triples.
 /// Output: `(qualified_name, x, y)` triples in the same order, with
 /// coordinates roughly in `[-1000, 1000]` so Sigma's default camera
 /// frames the whole graph without manual zoom.
-fn compute_layout(rows: &[(String, String, Option<i64>)]) -> Vec<LayoutPosition> {
+pub(super) fn compute_layout(rows: &[(String, String, Option<i64>)]) -> Vec<LayoutPosition> {
     use std::collections::BTreeMap;
 
     if rows.is_empty() {
