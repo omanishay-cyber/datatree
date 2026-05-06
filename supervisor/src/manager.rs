@@ -313,6 +313,11 @@ impl ChildManager {
                 let mut h = handle_for_task.lock().await;
                 h.pid = pid;
                 h.status = ChildStatus::Running;
+                // HIGH-5 fix: a successful spawn clears any prior
+                // Degraded-dwell anchor — the child is alive again,
+                // the soak timer is no longer relevant. Idempotent:
+                // None stays None; Some becomes None.
+                h.degraded_since = None;
                 h.last_started_at = Some(Utc::now());
                 h.last_started_instant = Some(Instant::now());
                 h.last_heartbeat = Some(Instant::now());
@@ -698,6 +703,40 @@ impl ChildManager {
     /// CPU/log/spawn-syscall budget forever.
     pub(crate) const MAX_TOTAL_RESTARTS: u64 = 200;
 
+    /// HIGH-4 fix (2026-05-06 audit): per-24h cumulative restart cap.
+    /// Sits BETWEEN the rolling `max_restarts_per_window` budget (5/60s
+    /// — catches fast crash loops) and `MAX_TOTAL_RESTARTS` (200 — the
+    /// absolute lifetime kill-switch). Targets the slow-drip pattern
+    /// where a worker crashes every 7-12 minutes: never enough to fill
+    /// the 60s window, but the daily total (~140-200 restarts/24h on
+    /// the live PC) is clearly broken behaviour that nobody wants to
+    /// keep paying CPU + log + spawn-syscall budget for.
+    ///
+    /// Cap chosen at 50: a healthy worker is expected to crash 0 times
+    /// in a calendar day; 50 is generous enough that a worker doing
+    /// genuine boot-storm recovery (8-10 restarts during install) plus
+    /// a couple of legitimate panics doesn't hit the cap, but a slow-
+    /// drip flap is reliably caught well before it spends the full
+    /// 200-restart lifetime budget.
+    ///
+    /// Strict-greater (`>`) gate per the audit text: at exactly 50
+    /// restarts we still respawn; the 51st observation flips Dead.
+    /// Aligns the implementation with the documented "After
+    /// `restart_count_24h > 50`, transition to terminal Dead" contract.
+    pub(crate) const MAX_RESTARTS_PER_24H: u64 = 50;
+
+    /// HIGH-5 fix (2026-05-06 audit): how long a child must remain
+    /// alive in `Degraded` before the recovery pass flips it back to
+    /// `Running`. Before this fix, once a worker tripped the rolling
+    /// 60s budget it stayed Degraded forever — the production failure
+    /// mode that left 34/40 workers stuck on the live PC.
+    ///
+    /// 30 minutes is the "soak test passed" interval: long enough that
+    /// the underlying transient (resource contention, model load
+    /// timing, dependency coming up late) is over; short enough that
+    /// operators don't have to sit through hours of stale state.
+    pub(crate) const DEGRADED_SOAK: Duration = Duration::from_secs(30 * 60);
+
     async fn respawn_one(self: &Arc<Self>, req: &RestartRequest) -> Result<(), SupervisorError> {
         let policy = self.config.default_restart_policy.clone();
         let handle = match self.handle_for(&req.name).await {
@@ -754,8 +793,57 @@ impl ChildManager {
                 });
             }
 
+            // HIGH-4 fix (2026-05-06 audit): per-24h cumulative cap.
+            // The rolling 60s budget never trips at slow-drip cadence
+            // (worker crashing every 7-12 minutes — the live-PC pattern
+            // of 182-194 restarts/24h), and waiting for the 200-restart
+            // lifetime cap to engage means the worker burns CPU and
+            // spawn-syscall budget for hours before the kill-switch
+            // fires. The 24h cap (50 by default — see
+            // `MAX_RESTARTS_PER_24H`) catches the slow-drip case at the
+            // ~6-hour mark instead.
+            //
+            // Strict-greater (`>`) per the audit text: at the 50th
+            // restart we still respawn; the 51st observation flips
+            // Dead. `record_restart` already incremented
+            // `restart_count_24h` above, so `> 50` here means the
+            // current attempt is the 51st.
+            //
+            // The 5/60s rolling budget below STILL applies — this is
+            // additive, not a replacement. A worker can fail either
+            // gate and end up Dead-or-Degraded; both are real failure
+            // modes worth catching.
+            if h.restart_count_24h > Self::MAX_RESTARTS_PER_24H {
+                h.status = ChildStatus::Dead;
+                error!(
+                    child = %req.name,
+                    restart_count_24h = h.restart_count_24h,
+                    cap_per_24h = Self::MAX_RESTARTS_PER_24H,
+                    "restart count exceeded 24h cumulative cap; marking child Dead — \
+                     slow-drip flap detected (manual intervention required; \
+                     see `mneme doctor`)"
+                );
+                return Err(SupervisorError::RestartBudgetExceeded {
+                    name: req.name.clone(),
+                    restarts: h.restart_count_24h.min(u32::MAX as u64) as u32,
+                    window_secs: (24 * 60 * 60) as u64,
+                });
+            }
+
             let in_window = h.restarts_in_window(policy.budget_window);
             if in_window > policy.max_restarts_per_window {
+                // HIGH-5 fix (2026-05-06 audit): record the instant the
+                // child entered Degraded so the periodic recovery pass
+                // (`degraded_recovery_pass`) can flip it back to
+                // Running after a clean soak. Only set the anchor on
+                // the FIRST transition into Degraded — repeated trips
+                // through this branch (already-Degraded child whose
+                // window count keeps climbing) must keep the original
+                // anchor so the soak timer tracks total time degraded,
+                // not "time since most recent budget overrun".
+                if h.status != ChildStatus::Degraded {
+                    h.degraded_since = Some(Instant::now());
+                }
                 h.status = ChildStatus::Degraded;
                 warn!(
                     child = %req.name,
@@ -910,6 +998,12 @@ impl ChildManager {
                 status: h.status,
                 pid: h.pid,
                 restart_count: h.restart_count,
+                // HIGH-4 fix: surface the 24h cumulative restart count
+                // alongside the lifetime count so operators can see
+                // whether a worker is in the slow-drip flap pattern
+                // (high 24h count, low recent in-window count) before
+                // the cap actually fires.
+                restart_count_24h: h.restart_count_24h,
                 restart_dropped_count: h.restart_dropped_count,
                 current_uptime_ms: h.current_uptime().as_millis() as u64,
                 total_uptime_ms: total_uptime.as_millis() as u64,
@@ -930,6 +1024,13 @@ impl ChildManager {
                 // Phase-A C1: convert bytes → MB. Saturating arithmetic so
                 // a sysinfo blip that returns u64::MAX can't overflow.
                 rss_mb: h.rss_bytes.map(|b| b / (1024 * 1024)).unwrap_or(0),
+                // HIGH-5 fix: dwell time in Degraded so `mneme doctor`
+                // and `/health` can show "Degraded for X minutes" and
+                // operators can see stuck workers at a glance. `None`
+                // when the child is not Degraded or has never been.
+                degraded_for_secs: h
+                    .degraded_since
+                    .map(|t| t.elapsed().as_secs()),
             });
         }
         // Phase-A C3: natural-order sort so `parser-worker-2` comes
@@ -1251,6 +1352,119 @@ impl ChildManager {
         }
         emitted
     }
+
+    /// HIGH-5 fix (2026-05-06 audit): Degraded → Running recovery pass.
+    ///
+    /// Walks every child handle. For each child where:
+    ///   * `status == ChildStatus::Degraded`, AND
+    ///   * `degraded_since.is_some_and(|t| t.elapsed() >= DEGRADED_SOAK)`
+    ///     (the worker has been Degraded for ≥ 30 minutes),
+    ///
+    /// we clear the dwell anchor, transition the status to `Restarting`,
+    /// and queue a `RestartRequest` on the supervisor's restart channel.
+    /// The standard restart pipeline (`run_restart_loop` →
+    /// `respawn_one` → `spawn_child`) then respawns the worker. On
+    /// successful spawn `spawn_child` writes `status = Running` and
+    /// `degraded_since = None` (which we already cleared above), so by
+    /// the time the worker is alive again the soak state is fully
+    /// drained.
+    ///
+    /// Failure modes handled:
+    ///   * Channel closed (`SendError`) — supervisor is shutting down.
+    ///     Roll the status back to `Degraded` and re-arm
+    ///     `degraded_since` to a fresh `Instant::now()` so a future
+    ///     pass (after the supervisor comes back up) treats the soak
+    ///     timer as having just started, not as instantly-mature
+    ///     (which would cause an immediate retry storm).
+    ///   * Child reaches the rolling/lifetime/24h cap during respawn
+    ///     — `respawn_one` independently flips Dead/Degraded again
+    ///     using its own gate logic. The recovery pass does not need
+    ///     to second-guess that.
+    ///
+    /// Returns the number of children for which a recovery restart was
+    /// queued on this pass — tests + Prometheus scrape this to confirm
+    /// the path engages.
+    ///
+    /// Cadence: invoked from `run_degraded_recovery` in `lib.rs` on a
+    /// 30-second interval (slow enough to not thrash the channel,
+    /// fast enough that a 30-minute soak doesn't slip past a
+    /// blocked/recently-rebooted supervisor by more than a heartbeat).
+    pub async fn degraded_recovery_pass(self: &Arc<Self>) -> usize {
+        let guard = self.handles.read().await;
+        let mut queued = 0usize;
+        for (name, handle) in guard.iter() {
+            // Two-phase lock: read under the per-handle Mutex, decide,
+            // then send on the channel WITHOUT holding the lock (the
+            // channel send is unbounded but we still avoid mixing it
+            // into a held lock so we never accidentally block another
+            // handle-locking caller behind the channel send).
+            let should_recover = {
+                let h = handle.lock().await;
+                if h.status != ChildStatus::Degraded {
+                    false
+                } else {
+                    h.degraded_since
+                        .is_some_and(|t| t.elapsed() >= Self::DEGRADED_SOAK)
+                }
+            };
+            if !should_recover {
+                continue;
+            }
+            // Mark Restarting + clear the dwell anchor under the lock.
+            {
+                let mut h = handle.lock().await;
+                // Re-check the gate under the write-lock — a concurrent
+                // monitor_child or another recovery iteration may have
+                // already cleared status. Idempotent.
+                if h.status != ChildStatus::Degraded
+                    || !h
+                        .degraded_since
+                        .is_some_and(|t| t.elapsed() >= Self::DEGRADED_SOAK)
+                {
+                    continue;
+                }
+                h.status = ChildStatus::Restarting;
+                h.degraded_since = None;
+            }
+            // Queue a restart request. We use `exit_code = 0` because
+            // there is no real exit (the worker is already gone — the
+            // Degraded transition prevented its respawn, that's the
+            // bug we're fixing). Any code reading `exit_code` from a
+            // recovery-driven RestartRequest must treat it as
+            // "supervisor-initiated, not a worker crash" — currently
+            // only the debug-level `restart scheduled` log line reads
+            // it, which is fine.
+            let req = RestartRequest {
+                name: name.clone(),
+                exit_code: 0,
+                queued_at: Instant::now(),
+            };
+            if let Err(mpsc::error::SendError(_dropped)) = self.restart_tx.send(req) {
+                // Channel closed — supervisor is shutting down. Roll
+                // back the state we just changed so the next supervisor
+                // pass after restart treats the worker as "still
+                // Degraded, soak just started" rather than instantly
+                // mature. Mirrors the HIGH-7 rollback pattern in
+                // monitor_child's channel-closed path.
+                error!(
+                    child = %name,
+                    "degraded-recovery restart channel closed; \
+                     rolling back to Degraded for next supervisor cycle"
+                );
+                let mut h = handle.lock().await;
+                h.status = ChildStatus::Degraded;
+                h.degraded_since = Some(Instant::now());
+                continue;
+            }
+            info!(
+                child = %name,
+                soak_minutes = Self::DEGRADED_SOAK.as_secs() / 60,
+                "child Degraded soak passed; queueing recovery respawn"
+            );
+            queued = queued.saturating_add(1);
+        }
+        queued
+    }
 }
 
 /// Bug I defensive fix: probe every unique worker exe path for its
@@ -1518,12 +1732,29 @@ pub struct ChildSnapshot {
     pub pid: Option<u32>,
     /// Total restarts since boot.
     pub restart_count: u64,
+    /// HIGH-4 fix (2026-05-06 audit): cumulative restart count in the
+    /// rolling 24h window. Distinct from `restart_count` (lifetime)
+    /// and the per-handle 60s rolling-window count: this one closes
+    /// the slow-drip gap (worker crashing every 7-12 min, never
+    /// filling the 60s budget but accumulating 140-200 restarts per
+    /// day). When this exceeds `MAX_RESTARTS_PER_24H` the supervisor
+    /// flips the worker to terminal `Dead`.
+    #[serde(default)]
+    pub restart_count_24h: u64,
     /// Bug L: total restart requests that were dropped because the
     /// restart channel had been closed (receiver dropped, supervisor
     /// shutting down). Visible in `mneme doctor` per-worker line and
     /// in the Prometheus `mneme_child_restart_dropped_count` series.
     #[serde(default)]
     pub restart_dropped_count: u64,
+    /// HIGH-5 fix (2026-05-06 audit): seconds the child has been
+    /// continuously in `Degraded` status. `None` when the child is
+    /// not Degraded (or has never been). Operators read this to spot
+    /// workers stuck in Degraded approaching/exceeding the 30-minute
+    /// soak after which the recovery pass automatically queues a
+    /// respawn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_for_secs: Option<u64>,
     /// Uptime since the most recent spawn.
     pub current_uptime_ms: u64,
     /// Cumulative uptime across all spawns.

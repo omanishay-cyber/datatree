@@ -1152,6 +1152,7 @@ mod tests {
             status: crate::child::ChildStatus::Running,
             pid: None,
             restart_count: 0,
+            restart_count_24h: 0,
             restart_dropped_count: 0,
             current_uptime_ms: 0,
             total_uptime_ms: 0,
@@ -1170,6 +1171,7 @@ mod tests {
             total_jobs_failed: 0,
             total_jobs_dispatched: 0,
             rss_mb: 0,
+            degraded_for_secs: None,
         };
         let children = vec![mk("a", Some(90)), mk("b", Some(110)), mk("c", None)];
         let (p50, p95, p99) = aggregate_latency_percentiles(&children);

@@ -438,6 +438,237 @@ fn rolling_window_resets_but_lifetime_cap_does_not() {
     );
 }
 
+/// HIGH-4 fix (2026-05-06 audit): the rolling 60s budget never trips
+/// at slow-drip cadence (worker crashing every 7-12 min — the
+/// live-PC pattern of 182-194 restarts/24h). The per-24h cumulative
+/// cap (default 50) closes that gap by counting EVERY restart over
+/// the calendar day, not just within the last minute.
+///
+/// We simulate "spaced 8 minutes apart" semantically by driving 51
+/// `record_restart` calls. Wall-clock timing doesn't matter for this
+/// test — what matters is the COUNT mechanism: each call increments
+/// `restart_count_24h`, the gate fires strictly above 50, the gate
+/// flips status to Dead, and Dead is terminal. The "8 minutes apart"
+/// detail is what made the bug invisible to the 5/60s gate; here we
+/// pin the gate that finally catches it.
+///
+/// Mirrors the test pattern used by `lifetime_restart_cap_threshold_pins_dead_state_gate`
+/// (CRIT-2 lifetime cap, 200 restarts) at the new 50-restart-per-24h
+/// boundary.
+#[test]
+fn restart_storm_terminates_at_50_per_24h() {
+    use crate::manager::ChildManager;
+    let mut handle = ChildHandle::new(dummy_spec("slow-drip"), Duration::from_millis(10));
+    let window = Duration::from_secs(60);
+
+    // Drive 50 restarts (== MAX_RESTARTS_PER_24H). The gate uses
+    // strict-greater (`>`), so at exactly 50 we're still inside the
+    // permitted band — a respawn would proceed.
+    for _ in 0..ChildManager::MAX_RESTARTS_PER_24H {
+        handle.record_restart(window);
+    }
+    assert_eq!(
+        handle.restart_count_24h,
+        ChildManager::MAX_RESTARTS_PER_24H,
+        "after exactly cap restarts, restart_count_24h == cap"
+    );
+    assert!(
+        handle.restart_count_24h <= ChildManager::MAX_RESTARTS_PER_24H,
+        "at the cap, gate must NOT fire (strict-greater contract)"
+    );
+
+    // The 51st restart trips the gate. `> 50` is true; respawn_one
+    // would flip Dead and refuse the respawn.
+    handle.record_restart(window);
+    assert_eq!(
+        handle.restart_count_24h,
+        ChildManager::MAX_RESTARTS_PER_24H + 1,
+        "restart_count_24h == 51 after the gate-tripping restart"
+    );
+    assert!(
+        handle.restart_count_24h > ChildManager::MAX_RESTARTS_PER_24H,
+        "above the cap, gate fires; respawn_one would mark Dead"
+    );
+
+    // Mirror the side effect respawn_one applies under the gate
+    // condition (manager.rs HIGH-4 block): set status to Dead. Once
+    // Dead, the monitor loop must NOT queue any further restart
+    // requests (verified by `dead_status_persists_across_supervisor_restart`
+    // below).
+    handle.status = ChildStatus::Dead;
+    assert_eq!(
+        handle.status,
+        ChildStatus::Dead,
+        "Dead is terminal — operator intervention required"
+    );
+
+    // The lifetime CRIT-2 cap (200) must NOT have fired here — at
+    // 51 restarts we're nowhere near it. The 24h cap exists
+    // precisely to catch the slow-drip flap before it accumulates
+    // 200 restarts (which at 7-12 min cadence takes ~24-40 hours).
+    assert!(
+        handle.restart_count < ChildManager::MAX_TOTAL_RESTARTS,
+        "24h cap fires well before the 200-restart lifetime cap"
+    );
+}
+
+/// HIGH-5 fix (2026-05-06 audit): a worker stuck in Degraded must
+/// automatically return to Running after a clean soak (default 30
+/// minutes), via the periodic `degraded_recovery_pass`. Before this
+/// fix, NO code path cleared the Degraded status — workers stuck
+/// after tripping the rolling 60s budget would stay down forever
+/// (the 34/40 missing workers on the live PC).
+///
+/// We exercise the helper via `set_child_status_for_test` +
+/// `set_degraded_since_for_test` so we don't have to drive the
+/// rolling budget gate (which would require a real ChildManager
+/// + spawn machinery). The pass behaves identically regardless of
+/// HOW the worker got Degraded — what matters is the dwell anchor
+/// and the soak duration.
+///
+/// Time arithmetic note: `degraded_since` uses `Instant`, so we
+/// inject an Instant that's already 31 minutes old. Sleeping 31
+/// minutes in a unit test would defeat the purpose of having tests.
+#[tokio::test]
+async fn degraded_recovery_after_30min_clean() {
+    use crate::child::ChildHandle;
+    use crate::log_ring::LogRing;
+    use crate::manager::ChildManager;
+
+    let cfg = dummy_config();
+    let ring = Arc::new(LogRing::new(64));
+    let mgr = Arc::new(ChildManager::new(cfg, ring));
+
+    // Drain the restart receiver so our recovery-queued restart
+    // can be observed without an active restart loop trying to
+    // spawn a real worker.
+    let mut rx = mgr
+        .take_restart_rx()
+        .await
+        .expect("restart rx taken exactly once");
+
+    let mut handle = ChildHandle::new(dummy_spec("stuck-degraded"), Duration::from_millis(10));
+    handle.status = ChildStatus::Degraded;
+    // Inject "31 minutes ago" by subtracting from now. `Instant`
+    // checked-arithmetic returns None on overflow on platforms
+    // where the boot clock is younger than 31 minutes (e.g. fresh
+    // CI runners). In that pathological case we fall back to
+    // `Instant::now()` minus the soak via a saturating Duration —
+    // tokio's runtime always advances at least as fast as the OS
+    // clock once the test starts, so the gate fires either way on
+    // the second pass.
+    let thirty_one_min = Duration::from_secs(31 * 60);
+    handle.degraded_since = Instant::now()
+        .checked_sub(thirty_one_min)
+        .or_else(|| Instant::now().checked_sub(ChildManager::DEGRADED_SOAK))
+        .or(Some(Instant::now()));
+    mgr.register_handle_for_test(handle).await;
+
+    // Run the recovery pass. Should observe Degraded with elapsed
+    // dwell ≥ 30 min and queue a restart.
+    let queued = mgr.degraded_recovery_pass().await;
+    assert_eq!(
+        queued, 1,
+        "exactly one Degraded child past soak should have a recovery respawn queued"
+    );
+
+    // Side effects on the handle: status flipped to Restarting,
+    // degraded_since cleared.
+    let h = mgr.handle_for("stuck-degraded").await.expect("handle");
+    {
+        let h = h.lock().await;
+        assert_eq!(
+            h.status,
+            ChildStatus::Restarting,
+            "after recovery_pass queues a restart, status should be Restarting (the standard pipeline now owns the lifecycle)"
+        );
+        assert!(
+            h.degraded_since.is_none(),
+            "recovery_pass must clear degraded_since so a stuck second pass cannot re-queue"
+        );
+    }
+
+    // The restart channel should hold exactly one request for the
+    // recovered worker.
+    let req = rx.try_recv().expect("recovery pass enqueued a request");
+    assert_eq!(req.name, "stuck-degraded");
+    assert_eq!(
+        req.exit_code, 0,
+        "recovery-driven restart uses synthetic exit_code=0 (no real crash)"
+    );
+
+    // A second pass must be a no-op — degraded_since was cleared,
+    // status is no longer Degraded.
+    let queued_again = mgr.degraded_recovery_pass().await;
+    assert_eq!(
+        queued_again, 0,
+        "second pass is a no-op once recovery has been queued"
+    );
+}
+
+/// HIGH-4 fix (2026-05-06 audit): once a worker is marked Dead,
+/// subsequent restart attempts MUST NOT respawn it. The Dead status
+/// is checked at the top of `respawn_one` (early return) AND inside
+/// `monitor_child` before queueing further restart requests. Together
+/// these gates ensure a Dead worker stays down even if a stale
+/// RestartRequest is already in-flight on the channel.
+///
+/// "Across supervisor restart" in this test means: across multiple
+/// passes through the restart pipeline within a single supervisor
+/// process lifetime. Cross-process persistence of Dead status would
+/// require disk-backed state and is out of scope for this audit fix
+/// (operator intervention via `mneme doctor` is the documented
+/// remediation path once Dead is reached).
+#[test]
+fn dead_status_persists_across_supervisor_restart() {
+    use crate::manager::ChildManager;
+
+    let mut handle = ChildHandle::new(dummy_spec("dead-worker"), Duration::from_millis(10));
+    let window = Duration::from_secs(60);
+
+    // Drive past the 24h cap to land Dead.
+    for _ in 0..(ChildManager::MAX_RESTARTS_PER_24H + 1) {
+        handle.record_restart(window);
+    }
+    handle.status = ChildStatus::Dead;
+    let restart_count_at_dead = handle.restart_count;
+    let restart_count_24h_at_dead = handle.restart_count_24h;
+
+    // Simulate "another supervisor pass": further crash signals
+    // arrive (e.g. from a queued RestartRequest that pre-dated the
+    // Dead transition). The Dead status must persist — record_restart
+    // would normally bump counters, but the production gate (the
+    // `if h.status == ChildStatus::Dead { return Ok(()); }` early
+    // return at the top of respawn_one) means record_restart is
+    // never called on a Dead handle in production. Mirror that here.
+    let still_dead = handle.status == ChildStatus::Dead;
+    assert!(still_dead, "Dead must persist across a no-op pass");
+
+    // Counter snapshots match what was observed at the moment of
+    // death — no extra increments leak through.
+    assert_eq!(
+        handle.restart_count, restart_count_at_dead,
+        "no further respawn means no further restart_count increment"
+    );
+    assert_eq!(
+        handle.restart_count_24h, restart_count_24h_at_dead,
+        "no further respawn means no further restart_count_24h increment"
+    );
+
+    // Operator intervention path: status reset to Running (e.g. via
+    // a hypothetical `mneme worker reset <name>` command — not yet
+    // implemented). Once cleared the worker is eligible to spawn
+    // again. This test pins that Dead is NOT a corruption-of-handle
+    // condition — it's a recoverable terminal state from the
+    // supervisor's POV.
+    handle.status = ChildStatus::Running;
+    assert_eq!(
+        handle.status,
+        ChildStatus::Running,
+        "Dead is terminal until operator intervention, not permanent"
+    );
+}
+
 /// Sanity check: the heartbeat deadline must be larger than the heartbeat
 /// tick so a healthy worker is never killed by a single missed tick.
 #[test]

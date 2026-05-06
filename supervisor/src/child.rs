@@ -120,6 +120,34 @@ pub struct ChildHandle {
     pub last_restart_at: Option<DateTime<Utc>>,
     /// Total restarts since supervisor boot.
     pub restart_count: u64,
+    /// HIGH-4 fix (2026-05-06 audit): cumulative restart count over the
+    /// last 24 hours. The rolling 60s budget (`max_restarts_per_window`)
+    /// is too lax for slow-drip workers — a worker crashing every 7-12
+    /// minutes never accumulates 6 restarts in any 60s window, so the
+    /// existing rate limiter lets it restart forever (the 182-194
+    /// restarts/24h pattern observed on the live PC).
+    ///
+    /// Increments alongside `restart_count` on every `record_restart`.
+    /// Resets to 0 when the conditions documented on `record_restart`
+    /// hold (24h elapsed AND ≥1h since the last restart — a clean
+    /// recovery period). Once this exceeds the per-24h cap (50,
+    /// enforced by `respawn_one`), the worker is flipped to
+    /// `ChildStatus::Dead` and never respawns again.
+    pub restart_count_24h: u64,
+    /// HIGH-4 fix: monotonic anchor for the 24h reset window. `None`
+    /// until the first restart is recorded; thereafter set to the
+    /// instant the 24h counter was last cleared (or first started
+    /// counting). The reset condition is "now - last_24h_reset ≥ 24h
+    /// AND last_restart_at_instant is older than 1h" — i.e. an
+    /// honest-to-goodness day of operation with at least an hour of
+    /// quiet at the end.
+    pub last_24h_reset: Option<Instant>,
+    /// HIGH-4 fix: monotonic timestamp of the most recent restart.
+    /// Mirrors `last_restart_at` (which is `chrono::DateTime<Utc>`)
+    /// in monotonic-time form so the 24h reset gate can use saturating
+    /// elapsed-time math without wall-clock skew. `None` before the
+    /// first restart.
+    pub last_restart_at_instant: Option<Instant>,
     /// Bug L (postmortem §12.1 follow-up): total restart requests that
     /// were observed but could NOT be queued because the restart
     /// channel had been closed (receiver dropped — supervisor
@@ -132,6 +160,23 @@ pub struct ChildHandle {
     pub restart_window: VecDeque<Instant>,
     /// Current lifecycle state.
     pub status: ChildStatus,
+    /// HIGH-5 fix (2026-05-06 audit): the monotonic instant the worker
+    /// most recently transitioned INTO `ChildStatus::Degraded`. `None`
+    /// when the worker is not Degraded (or has never been). Read by the
+    /// supervisor's periodic `degraded_recovery_pass` to find Degraded
+    /// children that have been quiet long enough (default 30 minutes)
+    /// to be considered "soak test passed" and can flip back to Running.
+    ///
+    /// Before this fix there was no code path that ever cleared
+    /// `Degraded` once entered — a worker that tripped the rolling-60s
+    /// budget would stay Degraded forever and never get respawned. The
+    /// 34 missing of 40 workers on the live PC are the direct
+    /// consequence.
+    ///
+    /// The instant is also surfaced via `ChildSnapshot::degraded_for_secs`
+    /// so `mneme doctor` and `/health` can display the dwell time and
+    /// operators can see stuck workers at a glance.
+    pub degraded_since: Option<Instant>,
     /// Last observed exit code (if any).
     pub last_exit_code: Option<i32>,
     /// Last heartbeat received from the child.
@@ -206,9 +251,18 @@ impl ChildHandle {
             last_started_instant: None,
             last_restart_at: None,
             restart_count: 0,
+            // HIGH-4 fix: 24h cumulative counter starts at zero. The
+            // anchor (`last_24h_reset`) is set inside `record_restart`
+            // on the first restart so we never reset a counter that was
+            // never started.
+            restart_count_24h: 0,
+            last_24h_reset: None,
+            last_restart_at_instant: None,
             restart_dropped_count: 0,
             restart_window: VecDeque::new(),
             status: ChildStatus::Pending,
+            // HIGH-5 fix: not Degraded yet, so no degradation anchor.
+            degraded_since: None,
             last_exit_code: None,
             last_heartbeat: None,
             total_uptime: Duration::ZERO,
@@ -302,8 +356,45 @@ impl ChildHandle {
     }
 
     /// Push a fresh restart timestamp and prune entries older than `window`.
+    ///
+    /// HIGH-4 fix (2026-05-06 audit): also bumps the 24h cumulative
+    /// counter and resets it when an honest 24h has elapsed AND the
+    /// worker has been quiet (no restart) for at least the last hour.
+    /// Both conditions must hold: a fast-flap worker accumulates 24h of
+    /// elapsed time but is still actively crashing, so the reset must
+    /// not fire for it. The 1h quiet-period gate is the "soak" required
+    /// before we forgive prior restart history.
+    ///
+    /// The actual lifetime cap is enforced by `respawn_one`, which
+    /// reads `restart_count_24h` AFTER this method records the new
+    /// restart. The split keeps `record_restart` focused on bookkeeping
+    /// and makes the policy gate (50/24h) co-located with the existing
+    /// 5/60s rolling-window gate in the manager.
     pub fn record_restart(&mut self, window: Duration) {
         let now = Instant::now();
+
+        // HIGH-4: 24h reset gate — runs BEFORE we increment the 24h
+        // counter so a "quiet day" worker starts the new restart with
+        // a fresh counter.
+        //
+        // - first restart ever (`last_24h_reset.is_none()`): nothing to
+        //   reset; we just initialise the anchor below after the bump.
+        // - both gates pass: reset to zero AND advance the anchor to
+        //   `now` so the next 24h window starts here.
+        // - either gate fails: leave `restart_count_24h` alone.
+        if let Some(anchor) = self.last_24h_reset {
+            const TWENTY_FOUR_HOURS: Duration = Duration::from_secs(24 * 60 * 60);
+            const QUIET_PERIOD: Duration = Duration::from_secs(60 * 60);
+            let twenty_four_hours_elapsed = now.duration_since(anchor) >= TWENTY_FOUR_HOURS;
+            let quiet_for_one_hour = self
+                .last_restart_at_instant
+                .is_some_and(|last| now.duration_since(last) >= QUIET_PERIOD);
+            if twenty_four_hours_elapsed && quiet_for_one_hour {
+                self.restart_count_24h = 0;
+                self.last_24h_reset = Some(now);
+            }
+        }
+
         self.restart_window.push_back(now);
         while let Some(front) = self.restart_window.front() {
             if now.duration_since(*front) > window {
@@ -313,6 +404,15 @@ impl ChildHandle {
             }
         }
         self.restart_count = self.restart_count.saturating_add(1);
+        // HIGH-4: bump the 24h cumulative counter. Initialise the
+        // anchor on the first restart of this handle's lifetime; on
+        // subsequent restarts the anchor is only advanced by the
+        // explicit reset path above.
+        self.restart_count_24h = self.restart_count_24h.saturating_add(1);
+        if self.last_24h_reset.is_none() {
+            self.last_24h_reset = Some(now);
+        }
+        self.last_restart_at_instant = Some(now);
         self.last_restart_at = Some(Utc::now());
         // Bug I: a fresh restart means the previous "recovered" state
         // (if any) is invalidated. Clear the one-shot flag so that, if

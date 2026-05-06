@@ -465,6 +465,23 @@ pub async fn run(config: SupervisorConfig) -> Result<()> {
         tokio::spawn(async move { run_recovery_logger(mgr, sd).await })
     };
 
+    // 3a-pre-2b. HIGH-5 fix (2026-05-06 audit): Degraded → Running
+    // recovery pass. Walks the handle map every 30 s; for each child
+    // that has been Degraded for ≥ DEGRADED_SOAK (default 30 min) we
+    // queue a respawn so it returns to service. Without this pass a
+    // worker that tripped the rolling 60 s budget would stay Degraded
+    // forever (the production failure mode that left 34/40 workers
+    // stuck on the live PC).
+    //
+    // Cadence is 30 s rather than 5 s because the soak is on the
+    // order of minutes — checking every 5 s would burn an extra
+    // ~25 wakeups per 30 minutes of soak with no observable benefit.
+    let degraded_recovery_handle = {
+        let mgr = manager.clone();
+        let sd = shutdown.clone();
+        tokio::spawn(async move { run_degraded_recovery(mgr, sd).await })
+    };
+
     // 3a-pre-3. Wave 2.4: background update-check task.
     //
     // Polls api.github.com/repos/omanishay-cyber/mneme/releases/latest
@@ -563,6 +580,8 @@ pub async fn run(config: SupervisorConfig) -> Result<()> {
     log_join("rss_refresher", rss_handle.await);
     recovery_handle.abort();
     log_join("crash_recovery_logger", recovery_handle.await);
+    degraded_recovery_handle.abort();
+    log_join("degraded_recovery", degraded_recovery_handle.await);
     update_check_handle.abort();
     log_join("update_check", update_check_handle.await);
     bus_bridge_handle.abort();
@@ -653,6 +672,36 @@ async fn run_recovery_logger(manager: Arc<ChildManager>, shutdown: Arc<Notify>) 
             }
             _ = tokio::time::sleep(interval) => {
                 let _emitted = manager.check_recovery_logs().await;
+            }
+        }
+    }
+}
+
+/// HIGH-5 fix (2026-05-06 audit): periodic Degraded → Running recovery
+/// pass. Polls [`ChildManager::degraded_recovery_pass`] every 30 s.
+/// That method finds every child that has been in Degraded for ≥
+/// `DEGRADED_SOAK` (default 30 minutes) and queues a respawn so the
+/// worker returns to service. Before this pass existed there was no
+/// code path that ever flipped a child OUT of Degraded — the rolling
+/// 60s budget could trip Degraded but nothing ever cleared it,
+/// leaving workers stuck (the 34/40 missing workers on the live PC).
+///
+/// 30 s cadence: the soak threshold is on the order of minutes, so
+/// polling more often would burn wakeups with no observable benefit.
+/// 30 s also gives the supervisor 60 misses in 30 minutes worth of
+/// noise budget — plenty for a busy daemon to interleave with
+/// dispatch and watchdog work.
+async fn run_degraded_recovery(manager: Arc<ChildManager>, shutdown: Arc<Notify>) {
+    info!("degraded-recovery pass online");
+    let interval = std::time::Duration::from_secs(30);
+    loop {
+        tokio::select! {
+            _ = shutdown.notified() => {
+                info!("degraded-recovery pass shutting down");
+                break;
+            }
+            _ = tokio::time::sleep(interval) => {
+                let _queued = manager.degraded_recovery_pass().await;
             }
         }
     }
