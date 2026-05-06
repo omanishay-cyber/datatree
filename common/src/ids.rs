@@ -22,6 +22,20 @@ impl ProjectId {
         Ok(ProjectId(hex(&digest)))
     }
 
+    /// LOW fix (2026-05-05 audit): consistent error wording for the
+    /// dozens of CLI callers that previously wrote their own
+    /// `format!("cannot hash project path: {e}")` (or, less often,
+    /// `format!("project hash for {}: {e}", ...display())`). The
+    /// audit flagged the inconsistency. New callers should use this
+    /// helper instead — it produces a single canonical message
+    /// shape: `"hash project path '<path>': <io error>"`. Display
+    /// uses the path's `display()` form so non-UTF-8 paths still
+    /// surface readably.
+    pub fn from_path_or_describe<P: AsRef<Path>>(path: P) -> Result<Self, String> {
+        let p = path.as_ref();
+        Self::from_path(p).map_err(|e| format!("hash project path '{}': {e}", p.display()))
+    }
+
     /// Construct directly from a known hash (e.g., from URL/CLI).
     pub fn from_hash(hash: impl Into<String>) -> Self {
         ProjectId(hash.into())
