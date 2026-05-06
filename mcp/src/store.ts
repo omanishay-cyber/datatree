@@ -406,8 +406,30 @@ export function blastRadius(
 }
 
 /**
- * Semantic-ish recall: LIKE-match over qualified_name + name. For v0.1
- * without embeddings this is a simple FTS-style substring scan.
+ * Symbol recall over the nodes_fts shadow table.
+ *
+ * HIGH-27 fix (2026-05-05 deep audit): the previous implementation
+ * was `WHERE lower(name) LIKE '%query%' OR lower(qualified_name)
+ * LIKE '%query%'`. Two problems compounded:
+ *
+ *   1. Leading `%` in the pattern defeats any index on `name` /
+ *      `qualified_name` — SQLite cannot range-scan an index from a
+ *      wildcard prefix, so every recall_node call was a FULL TABLE
+ *      SCAN of `nodes`.
+ *   2. `lower(column)` in the predicate further defeats the index
+ *      because the column expression is no longer a bare reference.
+ *
+ * The benchmark BENCHMARKS.md flagged this exact path as the root
+ * cause of mneme's recall lag versus CRG (audit 2026-05-05).
+ *
+ * Use the existing `nodes_fts` virtual table (FTS5, schema.rs:270)
+ * which is auto-synced via the nodes_ai/nodes_ad/nodes_au triggers
+ * already in schema.rs:279-292. FTS5 MATCH is case-insensitive by
+ * default with the porter tokenizer and is index-backed.
+ *
+ * Falls back to the LIKE form when the FTS query is malformed
+ * (e.g. unbalanced quotes / parens — FTS5 has its own grammar) so
+ * pathological inputs never break recall.
  */
 export function recallNode(
   query: string,
@@ -416,6 +438,42 @@ export function recallNode(
 ): { qualified_name: string; kind: string; file_path: string | null }[] {
   const db = openShardDb("graph", cwdOverride);
   try {
+    // FTS5 path — preferred. Sanitise to avoid the user breaking the
+    // FTS5 query syntax: strip everything except word chars + spaces,
+    // wrap in `*` for prefix match across all whitespace-separated
+    // tokens.
+    const sanitised = query.replace(/[^\p{L}\p{N}_\s]/gu, " ").trim();
+    if (sanitised.length > 0) {
+      const ftsQuery = sanitised
+        .split(/\s+/)
+        .filter((t) => t.length > 0)
+        .map((t) => `${t}*`)
+        .join(" ");
+      try {
+        const rows = db
+          .prepare(
+            `SELECT n.qualified_name, n.kind, n.file_path
+             FROM nodes_fts f
+             JOIN nodes n ON n.rowid = f.rowid
+             WHERE nodes_fts MATCH ?
+             LIMIT ?`,
+          )
+          .all(ftsQuery, limit) as Array<{
+          qualified_name: string;
+          kind: string;
+          file_path: string | null;
+        }>;
+        if (rows.length > 0) {
+          return rows;
+        }
+      } catch {
+        // FTS5 syntax error or shadow-table mismatch — fall through
+        // to the legacy LIKE form so the user always gets *something*
+        // instead of a hard error.
+      }
+    }
+
+    // Legacy fallback (kept narrow, not the hot path).
     const like = `%${query.toLowerCase()}%`;
     const rows = db
       .prepare(
