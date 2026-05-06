@@ -151,7 +151,20 @@ pub async fn ws_upgrade_handler(
 ///    DNS rebinding (a malicious DNS A record pointing
 ///    `evil.com → 127.0.0.1`) doesn't sneak past the bind-address
 ///    check.
-fn validate_origin_and_host(headers: &axum::http::HeaderMap) -> Result<(), String> {
+///
+/// Audit fix (2026-05-06 multi-agent fan-out, security agent
+/// CRIT-NEW-2): the original CRIT-4 fix only protected `/ws`. Every
+/// `/api/*` HTTP route was still vulnerable to DNS-rebinding +
+/// cross-site fetch. We export this function so `api_graph::
+/// build_router` can apply it as a `tower::Layer` covering the
+/// entire HTTP surface, not just the WebSocket upgrade.
+pub(crate) fn validate_origin_and_host(
+    headers: &axum::http::HeaderMap,
+) -> Result<(), String> {
+    validate_origin_and_host_inner(headers)
+}
+
+fn validate_origin_and_host_inner(headers: &axum::http::HeaderMap) -> Result<(), String> {
     // Host check first — defends against DNS rebinding even when no
     // Origin is present.
     let host = headers
@@ -182,9 +195,21 @@ fn is_trusted_host(host: &str) -> bool {
 }
 
 fn is_trusted_origin(origin: &str) -> bool {
+    // Audit fix (2026-05-06 multi-agent fan-out, security agent
+    // NEW-CRIT-2): the prior version allowlisted `Origin: null` to
+    // accommodate Tauri file:// shells. But "null" is NOT
+    // Tauri-only — it's emitted by ANY <iframe sandbox> (without
+    // allow-same-origin), `data:` URLs, opaque local-file origins,
+    // and various other contexts. An attacker hosting evil.com with
+    // a sandboxed iframe could fetch our /ws and /api/* routes
+    // because the browser sends Origin: null.
+    //
+    // Tauri shells (and their replacements) actually emit
+    // `tauri://localhost` as Origin (already in the allowlist
+    // below), so the `null` allowlist was never load-bearing.
+    // Removing it closes the iframe-sandbox bypass.
     if origin == "null" {
-        // file:// origins from native Tauri shells.
-        return true;
+        return false;
     }
     // Strict prefix match — origin must start with one of these AND
     // the next character (if any) must be `:` (port), `/` (path), or
@@ -205,6 +230,36 @@ fn is_trusted_origin(origin: &str) -> bool {
         }
     }
     false
+}
+
+/// Audit fix (2026-05-06 multi-agent fan-out, security NEW-CRIT-1
+/// + multi-perspective + correctness convergence): apply the same
+/// Origin/Host validation that gates `/ws` to every HTTP route on
+/// the daemon. CRIT-4's intended fix said "validate Origin on every
+/// endpoint" but only `/ws` actually got the check — `/api/*` was
+/// wide open to DNS-rebinding + cross-site-fetch. This middleware
+/// runs ahead of every route in `api_graph::build_router` so the
+/// gate is uniform.
+///
+/// On a rejected request, returns HTTP 403 with the body
+/// `{"error":"forbidden","reason":"<...>"}`. The daemon stays alive
+/// — only the offending request is refused.
+pub async fn enforce_origin_and_host(
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> impl axum::response::IntoResponse {
+    use axum::http::StatusCode;
+    if let Err(reason) = validate_origin_and_host_inner(req.headers()) {
+        return (
+            StatusCode::FORBIDDEN,
+            axum::Json(serde_json::json!({
+                "error": "forbidden",
+                "reason": reason,
+            })),
+        )
+            .into_response();
+    }
+    next.run(req).await
 }
 
 #[cfg(test)]
@@ -500,11 +555,17 @@ mod ws_tests {
     async fn ws_route_demands_upgrade_headers() {
         let (state, _bus, _mgr) = state_with_bus();
         let app = build_router(state);
+        // Audit fix follow-up (2026-05-06): the new global Origin/Host
+        // middleware refuses requests with an untrusted Host. Pass a
+        // legitimate Host so this test verifies what it advertises —
+        // the WS handler's missing-upgrade-headers behaviour, not the
+        // gate's behaviour.
         let resp = app
             .oneshot(
                 Request::builder()
                     .uri("/ws")
                     .method("GET")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -517,6 +578,71 @@ mod ws_tests {
                 || resp.status() == StatusCode::BAD_REQUEST,
             "expected 426 or 400 from /ws without upgrade headers, got {}",
             resp.status()
+        );
+    }
+
+    /// Audit fix (2026-05-06 multi-agent fan-out, security NEW-CRIT-1):
+    /// every /api/* route MUST also reject untrusted Host headers,
+    /// not just /ws. This test exercises the global middleware
+    /// directly through the api router.
+    #[tokio::test]
+    async fn api_routes_reject_untrusted_host() {
+        let (state, _bus, _mgr) = state_with_bus();
+        let app = build_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/health")
+                    .method("GET")
+                    .header("Host", "evil.example.com")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(
+            resp.status(),
+            StatusCode::FORBIDDEN,
+            "/api/health with Host: evil.example.com must return 403 \
+             (DNS-rebinding defence — the prior CRIT-4 fix only \
+             covered /ws, leaving /api/* open until this audit)"
+        );
+    }
+
+    #[tokio::test]
+    async fn api_routes_accept_trusted_host() {
+        let (state, _bus, _mgr) = state_with_bus();
+        let app = build_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/health")
+                    .method("GET")
+                    .header("Host", "127.0.0.1:7777")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "/api/health with Host: 127.0.0.1:7777 must succeed"
+        );
+    }
+
+    /// Audit fix (NEW-CRIT-2): `Origin: null` must NOT be allowlisted.
+    /// Sandboxed iframes from any attacker-controlled page emit the
+    /// null origin; allowing it bypasses Origin-based defence.
+    #[test]
+    fn null_origin_is_not_trusted() {
+        // Direct check of the helper — `is_trusted_origin` is the
+        // private allowlist function the middleware delegates to.
+        assert!(
+            !super::is_trusted_origin("null"),
+            "Origin: null must be rejected — sandboxed iframes from any \
+             attacker-controlled page emit it, and allowlisting it \
+             defeats the Origin-based defence."
         );
     }
 

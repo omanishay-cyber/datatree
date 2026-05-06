@@ -217,6 +217,23 @@ pub fn build_router(state: ApiGraphState) -> Router {
         // Without this route the vision SPA's livebus subscription falls
         // back to placeholder data on every load.
         .route("/ws", get(crate::ws::ws_upgrade_handler))
+        // Audit fix (2026-05-06 multi-agent fan-out, security agent
+        // NEW-CRIT-1): apply the same Origin/Host validation that
+        // gates /ws to EVERY HTTP route. CRIT-4 closed the
+        // WebSocket door but left every /api/* route open to
+        // DNS-rebinding (a malicious DNS A record pointing
+        // evil.com -> 127.0.0.1, browser sends Host: evil.com) and
+        // cross-site fetch from an attacker-hosted page. The middleware
+        // returns HTTP 403 with a JSON envelope on rejection; the
+        // daemon stays alive, only the offending request is refused.
+        //
+        // Layer order (outermost first applies first per axum docs):
+        //   1. enforce_origin_and_host  -> reject untrusted requests
+        //   2. inject_api_version_header -> stamp X-Mneme-Api-Version
+        // Both layers run on every route including /ws (which still
+        // has its own internal validate_origin_and_host check —
+        // belt-and-suspenders, harmless duplicate).
+        .layer(axum::middleware::from_fn(crate::ws::enforce_origin_and_host))
         // HIGH-42: stamp every response with the API version header so
         // older / cached SPA bundles can detect wire-shape drift.
         .layer(axum::middleware::from_fn(inject_api_version_header))
@@ -3118,6 +3135,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/layout")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3137,6 +3155,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/health")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3167,6 +3186,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/nodes?limit=2000")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3191,6 +3211,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/projects")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3267,6 +3288,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/file-tree")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3289,6 +3311,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri(format!("/api/graph/file-tree?project={hash_z}"))
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3322,6 +3345,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/file-tree?project=..%2F..%2Fetc")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3376,6 +3400,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/projects")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3411,6 +3436,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/voice")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3439,6 +3465,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/file-tree")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3460,6 +3487,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/kind-flow")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3481,6 +3509,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/commits")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3501,6 +3530,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/heatmap")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3524,6 +3554,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/test-coverage")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3544,6 +3575,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/community-matrix")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3565,6 +3597,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/domain-flow")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3612,6 +3645,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/file-tree")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3688,6 +3722,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/layers")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3712,6 +3747,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/galaxy-3d")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3733,6 +3769,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/theme-palette")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3753,6 +3790,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/graph/hierarchy")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -3777,6 +3815,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/daemon/health")
+                    .header("Host", "127.0.0.1:7777")
                     .body(Body::empty())
                     .expect("request"),
             )
