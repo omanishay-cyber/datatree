@@ -93,7 +93,23 @@ impl DbBuilder for DefaultBuilder {
             if archive && project_dir.exists() {
                 let archived = project_dir
                     .with_extension(format!("archived.{}", Timestamp::now().as_dirname()));
-                fs::rename(&project_dir, &archived)?;
+                // LOW fix (2026-05-05 audit): the bare fs::rename was
+                // flagged as non-atomic on Windows. Reality is more
+                // nuanced — fs::rename IS atomic for the directory
+                // itself, but Windows fails the rename outright if
+                // any descendant file in project_dir has an open
+                // handle (Windows Defender / Explorer indexer / a
+                // straggling read-only connection). The error is
+                // transient: 100-500ms later the handle has closed.
+                // Pre-fix the user saw a hard rebuild failure.
+                //
+                // Retry with exponential backoff: 50ms / 100ms / 200ms
+                // / 500ms (~850ms total) before giving up. On non-
+                // Windows targets the first attempt always succeeds
+                // because POSIX rename works on directories whose
+                // descendants are open — the loop is no-op on the
+                // first iteration.
+                rename_with_retry(&project_dir, &archived)?;
                 warn!(
                     "archived {} -> {}",
                     project_dir.display(),
@@ -393,6 +409,42 @@ fn secure_perms(_path: &Path) -> DtResult<()> {
     // Windows: rely on default ACL (user-only); CLI install can call icacls
     // explicitly during install for stricter setup.
     Ok(())
+}
+
+/// LOW fix (2026-05-05 audit): retry fs::rename on transient Windows
+/// failures. Windows Defender, Explorer indexer, and stale read-only
+/// connections can hold file handles for a few hundred milliseconds
+/// after we close ours; rename fails with `ERROR_SHARING_VIOLATION`
+/// (32) or `ERROR_ACCESS_DENIED` (5) until those handles drop. On
+/// POSIX, rename always succeeds on the first attempt for
+/// directories whose descendants are open, so the loop is a no-op
+/// after iteration 0.
+///
+/// Total retry budget: 50 + 100 + 200 + 500 ≈ 850ms across 4
+/// attempts. The single-attempt path is preserved (first iteration
+/// has zero sleep before it).
+fn rename_with_retry(src: &Path, dst: &Path) -> DtResult<()> {
+    const BACKOFFS_MS: &[u64] = &[0, 50, 100, 200, 500];
+    let mut last_err: Option<std::io::Error> = None;
+    for &delay_ms in BACKOFFS_MS {
+        if delay_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        }
+        match fs::rename(src, dst) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last_err = Some(e);
+                // On non-Windows targets we give up after the first
+                // attempt — POSIX failures are not transient in the
+                // same way and retrying just wastes time.
+                #[cfg(not(windows))]
+                break;
+            }
+        }
+    }
+    Err(DtError::Io(
+        last_err.unwrap_or_else(|| std::io::Error::other("rename failed with no captured error")),
+    ))
 }
 
 #[cfg(test)]
