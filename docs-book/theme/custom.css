@@ -716,8 +716,12 @@ html.light .content pre .hljs-string,
 html.rust .content pre .hljs-string { color: #138a68; }
 html.light .content pre .hljs-number,
 html.rust .content pre .hljs-number { color: #b25d04; }
+/* A11Y-4 fix (2026-05-05 audit): code-comment color was #8a8a90 on
+   #ffffff at 13.5px = 3.23:1 contrast ratio, failing WCAG 4.5:1 for
+   normal-size text. Use --mneme-muted (#525258) for 7.28:1
+   (passes AAA). Italic preserved as a secondary affordance. */
 html.light .content pre .hljs-comment,
-html.rust .content pre .hljs-comment { color: #8a8a90; font-style: italic; }
+html.rust .content pre .hljs-comment { color: var(--mneme-muted); font-style: italic; }
 html.light .content pre .hljs-function,
 html.rust .content pre .hljs-function,
 html.light .content pre .hljs-title,
