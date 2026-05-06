@@ -283,6 +283,13 @@ fn compose_app_router(
     let api_router = api_graph::build_router(api_state);
 
     let mut app = Router::new().merge(health_router).merge(api_router);
+    // M-1 fix (2026-05-05 audit): cap request body size at 1 MiB on
+    // the entire daemon HTTP surface. The previous router had no
+    // DefaultBodyLimit, so a malicious local process could POST an
+    // unbounded payload and burn supervisor RAM. Most endpoints are
+    // GETs with empty bodies, so 1 MiB is generous for the rare
+    // POSTs while still blocking the abuse case.
+    app = app.layer(axum::extract::DefaultBodyLimit::max(1_048_576));
     match static_dir {
         Some(dir) => {
             // A2 EC2 root-cause fix (2026-04-27, second pass):
