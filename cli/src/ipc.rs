@@ -11,13 +11,12 @@
 //! That keeps the client trivially correct and lets the supervisor pool
 //! file descriptors however it likes.
 
+use crate::error::{CliError, CliResult};
+use common::ipc_codec;
+use common::query::{BlastItem, GodNode, RecallHit};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-use crate::error::{CliError, CliResult};
-use common::query::{BlastItem, GodNode, RecallHit};
 
 /// Default timeout for a single round-trip. Chosen to be generous enough
 /// that even cold-start operations (`build` on a 10k-file repo) succeed,
@@ -548,12 +547,10 @@ impl IpcClient {
     /// race where the supervisor respawns mid-call.
     pub async fn request(&self, request: IpcRequest) -> CliResult<IpcResponse> {
         let body = serde_json::to_vec(&request)?;
-        let payload = framed(&body);
 
         // First attempt — re-resolve the socket path now (Bug K).
         let socket_path = self.current_socket_path();
-        let first =
-            tokio::time::timeout(self.timeout, round_trip(&socket_path, payload.clone())).await;
+        let first = tokio::time::timeout(self.timeout, round_trip(&socket_path, &body)).await;
         match first {
             Ok(Ok(resp)) => Ok(resp),
             Ok(Err(e)) => {
@@ -570,11 +567,8 @@ impl IpcClient {
                             fresh = %refreshed.display(),
                             "supervisor.pipe changed mid-call; retrying with fresh path (Bug K)"
                         );
-                        let r2 = tokio::time::timeout(
-                            self.timeout,
-                            round_trip(&refreshed, payload.clone()),
-                        )
-                        .await;
+                        let r2 =
+                            tokio::time::timeout(self.timeout, round_trip(&refreshed, &body)).await;
                         if let Ok(Ok(resp)) = r2 {
                             return Ok(resp);
                         }
@@ -583,7 +577,7 @@ impl IpcClient {
                         // with the new error message.
                         if let Ok(Err(e2)) = r2 {
                             return self
-                                .handle_connect_failure(e2, &refreshed, payload, &request)
+                                .handle_connect_failure(e2, &refreshed, &body, &request)
                                 .await;
                         }
                         // Timeout on the refreshed retry — surface as a
@@ -595,7 +589,7 @@ impl IpcClient {
                         )));
                     }
                 }
-                self.handle_connect_failure(e, &socket_path, payload, &request)
+                self.handle_connect_failure(e, &socket_path, &body, &request)
                     .await
             }
             Err(_) => Err(CliError::Ipc(format!(
@@ -613,7 +607,7 @@ impl IpcClient {
         &self,
         e: CliError,
         socket_path: &Path,
-        payload: Vec<u8>,
+        body: &[u8],
         request: &IpcRequest,
     ) -> CliResult<IpcResponse> {
         // B-001/B-002: when the caller opted out of auto-spawn,
@@ -659,7 +653,7 @@ impl IpcClient {
         // the path one more time so the retry uses whatever the new
         // supervisor wrote into the discovery file.
         let retry_path = self.current_socket_path();
-        let retried = tokio::time::timeout(self.timeout, round_trip(&retry_path, payload))
+        let retried = tokio::time::timeout(self.timeout, round_trip(&retry_path, body))
             .await
             .map_err(|_| {
                 CliError::Ipc(format!(
@@ -678,46 +672,26 @@ impl IpcClient {
 }
 
 /// One round-trip: connect, write framed request, read framed response,
-/// disconnect. Pulled out of `IpcClient::round_trip` (which used to be a
-/// `&self` method reading `self.socket_path`) so the Bug K re-resolve
-/// branch in [`IpcClient::request`] can target a different `socket_path`
-/// without copying the body.
-async fn round_trip(socket_path: &Path, framed_request: Vec<u8>) -> CliResult<IpcResponse> {
+/// disconnect. Pulled out of `IpcClient::request` so the Bug K re-resolve
+/// branch can target a different `socket_path` without duplicating logic.
+///
+/// `body` is the raw JSON-serialised request (no length prefix). The
+/// length-prefix codec is applied by [`ipc_codec::write_frame`] /
+/// [`ipc_codec::read_frame`] — which also enforces the
+/// [`ipc_codec::MAX_FRAME_BYTES`] cap on the response.
+async fn round_trip(socket_path: &Path, body: &[u8]) -> CliResult<IpcResponse> {
     let mut stream = connect_stream(socket_path).await?;
 
-    stream
-        .write_all(&framed_request)
+    ipc_codec::write_frame(&mut stream, body)
         .await
         .map_err(|e| CliError::Ipc(format!("write failed: {e}")))?;
-    stream
-        .flush()
-        .await
-        .map_err(|e| CliError::Ipc(format!("flush failed: {e}")))?;
 
     // Read one length-prefixed response.
-    let mut len_buf = [0u8; 4];
-    stream
-        .read_exact(&mut len_buf)
+    let resp_body = ipc_codec::read_frame(&mut stream)
         .await
-        .map_err(|e| CliError::Ipc(format!("short read of length prefix: {e}")))?;
-    let len = u32::from_be_bytes(len_buf) as usize;
+        .map_err(|e| CliError::Ipc(format!("read response failed: {e}")))?;
 
-    // Cap the response size so a malicious or buggy supervisor can't
-    // OOM the CLI. 64 MiB is generous for status / recall payloads.
-    const MAX_RESPONSE: usize = 64 * 1024 * 1024;
-    if len > MAX_RESPONSE {
-        return Err(CliError::Ipc(format!(
-            "response too large: {len} bytes (limit {MAX_RESPONSE})"
-        )));
-    }
-
-    let mut body = vec![0u8; len];
-    stream
-        .read_exact(&mut body)
-        .await
-        .map_err(|e| CliError::Ipc(format!("short read of body: {e}")))?;
-
-    let parsed: IpcResponse = serde_json::from_slice(&body)?;
+    let parsed: IpcResponse = serde_json::from_slice(&resp_body)?;
     Ok(parsed)
 }
 
@@ -851,24 +825,9 @@ async fn wait_for_supervisor_with_resolver(client: &IpcClient, deadline: Duratio
     }
 }
 
-/// Frame `body` with a 4-byte big-endian length prefix.
-fn framed(body: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(4 + body.len());
-    out.extend_from_slice(&(body.len() as u32).to_be_bytes());
-    out.extend_from_slice(body);
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn frame_prefixes_length_big_endian() {
-        let f = framed(b"hello");
-        assert_eq!(&f[0..4], &[0, 0, 0, 5]);
-        assert_eq!(&f[4..], b"hello");
-    }
 
     #[test]
     fn request_round_trips_json() {

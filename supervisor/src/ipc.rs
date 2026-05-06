@@ -12,6 +12,7 @@ use crate::child::ChildStatus;
 use crate::error::SupervisorError;
 use crate::job_queue::JobQueueSnapshot;
 use crate::manager::{ChildManager, ChildSnapshot};
+use common::ipc_codec;
 use common::jobs::{Job, JobId, JobOutcome};
 use common::query::{BlastItem, GodNode, RecallHit};
 use interprocess::local_socket::tokio::{Listener, Stream};
@@ -28,14 +29,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Notify, Semaphore};
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
-
-/// Maximum size of a single framed IPC message (16 MiB). A connection
-/// claiming a larger frame is treated as malformed and closed.
-const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
 /// Per-read timeout on an IPC connection (NEW-016). A client that
 /// connects but never writes a frame would otherwise hold a tokio
@@ -609,46 +605,21 @@ async fn handle_conn(
     manager: Arc<ChildManager>,
     shutdown: Arc<Notify>,
 ) -> Result<(), SupervisorError> {
-    // I-4 / I-5: reuse a single body buffer per connection. A long-lived
-    // IPC client (`mneme daemon status` running in a tight loop) would
-    // otherwise allocate a fresh Vec<u8> per request — measurable in the
-    // working-set delta over a 100-poll burst.
-    //
-    // AI-DNA pace: preallocate 64 KiB (covers the typical command body —
-    // recall queries, blast result lists, status payloads). Larger frames
-    // (up to MAX_FRAME_BYTES = 16 MiB) still grow the buffer once on
-    // first use; the preallocation just removes the small-message hot-
-    // path realloc storm visible when AI fires hundreds of MCP calls
-    // per second. See `feedback_mneme_ai_dna_pace.md` Principle B.
-    let mut body: Vec<u8> = Vec::with_capacity(64 * 1024);
     loop {
-        // Read a length prefix (u32 BE), bounded by IPC_READ_TIMEOUT
-        // (NEW-016) so a client that opens the connection and stops
-        // writing can't park a tokio task forever.
-        let mut len_buf = [0u8; 4];
-        let read_result =
-            tokio::time::timeout(IPC_READ_TIMEOUT, stream.read_exact(&mut len_buf)).await;
-        match read_result {
-            Ok(Ok(_)) => {}
+        // Read a length-framed command (NEW-016): bound the entire
+        // read by IPC_READ_TIMEOUT so idle or stalled clients cannot
+        // park a tokio task forever.
+        let body = match tokio::time::timeout(IPC_READ_TIMEOUT, ipc_codec::read_frame(&mut stream))
+            .await
+        {
+            Ok(Ok(b)) => b,
             Ok(Err(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(()),
-            Ok(Err(e)) => return Err(SupervisorError::Io(e)),
-            Err(_) => {
-                debug!("ipc connection idle past timeout; closing");
-                return Ok(());
+            Ok(Err(e)) if e.kind() == std::io::ErrorKind::InvalidData => {
+                return Err(SupervisorError::Ipc(e.to_string()));
             }
-        }
-        let len = u32::from_be_bytes(len_buf) as usize;
-        if len > MAX_FRAME_BYTES {
-            return Err(SupervisorError::Ipc(format!("frame too large: {len}")));
-        }
-
-        body.clear();
-        body.resize(len, 0);
-        match tokio::time::timeout(IPC_READ_TIMEOUT, stream.read_exact(&mut body)).await {
-            Ok(Ok(_)) => {}
             Ok(Err(e)) => return Err(SupervisorError::Io(e)),
             Err(_) => {
-                debug!("ipc connection stalled mid-frame; closing");
+                debug!("ipc connection idle/stalled past timeout; closing");
                 return Ok(());
             }
         };
@@ -2200,10 +2171,7 @@ async fn write_response(
     resp: &ControlResponse,
 ) -> Result<(), SupervisorError> {
     let body = serde_json::to_vec(resp)?;
-    let len = (body.len() as u32).to_be_bytes();
-    stream.write_all(&len).await?;
-    stream.write_all(&body).await?;
-    stream.flush().await?;
+    ipc_codec::write_frame(stream, &body).await?;
     Ok(())
 }
 

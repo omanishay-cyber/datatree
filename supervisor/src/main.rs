@@ -13,13 +13,13 @@
 #![forbid(unsafe_code)]
 
 use clap::{Parser, Subcommand};
+use common::ipc_codec;
 use mneme_daemon::config::SupervisorConfig;
 use mneme_daemon::error::SupervisorError;
 use mneme_daemon::ipc::{self, ControlCommand, ControlResponse};
 use mneme_daemon::service::{self, ServiceAction};
 use mneme_daemon::watcher::{self, WatcherStatsHandle, DEFAULT_DEBOUNCE};
 use std::path::{Path, PathBuf};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::error;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -364,38 +364,21 @@ async fn round_trip(
     let mut stream = ipc::connect_client(socket).await?;
 
     let body = serde_json::to_vec(cmd)?;
-    let len = (body.len() as u32).to_be_bytes();
-    stream.write_all(&len).await?;
-    stream.write_all(&body).await?;
-    stream.flush().await?;
+    ipc_codec::write_frame(&mut stream, &body).await?;
 
-    // BUG-A4-007 fix (2026-05-04): wrap response reads in a timeout so
-    // a wedged daemon does not hang the CLI forever. The previous code
-    // awaited `read_exact` with no upper bound; if the daemon accepted
-    // the connection but its dispatcher was starved (e.g. by sync
-    // SQLite work in api_graph BUG-A4-001) the client would block
-    // indefinitely -- only Ctrl+C broke out.
-    let mut len_buf = [0u8; 4];
-    match tokio::time::timeout(CLIENT_READ_TIMEOUT, stream.read_exact(&mut len_buf)).await {
-        Ok(r) => r?,
-        Err(_) => {
-            return Err(SupervisorError::Ipc(format!(
-                "daemon not responding (no reply within {:?}); is the supervisor wedged?",
-                CLIENT_READ_TIMEOUT
-            )));
-        }
-    };
-    let resp_len = u32::from_be_bytes(len_buf) as usize;
-    let mut resp_body = vec![0u8; resp_len];
-    match tokio::time::timeout(CLIENT_READ_TIMEOUT, stream.read_exact(&mut resp_body)).await {
-        Ok(r) => r?,
-        Err(_) => {
-            return Err(SupervisorError::Ipc(format!(
-                "daemon not responding mid-read (timeout after {:?})",
-                CLIENT_READ_TIMEOUT
-            )));
-        }
-    };
+    // BUG-A4-007 fix (2026-05-04): wrap the response read in a timeout so
+    // a wedged daemon does not hang the CLI forever.
+    let resp_body =
+        match tokio::time::timeout(CLIENT_READ_TIMEOUT, ipc_codec::read_frame(&mut stream)).await {
+            Ok(Ok(b)) => b,
+            Ok(Err(e)) => return Err(SupervisorError::Io(e)),
+            Err(_) => {
+                return Err(SupervisorError::Ipc(format!(
+                    "daemon not responding (no reply within {:?}); is the supervisor wedged?",
+                    CLIENT_READ_TIMEOUT
+                )));
+            }
+        };
 
     let resp: ControlResponse = serde_json::from_slice(&resp_body)?;
     Ok(resp)

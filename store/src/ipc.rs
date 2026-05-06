@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{error, info, warn};
 
-use common::{error::DtResult, ids::ProjectId, layer::DbLayer, paths::PathManager};
+use common::{error::DtResult, ids::ProjectId, ipc_codec, layer::DbLayer, paths::PathManager};
 
 use crate::{
     inject::InjectOptions,
@@ -201,18 +201,10 @@ where
     S: AsyncReadExt + AsyncWriteExt + Unpin,
 {
     loop {
-        let mut len_buf = [0u8; 4];
-        if conn.read_exact(&mut len_buf).await.is_err() {
-            return Ok(());
-        }
-        let len = u32::from_be_bytes(len_buf) as usize;
-        if len > 64 * 1024 * 1024 {
-            return Ok(()); // cap at 64MB
-        }
-        let mut buf = vec![0u8; len];
-        if conn.read_exact(&mut buf).await.is_err() {
-            return Ok(());
-        }
+        let buf = match ipc_codec::read_frame(&mut conn).await {
+            Ok(b) => b,
+            Err(_) => return Ok(()), // peer closed or oversized frame
+        };
 
         let req: Request = match serde_json::from_slice(&buf) {
             Ok(r) => r,
@@ -440,11 +432,7 @@ async fn write_response<S: AsyncWriteExt + Unpin>(
     resp: &WireResponse,
 ) -> std::io::Result<()> {
     let bytes = serde_json::to_vec(resp).unwrap_or_default();
-    let len = (bytes.len() as u32).to_be_bytes();
-    conn.write_all(&len).await?;
-    conn.write_all(&bytes).await?;
-    conn.flush().await?;
-    Ok(())
+    ipc_codec::write_frame(conn, &bytes).await
 }
 
 /// Helper for non-store crates to construct a path manager.

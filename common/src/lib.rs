@@ -11,6 +11,7 @@ pub mod error;
 pub mod event;
 pub mod finding;
 pub mod ids;
+pub mod ipc_codec;
 pub mod jobs;
 pub mod layer;
 pub mod node;

@@ -39,7 +39,6 @@ use interprocess::local_socket::{GenericNamespaced, ToNsName};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Default timeout for the one-shot report. Kept small because the
 /// worker has more jobs to process; a deaf supervisor must not stall it.
@@ -106,25 +105,14 @@ pub async fn report_complete_to(
     socket_path: &Path,
 ) -> Result<(), ReportError> {
     let msg = WorkerCompleteMessage::WorkerCompleteJob { job_id, outcome };
+    // BUG-A2-036 fix: ipc_codec::write_frame checks for u32 overflow
+    // before writing the length prefix, so a body > 4 GiB is caught
+    // here and surfaced as ReportError::Io rather than silently
+    // truncating the length and desynchronising the framing.
     let body = serde_json::to_vec(&msg).map_err(ReportError::Encode)?;
-    // BUG-A2-036 fix: explicit overflow check on the u32 length prefix.
-    // Pre-fix `body.len() as u32` truncated bodies > 4 GB and the
-    // supervisor mis-parsed subsequent bytes as a new message,
-    // desynchronising the protocol forever. We never write a body we
-    // can't honestly describe in the prefix.
-    let body_len: u32 = body.len().try_into().map_err(|_| {
-        ReportError::Io(format!(
-            "report body too large: {} bytes (max {})",
-            body.len(),
-            u32::MAX
-        ))
-    })?;
-    let mut framed = Vec::with_capacity(4 + body.len());
-    framed.extend_from_slice(&body_len.to_be_bytes());
-    framed.extend_from_slice(&body);
 
     // First attempt — use the path the caller passed in.
-    let first = run_round_trip(socket_path, &framed).await;
+    let first = run_round_trip(socket_path, &body).await;
     if first.is_ok() {
         return first;
     }
@@ -139,46 +127,41 @@ pub async fn report_complete_to(
                 fresh = %refreshed.display(),
                 "supervisor.pipe changed mid-call; retrying with fresh path (Bug K)"
             );
-            return run_round_trip(&refreshed, &framed).await;
+            return run_round_trip(&refreshed, &body).await;
         }
     }
     first
 }
 
-/// Internal round-trip: connect, write, flush, read+discard reply.
+/// Internal round-trip: connect, write framed body, flush, read+discard reply.
 /// Wrapped in [`DEFAULT_REPORT_TIMEOUT`] so a wedged supervisor never
 /// stalls the worker.
-async fn run_round_trip(socket_path: &Path, framed: &[u8]) -> Result<(), ReportError> {
+async fn run_round_trip(socket_path: &Path, body: &[u8]) -> Result<(), ReportError> {
     let work = async {
         let mut stream = connect_stream(socket_path).await?;
-        stream
-            .write_all(framed)
+
+        // BUG-A2-036: write_frame enforces u32 overflow check on the
+        // length prefix before any bytes hit the wire.
+        crate::ipc_codec::write_frame(&mut stream, body)
             .await
             .map_err(|e| ReportError::Io(format!("write: {e}")))?;
-        stream
-            .flush()
-            .await
-            .map_err(|e| ReportError::Io(format!("flush: {e}")))?;
 
         // Consume the supervisor's reply so the pipe isn't left with
         // data trailing behind us. Any parse error is ignored — we
         // already delivered the notification.
-        // BUG-A2-037 fix: the cap is now `MAX_REPLY_BYTES` (named const)
-        // and oversize replies log a warn so silent truncation is
-        // discoverable.
-        let mut len_buf = [0u8; 4];
-        if stream.read_exact(&mut len_buf).await.is_ok() {
-            let len = u32::from_be_bytes(len_buf) as usize;
-            if len <= MAX_REPLY_BYTES {
-                let mut buf = vec![0u8; len];
-                let _ = stream.read_exact(&mut buf).await;
-            } else {
+        // BUG-A2-037 fix: read_frame caps at ipc_codec::MAX_FRAME_BYTES
+        // (16 MiB). Replies above that are rejected with InvalidData;
+        // replies up to MAX_REPLY_BYTES (1 MiB) are warn-logged below so
+        // oversize acknowledgements remain discoverable.
+        match crate::ipc_codec::read_frame(&mut stream).await {
+            Ok(buf) if buf.len() > MAX_REPLY_BYTES => {
                 tracing::warn!(
-                    reply_bytes = len,
+                    reply_bytes = buf.len(),
                     cap = MAX_REPLY_BYTES,
-                    "supervisor reply exceeds MAX_REPLY_BYTES; discarding tail"
+                    "supervisor reply exceeds MAX_REPLY_BYTES; discarding"
                 );
             }
+            _ => {}
         }
         Ok::<(), ReportError>(())
     };

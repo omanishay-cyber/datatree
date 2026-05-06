@@ -14,9 +14,10 @@
 
 use std::sync::Arc;
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
+use common::ipc_codec;
 use common::jobs::{JobId, JobOutcome};
 use common::worker_ipc;
 use mneme_scanners::{
@@ -309,14 +310,9 @@ async fn main() -> std::io::Result<()> {
                     continue;
                 }
             };
-            let len = (bytes.len() as u32).to_be_bytes();
-            if stdout.write_all(&len).await.is_err() {
+            if ipc_codec::write_frame(&mut stdout, &bytes).await.is_err() {
                 break;
             }
-            if stdout.write_all(&bytes).await.is_err() {
-                break;
-            }
-            let _ = stdout.flush().await;
         }
     });
 
