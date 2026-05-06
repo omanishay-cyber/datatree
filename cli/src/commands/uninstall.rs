@@ -113,6 +113,88 @@ fn compute_uninstall_status(target_dir: &std::path::Path) -> (&'static str, Vec<
     ("partial", leftovers)
 }
 
+/// HIGH-17 fix: validate the resolved `MNEME_HOME` / install root before
+/// it ever reaches a shell-parsed string in the detached uninstall path.
+///
+/// Threat model
+/// ============
+/// `purge_mneme_state` resolves the install dir through
+/// `PathManager::default_root()`, which honours the `MNEME_HOME` env var
+/// (HOME-bypass-uninstall:227 fix). On Windows we then spawn a detached
+/// `cmd /c "ping ... & rmdir /s /q <PATH> & powershell ..."` chain. If
+/// `<PATH>` contains shell metacharacters such as `&`, `|`, `^`, `>`,
+/// `<`, `"`, etc., `cmd.exe` interprets them as command separators and
+/// the attacker-controlled segment runs as additional commands at the
+/// uninstalling user's privilege level.
+///
+/// Same-user attacker model -- but it lowers the bar significantly: any
+/// process that can write the user's environment block (a locked-screen
+/// child process, a malicious browser extension that can call
+/// `SetEnvironmentVariable`, a phishing payload that drops a `.bat`
+/// wrapper around `mneme uninstall`) becomes a code-execution primitive.
+///
+/// Predicate
+/// =========
+/// A path is acceptable only if:
+///   1. It is absolute (rooted on Unix, has prefix+root on Windows).
+///   2. It contains NO shell-metacharacter byte: `&`, `|`, `^`, `<`,
+///      `>`, `"`, `'`, backtick, `%`, `$`, `\n`, `\r`, NUL.
+///   3. (Defence-in-depth on Windows) it does NOT contain wildcard
+///      glyphs `*` or `?` -- the receiver `Remove-Item -LiteralPath`
+///      ignores these but defenders should not rely on the receiver to
+///      do the sanitising. A legitimate `~/.mneme` install never
+///      contains them.
+///
+/// Returns
+/// =======
+/// `Ok(())` when the path is safe to embed in a shell or argv.
+/// `Err(String)` with a human-readable reason otherwise. The caller
+/// (`purge_mneme_state`) emits the string via `tracing::warn` and
+/// declines to spawn the detached child -- the user is told to remove
+/// the dir manually rather than having unsafe code execute on their
+/// behalf.
+///
+/// Defence-in-depth note: even with the call site refactored to pass
+/// the path through PowerShell `-LiteralPath` (no shell parsing), this
+/// validator is still applied at the boundary so future call sites that
+/// reach for the raw `mneme_dir` string fail loud, not silent.
+pub fn sanitize_mneme_home(path: &std::path::Path) -> Result<(), String> {
+    // (1) absolute path
+    if !path.is_absolute() {
+        return Err(format!(
+            "MNEME_HOME must be an absolute path; got {:?}",
+            path
+        ));
+    }
+    // (2) shell-metacharacter scan over the textual representation.
+    // We scan the OsStr lossy form so non-UTF-8 paths still surface
+    // their bytes (lossy substitution is harmless: we only check
+    // membership against the metachar set, which is ASCII).
+    let s = path.to_string_lossy();
+    const FORBIDDEN: &[char] = &[
+        '&', '|', '^', '<', '>', '"', '\'', '`', '%', '$', '\n', '\r', '\0',
+    ];
+    if let Some(bad) = s.chars().find(|c| FORBIDDEN.contains(c)) {
+        return Err(format!(
+            "MNEME_HOME contains forbidden shell metacharacter {:?}; \
+             refusing to embed in detached uninstall command. \
+             Path was: {:?}",
+            bad, path
+        ));
+    }
+    // (3) wildcards (Windows-relevant; harmless on Unix but still rejected
+    // for consistency)
+    if s.contains('*') || s.contains('?') {
+        return Err(format!(
+            "MNEME_HOME contains wildcard character (* or ?); \
+             refusing to embed in detached uninstall command. \
+             Path was: {:?}",
+            path
+        ));
+    }
+    Ok(())
+}
+
 /// CLI args for `mneme uninstall`.
 #[derive(Debug, Args)]
 pub struct UninstallArgs {
@@ -928,18 +1010,73 @@ fn purge_mneme_state() {
         // bare-name fallback is defensive (we'd rather succeed with
         // possibly-hijacked ping than fail outright, since the only
         // consequence is the 11-second wait gets replaced).
+        // HIGH-17 fix: validate the resolved install root BEFORE we
+        // build any shell-parsed string. If MNEME_HOME points somewhere
+        // that contains shell metacharacters (`&`, `|`, `"`, ...), we
+        // refuse to spawn the detached child rather than letting the
+        // attacker-controlled segment run as additional commands. The
+        // user is told to remove the dir manually instead.
+        if let Err(reason) = sanitize_mneme_home(&mneme_dir) {
+            warn!(
+                error = %reason,
+                path = %mneme_dir.display(),
+                "refusing to schedule detached uninstall: MNEME_HOME failed sanitisation. \
+                 Remove the directory manually with `Remove-Item -Recurse -Force -LiteralPath '<path>'`."
+            );
+            // Write a "failed" marker so `mneme uninstall --status`
+            // surfaces the rejection rather than silently exiting 0.
+            let failed = UninstallStatus {
+                status: "failed".to_string(),
+                remaining_paths: vec![mneme_dir.clone()],
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            };
+            if let Ok(text) = serde_json::to_string_pretty(&failed) {
+                let _ = std::fs::write(&marker_path, text);
+            }
+            return;
+        }
+
+        // HIGH-17 fix: the previous implementation interpolated
+        // `mneme_dir.display()` into a `cmd /c "...rmdir /s /q <PATH>..."`
+        // shell-parsed string. That made the detached child a code-exec
+        // primitive whenever MNEME_HOME was attacker-controlled.
+        //
+        // The new design eliminates the shell-parsed path entirely:
+        //
+        //   Option A (preferred): the rmdir step is moved out of cmd /c
+        //   into the PowerShell -EncodedCommand body. PowerShell's
+        //   `Remove-Item -LiteralPath $target` treats `$target` as a
+        //   literal path (no wildcard / metachar interpretation) and
+        //   the body is single-quote-escaped (`' -> ''`) so the path
+        //   value is opaque to the parser. The script body is base64
+        //   UTF-16LE encoded so cmd never sees the path text at all.
+        //
+        //   Option B (defence-in-depth): the sanitize_mneme_home guard
+        //   above rejects any metachar before we get here.
+        //
+        // The remaining cmd /c chain only sequences absolute-path
+        // executables (ping, powershell) -- neither argument list
+        // contains user-controlled text after the HIGH-17 fix.
         let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
         let ping_exe = format!("{}\\System32\\ping.exe", system_root);
         let powershell_exe = format!(
             "{}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
             system_root
         );
+        // build_uninstall_finalize_script now ALSO performs the rmdir
+        // (was previously done by cmd's `rmdir /s /q`). The script
+        // body still single-quote-escapes both paths, so attacker
+        // input cannot break out of the string literal even if it
+        // somehow slipped past sanitize_mneme_home.
         let script_body = build_uninstall_finalize_script(&mneme_dir, &marker_path);
         let encoded_command = encode_powershell_command(&script_body);
+        // No user-controlled text in this format string anymore. Both
+        // executable paths come from %SystemRoot% (or the hardcoded
+        // C:\\Windows fallback), and the encoded_command is a base64
+        // string by construction.
         let cmd_str = format!(
-            "\"{}\" -n 11 127.0.0.1 >nul & rmdir /s /q \"{}\" & \"{}\" -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
+            "\"{}\" -n 11 127.0.0.1 >nul & \"{}\" -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
             ping_exe,
-            mneme_dir.display(),
             powershell_exe,
             encoded_command,
         );
@@ -1016,16 +1153,41 @@ fn build_uninstall_finalize_script(
     mneme_dir: &std::path::Path,
     marker_path: &std::path::Path,
 ) -> String {
-    // PowerShell single-quote escape: ' → ''
+    // PowerShell single-quote escape: ' → ''. Both paths embed inside
+    // single-quoted PowerShell string literals; doubling apostrophes
+    // closes any quote-escape attack vector. Combined with the upstream
+    // `sanitize_mneme_home` filter (HIGH-17), there is no input path
+    // an attacker can craft that breaks out of the literal -- even if
+    // they bypass one layer.
     let mneme_dir_pwsh = mneme_dir.display().to_string().replace('\'', "''");
     let marker_path_pwsh = marker_path.display().to_string().replace('\'', "''");
+    // HIGH-17 fix: this script body now performs BOTH the rmdir AND
+    // the marker write. Previously the rmdir ran in cmd.exe as
+    // `rmdir /s /q <PATH>`, which made the path argument vulnerable to
+    // shell-metachar injection from MNEME_HOME. PowerShell's
+    // `Remove-Item -Recurse -Force -LiteralPath $target` reads the
+    // literal value of $target -- no wildcard expansion, no command
+    // substitution, no metachar interpretation.
+    //
     // `Get-ChildItem -Recurse` on a missing path errors under
-    // -ErrorAction Stop; we wrap in try { } so the marker still lands.
+    // -ErrorAction Stop; we set SilentlyContinue + wrap in try { } so
+    // the marker still lands even if rmdir fails.
     format!(
         r#"$ErrorActionPreference = 'SilentlyContinue'
 $target = '{mneme_dir_pwsh}'
 $marker = '{marker_path_pwsh}'
 $timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+
+# HIGH-17: rmdir step (replaces the old cmd.exe `rmdir /s /q <PATH>`).
+# -LiteralPath rejects wildcard interpretation; -Force removes read-only
+# items; -Recurse walks the tree. ErrorActionPreference=SilentlyContinue
+# means a partial failure (e.g. self-locked mneme.exe still in bin/)
+# does not abort the marker-write step below.
+try {{
+    if (Test-Path -LiteralPath $target) {{
+        Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
+    }}
+}} catch {{}}
 
 if (-not (Test-Path -LiteralPath $target)) {{
     $payload = @{{
