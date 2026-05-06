@@ -352,28 +352,26 @@ impl Ledger for SqliteLedger {
             ],
         )?;
 
-        // Keep the FTS mirror in sync (manual: we use a contentless fts5).
-        let fts_text = format!(
-            "{}\n{}",
-            entry.summary,
-            entry.rationale.as_deref().unwrap_or("")
-        );
-        // BUG-A2-009 fix: surface FTS write failures via warn! instead of
-        // silently swallowing them with `.ok()`. Without this, callers see
-        // empty `recall()` results despite the entry being stored — a
-        // confusing silent-degradation mode. We deliberately do NOT
-        // propagate the error: append should still succeed for the user
-        // even if the FTS mirror is broken (table dropped, etc).
-        if let Err(e) = tx.execute(
-            "INSERT INTO ledger_entries_fts(rowid, text) VALUES ((SELECT _rowid_ FROM ledger_entries WHERE id = ?1), ?2)",
-            params![entry.id, fts_text],
-        ) {
-            warn!(
-                error = %e,
-                entry_id = %entry.id,
-                "FTS index update failed; entry stored but not keyword-searchable"
-            );
-        }
+        // Audit fix C2 (2026-05-06 multi-agent fan-out, security-sentinel):
+        // do NOT manually mirror to ledger_entries_fts here. Both schemas
+        // (store/src/schema.rs::TASKS_SQL — the daemon's tasks.db
+        // initialiser — and our own LEDGER_INIT_SQL below) declare an
+        // AFTER INSERT trigger `ledger_entries_ai` that auto-syncs the
+        // FTS mirror from (summary, rationale). When this code ran ALSO
+        // a manual INSERT, every append created TWO FTS rows for the
+        // same entry rowid: one from the trigger, one from the manual
+        // insert. ledger_entries_fts is contentless fts5 with no UNIQUE
+        // constraint on rowid, so the duplicate persisted, recall()
+        // returned the same id twice (deduped after the join, so user-
+        // visible only as a 2× pool inflation that pushed real hits
+        // past `query.limit`), and the FTS table grew at 2× the
+        // expected rate. Pure trigger-driven sync — single source of
+        // truth.
+        //
+        // The earlier BUG-A2-009 warn! about FTS write failures is now
+        // obsolete: triggers fail with the parent INSERT (transaction
+        // rolls back), so a broken FTS table surfaces as a user-visible
+        // append() error, not silent degradation.
         tx.commit()?;
         Ok(entry.id)
     }
@@ -672,6 +670,28 @@ CREATE INDEX IF NOT EXISTS idx_ledger_kind ON ledger_entries(kind);
 CREATE VIRTUAL TABLE IF NOT EXISTS ledger_entries_fts USING fts5(
     text, tokenize='porter'
 );
+
+-- Audit fix C2 (2026-05-06 multi-agent fan-out, security-sentinel):
+-- mirror the AFTER INSERT/DELETE/UPDATE triggers from
+-- store/src/schema.rs::TASKS_SQL so standalone ledger callers get
+-- the same trigger-driven FTS sync. Required to make append()'s
+-- removal of the manual INSERT INTO ledger_entries_fts safe in
+-- both daemon-managed and standalone modes.
+CREATE TRIGGER IF NOT EXISTS ledger_entries_ai AFTER INSERT ON ledger_entries
+BEGIN
+    INSERT INTO ledger_entries_fts(rowid, text)
+    VALUES (new.rowid, new.summary || ' ' || COALESCE(new.rationale, ''));
+END;
+CREATE TRIGGER IF NOT EXISTS ledger_entries_ad AFTER DELETE ON ledger_entries
+BEGIN
+    DELETE FROM ledger_entries_fts WHERE rowid = old.rowid;
+END;
+CREATE TRIGGER IF NOT EXISTS ledger_entries_au AFTER UPDATE ON ledger_entries
+BEGIN
+    DELETE FROM ledger_entries_fts WHERE rowid = old.rowid;
+    INSERT INTO ledger_entries_fts(rowid, text)
+    VALUES (new.rowid, new.summary || ' ' || COALESCE(new.rationale, ''));
+END;
 "#;
 
 // ---------------------------------------------------------------------------
@@ -755,5 +775,52 @@ mod tests {
         assert!((cosine(&a, &b) - 1.0).abs() < 1e-5);
         let c = vec![0.0, 1.0];
         assert!(cosine(&a, &c).abs() < 1e-5);
+    }
+
+    /// Audit fix C2 regression test (2026-05-06): each ledger
+    /// `append` MUST result in exactly ONE row in
+    /// `ledger_entries_fts`, not two. Pre-fix the trigger AND the
+    /// manual INSERT both fired, doubling the FTS row count and
+    /// inflating recall pools by 2× (which pushed real hits past
+    /// `query.limit`).
+    #[test]
+    fn fts_mirror_has_exactly_one_row_per_append() {
+        let dir = tempdir().unwrap();
+        let mut led = SqliteLedger::open(dir.path().join("tasks.db")).unwrap();
+        let id = led
+            .append(mk_entry(
+                "sess-fts",
+                StepKind::Decision {
+                    chosen: "TriggerOnly".into(),
+                    rejected: vec!["DualWrite".into()],
+                },
+                "single FTS row per append",
+            ))
+            .unwrap();
+
+        // Reach into the underlying connection to count FTS rows
+        // for this entry's rowid. We use a direct rusqlite::Connection
+        // open of the same file rather than borrowing self.conn
+        // because Ledger is not Send and the test is single-threaded.
+        let conn = rusqlite::Connection::open(dir.path().join("tasks.db")).unwrap();
+        let parent_rowid: i64 = conn
+            .query_row(
+                "SELECT _rowid_ FROM ledger_entries WHERE id = ?1",
+                params![&id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let fts_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ledger_entries_fts WHERE rowid = ?1",
+                params![parent_rowid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            fts_count, 1,
+            "expected exactly one FTS row per append, got {fts_count} \
+             (regression: trigger + manual insert both fired)"
+        );
     }
 }
