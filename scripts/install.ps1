@@ -1115,6 +1115,76 @@ if ($UsePreExtracted) {
             Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
             exit 1
         }
+
+        # Audit fix NEW-CRIT-3 (2026-05-06 multi-agent fan-out,
+        # security-sentinel): verify the downloaded archive against
+        # the release's release-checksums.json sidecar. Without this,
+        # a TLS MITM or compromised mirror can substitute a malicious
+        # zip that we then Expand-Archive straight into ~/.mneme. The
+        # bootstrap entry point (release/bootstrap-install.ps1) already
+        # does this via $ExpectedHashes — scripts/install.ps1 was the
+        # only download path that didn't.
+        #
+        # Manifest is best-effort: legacy releases that pre-date
+        # gen-release-checksums.ps1 (anything before v0.3.2-A7-001)
+        # may not ship the sidecar. We warn and continue so users on
+        # those tags aren't blocked. Once the tag DOES ship a
+        # manifest, hash mismatch is fatal.
+        $manifestUrl = "https://github.com/{0}/releases/download/{1}/release-checksums.json" -f $Repo, $ReleaseTag
+        $manifestPath = Join-Path $Tmp 'release-checksums.json'
+        Write-Info "fetching SHA-256 manifest"
+        $manifestOk = $false
+        try {
+            Invoke-WebRequest -Uri $manifestUrl -OutFile $manifestPath -UseBasicParsing -Headers $Headers -ErrorAction Stop
+            $manifestOk = $true
+        } catch {
+            $manifestOk = $false
+        }
+
+        if ($manifestOk -and (Test-Path -LiteralPath $manifestPath) -and ((Get-Item -LiteralPath $manifestPath).Length -gt 0)) {
+            try {
+                $manifestObj = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+            } catch {
+                Write-Warn ("release-checksums.json malformed; cannot verify integrity: {0}" -f $_.Exception.Message)
+                $manifestObj = $null
+            }
+            if ($manifestObj -and $manifestObj.files) {
+                # Manifest keys are file basenames (per
+                # gen-release-checksums.ps1). $Asset is the basename.
+                $expected = $null
+                foreach ($prop in $manifestObj.files.PSObject.Properties) {
+                    if ($prop.Name -eq $Asset) {
+                        $expected = ([string]$prop.Value).ToLowerInvariant()
+                        break
+                    }
+                }
+                if ($expected) {
+                    $actualHash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                    if ($actualHash -eq $expected) {
+                        Write-OK ("archive SHA-256 verified ({0})" -f $actualHash)
+                    } else {
+                        Write-Fail "ARCHIVE INTEGRITY CHECK FAILED"
+                        Write-Fail ("  asset    : {0}" -f $Asset)
+                        Write-Fail ("  expected : {0}" -f $expected)
+                        Write-Fail ("  actual   : {0}" -f $actualHash)
+                        Write-Fail ("  source   : {0}" -f $AssetEntry.browser_download_url)
+                        Write-Fail ("  manifest : {0}" -f $manifestUrl)
+                        Write-Fail ""
+                        Write-Fail "  Either the release was retagged without"
+                        Write-Fail "  regenerating release-checksums.json, or the"
+                        Write-Fail "  download was tampered with. Refusing to extract."
+                        Write-Fail ("  Re-run with a fresh tarball or report at https://github.com/{0}/issues" -f $Repo)
+                        Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
+                        exit 1
+                    }
+                } else {
+                    Write-Warn ("asset {0} not pinned in release-checksums.json - skipping integrity check" -f $Asset)
+                }
+            }
+        } else {
+            Write-Warn "release-checksums.json not available - skipping integrity check"
+            Write-Warn ("  this release pre-dates SHA-256 pinning. Tag: {0}" -f $ReleaseTag)
+        }
     }
 
     if (-not (Test-Path $MnemeHome)) {

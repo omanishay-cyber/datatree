@@ -687,6 +687,93 @@ else
                 exit 1
             }
         fi
+
+        # Audit fix NEW-CRIT-3 (2026-05-06 multi-agent fan-out,
+        # security-sentinel): verify the downloaded archive against
+        # the release's release-checksums.json sidecar. Without this
+        # step, a TLS MITM or compromised mirror can substitute a
+        # malicious tarball and we extract it straight into ~/.mneme.
+        # The bootstrap entry points (release/install-{mac,linux}.sh
+        # via release/lib-common.sh::load_hash_manifest) already do
+        # this — scripts/install.sh was the only download path that
+        # didn't.
+        #
+        # Manifest is best-effort: legacy releases that pre-date
+        # gen-release-checksums.ps1 (anything before v0.3.2-A7-001)
+        # may not ship the sidecar. We warn and continue rather than
+        # fail-hard so users on those tags aren't blocked. Once a
+        # tag DOES ship a manifest, mismatch is fatal.
+        MANIFEST_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/release-checksums.json"
+        MANIFEST_FILE="${TMP}/release-checksums.json"
+        info "fetching SHA-256 manifest"
+        manifest_ok=0
+        if [ "${HAVE_CURL}" -eq 1 ]; then
+            if curl -fsSL --retry 3 -o "${MANIFEST_FILE}" "${MANIFEST_URL}" 2>/dev/null; then
+                manifest_ok=1
+            fi
+        else
+            if wget -qO "${MANIFEST_FILE}" "${MANIFEST_URL}" 2>/dev/null; then
+                manifest_ok=1
+            fi
+        fi
+
+        if [ "${manifest_ok}" -eq 1 ] && [ -s "${MANIFEST_FILE}" ]; then
+            # Parse the asset's expected hex hash without requiring jq.
+            # Manifest shape (see scripts/gen-release-checksums.ps1):
+            #   { "files": { "<asset>": "<UPPER-HEX-SHA256>", ... } }
+            # We split the file on commas, find the line carrying
+            # the asset name, and extract the second double-quoted
+            # value on that line.
+            EXPECTED_SHA=$(tr ',' '\n' < "${MANIFEST_FILE}" \
+                | grep "\"${ASSET}\"" \
+                | head -n1 \
+                | sed 's/.*:[[:space:]]*"\([0-9A-Fa-f]\{64\}\)".*/\1/')
+            if [ -n "${EXPECTED_SHA}" ]; then
+                # Pick a SHA-256 tool. macOS has shasum -a 256;
+                # Linux has sha256sum (coreutils) AND shasum on
+                # most distros. Fall back to openssl if neither.
+                if command -v sha256sum >/dev/null 2>&1; then
+                    ACTUAL_SHA=$(sha256sum "${ARCHIVE}" | awk '{print $1}')
+                elif command -v shasum >/dev/null 2>&1; then
+                    ACTUAL_SHA=$(shasum -a 256 "${ARCHIVE}" | awk '{print $1}')
+                elif command -v openssl >/dev/null 2>&1; then
+                    ACTUAL_SHA=$(openssl dgst -sha256 -r "${ARCHIVE}" | awk '{print $1}')
+                else
+                    fail "no SHA-256 tool available (sha256sum / shasum / openssl)"
+                    fail "  cannot verify archive integrity; refusing to extract."
+                    fail "  install one of those tools and retry, or pass --skip-download"
+                    fail "  after manually verifying the tarball at ${ARCHIVE}."
+                    exit 1
+                fi
+                # Lowercase both sides for the comparison: Get-FileHash
+                # emits upper hex, sha256sum emits lower hex.
+                EXPECTED_LOWER=$(printf '%s' "${EXPECTED_SHA}" | tr 'A-F' 'a-f')
+                ACTUAL_LOWER=$(printf '%s' "${ACTUAL_SHA}" | tr 'A-F' 'a-f')
+                if [ "${EXPECTED_LOWER}" = "${ACTUAL_LOWER}" ]; then
+                    ok "archive SHA-256 verified (${ACTUAL_LOWER})"
+                else
+                    fail "ARCHIVE INTEGRITY CHECK FAILED"
+                    fail "  asset    : ${ASSET}"
+                    fail "  expected : ${EXPECTED_LOWER}"
+                    fail "  actual   : ${ACTUAL_LOWER}"
+                    fail "  source   : ${ASSET_URL}"
+                    fail "  manifest : ${MANIFEST_URL}"
+                    fail ""
+                    fail "  This means either (a) the release was retagged"
+                    fail "  without regenerating release-checksums.json, or"
+                    fail "  (b) the download was tampered with. Refusing to"
+                    fail "  extract. Re-run with a fresh tarball or report"
+                    fail "  at https://github.com/${REPO}/issues."
+                    exit 1
+                fi
+            else
+                warn "asset ${ASSET} not pinned in release-checksums.json — skipping integrity check"
+                warn "  (manifest exists but does not list this asset)"
+            fi
+        else
+            warn "release-checksums.json not available — skipping integrity check"
+            warn "  this release pre-dates SHA-256 pinning. Tag: ${RELEASE_TAG}"
+        fi
     fi
 
     mkdir -p "${MNEME_HOME}"
