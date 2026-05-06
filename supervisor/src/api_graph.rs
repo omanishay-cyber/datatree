@@ -13,8 +13,10 @@
 //!    discovered under `<MNEME_HOME>/projects/` whose `graph.db` file
 //!    exists. Useful for D3 multi-shard support (decision doc §8 q4).
 //! 4. **Stub** handlers for the other 15 endpoints — every one returns
-//!    HTTP 501 with a JSON body shaped
-//!    `{"error":"not_implemented","phase":"D0","next":"D2-D6"}`.
+//!    HTTP 501 with a JSON body shaped `{"error":"not_implemented"}`.
+//!    (The internal `phase`/`next` milestone codes were dropped per
+//!    LOW fix 2026-05-05 audit — they leaked planning state into
+//!    public responses.)
 //!
 //! The frontend code at `vision/src/api.ts:71-95` already has a
 //! `placeholderPayload()` fallback that fires on non-2xx, so the
@@ -230,11 +232,18 @@ async fn api_health(State(_state): State<ApiGraphState>) -> impl IntoResponse {
     // `Date.now()` in JS is unix-millis. We emit unix-millis as `i64`
     // so the existing TS consumer parses it identically.
     let ts_ms: i64 = chrono::Utc::now().timestamp_millis();
+    // LOW fix (2026-05-05 audit): drop the internal `phase: "D0"`
+    // milestone code from public health responses. It leaked
+    // pre-release planning state ("D0" = our internal sub-milestone
+    // string) that meant nothing to operators and confused users
+    // reading the JSON response. The other fields (ok/host/port/ts)
+    // carry the actual liveness signal. If a future caller wants to
+    // distinguish daemon flavours we'll add an explicit `version`
+    // field tied to CARGO_PKG_VERSION.
     Json(json!({
         "ok": true,
         "host": "127.0.0.1",
         "port": 7777,
-        "phase": "D0",
         "ts": ts_ms,
     }))
 }
@@ -506,13 +515,18 @@ async fn voice_stub() -> impl IntoResponse {
 /// Generic stub handler for endpoints not yet ported. Returns HTTP 501
 /// with a JSON envelope so the frontend's `placeholderPayload()`
 /// fallback fires cleanly instead of choking on HTML.
+///
+/// LOW fix (2026-05-05 audit): drop the `phase: "D0"` and
+/// `next: "D2-D6"` internal milestone codes from the public 501
+/// envelope. They leaked our planning sub-milestones into responses
+/// users + operators see and meant nothing outside the maintainer
+/// team. The `error: "not_implemented"` carries the only actionable
+/// signal a caller needs.
 async fn stub_handler() -> impl IntoResponse {
     (
         StatusCode::NOT_IMPLEMENTED,
         Json(json!({
             "error": "not_implemented",
-            "phase": "D0",
-            "next": "D2-D6",
         })),
     )
 }
@@ -2864,11 +2878,13 @@ async fn api_graph_hierarchy(
 /// frontend doesn't have to discriminate.
 async fn api_daemon_health(State(_state): State<ApiGraphState>) -> impl IntoResponse {
     let ts_ms: i64 = chrono::Utc::now().timestamp_millis();
+    // LOW fix (2026-05-05 audit): see `api_health` — same drop of
+    // the internal `phase: "D0"` milestone leak. Health alias must
+    // match the canonical /api/health shape exactly.
     Json(json!({
         "ok": true,
         "host": "127.0.0.1",
         "port": 7777,
-        "phase": "D0",
         "ts": ts_ms,
     }))
 }
@@ -3079,7 +3095,11 @@ mod tests {
             .expect("body");
         let v: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
         assert_eq!(v["ok"], serde_json::Value::Bool(true));
-        assert_eq!(v["phase"], serde_json::Value::String("D0".into()));
+        // LOW fix (2026-05-05): the internal `phase: "D0"` milestone
+        // code was dropped from public health responses. Pin its
+        // absence so a future regression that brings it back fails
+        // here instead of in production logs.
+        assert!(v.get("phase").is_none(), "health must not leak phase");
     }
 
     #[tokio::test]
@@ -3715,6 +3735,10 @@ mod tests {
             .expect("body");
         let v: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
         assert_eq!(v["ok"], serde_json::Value::Bool(true));
-        assert_eq!(v["phase"], serde_json::Value::String("D0".into()));
+        // LOW fix (2026-05-05): same `phase` drop as /api/health.
+        assert!(
+            v.get("phase").is_none(),
+            "/api/daemon/health must not leak phase"
+        );
     }
 }
