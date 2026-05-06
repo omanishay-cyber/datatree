@@ -16,6 +16,7 @@
 pub mod builder;
 pub mod finder;
 pub mod inject;
+pub mod integrity;
 pub mod ipc;
 pub mod lifecycle;
 pub mod query;
@@ -32,6 +33,7 @@ pub mod test_fs_full;
 pub use builder::{mark_indexed, DbBuilder, DefaultBuilder};
 pub use finder::{DbFinder, DefaultFinder};
 pub use inject::{BatchResult, DbInject, DefaultInject, InjectOp, InjectOptions, UpsertResult};
+pub use integrity::{cross_shard_integrity_audit, CrossShardReport, OrphanRow};
 pub use lifecycle::{
     ArchiveMeta, DbLifecycle, DefaultLifecycle, IntegrityReport, MigrationReport, PurgeToken,
     SnapshotMeta, VacuumReport,

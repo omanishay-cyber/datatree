@@ -34,6 +34,7 @@ use crate::ipc::{IpcRequest, IpcResponse};
 
 use common::{ids::ProjectId, layer::DbLayer, paths::PathManager};
 use scanners::{Finding, FindingsWriter, Severity};
+use store::cross_shard_integrity_audit;
 
 // B11.8 (v0.3.2, D:\Mneme Dome cycle, 2026-05-02): the outer wall-clock
 // (`AUDIT_SUBPROCESS_BUDGET` / `MNEME_AUDIT_TIMEOUT_SEC`, 300 s) was
@@ -386,8 +387,28 @@ pub(crate) async fn run_direct_subprocess_with_registry(
     // B12: severity-floor was applied during streaming, so `findings`
     // already matches `kept` (the streaming writer pre-filtered). We
     // rebind for the print_summary call.
-    let kept = findings;
+    let mut kept = findings;
     let inserted = persisted;
+
+    // HIGH-8 fix (2026-05-06): run the cross-shard integrity audit and
+    // surface any orphan rows as findings with category
+    // `cross_shard_orphan`. This makes dangling references visible to the
+    // operator during a routine `mneme audit` run. Orphans are logged at
+    // warn level; use `mneme rebuild` to clear them.
+    //
+    // The cross-shard audit is best-effort — if it fails (e.g. a shard is
+    // locked by another process) we warn and continue rather than aborting
+    // the whole audit pass. The scanner-subprocess path is already complete
+    // at this point, so a cross-shard error should never hide real findings.
+    let cross_shard_findings = run_cross_shard_audit(&project_id, &paths, severity_floor).await;
+    let orphan_count = cross_shard_findings.len();
+    if orphan_count > 0 {
+        println!(
+            "cross-shard integrity: {} orphan row(s) found (rule: cross_shard_orphan.*)",
+            orphan_count
+        );
+    }
+    kept.extend(cross_shard_findings);
 
     print_summary(&kept, summary.as_ref(), inserted, &findings_db);
 
@@ -404,6 +425,75 @@ pub(crate) async fn run_direct_subprocess_with_registry(
         )));
     }
     Ok(())
+}
+
+/// HIGH-8 fix (2026-05-06): run the cross-shard integrity audit and convert
+/// any discovered [`OrphanRow`]s into [`Finding`]s so they surface in the
+/// standard audit summary table.
+///
+/// Each orphan becomes a `Finding` with:
+/// - `rule_id`  = `"cross_shard_orphan.<source_layer>.<column>"`, e.g.
+///               `"cross_shard_orphan.findings.file"`
+/// - `severity` = `Warning` (orphans degrade data quality but are not active
+///               vulnerabilities; operators should run `mneme rebuild` to clear)
+/// - `file`     = the dangling value (makes the summary table scannable)
+/// - `message`  = human-readable description with the target reference
+///
+/// Findings are pre-filtered against `severity_floor` so they obey the same
+/// `--severity` flag that governs scanner findings.
+///
+/// On any I/O error during the cross-shard audit, a `warn!` is emitted and an
+/// empty Vec is returned — the existing scanner findings are unaffected.
+async fn run_cross_shard_audit(
+    project_id: &ProjectId,
+    paths: &PathManager,
+    severity_floor: Severity,
+) -> Vec<Finding> {
+    // The cross-shard audit is sync (rusqlite), but we're in an async context.
+    // `spawn_blocking` keeps Tokio's executor unblocked during the file I/O.
+    let project_id = project_id.clone();
+    let paths = std::sync::Arc::new(paths.clone());
+    let result =
+        tokio::task::spawn_blocking(move || cross_shard_integrity_audit(&paths, &project_id)).await;
+
+    match result {
+        Err(join_err) => {
+            warn!(error = %join_err, "cross-shard audit task panicked; skipping");
+            vec![]
+        }
+        Ok(Err(db_err)) => {
+            warn!(error = %db_err, "cross-shard integrity audit failed; skipping");
+            vec![]
+        }
+        Ok(Ok(report)) => {
+            // Convert each OrphanRow to a Finding, then apply severity_floor.
+            let orphan_severity = Severity::Warning;
+            if severity_rank(orphan_severity) > severity_rank(severity_floor) {
+                // All orphan findings are below the requested floor; skip.
+                return vec![];
+            }
+            report
+                .orphans
+                .into_iter()
+                .map(|o| {
+                    // Sanitise the layer name for use in rule_id (no spaces).
+                    let layer_label = format!("{:?}", o.source_layer).to_lowercase();
+                    let col_label = o.source_table_column.replace('.', "_");
+                    let rule_id = format!("cross_shard_orphan.{layer_label}.{col_label}");
+                    let message = format!(
+                        "orphan: {src}.{src_col} = {val:?} has no matching row in \
+                         {tgt}.{tgt_col}; run `mneme rebuild` to clear",
+                        src = format!("{:?}", o.source_layer).to_lowercase(),
+                        src_col = o.source_table_column,
+                        val = o.value,
+                        tgt = format!("{:?}", o.target_layer).to_lowercase(),
+                        tgt_col = o.target_table_column,
+                    );
+                    Finding::new_line(rule_id, orphan_severity, o.value, 0, 0, 0, message)
+                })
+                .collect()
+        }
+    }
 }
 
 /// Outcome of streaming the scanner subprocess's stdout under a per-line

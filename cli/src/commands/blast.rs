@@ -18,10 +18,10 @@ use std::path::PathBuf;
 use tracing::info;
 
 use crate::commands::build::make_client;
+use crate::commands::ipc_helpers::{graph_db_path, resolve_project_root};
 use crate::error::{CliError, CliResult};
 use crate::ipc::{IpcRequest, IpcResponse};
 use common::query::BlastItem;
-use common::{ids::ProjectId, paths::PathManager};
 
 /// CLI args for `mneme blast`.
 #[derive(Debug, Args)]
@@ -100,7 +100,7 @@ pub async fn run(args: BlastArgs, socket_override: Option<PathBuf>) -> CliResult
 
     // Direct-DB fallback — identical to the v0.3.1 behaviour.
     info!(source = "direct-db", "blast served");
-    let graph_db = paths_graph_db(&project_root)?;
+    let graph_db = graph_db_path(&project_root)?; // HIGH-47 (2026-05-06, 2026-05-05 audit): consolidated to cli::ipc_helpers::graph_db_path
     if !graph_db.exists() {
         return Err(CliError::Other(format!(
             "graph.db not found at {}. Run `mneme build .` first.",
@@ -163,24 +163,6 @@ pub async fn run(args: BlastArgs, socket_override: Option<PathBuf>) -> CliResult
 
     print_layers(&args.target, &layers);
     Ok(())
-}
-
-/// Canonicalise the user's `--project` flag (or CWD) to an absolute path.
-fn resolve_project_root(project: Option<PathBuf>) -> PathBuf {
-    project
-        .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
-}
-
-/// Map a resolved project root to its `graph.db` path. Uses the same
-/// `PathManager`/`ProjectId` chain the CLI always has — supervisor path
-/// derives the same location so shard selection cannot drift.
-fn paths_graph_db(root: &std::path::Path) -> CliResult<PathBuf> {
-    let id = ProjectId::from_path(root).map_err(|e| {
-        CliError::Other(format!("cannot hash project path {}: {e}", root.display()))
-    })?;
-    let paths = PathManager::default_root();
-    Ok(paths.project_root(&id).join("graph.db"))
 }
 
 /// Render an IPC `BlastResults` into the same layered output the direct-DB

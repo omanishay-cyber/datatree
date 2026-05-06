@@ -41,6 +41,7 @@ use clap::{Args, ValueEnum};
 use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
 
+use crate::commands::ipc_helpers::{graph_db_path, resolve_project_root};
 use crate::error::{CliError, CliResult};
 use common::{ids::ProjectId, paths::PathManager};
 
@@ -168,7 +169,7 @@ fn resolve_snapshot(spec: &str, project_root: &Path) -> CliResult<PathBuf> {
 
     // 2. `HEAD` — the live graph.db for the current project.
     if spec == "HEAD" {
-        return live_graph_db(project_root);
+        return graph_db_path(project_root); // HIGH-47 (2026-05-06, 2026-05-05 audit): consolidated to cli::ipc_helpers::graph_db_path
     }
 
     // 3. `HEAD~N` — the N-th-newest snapshot. `HEAD~0` == `HEAD`.
@@ -179,7 +180,7 @@ fn resolve_snapshot(spec: &str, project_root: &Path) -> CliResult<PathBuf> {
             ))
         })?;
         if n == 0 {
-            return live_graph_db(project_root);
+            return graph_db_path(project_root); // HIGH-47 (2026-05-06, 2026-05-05 audit): consolidated to cli::ipc_helpers::graph_db_path
         }
         let snapshots = list_project_snapshots(project_root)?;
         if snapshots.is_empty() {
@@ -234,19 +235,6 @@ fn resolve_snapshot(spec: &str, project_root: &Path) -> CliResult<PathBuf> {
     Ok(matches[0].clone())
 }
 
-/// Path to the live `graph.db` for `project_root`. Mirrors the resolver
-/// used by `recall.rs`.
-fn live_graph_db(project_root: &Path) -> CliResult<PathBuf> {
-    let id = ProjectId::from_path(project_root).map_err(|e| {
-        CliError::Other(format!(
-            "cannot hash project path {}: {e}",
-            project_root.display()
-        ))
-    })?;
-    let paths = PathManager::default_root();
-    Ok(paths.project_root(&id).join("graph.db"))
-}
-
 /// Snapshots directory for `project_root`, matching the layout written
 /// by `snap.rs`.
 fn snapshots_dir(project_root: &Path) -> CliResult<PathBuf> {
@@ -276,12 +264,6 @@ fn list_project_snapshots(project_root: &Path) -> CliResult<Vec<PathBuf>> {
     // by recency. Reverse → newest first.
     out.sort_by(|a, b| b.cmp(a));
     Ok(out)
-}
-
-fn resolve_project_root(project: Option<PathBuf>) -> PathBuf {
-    project
-        .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
 // ---------------------------------------------------------------------------

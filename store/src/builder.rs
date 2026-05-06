@@ -294,7 +294,7 @@ fn init_meta(paths: &PathManager) -> DtResult<()> {
     Ok(())
 }
 
-fn apply_pragmas(conn: &Connection) -> DtResult<()> {
+pub(crate) fn apply_pragmas(conn: &Connection) -> DtResult<()> {
     // CRIT-13 fix (2026-05-05 audit): set busy_timeout BEFORE any other
     // pragma so that subsequent pragma writes themselves get the retry
     // budget. SQLite's default is 0 — without this, any moment a second

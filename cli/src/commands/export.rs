@@ -29,8 +29,8 @@ use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
 use tracing::info;
 
+use crate::commands::ipc_helpers::{graph_db_path, resolve_project_root};
 use crate::error::{CliError, CliResult};
-use common::{ids::ProjectId, paths::PathManager};
 
 /// CLI args for `mneme export`.
 #[derive(Debug, Args)]
@@ -145,7 +145,7 @@ pub struct EdgeRow {
 /// Entry point used by `main.rs`.
 pub async fn run(args: ExportArgs) -> CliResult<()> {
     let project_root = resolve_project_root(args.project.clone());
-    let db_path = live_graph_db(&project_root)?;
+    let db_path = graph_db_path(&project_root)?; // HIGH-47 (2026-05-06, 2026-05-05 audit): consolidated to cli::ipc_helpers::graph_db_path
     if !db_path.exists() {
         return Err(CliError::Other(format!(
             "graph.db not found at {}. Run `mneme build .` first.",
@@ -239,23 +239,6 @@ pub async fn run(args: ExportArgs) -> CliResult<()> {
 // ---------------------------------------------------------------------------
 // Graph load helpers
 // ---------------------------------------------------------------------------
-
-fn resolve_project_root(project: Option<PathBuf>) -> PathBuf {
-    project
-        .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
-}
-
-fn live_graph_db(project_root: &Path) -> CliResult<PathBuf> {
-    let id = ProjectId::from_path(project_root).map_err(|e| {
-        CliError::Other(format!(
-            "cannot hash project path {}: {e}",
-            project_root.display()
-        ))
-    })?;
-    let paths = PathManager::default_root();
-    Ok(paths.project_root(&id).join("graph.db"))
-}
 
 fn open_ro(db: &Path) -> CliResult<Connection> {
     Connection::open_with_flags(

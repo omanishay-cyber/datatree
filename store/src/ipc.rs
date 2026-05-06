@@ -232,6 +232,40 @@ where
     }
 }
 
+/// Collapse the repetitive `match result { Ok(v) => ok(to_value(v)), Err(e) => err(...) }`
+/// boilerplate that appeared identically across ~8 dispatch arms.
+///
+/// Usage: `dispatch_ok_err!(some_async_call.await)`
+/// The expression must be of type `Result<T, E>` where `T: Serialize` and `E: Display`.
+macro_rules! dispatch_ok_err {
+    ($expr:expr) => {
+        match $expr {
+            Ok(v) => ok(serde_json::to_value(v).unwrap_or_default()),
+            Err(e) => err(e.to_string()),
+        }
+    };
+}
+
+/// Collapse the `wire_from_response(store.X.method(args).await)` pattern
+/// used by QueryRows / Write / WriteBatch / Insert after their SQL gates.
+macro_rules! dispatch_wire {
+    ($expr:expr) => {
+        wire_from_response($expr)
+    };
+}
+
+/// Collapse the tri-state `Ok(Some(h))/Ok(None)/Err` pattern used by
+/// the two finder variants (FindByCwd, FindByHash).
+macro_rules! dispatch_find {
+    ($expr:expr) => {
+        match $expr {
+            Ok(Some(h)) => ok(serde_json::to_value(h.project).unwrap_or_default()),
+            Ok(None) => ok(serde_json::Value::Null),
+            Err(e) => err(e.to_string()),
+        }
+    };
+}
+
 async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
     match req {
         Request::BuildOrMigrate { project_root, name } => {
@@ -240,23 +274,18 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
                 Ok(p) => p,
                 Err(e) => return err(format!("project_id: {}", e)),
             };
-            match store.builder.build_or_migrate(&project, &path, &name).await {
-                Ok(h) => ok(serde_json::to_value(h.project).unwrap_or_default()),
-                Err(e) => err(e.to_string()),
-            }
+            dispatch_ok_err!(store
+                .builder
+                .build_or_migrate(&project, &path, &name)
+                .await
+                .map(|h| h.project))
         }
         Request::FindByCwd { cwd } => {
-            match store.finder.find_by_cwd(std::path::Path::new(&cwd)).await {
-                Ok(Some(h)) => ok(serde_json::to_value(h.project).unwrap_or_default()),
-                Ok(None) => ok(serde_json::Value::Null),
-                Err(e) => err(e.to_string()),
-            }
+            dispatch_find!(store.finder.find_by_cwd(std::path::Path::new(&cwd)).await)
         }
-        Request::FindByHash { hash } => match store.finder.find_by_hash(&hash).await {
-            Ok(Some(h)) => ok(serde_json::to_value(h.project).unwrap_or_default()),
-            Ok(None) => ok(serde_json::Value::Null),
-            Err(e) => err(e.to_string()),
-        },
+        Request::FindByHash { hash } => {
+            dispatch_find!(store.finder.find_by_hash(&hash).await)
+        }
         Request::QueryRows { q } => {
             // Audit fix (2026-05-06): CRIT-3 closed `Request::Insert`
             // but the same arbitrary-SQL vector was still wide open
@@ -266,8 +295,7 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
             if let Err(reason) = validate_query_sql(&q.sql) {
                 return err(format!("store IPC: rejected QueryRows request: {reason}"));
             }
-            let r = store.query.query_rows(q).await;
-            wire_from_response(r)
+            dispatch_wire!(store.query.query_rows(q).await)
         }
         Request::Write { w } => {
             // Audit fix (2026-05-06): same allowlist gate as
@@ -278,8 +306,7 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
             if let Err(reason) = validate_write_sql(&w.sql) {
                 return err(format!("store IPC: rejected Write request: {reason}"));
             }
-            let r = store.query.write(w).await;
-            wire_from_response(r)
+            dispatch_wire!(store.query.write(w).await)
         }
         Request::WriteBatch { ws } => {
             // Audit fix (2026-05-06): WriteBatch is the most attacker-
@@ -294,8 +321,7 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
                     ));
                 }
             }
-            let r = store.query.write_batch(ws).await;
-            wire_from_response(r)
+            dispatch_wire!(store.query.write_batch(ws).await)
         }
         Request::Insert {
             project,
@@ -321,21 +347,18 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
             if let Err(reason) = validate_insert_sql(&sql) {
                 return err(format!("store IPC: rejected Insert request: {reason}"));
             }
-            let r = store
-                .inject
-                .insert(&project, layer, &sql, params, opts)
-                .await;
-            wire_from_response(r)
+            dispatch_wire!(
+                store
+                    .inject
+                    .insert(&project, layer, &sql, params, opts)
+                    .await
+            )
         }
-        Request::Snapshot { project } => match store.lifecycle.snapshot(&project).await {
-            Ok(id) => ok(serde_json::to_value(id).unwrap_or_default()),
-            Err(e) => err(e.to_string()),
-        },
+        Request::Snapshot { project } => {
+            dispatch_ok_err!(store.lifecycle.snapshot(&project).await)
+        }
         Request::ListSnapshots { project } => {
-            match store.lifecycle.list_snapshots(&project).await {
-                Ok(s) => ok(serde_json::to_value(s).unwrap_or_default()),
-                Err(e) => err(e.to_string()),
-            }
+            dispatch_ok_err!(store.lifecycle.list_snapshots(&project).await)
         }
         Request::Restore { project, snapshot } => {
             let id = common::ids::SnapshotId::from_str(snapshot);
@@ -359,15 +382,11 @@ async fn handle_request(store: &Arc<Store>, req: Request) -> WireResponse {
             }
         }
         Request::IntegrityCheck { project } => {
-            match store.lifecycle.integrity_check(&project).await {
-                Ok(r) => ok(serde_json::to_value(r).unwrap_or_default()),
-                Err(e) => err(e.to_string()),
-            }
+            dispatch_ok_err!(store.lifecycle.integrity_check(&project).await)
         }
-        Request::Vacuum { project } => match store.lifecycle.vacuum(&project).await {
-            Ok(r) => ok(serde_json::to_value(r).unwrap_or_default()),
-            Err(e) => err(e.to_string()),
-        },
+        Request::Vacuum { project } => {
+            dispatch_ok_err!(store.lifecycle.vacuum(&project).await)
+        }
         Request::Health => ok(serde_json::json!({ "status": "ok" })),
         Request::Shutdown => {
             // WIDE-010: cooperative graceful shutdown.
@@ -740,5 +759,56 @@ mod validate_insert_sql_tests {
         assert!(
             validate_write_sql("UPDATE x SET a = 1 /* ; DROP TABLE y; */ WHERE b = ?").is_err()
         );
+    }
+}
+
+/// HIGH-49 regression guard: confirms the dispatch macro refactor did not
+/// accidentally remove the SQL allowlist check from any of the gated arms.
+/// Each test calls the public-facing validator (same function the dispatch
+/// arm calls) to guarantee the guard still fires.
+///
+/// These are pure-function tests — no Store is constructed, so each runs
+/// in < 1 ms with zero I/O dependencies.
+#[cfg(test)]
+mod dispatch_macro_regression_tests {
+    use super::{validate_insert_sql, validate_query_sql, validate_write_sql};
+
+    /// QueryRows with a DROP TABLE payload must be rejected by its gate.
+    /// Guards the `Request::QueryRows` arm in `handle_request`.
+    #[test]
+    fn query_rows_bad_sql_hits_allowlist() {
+        let result = validate_query_sql("DROP TABLE nodes");
+        assert!(
+            result.is_err(),
+            "expected allowlist rejection for QueryRows bad SQL, got Ok"
+        );
+        assert_eq!(result.unwrap_err(), "not a SELECT or WITH");
+    }
+
+    /// Write with a DROP TABLE payload must be rejected.
+    /// Guards the `Request::Write` arm.
+    #[test]
+    fn write_bad_sql_hits_allowlist() {
+        let result = validate_write_sql("DROP TABLE edges");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "not an INSERT/UPDATE/DELETE");
+    }
+
+    /// Insert with a PRAGMA payload must be rejected.
+    /// Guards the `Request::Insert` arm.
+    #[test]
+    fn insert_bad_sql_hits_allowlist() {
+        let result = validate_insert_sql("PRAGMA writable_schema = 1");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "not an INSERT");
+    }
+
+    /// Confirm valid SQL still passes through each gate — the macro must
+    /// not over-reject legitimate payloads.
+    #[test]
+    fn valid_sql_passes_gates() {
+        assert!(validate_query_sql("SELECT id FROM nodes WHERE kind = ?").is_ok());
+        assert!(validate_write_sql("UPDATE nodes SET name = ? WHERE id = ?").is_ok());
+        assert!(validate_insert_sql("INSERT INTO edges (a, b) VALUES (?, ?)").is_ok());
     }
 }

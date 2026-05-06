@@ -17,11 +17,21 @@
 //!
 //! `build.rs` re-exports these via `pub use` so the existing nine
 //! callers continue to compile until they migrate.
+//!
+//! ## HIGH-47 fix (2026-05-06, 2026-05-05 audit): path resolution helpers
+//!
+//! `resolve_project_root` and `graph_db_path` were duplicated VERBATIM
+//! across five commands (blast, export, godnodes, graph_diff, recall) under
+//! three names (`resolve_project_root`, `paths_graph_db`, `live_graph_db`).
+//! They now live here as the single canonical implementation. All five
+//! commands import from this module and their local copies are deleted.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::error::{CliError, CliResult};
 use crate::ipc::IpcClient;
+use common::{ids::ProjectId, paths::PathManager};
 
 /// B-001: per-round-trip timeout for build-pipeline IPC. The default
 /// `IpcClient` budget is 120s; that's appropriate for hooks but lets a
@@ -33,7 +43,7 @@ pub(crate) const BUILD_IPC_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Resolve `project` to an absolute, canonicalised path. Falls back to
 /// CWD if the user passed nothing.
-pub(crate) fn resolve_project(arg: Option<PathBuf>) -> crate::error::CliResult<PathBuf> {
+pub(crate) fn resolve_project(arg: Option<PathBuf>) -> CliResult<PathBuf> {
     let raw = arg.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let canonical = std::fs::canonicalize(&raw).unwrap_or(raw);
     Ok(canonical)
@@ -68,4 +78,42 @@ pub(crate) fn make_client_for_build(socket_override: Option<PathBuf>) -> IpcClie
     make_client(socket_override)
         .with_no_autospawn()
         .with_timeout(BUILD_IPC_TIMEOUT)
+}
+
+// ---------------------------------------------------------------------------
+// HIGH-47 (2026-05-06, 2026-05-05 audit): consolidated path helpers
+// ---------------------------------------------------------------------------
+
+/// Canonicalise the user's `--project` flag (or CWD) to an absolute path.
+///
+/// Previously duplicated verbatim as `resolve_project_root` in blast.rs,
+/// export.rs, godnodes.rs, graph_diff.rs, and recall.rs. All five now
+/// delegate here. See HIGH-47 fix note in this module's header.
+///
+/// Unlike [`resolve_project`] (which returns `CliResult<PathBuf>`), this
+/// function never errors — canonicalization failure falls back to the
+/// original path, and a missing `--project` flag falls back to CWD. Call
+/// sites that need the `CliResult` wrapper should use [`resolve_project`]
+/// instead.
+pub(crate) fn resolve_project_root(project: Option<PathBuf>) -> PathBuf {
+    project
+        .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
+/// Map a resolved project root to its `graph.db` path.
+///
+/// Uses the same `PathManager`/`ProjectId` chain the CLI always has — the
+/// supervisor derives the same location so shard selection cannot drift.
+///
+/// Previously duplicated as `paths_graph_db` (blast.rs, godnodes.rs,
+/// recall.rs) and `live_graph_db` (export.rs, graph_diff.rs). All five
+/// sites now call this single function. See HIGH-47 fix note in this
+/// module's header.
+pub(crate) fn graph_db_path(root: &Path) -> CliResult<PathBuf> {
+    let id = ProjectId::from_path(root).map_err(|e| {
+        CliError::Other(format!("cannot hash project path {}: {e}", root.display()))
+    })?;
+    let paths = PathManager::default_root();
+    Ok(paths.project_root(&id).join("graph.db"))
 }

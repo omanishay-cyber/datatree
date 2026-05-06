@@ -214,8 +214,7 @@ impl Embedder {
             } else {
                 POOL_SIZE_FALLBACK
             };
-            let mut new_pool: Vec<Arc<Mutex<Backend>>> =
-                Vec::with_capacity(pool_size);
+            let mut new_pool: Vec<Arc<Mutex<Backend>>> = Vec::with_capacity(pool_size);
             new_pool.push(Arc::new(Mutex::new(probe)));
             for _ in 1..pool_size {
                 let extra = Backend::load(model_path, tokenizer_path);

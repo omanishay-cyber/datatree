@@ -15,10 +15,10 @@ use std::path::PathBuf;
 use tracing::info;
 
 use crate::commands::build::make_client;
+use crate::commands::ipc_helpers::{graph_db_path, resolve_project_root};
 use crate::error::{CliError, CliResult};
 use crate::ipc::{IpcRequest, IpcResponse};
 use common::query::GodNode;
-use common::{ids::ProjectId, paths::PathManager};
 
 /// CLI args for `mneme godnodes`.
 #[derive(Debug, Args)]
@@ -69,7 +69,7 @@ pub async fn run(args: GodNodesArgs, socket_override: Option<PathBuf>) -> CliRes
 
     // Direct-DB fallback.
     info!(source = "direct-db", "godnodes served");
-    let graph_db = paths_graph_db(&project_root)?;
+    let graph_db = graph_db_path(&project_root)?; // HIGH-47 (2026-05-06, 2026-05-05 audit): consolidated to cli::ipc_helpers::graph_db_path
     if !graph_db.exists() {
         return Err(CliError::Other(format!(
             "graph.db not found at {}. Run `mneme build .` first.",
@@ -124,22 +124,6 @@ pub async fn run(args: GodNodesArgs, socket_override: Option<PathBuf>) -> CliRes
 
     print_gods(&gods);
     Ok(())
-}
-
-/// Canonicalise the user's `--project` flag (or CWD) to an absolute path.
-fn resolve_project_root(project: Option<PathBuf>) -> PathBuf {
-    project
-        .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
-}
-
-/// Map a resolved project root to its `graph.db` path.
-fn paths_graph_db(root: &std::path::Path) -> CliResult<PathBuf> {
-    let id = ProjectId::from_path(root).map_err(|e| {
-        CliError::Other(format!("cannot hash project path {}: {e}", root.display()))
-    })?;
-    let paths = PathManager::default_root();
-    Ok(paths.project_root(&id).join("graph.db"))
 }
 
 #[cfg(test)]
@@ -221,11 +205,13 @@ mod tests {
 
     #[test]
     fn paths_graph_db_returns_a_pathbuf_for_temp_root() {
-        // Helper smoke: paths_graph_db should compute a graph.db path
-        // for any project root without panicking.
+        // Helper smoke: graph_db_path (formerly paths_graph_db) should compute
+        // a graph.db path for any project root without panicking.
+        // HIGH-47 (2026-05-06, 2026-05-05 audit): consolidated to cli::ipc_helpers::graph_db_path
+        use crate::commands::ipc_helpers::graph_db_path;
         let td = tempfile::tempdir().unwrap();
-        let r = paths_graph_db(td.path());
-        assert!(r.is_ok(), "paths_graph_db unexpectedly errored: {r:?}");
+        let r = graph_db_path(td.path());
+        assert!(r.is_ok(), "graph_db_path unexpectedly errored: {r:?}");
         assert!(
             r.unwrap().to_string_lossy().ends_with("graph.db"),
             "result should end with graph.db"
