@@ -143,9 +143,9 @@ impl BuildContext {
 /// ## Mock usage
 ///
 /// ```rust
-/// use common::build_pipeline::{BuildContext, BuildPipeline};
-/// use common::ids::ProjectId;
-/// use common::paths::PathManager;
+/// use mneme_common::build_pipeline::{BuildContext, BuildPipeline};
+/// use mneme_common::ids::ProjectId;
+/// use mneme_common::paths::PathManager;
 /// use std::path::PathBuf;
 ///
 /// struct RecordingPipeline {
