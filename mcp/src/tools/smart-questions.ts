@@ -99,11 +99,23 @@ function tarjanCycleMembers(nodes: RawNode[], edges: RawEdge[]): Set<string> {
     stack.push(start);
     onStack.add(start);
 
+    // TS-6 fix (2026-05-05 audit): replace 7 non-null `!` assertions
+    // with explicit narrowing + invariant-violation throws. Tarjan's
+    // SCC invariants do guarantee non-null at each `!` site, but the
+    // assertions hide bugs if the recursion structure ever changes
+    // — and `noUncheckedIndexedAccess` is enabled, so a future
+    // refactor that introduces an off-by-one would silently bypass
+    // the check rather than fail loudly. A loud crash beats a silent
+    // miscompute.
+    const inv = (msg: string): never => {
+      throw new Error(`Tarjan SCC invariant violated: ${msg}`);
+    };
+
     while (work.length > 0) {
-      const frame = work[work.length - 1]!;
+      const frame = work[work.length - 1] ?? inv("empty work stack");
       const succs = adj.get(frame.v) ?? [];
       if (frame.i < succs.length) {
-        const w = succs[frame.i++]!;
+        const w = succs[frame.i++] ?? inv(`missing successor at index ${frame.i - 1}`);
         if (!indices.has(w)) {
           indices.set(w, idx);
           lowlink.set(w, idx);
@@ -112,15 +124,19 @@ function tarjanCycleMembers(nodes: RawNode[], edges: RawEdge[]): Set<string> {
           onStack.add(w);
           work.push({ v: w, i: 0 });
         } else if (onStack.has(w)) {
-          lowlink.set(frame.v, Math.min(lowlink.get(frame.v)!, indices.get(w)!));
+          const lvFrame = lowlink.get(frame.v) ?? inv(`lowlink missing for ${frame.v}`);
+          const idxW = indices.get(w) ?? inv(`indices missing for ${w}`);
+          lowlink.set(frame.v, Math.min(lvFrame, idxW));
         }
       } else {
         work.pop();
-        const vLL = lowlink.get(frame.v)!;
-        const vIdx = indices.get(frame.v)!;
+        const vLL = lowlink.get(frame.v) ?? inv(`lowlink missing for ${frame.v}`);
+        const vIdx = indices.get(frame.v) ?? inv(`indices missing for ${frame.v}`);
         const parent = work[work.length - 1];
         if (parent) {
-          lowlink.set(parent.v, Math.min(lowlink.get(parent.v)!, vLL));
+          const lvParent =
+            lowlink.get(parent.v) ?? inv(`lowlink missing for ${parent.v}`);
+          lowlink.set(parent.v, Math.min(lvParent, vLL));
         }
         if (vLL === vIdx) {
           const scc: string[] = [];
