@@ -559,11 +559,17 @@ fn find_active_layer_db(
 
     // Direct hit — the picker passes the canonical hash; if the shard
     // exists for the requested layer use it.
+    //
+    // M-2 fix (2026-05-05 audit): the previous defence only rejected
+    // strings containing `/`, `\`, `..`, or empty. That allow-by-
+    // omission missed Windows reserved names (`nul`, `con`, `prn`,
+    // `aux`, `com1`-`com9`, `lpt1`-`lpt9`), URL-encoded traversal
+    // (`%2e%2e`), NUL bytes, and unbounded length DoS. Every
+    // legitimate project id is a hex SHA-256 — exactly 64 lowercase
+    // ASCII hex chars. Validate against that strict shape and reject
+    // everything else.
     if let Some(hash) = requested {
-        // Defensive: prevent path traversal via ".." segments. Every
-        // legitimate project id is hex SHA-256 so it never contains
-        // separators or dots; reject anything else outright.
-        if !hash.is_empty() && !hash.contains('/') && !hash.contains('\\') && !hash.contains("..") {
+        if is_valid_project_hash(hash) {
             let candidate = projects_root.join(hash).join(format!("{}.db", layer));
             if candidate.is_file() {
                 return Some(candidate);
@@ -586,6 +592,103 @@ fn find_active_layer_db(
         .collect();
     candidates.sort();
     candidates.into_iter().next()
+}
+
+/// M-2 fix (2026-05-05 audit): strict project-hash validator.
+/// Returns true iff `s` is exactly 64 lowercase ASCII hex characters
+/// — the canonical shape of a SHA-256-derived project id. This
+/// rejects:
+///   - empty / unbounded-length strings (DoS via 10 MB query string)
+///   - path-traversal sequences (`..`, `%2e%2e`)
+///   - separators (`/`, `\`)
+///   - Windows reserved names (`nul`, `con`, `prn`, `aux`, `com1`-`com9`,
+///     `lpt1`-`lpt9`)
+///   - NUL byte / control chars
+///   - non-ASCII / Unicode lookalikes
+///
+/// All those classes fail the simple "must be 64 hex chars" predicate.
+fn is_valid_project_hash(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+#[cfg(test)]
+mod project_hash_validator_tests {
+    use super::is_valid_project_hash;
+
+    #[test]
+    fn accepts_canonical_64_hex() {
+        assert!(is_valid_project_hash(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        ));
+    }
+
+    #[test]
+    fn rejects_uppercase_hex() {
+        assert!(!is_valid_project_hash(
+            "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef"
+        ));
+    }
+
+    #[test]
+    fn rejects_short() {
+        assert!(!is_valid_project_hash("0123abcd"));
+    }
+
+    #[test]
+    fn rejects_long() {
+        assert!(!is_valid_project_hash(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0"
+        ));
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(!is_valid_project_hash(""));
+    }
+
+    #[test]
+    fn rejects_traversal() {
+        assert!(!is_valid_project_hash(
+            "../../../etc/passwd00000000000000000000000000000000000000000000000"
+        ));
+    }
+
+    #[test]
+    fn rejects_windows_reserved_names() {
+        assert!(!is_valid_project_hash("nul"));
+        assert!(!is_valid_project_hash("con"));
+        assert!(!is_valid_project_hash("prn"));
+        assert!(!is_valid_project_hash("aux"));
+        assert!(!is_valid_project_hash("com1"));
+        assert!(!is_valid_project_hash("lpt9"));
+    }
+
+    #[test]
+    fn rejects_url_encoded_traversal() {
+        assert!(!is_valid_project_hash("%2e%2e"));
+    }
+
+    #[test]
+    fn rejects_separators() {
+        assert!(!is_valid_project_hash("a/b"));
+        assert!(!is_valid_project_hash("a\\b"));
+    }
+
+    #[test]
+    fn rejects_unicode_lookalike() {
+        // Cyrillic 'a' looks like Latin 'a' but is U+0430
+        let s = "\u{0430}".repeat(64);
+        assert!(!is_valid_project_hash(&s));
+    }
+
+    #[test]
+    fn rejects_null_byte() {
+        let mut s = "0".repeat(64);
+        unsafe {
+            s.as_bytes_mut()[10] = 0;
+        }
+        assert!(!is_valid_project_hash(&s));
+    }
 }
 
 /// Run a `rusqlite` query on the blocking-thread pool via
