@@ -569,59 +569,85 @@ export function recallNode(
 ): { qualified_name: string; kind: string; file_path: string | null }[] {
   const db = openShardDb("graph", cwdOverride);
   try {
-    // FTS5 path — preferred. Sanitise to avoid the user breaking the
-    // FTS5 query syntax: strip everything except word chars + spaces,
-    // wrap in `*` for prefix match across all whitespace-separated
-    // tokens.
-    const sanitised = query.replace(/[^\p{L}\p{N}_\s]/gu, " ").trim();
-    if (sanitised.length > 0) {
-      const ftsQuery = sanitised
-        .split(/\s+/)
-        .filter((t) => t.length > 0)
-        .map((t) => `${t}*`)
-        .join(" ");
-      try {
-        const rows = db
-          .prepare(
-            `SELECT n.qualified_name, n.kind, n.file_path
-             FROM nodes_fts f
-             JOIN nodes n ON n.rowid = f.rowid
-             WHERE nodes_fts MATCH ?
-             LIMIT ?`,
-          )
-          .all(ftsQuery, limit) as Array<{
-          qualified_name: string;
-          kind: string;
-          file_path: string | null;
-        }>;
-        if (rows.length > 0) {
-          return rows;
-        }
-      } catch {
-        // FTS5 syntax error or shadow-table mismatch — fall through
-        // to the legacy LIKE form so the user always gets *something*
-        // instead of a hard error.
-      }
-    }
-
-    // Legacy fallback (kept narrow, not the hot path).
-    const like = `%${query.toLowerCase()}%`;
-    const rows = db
-      .prepare(
-        `SELECT qualified_name, kind, file_path
-         FROM nodes
-         WHERE lower(name) LIKE ? OR lower(qualified_name) LIKE ?
-         LIMIT ?`,
-      )
-      .all(like, like, limit) as Array<{
-      qualified_name: string;
-      kind: string;
-      file_path: string | null;
-    }>;
-    return rows;
+    return _recallNodeOnDb(db, query, limit);
   } finally {
     db.close();
   }
+}
+
+/**
+ * Audit fix TEST-NEW-2 (2026-05-06 multi-agent fan-out, testing-
+ * reviewer): the FTS5-with-LIKE-fallback logic from `recallNode`
+ * extracted so unit tests can drive it against a pre-seeded
+ * in-memory bun:sqlite Database without going through the
+ * MNEME_HOME / shard-resolution path.
+ *
+ * Exported with the underscore prefix to mark "internal-but-test-
+ * accessible" — production callers should always go through
+ * `recallNode`, which adds the open/close lifecycle.
+ *
+ * The control flow here is non-trivial: there are FOUR branches
+ * (sanitisation collapses to empty → fall through to LIKE; FTS5
+ * MATCH succeeds → return rows; FTS5 MATCH throws → fall through
+ * silently; FTS5 returns zero rows → fall through to LIKE). The
+ * fall-through branches are the ones the testing-reviewer
+ * specifically called out as untested before today.
+ */
+export function _recallNodeOnDb(
+  db: Database,
+  query: string,
+  limit: number,
+): { qualified_name: string; kind: string; file_path: string | null }[] {
+  // FTS5 path — preferred. Sanitise to avoid the user breaking the
+  // FTS5 query syntax: strip everything except word chars + spaces,
+  // wrap in `*` for prefix match across all whitespace-separated
+  // tokens.
+  const sanitised = query.replace(/[^\p{L}\p{N}_\s]/gu, " ").trim();
+  if (sanitised.length > 0) {
+    const ftsQuery = sanitised
+      .split(/\s+/)
+      .filter((t) => t.length > 0)
+      .map((t) => `${t}*`)
+      .join(" ");
+    try {
+      const rows = db
+        .prepare(
+          `SELECT n.qualified_name, n.kind, n.file_path
+           FROM nodes_fts f
+           JOIN nodes n ON n.rowid = f.rowid
+           WHERE nodes_fts MATCH ?
+           LIMIT ?`,
+        )
+        .all(ftsQuery, limit) as Array<{
+        qualified_name: string;
+        kind: string;
+        file_path: string | null;
+      }>;
+      if (rows.length > 0) {
+        return rows;
+      }
+    } catch {
+      // FTS5 syntax error or shadow-table mismatch — fall through
+      // to the legacy LIKE form so the user always gets *something*
+      // instead of a hard error.
+    }
+  }
+
+  // Legacy fallback (kept narrow, not the hot path).
+  const like = `%${query.toLowerCase()}%`;
+  const rows = db
+    .prepare(
+      `SELECT qualified_name, kind, file_path
+       FROM nodes
+       WHERE lower(name) LIKE ? OR lower(qualified_name) LIKE ?
+       LIMIT ?`,
+    )
+    .all(like, like, limit) as Array<{
+    qualified_name: string;
+    kind: string;
+    file_path: string | null;
+  }>;
+  return rows;
 }
 
 /** Direct callers of a target (incoming `calls` edges). */
