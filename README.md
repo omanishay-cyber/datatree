@@ -370,7 +370,10 @@ Measured against [code-review-graph](https://github.com/tirth8205/code-review-gr
 > rows in particular are honest about CRG being ahead today (~4× ahead
 > at typical query, ~2× ahead at p95) because mneme has no symbol
 > resolver yet — the keystone work that closes the gap is the v0.4.0
-> roadmap item that lifts retrieval from 2/10 → 6/10+ on golden queries.
+> roadmap item. On the 10-query golden benchmark from the 2026-05-05 audit,
+> Mneme (pre-v0.4.0, no symbol resolver) returned correct hits on **2 of 10
+> queries**; CRG returned **6 of 10**. v0.4.0 ships three real symbol resolvers,
+> targeting ~6 of 10 parity with CRG on that same benchmark.
 
 | | CRG (the current SoTA) | **mneme (measured at v0.3.2)** | What it means |
 |---|---|---|---|

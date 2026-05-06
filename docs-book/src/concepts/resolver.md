@@ -12,7 +12,7 @@ Without that mapping:
 - `find_references "WorkerPool"` returns text matches, not structural matches. `mod::WorkerPool`, `crate::mod::WorkerPool`, `WorkerPool` (after `use crate::mod::WorkerPool`) all look like distinct strings.
 - `blast_radius "manager.rs"` underestimates impact because cross-file calls via `use` or `import` chains aren't tied back to the function definition.
 
-The 2026-05-05 audit comparing Mneme to CRG and graphify on the same golden-query suite measured Mneme at **2/10 retrieval hits** vs CRG's **6/10**. The same audit measured token reduction at **1.34×** vs CRG's claimed **6.8×**. Both gaps share a root cause: no symbol resolver.
+The 2026-05-05 audit ran the same 10-query golden benchmark against Mneme and CRG on identical hardware. Before v0.4.0, Mneme returned a correct hit on **2 of 10 queries**; CRG returned **6 of 10**. The same run measured token reduction at **1.34×** against CRG's claimed **6.8×**. Both gaps share one root cause: no symbol resolver.
 
 ## What v0.4.0 ships
 
@@ -78,7 +78,7 @@ The resolver algorithms ship as a library in v0.4.0. Three downstream consumers 
 
 The embedding pass already takes effect — `recall_concept` queries should now hit the function row instead of the README chunk. The graph queries (`find_references`, `blast_radius`, `call_graph`) still use the legacy hash-based qualified_name and won't see structural improvement until v0.4.1 wires the full resolver into the extractor.
 
-The 2026-05-05 audit's recall metric (2/10 → 6/10) is the embedding side. The graph-query side is its own bench, scheduled for v0.4.1 with the extractor wiring.
+The 2026-05-05 audit's recall improvement (from 2 correct hits to ~6 on the 10-query golden benchmark) is the embedding side of the fix. The graph-query side is its own bench, scheduled for v0.4.1 with the extractor wiring.
 
 ## Test surface
 

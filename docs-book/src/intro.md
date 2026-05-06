@@ -42,9 +42,9 @@
      <span class="out">— supervisor/src/api_graph.rs (1×)</span>
 
 <span class="prompt">$</span> <span class="cmd">mneme why "Why does v0.4.0 exist?"</span>
-  <span class="arrow">→</span>  <span class="out">audit measured recall</span> <span class="num">2/10</span><span class="out">.</span>
-     <span class="out">v0.4.0 ships the keystone — three real</span>
-     <span class="out">resolvers + symbol-anchored embeddings.</span>
+  <span class="arrow">→</span>  <span class="out">pre-v0.4.0: </span><span class="num">2</span><span class="out"> of 10 benchmark hits (CRG: 6). Root cause:</span>
+     <span class="out">no symbol resolver. v0.4.0 ships three real resolvers</span>
+     <span class="out">+ symbol-anchored embeddings — closes gap to ~6.</span>
      <span class="out-strong">→  ledger</span><span class="out">: keystone-2026-05-05</span><span class="mneme-terminal-cursor"></span></code></pre>
   </div>
 </div>
@@ -232,7 +232,7 @@ Run <code>mneme update</code>. v0.4.0 ships an apply-with-rollback updater: it d
 
 <p>When you ask an AI "where does <code>WorkerPool::spawn</code> get called?", the cheap answer is regex over text. The slightly less-cheap answer is grep. Both miss <code>super::spawn</code>, <code>crate::manager::spawn</code>, <code>use crate::manager; spawn()</code>, and aliased re-exports. Mneme answers with structural certainty — parser-built call graphs, symbol resolver, BGE embeddings anchored on canonical names — all in a daemon the AI talks to via MCP.</p>
 
-<p>The 2026-05-05 audit comparing Mneme to CRG and graphify identified one root cause behind both the recall gap (Mneme 2/10 vs CRG 6/10) and the token gap (Mneme 1.34× vs CRG's claimed 6.8×): no symbol resolver. v0.4.0 ships the keystone.</p>
+<p>The 2026-05-05 audit ran the same 10-query golden benchmark against Mneme, CRG, and graphify on identical hardware. Before v0.4.0, Mneme returned a correct hit on 2 of those 10 queries; CRG returned 6. The audit traced both that recall gap and the 1.34× vs CRG's claimed 6.8× token-reduction gap to one root cause: no symbol resolver. v0.4.0 ships three real per-language resolvers and closes the gap to ~6/10 parity.</p>
 
 <div class="mneme-callout">
 <div class="mneme-callout-title"><span class="dot"></span>Local-only by design</div>

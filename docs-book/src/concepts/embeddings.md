@@ -16,7 +16,7 @@ So a function `pub async fn spawn(...) -> Result<JobId>` got embedded with text 
 
 Vector similarity for the query "where is spawn?" weighted both candidates roughly the same. Often the README won because it mentioned `spawn` more times than the signature did.
 
-This is the root cause of the recall gap the 2026-05-05 audit measured at **2/10 vs CRG's 6/10**.
+This is the root cause of the recall gap the 2026-05-05 audit measured: on a 10-query golden benchmark, Mneme (pre-v0.4.0) hit **2 of 10 queries** while CRG hit **6 of 10**.
 
 ## After v0.4.0 — symbol-anchored
 
