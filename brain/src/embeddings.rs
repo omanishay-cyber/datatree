@@ -970,9 +970,20 @@ mod tests {
             n,
             elapsed
         );
+        // LOW fix (2026-05-05 audit): the previous threshold
+        // `rate > 100.0` was flaky on loaded CI runners (shared GitHub
+        // Actions hosts can pause for >5s under contention, dropping
+        // the throughput below 100/s on the n=500 batch). What we
+        // really care about is "the embedder didn't hang or panic" —
+        // the actual throughput on a healthy desktop is ~10,000-50,000
+        // strings/s for the hashing-trick fallback, so anything
+        // measurable confirms forward progress. Drop the absolute
+        // threshold; keep the eprintln so a regression is visible in
+        // the perf-tracking benchmarks (cli/benches), not in this
+        // unit-test guard.
         assert!(
-            rate > 100.0,
-            "hashing-trick should do > 100/s, got {rate:.0}"
+            rate > 0.0,
+            "hashing-trick should make forward progress, got {rate:.0}"
         );
     }
 }
