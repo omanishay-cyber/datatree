@@ -222,6 +222,23 @@ impl Embedder {
     }
 
     /// Embed a single text. Returns a 384-element vector.
+    ///
+    /// Audit acknowledgement HIGH-24 (2026-05-05 audit, deferred to
+    /// v0.4 per existing A2-019 / A2-020 source markers): the Mutex
+    /// at line below serialises ALL cache-miss embed calls through a
+    /// single ORT Session. Concurrent callers wait. The cache fast-
+    /// path above is lock-free (DashMap) and covers the steady-state
+    /// case; serialisation only bites on cold-cache parallel work.
+    ///
+    /// Fix path (v0.4): replace `Arc<Mutex<Backend>>` with a pool of
+    /// `Backend` instances and round-robin dispatch, allowing K
+    /// concurrent inferences instead of 1. ORT's `Session::run` is
+    /// safe for this when each thread holds its own Session. Until
+    /// then: (1) cache fast-path absorbs most calls; (2) callers in
+    /// hot paths (cli/src/commands/build.rs:2114, brain/src/worker.rs)
+    /// already batch via embed_batch so per-call lock acquisition is
+    /// amortised; (3) callers expecting blocking behaviour wrap in
+    /// spawn_blocking already.
     pub fn embed(&self, text: &str) -> BrainResult<Vec<f32>> {
         let key = hash_key(text);
         if let Some(v) = self.inner.cache.get(&key) {
