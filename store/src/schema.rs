@@ -541,6 +541,13 @@ CREATE TABLE IF NOT EXISTS embeddings (
     UNIQUE(text_hash, model)
 );
 CREATE INDEX IF NOT EXISTS idx_emb_node ON embeddings(node_id);
+-- HIGH-26 fix (2026-05-05 audit): cover the (text_hash, model) lookup
+-- path used by lookup_embedding_id in build.rs for the embedding-cache
+-- de-dup check on every node. The UNIQUE(text_hash, model) constraint
+-- already creates an implicit index, but querying on text_hash alone
+-- (without model) — which the model-agnostic fallback does — falls
+-- off that index. Add an explicit index on text_hash.
+CREATE INDEX IF NOT EXISTS idx_embeddings_text_hash ON embeddings(text_hash);
 
 CREATE TABLE IF NOT EXISTS concepts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -550,6 +557,11 @@ CREATE TABLE IF NOT EXISTS concepts (
     god_node_score REAL NOT NULL DEFAULT 0.0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- HIGH-26 fix: SQLite does NOT auto-index foreign-key columns. The
+-- FK enforcement at write time scans `embeddings` per row when the
+-- referenced parent gets deleted/updated. With many concepts pointing
+-- at one embedding, this is O(rows) per parent change.
+CREATE INDEX IF NOT EXISTS idx_concepts_embedding ON concepts(embedding_id);
 
 CREATE TABLE IF NOT EXISTS communities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -562,12 +574,23 @@ CREATE TABLE IF NOT EXISTS communities (
     description TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- HIGH-26 fix: parent_id is a self-FK; index it so the hierarchy
+-- queries ("children of community X") use the index instead of full
+-- scan, AND so FK enforcement at write time is O(log n) not O(n).
+CREATE INDEX IF NOT EXISTS idx_communities_parent ON communities(parent_id);
 
 CREATE TABLE IF NOT EXISTS community_membership (
     community_id INTEGER NOT NULL REFERENCES communities(id),
     node_qualified TEXT NOT NULL,
     PRIMARY KEY(community_id, node_qualified)
 );
+-- HIGH-26 fix: PRIMARY KEY(community_id, node_qualified) covers
+-- queries that filter by community_id, but queries that filter by
+-- node_qualified first (api_graph.rs:884-887, 1553) cannot use the
+-- composite index. Add a covering index on node_qualified for the
+-- "what communities does this node belong to?" path.
+CREATE INDEX IF NOT EXISTS idx_community_membership_qualified
+    ON community_membership(node_qualified);
 "#;
 
 const GIT_SQL: &str = r#"
@@ -695,6 +718,11 @@ CREATE TABLE IF NOT EXISTS screenshots (
     label TEXT,
     diff_from_previous TEXT
 );
+-- HIGH-26 fix (2026-05-05 audit): media_id is an FK to media(id) but
+-- SQLite doesn't auto-index FKs. Cascade-friendly + makes the
+-- "what screenshots reference this media row?" query an index probe
+-- instead of a full scan.
+CREATE INDEX IF NOT EXISTS idx_screenshots_media ON screenshots(media_id);
 "#;
 
 const DEPS_SQL: &str = r#"
