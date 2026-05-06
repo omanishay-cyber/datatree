@@ -72,6 +72,11 @@ fn variant_name(e: &DbError) -> &'static str {
         DbError::PermissionDenied => "permission_denied",
         DbError::InternalPanic { .. } => "internal_panic",
         DbError::Sqlite(_) => "sqlite",
+        // HIGH-10 fix (2026-05-05 audit): new variant for ProjectId
+        // collisions — two distinct root paths that produce the same
+        // SHA-256 project id. Surfaces as a structured wire error so
+        // the MCP client can display both roots.
+        DbError::ProjectIdCollision { .. } => "project_id_collision",
     }
 }
 
@@ -108,6 +113,16 @@ fn variant_detail(e: &DbError) -> Option<String> {
         }
         DbError::Sqlite(s) => Some(format!("{{\"sqlite\":{}}}", json_str(s))),
         DbError::NotFound | DbError::SerializationFailure | DbError::PermissionDenied => None,
+        DbError::ProjectIdCollision {
+            id,
+            existing_root,
+            incoming_root,
+        } => Some(format!(
+            "{{\"id\":{},\"existing_root\":{},\"incoming_root\":{}}}",
+            json_str(id),
+            json_str(existing_root),
+            json_str(incoming_root),
+        )),
     }
 }
 

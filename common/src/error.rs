@@ -73,6 +73,22 @@ pub enum DbError {
 
     #[error("rusqlite: {0}")]
     Sqlite(String),
+
+    /// HIGH-10 fix (2026-05-05 audit): two callers supplied the same
+    /// ProjectId (SHA-256 of canonical path) but different root strings.
+    /// This is either a canonicalization bug or a genuine hash collision
+    /// (astronomically unlikely). Either way, silent overwrite is worse
+    /// than a loud failure — the user must run `mneme rebuild` with the
+    /// correct path to resolve.
+    #[error(
+        "project id collision: id={id} has existing root `{existing_root}` \
+         but incoming root is `{incoming_root}` — run `mneme rebuild` to resolve"
+    )]
+    ProjectIdCollision {
+        id: String,
+        existing_root: String,
+        incoming_root: String,
+    },
 }
 
 impl DbError {
