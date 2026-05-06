@@ -21,6 +21,7 @@ pub mod ipc;
 pub mod lifecycle;
 pub mod query;
 pub mod schema;
+pub mod secrets_redact;
 
 /// K10 chaos-test-only fault-injection: simulate `SQLITE_FULL` after N
 /// bytes of writes via `MNEME_TEST_FAIL_FS_AT_BYTES`. Compiled out of
