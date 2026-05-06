@@ -273,10 +273,17 @@ impl HealthServer {
                 // state dir doesn't exist or is not writable, fall
                 // through silently. The eprintln above is the
                 // primary signal; the sentinel is belt-and-suspenders.
-                if let Some(home) = std::env::var_os("MNEME_HOME")
-                    .or_else(|| dirs::home_dir().map(|h| h.join(".mneme").into_os_string()))
-                {
-                    let state_dir = std::path::PathBuf::from(home).join("state");
+                //
+                // Class HOME discipline (2026-05-06): construct the
+                // path through PathManager rather than calling
+                // dirs::home_dir() directly. PathManager respects
+                // MNEME_HOME, then ~/.mneme, then OS fallback in one
+                // canonical place; the previous inline lookup was
+                // duplicated logic that drifted from the central
+                // resolver and tripped the pre-push HOME-discipline
+                // gate.
+                if let Ok(pm) = PathManager::try_default_root() {
+                    let state_dir = pm.root().join("state");
                     let _ = std::fs::create_dir_all(&state_dir);
                     let _ = std::fs::write(
                         state_dir.join("health-bind-failed"),
@@ -291,12 +298,12 @@ impl HealthServer {
         // sentinel from a previous boot when we successfully bind.
         // Otherwise `mneme doctor` would keep reporting the previous
         // boot's bind failure forever.
-        if let Some(home) = std::env::var_os("MNEME_HOME")
-            .or_else(|| dirs::home_dir().map(|h| h.join(".mneme").into_os_string()))
-        {
-            let sentinel = std::path::PathBuf::from(home)
-                .join("state")
-                .join("health-bind-failed");
+        //
+        // Class HOME discipline (2026-05-06): same PathManager swap
+        // as the bind-failure write above — central resolver, no
+        // direct dirs::home_dir() in supervisor code.
+        if let Ok(pm) = PathManager::try_default_root() {
+            let sentinel = pm.root().join("state").join("health-bind-failed");
             let _ = std::fs::remove_file(&sentinel);
         }
 
