@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useVisionStore } from "./store";
 import { VIEWS, getView, type ViewId } from "./views";
 import { FilterBar } from "./components/FilterBar";
