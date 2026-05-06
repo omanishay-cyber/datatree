@@ -12,7 +12,12 @@ use rusqlite::params_from_iter;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::error::SendTimeoutError;
 use tokio::sync::{mpsc, oneshot, RwLock};
-use tracing::error;
+// HIGH-18 fix (2026-05-06 audit A09): tracing::trace! is wired at the
+// inbound entry points of every DbQuery method. The trace lines run
+// through secrets_redact so JWT / OAuth bearer / password / api-key
+// params never land in --verbose log files in plaintext. The
+// enabled! guard short-circuits the redactor when --verbose is OFF.
+use tracing::{error, Level};
 use uuid::Uuid;
 
 use common::{
@@ -211,6 +216,18 @@ impl DefaultQuery {
 impl DbQuery for DefaultQuery {
     async fn query_rows(&self, q: Query) -> Response<Vec<serde_json::Value>> {
         let start = std::time::Instant::now();
+        // HIGH-18: redact credential-shaped params before they hit
+        // the --verbose log. Guarded by tracing::enabled! so the
+        // redactor is never invoked when --verbose is OFF.
+        if tracing::enabled!(Level::TRACE) {
+            tracing::trace!(
+                project = %q.project,
+                layer = ?q.layer,
+                sql = %crate::secrets_redact::redact_sql(&q.sql),
+                params = ?crate::secrets_redact::redact_params(&q.params),
+                "inbound query_rows"
+            );
+        }
         let meta = |layer| ResponseMeta {
             latency_ms: start.elapsed().as_millis() as u64,
             cache_hit: false,
@@ -255,6 +272,16 @@ impl DbQuery for DefaultQuery {
 
     async fn write(&self, w: Write) -> Response<WriteSummary> {
         let start = std::time::Instant::now();
+        // HIGH-18: see query_rows for the threat model.
+        if tracing::enabled!(Level::TRACE) {
+            tracing::trace!(
+                project = %w.project,
+                layer = ?w.layer,
+                sql = %crate::secrets_redact::redact_sql(&w.sql),
+                params = ?crate::secrets_redact::redact_params(&w.params),
+                "inbound write"
+            );
+        }
         let meta = |layer| ResponseMeta {
             latency_ms: start.elapsed().as_millis() as u64,
             cache_hit: false,
@@ -299,6 +326,21 @@ impl DbQuery for DefaultQuery {
 
     async fn write_batch(&self, ws: Vec<Write>) -> Response<BatchSummary> {
         let start = std::time::Instant::now();
+        // HIGH-18: scrub every batched item before tracing.
+        // We log per-item so cardinality matches the wire request.
+        // The whole loop is skipped when --verbose is OFF.
+        if tracing::enabled!(Level::TRACE) {
+            for (idx, w) in ws.iter().enumerate() {
+                tracing::trace!(
+                    idx,
+                    project = %w.project,
+                    layer = ?w.layer,
+                    sql = %crate::secrets_redact::redact_sql(&w.sql),
+                    params = ?crate::secrets_redact::redact_params(&w.params),
+                    "inbound write_batch item"
+                );
+            }
+        }
         let layer = ws.first().map(|w| w.layer).unwrap_or(DbLayer::Audit);
         if ws.is_empty() {
             return Response::ok(

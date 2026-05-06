@@ -144,6 +144,22 @@ impl DefaultInject {
         let timeout = opts.timeout_ms.map(Duration::from_millis);
         let start = std::time::Instant::now();
 
+        // HIGH-18 fix (2026-05-06 audit A09): redact credential-shaped
+        // params from --verbose IPC trace logs. Same threat model as
+        // query.rs (JWT / OAuth bearer / password / api-key leakage).
+        // The enabled! guard short-circuits when --verbose is OFF so
+        // there is no measurable cost on the hot path.
+        if tracing::enabled!(tracing::Level::TRACE) {
+            tracing::trace!(
+                project = %project,
+                layer = ?layer,
+                action,
+                sql = %crate::secrets_redact::redact_sql(&sql),
+                params = ?crate::secrets_redact::redact_params(&params),
+                "inbound inject"
+            );
+        }
+
         // Idempotency check
         if let Some(key) = &opts.idempotency_key {
             let q = self
