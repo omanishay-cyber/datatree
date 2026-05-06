@@ -130,12 +130,22 @@ pub async fn run(args: RebuildArgs, socket_override: Option<PathBuf>) -> CliResu
     // file (fresh project, never built) is not fatal. We delete the
     // -wal and -shm siblings too because SQLite's WAL mode keeps
     // mutations in those files until checkpoint.
-    let drop_targets = [
-        "graph.db",
-        "semantic.db",
-        "architecture.db",
-        "multimodal.db",
-    ];
+    //
+    // CRIT-11 fix (2026-05-05 audit): drop EVERY per-project shard,
+    // not just the four that the build pipeline writes. Previously
+    // `mneme rebuild` left 22 of 26 shards alone, so stale
+    // `findings.file`, `tasks.acceptance_cmd`, `errors.qualified_name`,
+    // `audit_log.target` rows continued to reference qualified_names
+    // that no longer existed after the fresh build — silent
+    // referential rot across the cross-shard FK boundary.
+    //
+    // The drop list now comes from DbLayer::all_per_project(), which
+    // is the same source of truth used by the schema bootstrapper.
+    // Any new layer added to that enum is automatically rebuilt-clean.
+    let drop_targets: Vec<&'static str> = common::layer::DbLayer::all_per_project()
+        .iter()
+        .map(|layer| layer.file_name())
+        .collect();
     let mut dropped = 0usize;
     for name in drop_targets.iter() {
         let p = project_root.join(name);

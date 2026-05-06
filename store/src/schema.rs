@@ -167,6 +167,86 @@ pub fn apply_migrations(conn: &mut Connection, layer: DbLayer) -> DtResult<u32> 
     Ok(current)
 }
 
+/// CRIT-10 fix (2026-05-05 audit): column-existence helper for safe
+/// migrations against pre-v0.3 shards.
+///
+/// The 2026-05-05 audit revealed that v0.4.0's planned Item #117
+/// migration (`UPDATE nodes SET embedding_id = NULL`) failed against
+/// pre-v0.3 fixture shards because SQLite parses statements upfront
+/// — including the column references — and aborts immediately when
+/// the column does not exist. The migration was reverted (see
+/// MIGRATIONS_GRAPH at the top of this file).
+///
+/// Future migrations that touch columns added in earlier versions
+/// MUST guard the column with this helper. Usage:
+///
+/// ```rust,ignore
+/// use mneme_store::schema::column_exists;
+/// // Inside a migration block:
+/// if column_exists(&conn, "nodes", "embedding_id")? {
+///     conn.execute_batch("UPDATE nodes SET embedding_id = NULL")?;
+/// }
+/// ```
+///
+/// Returns `Err` only if `PRAGMA table_info(...)` itself fails (e.g.
+/// the table doesn't exist). A missing COLUMN returns `Ok(false)`.
+pub fn column_exists(conn: &Connection, table: &str, column: &str) -> DtResult<bool> {
+    // SQLite forbids parameter binding for PRAGMA names. We splice
+    // `table` directly but escape any embedded ` " ` with the SQL
+    // double-double-quote rule so a malicious table name can't break
+    // out of the identifier. The intended caller is internal migration
+    // code that uses string literals; this hardening is defense-in-depth.
+    let safe_table = table.replace('"', "\"\"");
+    let pragma = format!(r#"PRAGMA table_info("{}")"#, safe_table);
+    let mut stmt = conn.prepare(&pragma).map_err(DbError::from)?;
+    let mut rows = stmt.query([]).map_err(DbError::from)?;
+    while let Some(row) = rows.next().map_err(DbError::from)? {
+        // table_info columns: cid, name, type, notnull, dflt_value, pk
+        let col_name: String = row.get(1).map_err(DbError::from)?;
+        if col_name.eq_ignore_ascii_case(column) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(test)]
+mod column_exists_tests {
+    use super::column_exists;
+    use rusqlite::Connection;
+
+    #[test]
+    fn returns_true_when_column_present() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE foo (a INTEGER, b TEXT)").unwrap();
+        assert!(column_exists(&conn, "foo", "a").unwrap());
+        assert!(column_exists(&conn, "foo", "b").unwrap());
+    }
+
+    #[test]
+    fn returns_false_when_column_missing() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE foo (a INTEGER)").unwrap();
+        assert!(!column_exists(&conn, "foo", "missing").unwrap());
+    }
+
+    #[test]
+    fn case_insensitive_column_match() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE foo (FooBar INTEGER)").unwrap();
+        assert!(column_exists(&conn, "foo", "foobar").unwrap());
+        assert!(column_exists(&conn, "foo", "FOOBAR").unwrap());
+    }
+
+    #[test]
+    fn returns_false_for_missing_table() {
+        // PRAGMA table_info on a non-existent table returns 0 rows
+        // (not an error). The helper sees no rows and returns false.
+        let conn = Connection::open_in_memory().unwrap();
+        assert!(!column_exists(&conn, "ghost", "anything").unwrap());
+    }
+}
+
 /// Returns the CREATE-TABLE-and-INDEX SQL for a layer.
 pub fn schema_sql(layer: DbLayer) -> &'static str {
     match layer {
