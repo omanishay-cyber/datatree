@@ -2262,6 +2262,21 @@ html, html.navy, html.coal, html.ayu {
   background: rgba(22,163,124,.04);
 }
 
+/* A11Y-6 fix (2026-05-05 audit): the parent .mneme-faq-item has
+   overflow:hidden + border-radius:12px (so the rounded corners
+   show on the answer-container background). The global
+   *:focus-visible glow ring is a 3px box-shadow that gets clipped
+   by the parent's overflow rule on the outer edges. Replace with
+   an INSET outline that draws inside the summary's content box,
+   so the rounded corner can't clip it. The 3px offset matches the
+   ring thickness for visual continuity. */
+.mneme-faq-item summary:focus-visible {
+  outline: 3px solid var(--mneme-green);
+  outline-offset: -3px;
+  /* Suppress the global box-shadow ring that would otherwise clip. */
+  box-shadow: none;
+}
+
 .mneme-faq-item .chev {
   font-family: var(--mneme-mono);
   font-weight: 400;
