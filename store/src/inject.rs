@@ -203,13 +203,16 @@ impl DefaultInject {
 
         // Audit
         if opts.audit {
-            let new_hash = blake3::hash(
-                serde_json::to_string(&params)
-                    .unwrap_or_default()
-                    .as_bytes(),
-            )
-            .to_hex()
-            .to_string();
+            // LOW fix (2026-05-06 audit): serde_json::to_string then
+            // .as_bytes() forces an extra UTF-8 validation + heap alloc
+            // per call (allocates a String, validates the bytes are
+            // valid UTF-8, then we throw the String away after reading
+            // its bytes). serde_json::to_vec writes JSON directly into
+            // a Vec<u8> — same canonical representation, one fewer
+            // allocation + zero validation cost. Fixed bytes go
+            // straight to blake3.
+            let bytes = serde_json::to_vec(&params).unwrap_or_default();
+            let new_hash = blake3::hash(&bytes).to_hex().to_string();
             // Bug G-4 (2026-05-01): surface audit-log write failures.
             // Previously `let _ =` swallowed errors, which left audit
             // trail gaps invisible. `mneme history` then showed
