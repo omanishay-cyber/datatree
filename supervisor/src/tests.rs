@@ -841,6 +841,63 @@ async fn restart_dropped_count_increments_on_closed_channel() {
     );
 }
 
+/// Audit fix TEST-NEW-6 (2026-05-06 multi-agent fan-out, testing-
+/// reviewer): the HIGH-7 fix added a status-rollback line inside
+/// the channel-closed branch of monitor_child — without it,
+/// /health would surface a phantom "Restarting" child forever
+/// (the channel is closed, nothing will drain the queue, so the
+/// restart never fires). The HIGH-7 commit shipped without a
+/// regression test, so a future contributor removing the line on
+/// "we're shutting down anyway" grounds would silently re-open
+/// the bug.
+///
+/// This test pre-sets a child handle to Restarting (mimicking the
+/// monitor_child line that runs BEFORE the send), simulates the
+/// channel-closed branch, and asserts the status is now Stopped.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn restart_dropped_path_rolls_status_back_to_stopped() {
+    use crate::child::{ChildHandle, ChildStatus};
+    use crate::manager::ChildManager;
+
+    let cfg = dummy_config();
+    let ring = Arc::new(crate::log_ring::LogRing::new(256));
+    let mgr = Arc::new(ChildManager::new(cfg, ring));
+
+    let spec = dummy_spec("phantom");
+    mgr.register_handle_for_test(ChildHandle::new(spec, Duration::from_millis(10)))
+        .await;
+
+    // Mimic the monitor_child sequence: status was set to Restarting
+    // BEFORE the send. set_child_status_for_test is a thin
+    // test-only entrypoint that mirrors the pre-send line.
+    mgr.set_child_status_for_test("phantom", ChildStatus::Restarting)
+        .await;
+
+    // Take and drop the receiver to close the channel.
+    let rx = mgr.take_restart_rx().await.expect("rx taken once");
+    drop(rx);
+
+    // Drive the dropped-restart path. The HIGH-7 contract is that
+    // after this returns, status MUST be Stopped (not Restarting).
+    mgr.simulate_dropped_restart_for_test("phantom").await;
+
+    let snap = mgr.snapshot().await;
+    let s = snap
+        .iter()
+        .find(|s| s.name == "phantom")
+        .expect("phantom child appears in snapshot");
+    assert!(
+        matches!(s.status, ChildStatus::Stopped),
+        "expected status to roll back to Stopped after channel-closed dropped restart, got {:?}",
+        s.status,
+    );
+    assert!(
+        s.restart_dropped_count >= 1,
+        "expected restart_dropped_count >= 1, got {}",
+        s.restart_dropped_count
+    );
+}
+
 /// Bug J — the restart-request channel is unbounded. Pushing 1000
 /// requests in a tight loop without a draining receiver must succeed
 /// every time. The bounded predecessor used `try_send` and silently

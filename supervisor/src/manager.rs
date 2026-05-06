@@ -600,9 +600,18 @@ impl ChildManager {
 
     /// Test-only entrypoint: simulate the dropped-restart path that
     /// fires when the restart channel is closed (receiver dropped).
-    /// Bumps `restart_dropped_count` on the named child the same way
-    /// `monitor_child` does after `SendError`. The test for Bug L
+    /// Bumps `restart_dropped_count` AND rolls `status` back from
+    /// Restarting to Stopped on the named child the same way
+    /// `monitor_child` does after `SendError`. The Bug L test
     /// drives this directly because it cannot spawn a real worker.
+    ///
+    /// Audit fix TEST-NEW-6 (2026-05-06 multi-agent fan-out,
+    /// testing-reviewer): the prior version only bumped the count,
+    /// leaving the HIGH-7 status-rollback half of the
+    /// channel-closed path untested. The two operations now happen
+    /// together to mirror the production path exactly — a future
+    /// contributor that removes EITHER the count bump or the
+    /// Stopped roll-back gets caught by the matching test below.
     #[doc(hidden)]
     #[allow(dead_code)]
     pub(crate) async fn simulate_dropped_restart_for_test(&self, name: &str) {
@@ -610,6 +619,22 @@ impl ChildManager {
         if let Some(h) = g.get(name) {
             let mut handle = h.lock().await;
             handle.restart_dropped_count = handle.restart_dropped_count.saturating_add(1);
+            handle.status = ChildStatus::Stopped;
+        }
+    }
+
+    /// Test-only entrypoint: directly write a child's status. Used
+    /// by the HIGH-7 rollback test (TEST-NEW-6) to seed Restarting
+    /// before driving the channel-closed path. Production monitor
+    /// code never calls this — it always writes status inline with
+    /// the surrounding lock + send orchestration.
+    #[doc(hidden)]
+    #[allow(dead_code)]
+    pub(crate) async fn set_child_status_for_test(&self, name: &str, status: ChildStatus) {
+        let g = self.handles.read().await;
+        if let Some(h) = g.get(name) {
+            let mut handle = h.lock().await;
+            handle.status = status;
         }
     }
 
