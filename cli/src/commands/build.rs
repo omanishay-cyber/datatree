@@ -39,7 +39,10 @@ use parsers::{
 };
 use scanners::scanners::architecture::{ArchEdge, ArchNode, ArchitectureScanner};
 use sha2::{Digest, Sha256};
-use store::{inject::InjectOptions, Store};
+use store::{
+    inject::{InjectOp, InjectOptions},
+    Store,
+};
 
 /// CLI args for `mneme build`.
 #[derive(Debug, Args)]
@@ -701,45 +704,31 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
         // queries (`vision/server/shard.ts`) get rows back. The data is
         // already in hand — just persist it. Keyed on path so re-parses
         // self-heal via INSERT OR REPLACE.
+        // CRIT-12 fix (2026-05-05 audit): batch the per-file graph
+        // writes through `store.inject.batch_inject(...)` so the file
+        // row + every node + every edge land in ONE transaction with
+        // ONE writer-channel round-trip. Previously each row was an
+        // individual `inject.insert(...)` call: 1 mpsc round-trip +
+        // 1 oneshot reply + 1 prepare_cached + 1 autocommit per row.
+        // For a 13K-node project: ~110K serial round-trips =
+        // ~30s of pure SQL overhead per build.rs:2066-2074's own
+        // PERF-P0-001 acknowledgement. The batched form drops this
+        // to ~one round-trip per file = ~1500 round-trips total =
+        // ~1s of overhead.
+        //
+        // Trade-off: we lose granular per-row error attribution for
+        // the COMMON case. If the batch fails, we record one
+        // failure-count entry and surface the underlying error. In
+        // practice the failure mode is "transient SQLITE_BUSY" or
+        // "schema mismatch", both of which fail every row in the
+        // batch identically — so granular attribution adds noise
+        // without information.
         let files_sql = "INSERT OR REPLACE INTO files(path, sha256, language, last_parsed_at, line_count, byte_count) \
                          VALUES(?1, ?2, ?3, datetime('now'), ?4, ?5)";
-        let files_params = vec![
-            serde_json::Value::String(path.display().to_string()),
-            serde_json::Value::String(file_sha.clone()),
-            serde_json::Value::String(format!("{:?}", lang).to_lowercase()),
-            serde_json::Value::Number((line_count as i64).into()),
-            serde_json::Value::Number((byte_count as i64).into()),
-        ];
-        // Silent-1: capture & track insert failures (was `let _ = ...`).
-        let files_resp = store
-            .inject
-            .insert(
-                &project_id,
-                DbLayer::Graph,
-                files_sql,
-                files_params,
-                InjectOptions {
-                    emit_event: false,
-                    audit: false,
-                    ..InjectOptions::default()
-                },
-            )
-            .await;
-        if !files_resp.success {
-            graph_insert_failures += 1;
-            let msg = files_resp
-                .error
-                .as_ref()
-                .map(|e| format!("graph insert (files row) failed: {}", e.message))
-                .unwrap_or_else(|| "graph insert (files row) failed: no error detail".to_string());
-            build_errors.push((msg, path.display().to_string()));
-        }
 
         // I4: filter `Comment` nodes from the writer-visible graph. Per
         // phase-a-issues.md §I4 ~50% of `nodes` rows were comments, which
-        // distorts god-node + community + coupling stats. Comments stay
-        // re-extractable from the AST per file when a downstream feature
-        // actually needs them.
+        // distorts god-node + community + coupling stats.
         let writeable: Vec<&parsers::Node> = graph
             .nodes
             .iter()
@@ -748,113 +737,118 @@ pub(crate) async fn run_inline(args: BuildArgs, project: PathBuf) -> CliResult<(
         let n_nodes = writeable.len();
         let n_edges = graph.edges.len();
 
-        // Persist. Map parsers::Node → graph.db schema. `id` from parsers
-        // becomes the qualified_name (it's already a stable, unique string
-        // per §stable_id in extractor.rs).
-        for node in &writeable {
-            let sql = "INSERT OR REPLACE INTO nodes(kind,name,qualified_name,file_path,line_start,line_end,language,is_test,file_hash,extra,updated_at) \
-                       VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,datetime('now'))";
-            let params = vec![
-                serde_json::Value::String(format!("{:?}", node.kind).to_lowercase()),
-                serde_json::Value::String(node.name.clone()),
-                serde_json::Value::String(node.id.clone()),
-                serde_json::Value::String(node.file.display().to_string()),
-                serde_json::Value::Number((node.line_range.0 as i64).into()),
-                serde_json::Value::Number((node.line_range.1 as i64).into()),
-                serde_json::Value::String(format!("{:?}", node.language).to_lowercase()),
-                serde_json::Value::Number((if is_test_file { 1i64 } else { 0i64 }).into()),
+        // Pre-allocate so we don't re-grow during the typical project's
+        // ~50-200 ops per file.
+        let mut ops: Vec<InjectOp> = Vec::with_capacity(1 + n_nodes + n_edges);
+
+        // 1) files row
+        ops.push(InjectOp::Insert {
+            project: project_id.clone(),
+            layer: DbLayer::Graph,
+            sql: files_sql.to_string(),
+            params: vec![
+                serde_json::Value::String(path.display().to_string()),
                 serde_json::Value::String(file_sha.clone()),
-                serde_json::Value::String(
-                    serde_json::json!({
-                        "confidence": format!("{:?}", node.confidence).to_lowercase(),
-                        "byte_range": [node.byte_range.0, node.byte_range.1],
-                    })
-                    .to_string(),
-                ),
-            ];
-            // Silent-1: capture & track per-node insert failures.
-            let node_resp = store
-                .inject
-                .insert(
-                    &project_id,
-                    DbLayer::Graph,
-                    sql,
-                    params,
-                    InjectOptions {
-                        emit_event: false,
-                        audit: false,
-                        ..InjectOptions::default()
-                    },
-                )
-                .await;
-            if !node_resp.success {
-                graph_insert_failures += 1;
-                let msg = node_resp
-                    .error
-                    .as_ref()
-                    .map(|e| format!("graph insert (node {}) failed: {}", node.id, e.message))
-                    .unwrap_or_else(|| {
-                        format!("graph insert (node {}) failed: no error detail", node.id)
-                    });
-                build_errors.push((msg, path.display().to_string()));
-            }
+                serde_json::Value::String(format!("{:?}", lang).to_lowercase()),
+                serde_json::Value::Number((line_count as i64).into()),
+                serde_json::Value::Number((byte_count as i64).into()),
+            ],
+        });
+
+        // 2) every node — INSERT OR REPLACE INTO nodes(...)
+        let node_sql = "INSERT OR REPLACE INTO nodes(kind,name,qualified_name,file_path,line_start,line_end,language,is_test,file_hash,extra,updated_at) \
+                        VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,datetime('now'))";
+        for node in &writeable {
+            ops.push(InjectOp::Insert {
+                project: project_id.clone(),
+                layer: DbLayer::Graph,
+                sql: node_sql.to_string(),
+                params: vec![
+                    serde_json::Value::String(format!("{:?}", node.kind).to_lowercase()),
+                    serde_json::Value::String(node.name.clone()),
+                    serde_json::Value::String(node.id.clone()),
+                    serde_json::Value::String(node.file.display().to_string()),
+                    serde_json::Value::Number((node.line_range.0 as i64).into()),
+                    serde_json::Value::Number((node.line_range.1 as i64).into()),
+                    serde_json::Value::String(format!("{:?}", node.language).to_lowercase()),
+                    serde_json::Value::Number((if is_test_file { 1i64 } else { 0i64 }).into()),
+                    serde_json::Value::String(file_sha.clone()),
+                    serde_json::Value::String(
+                        serde_json::json!({
+                            "confidence": format!("{:?}", node.confidence).to_lowercase(),
+                            "byte_range": [node.byte_range.0, node.byte_range.1],
+                        })
+                        .to_string(),
+                    ),
+                ],
+            });
         }
+
+        // 3) every edge — INSERT INTO edges(...)
+        let edge_sql = "INSERT INTO edges(kind,source_qualified,target_qualified,confidence,confidence_score,source_extractor,extra,updated_at) \
+                        VALUES(?1,?2,?3,?4,?5,?6,?7,datetime('now'))";
         for edge in &graph.edges {
-            let sql = "INSERT INTO edges(kind,source_qualified,target_qualified,confidence,confidence_score,source_extractor,extra,updated_at) \
-                       VALUES(?1,?2,?3,?4,?5,?6,?7,datetime('now'))";
             let conf = format!("{:?}", edge.confidence).to_lowercase();
             let score = edge.confidence.weight();
-            let params = vec![
-                serde_json::Value::String(format!("{:?}", edge.kind).to_lowercase()),
-                serde_json::Value::String(edge.from.clone()),
-                serde_json::Value::String(edge.to.clone()),
-                serde_json::Value::String(conf),
-                serde_json::Value::Number(
-                    serde_json::Number::from_f64(score as f64)
-                        .unwrap_or_else(|| serde_json::Number::from(1)),
-                ),
-                serde_json::Value::String("parsers".into()),
-                serde_json::Value::String(
-                    serde_json::json!({
-                        "unresolved": edge.unresolved_target,
-                    })
-                    .to_string(),
-                ),
-            ];
-            // Silent-1: capture & track per-edge insert failures.
-            let edge_resp = store
-                .inject
-                .insert(
-                    &project_id,
-                    DbLayer::Graph,
-                    sql,
-                    params,
-                    InjectOptions {
-                        emit_event: false,
-                        audit: false,
-                        ..InjectOptions::default()
-                    },
-                )
-                .await;
-            if !edge_resp.success {
-                graph_insert_failures += 1;
-                let msg = edge_resp
-                    .error
-                    .as_ref()
-                    .map(|e| {
-                        format!(
-                            "graph insert (edge {}->{}) failed: {}",
-                            edge.from, edge.to, e.message
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        format!(
-                            "graph insert (edge {}->{}) failed: no error detail",
-                            edge.from, edge.to
-                        )
-                    });
-                build_errors.push((msg, path.display().to_string()));
-            }
+            ops.push(InjectOp::Insert {
+                project: project_id.clone(),
+                layer: DbLayer::Graph,
+                sql: edge_sql.to_string(),
+                params: vec![
+                    serde_json::Value::String(format!("{:?}", edge.kind).to_lowercase()),
+                    serde_json::Value::String(edge.from.clone()),
+                    serde_json::Value::String(edge.to.clone()),
+                    serde_json::Value::String(conf),
+                    serde_json::Value::Number(
+                        serde_json::Number::from_f64(score as f64)
+                            .unwrap_or_else(|| serde_json::Number::from(1)),
+                    ),
+                    serde_json::Value::String("parsers".into()),
+                    serde_json::Value::String(
+                        serde_json::json!({
+                            "unresolved": edge.unresolved_target,
+                        })
+                        .to_string(),
+                    ),
+                ],
+            });
+        }
+
+        // 4) one batched write through the writer channel — single
+        // transaction, single mpsc round-trip, single oneshot reply.
+        let batch_resp = store
+            .inject
+            .batch_inject(
+                ops,
+                InjectOptions {
+                    emit_event: false,
+                    audit: false,
+                    ..InjectOptions::default()
+                },
+            )
+            .await;
+        if !batch_resp.success {
+            // Whole batch rolled back. Track the failure count by
+            // total ops the batch contained (not per-row, since we
+            // intentionally collapsed that for performance).
+            let batch_size = (1 + n_nodes + n_edges) as u64;
+            graph_insert_failures += batch_size;
+            let msg = batch_resp
+                .error
+                .as_ref()
+                .map(|e| {
+                    format!(
+                        "graph batch insert (1 file row + {} nodes + {} edges) failed: {}",
+                        n_nodes, n_edges, e.message
+                    )
+                })
+                .unwrap_or_else(|| {
+                    format!(
+                        "graph batch insert (1 file row + {} nodes + {} edges) failed: no error detail",
+                        n_nodes, n_edges
+                    )
+                });
+            build_errors.push((msg, path.display().to_string()));
         }
 
         indexed += 1;
