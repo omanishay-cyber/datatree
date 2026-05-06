@@ -229,11 +229,78 @@ impl HealthServer {
         let listener = match tokio::net::TcpListener::bind(addr).await {
             Ok(l) => l,
             Err(e) => {
-                error!(addr = %addr, error = %e, "health server bind failed");
+                // LOW fix (2026-05-05 audit): the prior implementation
+                // logged at error level and silently returned, leaving
+                // the supervisor process alive but with no HTTP layer
+                // (vision UI, /health, /ws, /api/graph all dead). Operators
+                // running `mneme doctor` got "daemon running" + a broken
+                // UI with no clear failure signal.
+                //
+                // Now: log AND eprintln (so the failure shows up in
+                // both structured logs and the user's terminal stderr),
+                // AND drop a sentinel file at
+                // <MNEME_HOME>/state/health-bind-failed so `mneme
+                // doctor` can read it on the next probe and surface
+                // the failure in its report. The daemon stays up so
+                // the worker pool / IPC socket continue serving CLI
+                // calls — but the operator gets a clear, visible
+                // signal that the HTTP layer is dead.
+                error!(
+                    addr = %addr,
+                    error = %e,
+                    "health server bind failed -- HTTP layer is DOWN; \
+                     CLI is still functional via IPC, but vision UI / /health / \
+                     /ws / /api/graph are unreachable. Common causes: port {} is \
+                     held by another process (try `lsof -i :{}` or `netstat -ano | \
+                     findstr :{}` on Windows), or a previous mneme instance hasn't \
+                     released the port yet.",
+                    self.port,
+                    self.port,
+                    self.port,
+                );
+                eprintln!(
+                    "ERROR: mneme-daemon health server bind failed on {addr}: {e}"
+                );
+                eprintln!(
+                    "       The daemon is still running — CLI commands work — but \
+                     vision UI / /health / /api/graph are unreachable."
+                );
+                eprintln!(
+                    "       Most common cause: port {} held by another process. \
+                     Run `mneme doctor` to confirm.",
+                    self.port
+                );
+                // Drop a sentinel file so `mneme doctor` can detect the
+                // failure on a subsequent probe. Best-effort — if the
+                // state dir doesn't exist or is not writable, fall
+                // through silently. The eprintln above is the
+                // primary signal; the sentinel is belt-and-suspenders.
+                if let Some(home) = std::env::var_os("MNEME_HOME").or_else(|| {
+                    dirs::home_dir().map(|h| h.join(".mneme").into_os_string())
+                }) {
+                    let state_dir = std::path::PathBuf::from(home).join("state");
+                    let _ = std::fs::create_dir_all(&state_dir);
+                    let _ = std::fs::write(
+                        state_dir.join("health-bind-failed"),
+                        format!("port={} error={e}\n", self.port),
+                    );
+                }
                 return;
             }
         };
         info!(addr = %addr, "health server listening");
+        // LOW fix (2026-05-05 audit): clear any stale "bind-failed"
+        // sentinel from a previous boot when we successfully bind.
+        // Otherwise `mneme doctor` would keep reporting the previous
+        // boot's bind failure forever.
+        if let Some(home) = std::env::var_os("MNEME_HOME")
+            .or_else(|| dirs::home_dir().map(|h| h.join(".mneme").into_os_string()))
+        {
+            let sentinel = std::path::PathBuf::from(home)
+                .join("state")
+                .join("health-bind-failed");
+            let _ = std::fs::remove_file(&sentinel);
+        }
 
         let shutdown_signal = async move {
             shutdown.notified().await;
