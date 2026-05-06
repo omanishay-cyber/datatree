@@ -40,9 +40,24 @@ export function connectLivebus(): void {
   }
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
   const url = `${proto}://${window.location.host}/ws`;
+  // HIGH-FE-2 fix (2026-05-05 audit): close/error handlers used to
+  // close over the module-global `socket` reference rather than the
+  // socket they were registered on. When socket A's close fired
+  // AFTER socket B had already been assigned to `socket` (during a
+  // CLOSING-state branch reconnect), A's close handler nulled B and
+  // A's error handler called `socket?.close()` — which closed the
+  // wrong socket. Each cascade triggered a fresh scheduleReconnect,
+  // doubling reconnect attempts and exponential-backoff state.
+  //
+  // Fix: capture the socket in a local `ws` so the handlers always
+  // operate on the socket they were registered on, and only mutate
+  // module-global state (`socket = null`, `scheduleReconnect`) when
+  // the closing socket IS the current module-global one.
+  let ws: WebSocket;
   try {
-    socket = new WebSocket(url);
-    liveSockets.push(socket);
+    ws = new WebSocket(url);
+    socket = ws;
+    liveSockets.push(ws);
     // Cap at 4 most-recent sockets; force-close anything older. This
     // protects against pathological HMR loops creating dozens of leaked
     // sockets each carrying its own message listener.
@@ -59,11 +74,11 @@ export function connectLivebus(): void {
     return;
   }
 
-  socket.addEventListener("open", () => {
+  ws.addEventListener("open", () => {
     reconnectAttempt = 0;
   });
 
-  socket.addEventListener("message", (event) => {
+  ws.addEventListener("message", (event) => {
     const raw = typeof event.data === "string" ? event.data : "";
     if (!raw) return;
     try {
@@ -84,14 +99,20 @@ export function connectLivebus(): void {
     }
   });
 
-  socket.addEventListener("close", () => {
-    socket = null;
-    scheduleReconnect();
+  ws.addEventListener("close", () => {
+    // Only null the module-global if THIS socket is still the current
+    // one. If a newer socket has already been assigned, leave it.
+    if (socket === ws) {
+      socket = null;
+      scheduleReconnect();
+    }
   });
 
-  socket.addEventListener("error", () => {
+  ws.addEventListener("error", () => {
+    // Close THIS socket, not the module-global (which may already
+    // have been replaced by a successful reconnect).
     try {
-      socket?.close();
+      ws.close();
     } catch {
       /* noop */
     }
