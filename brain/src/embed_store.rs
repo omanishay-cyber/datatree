@@ -373,3 +373,188 @@ pub fn default_dir() -> PathBuf {
         .join("cache")
         .join("embed")
 }
+
+// ---------------------------------------------------------------------------
+// Tests — Audit fix HIGH-35 (2026-05-06, 2026-05-05 audit, testing-reviewer):
+// EmbedStore is the Item #117 keystone storage layer (symbol-anchored BGE
+// embeddings) and shipped with ZERO unit tests. The DTB1 magic-number,
+// dim-mismatch rejection, file-corruption fallback, upsert/upsert_many,
+// and nearest-K cosine search were all untested in source — a regression
+// that, say, swapped the byte order on read or broke the dim check would
+// pass cargo check + every existing test and silently corrupt persisted
+// embeddings on the user's machine.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    /// Build a deterministic dummy 384-D vector keyed on `seed`. Different
+    /// seeds yield linearly-independent vectors so cosine-sim ordering
+    /// is stable.
+    fn vec_seed(seed: u32) -> Vec<f32> {
+        let mut v = vec![0f32; EMBEDDING_DIM];
+        for (i, slot) in v.iter_mut().enumerate() {
+            // Simple keyed ramp + offset; cheap and deterministic.
+            *slot = ((i as u32).wrapping_mul(seed) % 257) as f32 / 257.0;
+        }
+        // Normalise so cosine ranges are well-defined.
+        let mag = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
+        for slot in v.iter_mut() {
+            *slot /= mag;
+        }
+        v
+    }
+
+    #[test]
+    fn open_creates_empty_store_when_dir_missing() {
+        let tmp = TempDir::new().unwrap();
+        let store = EmbedStore::open(tmp.path()).expect("open creates dir");
+        // Brand-new store has zero vectors.
+        let hits = store.nearest(&vec_seed(1), 5);
+        assert_eq!(hits.len(), 0);
+    }
+
+    #[test]
+    fn upsert_then_nearest_returns_seeded_vector_first() {
+        let tmp = TempDir::new().unwrap();
+        let store = EmbedStore::open(tmp.path()).unwrap();
+        let n1 = NodeId(1);
+        let v1 = vec_seed(11);
+        store.upsert(n1, &v1).unwrap();
+
+        // Querying with the same vector returns it as the top hit
+        // (cosine similarity = 1.0 against itself).
+        let hits = store.nearest(&v1, 5);
+        assert!(!hits.is_empty(), "upsert + nearest must find the row");
+        assert_eq!(hits[0].node, n1);
+        assert!(
+            (hits[0].score - 1.0).abs() < 1e-3,
+            "self-similarity should be 1.0, got {}",
+            hits[0].score
+        );
+    }
+
+    #[test]
+    fn upsert_rejects_wrong_dimension() {
+        let tmp = TempDir::new().unwrap();
+        let store = EmbedStore::open(tmp.path()).unwrap();
+        let bad = vec![0.0f32; EMBEDDING_DIM - 1];
+        let err = store.upsert(NodeId(2), &bad);
+        assert!(err.is_err(), "dim mismatch must fail-loud, not silent");
+    }
+
+    #[test]
+    fn upsert_many_persists_via_flush_and_reload() {
+        let tmp = TempDir::new().unwrap();
+        {
+            let store = EmbedStore::open(tmp.path()).unwrap();
+            let items: Vec<(NodeId, Vec<f32>)> = (0..10)
+                .map(|i| (NodeId(100 + i as u128), vec_seed(100 + i)))
+                .collect();
+            store.upsert_many(&items).unwrap();
+            store.flush().expect("flush writes DTB1 file");
+        }
+        // Reopen and confirm round-trip: a fresh store at the same dir
+        // sees all 10 rows.
+        let store2 = EmbedStore::open(tmp.path()).unwrap();
+        let hits = store2.nearest(&vec_seed(105), 3);
+        assert!(hits.len() <= 3);
+        assert!(
+            !hits.is_empty(),
+            "after flush+reopen, nearest must find seeded rows"
+        );
+    }
+
+    #[test]
+    fn corrupt_magic_falls_back_to_empty_store() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(FILE_NAME);
+        // Write garbage where the DTB1 header should be — this
+        // exercises the warn-and-empty-state fallback in `open()`.
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(b"NOTDTB1").unwrap();
+        drop(f);
+        let store =
+            EmbedStore::open(tmp.path()).expect("open must not panic on a corrupt file");
+        // Result: empty in-memory state. Search returns nothing.
+        let hits = store.nearest(&vec_seed(1), 5);
+        assert_eq!(hits.len(), 0);
+    }
+
+    #[test]
+    fn corrupt_dim_falls_back_to_empty_store() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(FILE_NAME);
+        // Write valid magic but wrong dim. load_file should reject
+        // with a Store error; `open()` warns and starts empty.
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(&MAGIC.to_le_bytes()).unwrap();
+        f.write_all(&999u32.to_le_bytes()).unwrap(); // wrong dim
+        f.write_all(&0u64.to_le_bytes()).unwrap();
+        drop(f);
+        let store = EmbedStore::open(tmp.path()).unwrap();
+        let hits = store.nearest(&vec_seed(1), 5);
+        assert_eq!(hits.len(), 0);
+    }
+
+    #[test]
+    fn nearest_k_zero_returns_empty_vec() {
+        let tmp = TempDir::new().unwrap();
+        let store = EmbedStore::open(tmp.path()).unwrap();
+        store.upsert(NodeId(7), &vec_seed(7)).unwrap();
+        let hits = store.nearest(&vec_seed(7), 0);
+        assert_eq!(hits.len(), 0);
+    }
+
+    #[test]
+    fn upsert_overwrites_existing_node_id() {
+        let tmp = TempDir::new().unwrap();
+        let store = EmbedStore::open(tmp.path()).unwrap();
+        let id = NodeId(42);
+        store.upsert(id, &vec_seed(1)).unwrap();
+        store.upsert(id, &vec_seed(99)).unwrap();
+        // Query with the second-version vector: top hit must be 42
+        // with similarity == 1.0 (proves the second upsert REPLACED
+        // not appended).
+        let hits = store.nearest(&vec_seed(99), 5);
+        assert_eq!(hits[0].node, id);
+        assert!((hits[0].score - 1.0).abs() < 1e-3);
+        // Sanity: there are no duplicate id-42 entries by checking
+        // that the first vector is no longer findable as a strong
+        // match (it was overwritten).
+        let hits_old = store.nearest(&vec_seed(1), 5);
+        assert!(
+            hits_old.is_empty() || hits_old[0].score < 0.99,
+            "old vector should not still produce a perfect self-match"
+        );
+    }
+
+    #[test]
+    fn nearest_returns_top_k_in_descending_score_order() {
+        let tmp = TempDir::new().unwrap();
+        let store = EmbedStore::open(tmp.path()).unwrap();
+        for i in 1..=5 {
+            store
+                .upsert(NodeId(i as u128), &vec_seed(i as u32))
+                .unwrap();
+        }
+        let hits = store.nearest(&vec_seed(3), 5);
+        // We ask for 5; the corpus has 5; expect 5 hits.
+        assert_eq!(hits.len(), 5);
+        // Scores must be monotonically non-increasing.
+        for w in hits.windows(2) {
+            assert!(
+                w[0].score >= w[1].score,
+                "scores out of order: {} then {}",
+                w[0].score,
+                w[1].score
+            );
+        }
+        // Self-similarity is 1.0; the seeded query (seed=3) must be
+        // the top hit.
+        assert_eq!(hits[0].node, NodeId(3));
+    }
+}
