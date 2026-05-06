@@ -19,17 +19,22 @@ fn jwt_in_sql_string_is_redacted() {
     // The trace log site interpolates sql AND params. Even if the param
     // is the JWT (the realistic case), the SQL string itself sometimes
     // contains the JWT inline. We must scrub both surfaces.
-    let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+    let jwt =
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
     let sql = format!("SELECT * FROM sessions WHERE token = '{}'", jwt);
     let out = redact_sql(&sql);
     assert!(out.contains("<redacted-jwt>"), "got: {out}");
-    assert!(!out.contains("eyJzdWIiOiIxMjM0NSJ9"), "JWT body leaked: {out}");
+    assert!(
+        !out.contains("eyJzdWIiOiIxMjM0NSJ9"),
+        "JWT body leaked: {out}"
+    );
 }
 
 #[test]
 fn jwt_in_param_vector_is_redacted() {
     // Realistic case: parameterised query, JWT bound at ?1.
-    let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+    let jwt =
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
     let params = vec![serde_json::Value::String(jwt.to_string())];
     let out = redact_params(&params);
     let s = out[0].as_str().unwrap();
@@ -53,7 +58,10 @@ fn normal_query_is_not_overredacted() {
     let sql = "SELECT id FROM nodes WHERE id = ?1";
     let out = redact_sql(sql);
     // Cow::Borrowed proves zero allocation -- the input was untouched.
-    assert!(matches!(out, Cow::Borrowed(_)), "clean input must NOT allocate");
+    assert!(
+        matches!(out, Cow::Borrowed(_)),
+        "clean input must NOT allocate"
+    );
     assert_eq!(&*out, sql);
 
     // Param vector check: a normal id like xyz must not be touched.
@@ -77,8 +85,12 @@ fn sha_hash_param_is_redacted() {
 fn idempotent_pass() {
     // After the first pass replaces JWT/keyword/hex, a second pass must
     // be a no-op. This guarantees that running the redactor twice is safe.
-    let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
-    let input = format!("password=hunter2 token={} hash=da39a3ee5e6b4b0d3255bfef95601890afd80709", jwt);
+    let jwt =
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+    let input = format!(
+        "password=hunter2 token={} hash=da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        jwt
+    );
     let once = redact_sql(&input).into_owned();
     let twice = redact_sql(&once).into_owned();
     assert_eq!(once, twice, "redact_sql must be idempotent");
@@ -103,5 +115,8 @@ fn hot_path_overhead_when_verbose_off() {
     let elapsed = t0.elapsed();
     let per_iter_ns = elapsed.as_nanos() / iters;
     // 1 us == 1000 ns. 5x slack for slow CI runners.
-    assert!(per_iter_ns < 5_000, "hot-path overhead {per_iter_ns} ns/iter exceeds budget");
+    assert!(
+        per_iter_ns < 5_000,
+        "hot-path overhead {per_iter_ns} ns/iter exceeds budget"
+    );
 }

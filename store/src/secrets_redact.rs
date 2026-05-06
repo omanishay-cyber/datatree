@@ -156,11 +156,15 @@ mod tests {
 
     #[test]
     fn redacts_jwt_in_string() {
-        let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+        let jwt =
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
         let s = format!("WHERE token = '{}'", jwt);
         let out = redact_sql(&s);
         assert!(out.contains("<redacted-jwt>"), "got: {out}");
-        assert!(!out.contains("eyJzdWIiOiIxMjM0NSJ9"), "JWT body leaked: {out}");
+        assert!(
+            !out.contains("eyJzdWIiOiIxMjM0NSJ9"),
+            "JWT body leaked: {out}"
+        );
     }
 
     #[test]
@@ -199,7 +203,8 @@ mod tests {
 
     #[test]
     fn is_idempotent() {
-        let jwt_token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+        let jwt_token =
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
         let s = format!("password=hunter2 token={}", jwt_token);
         let once = redact_sql(&s).into_owned();
         let twice = redact_sql(&once).into_owned();
@@ -219,7 +224,8 @@ mod tests {
 
     #[test]
     fn redact_params_redacts_string_jwt() {
-        let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+        let jwt =
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
         let params = vec![
             serde_json::Value::String(jwt.to_string()),
             serde_json::Value::String("normal-id".to_string()),

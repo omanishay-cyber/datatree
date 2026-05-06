@@ -1028,9 +1028,7 @@ impl ChildManager {
                 // and `/health` can show "Degraded for X minutes" and
                 // operators can see stuck workers at a glance. `None`
                 // when the child is not Degraded or has never been.
-                degraded_for_secs: h
-                    .degraded_since
-                    .map(|t| t.elapsed().as_secs()),
+                degraded_for_secs: h.degraded_since.map(|t| t.elapsed().as_secs()),
             });
         }
         // Phase-A C3: natural-order sort so `parser-worker-2` comes
