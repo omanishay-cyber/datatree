@@ -805,23 +805,41 @@ export function godNodesTopN(
   >(
     "graph",
     (db) => {
+      // LOW fix (2026-05-05 audit): the prior query fired two
+      // correlated subqueries PER ROW — `(SELECT kind FROM nodes
+      // WHERE qualified_name = d.q LIMIT 1)` and the matching
+      // file_path subquery. For topN=50 that's 100 extra round-trips
+      // per call. Replace with a single LEFT JOIN against `nodes`
+      // (the qualified_name column has a UNIQUE index, so the join
+      // is index-only) so kind + file_path come back in the same
+      // row scan as degree. Same observable output, materially
+      // cheaper plan.
       const rows = db
         .prepare(
           `WITH deg AS (
              SELECT source_qualified AS q, COUNT(*) AS out_d, 0 AS in_d FROM edges GROUP BY source_qualified
              UNION ALL
              SELECT target_qualified AS q, 0, COUNT(*)                  FROM edges GROUP BY target_qualified
+           ),
+           agg AS (
+             SELECT d.q AS qualified_name,
+                    SUM(d.out_d + d.in_d) AS degree,
+                    SUM(d.out_d)          AS out_degree,
+                    SUM(d.in_d)           AS in_degree
+             FROM deg d
+             GROUP BY d.q
+             ORDER BY degree DESC
+             LIMIT ?
            )
-           SELECT d.q AS qualified_name,
-                  SUM(d.out_d + d.in_d) AS degree,
-                  SUM(d.out_d)          AS out_degree,
-                  SUM(d.in_d)           AS in_degree,
-                  (SELECT kind      FROM nodes WHERE qualified_name = d.q LIMIT 1) AS kind,
-                  (SELECT file_path FROM nodes WHERE qualified_name = d.q LIMIT 1) AS file_path
-           FROM deg d
-           GROUP BY d.q
-           ORDER BY degree DESC
-           LIMIT ?`,
+           SELECT a.qualified_name,
+                  a.degree,
+                  a.out_degree,
+                  a.in_degree,
+                  n.kind,
+                  n.file_path
+           FROM agg a
+           LEFT JOIN nodes n ON n.qualified_name = a.qualified_name
+           ORDER BY a.degree DESC`,
         )
         .all(topN) as Array<{
         qualified_name: string;
