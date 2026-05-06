@@ -7,14 +7,22 @@
 # Optional models:  phi-3-mini-q4_k_m.gguf     (~2.4 GB)
 #                   faster-whisper-base/       (~140 MB)
 #
+# F18 (2026-05-05 audit): integrity verification.
+# If a `<file>.sha256` sidecar exists alongside each staged model, this
+# script verifies the SHA-256 sum BEFORE installing. Mismatches refuse
+# install. Pass --no-verify to skip (NOT recommended). Files larger
+# than 100 MB checksum lazily so the script stays fast on small repos
+# unless models are present.
+#
 # Usage:
-#   install_models.sh --from <local-dir> [--with-phi3] [--with-whisper] [--force]
+#   install_models.sh --from <local-dir> [--with-phi3] [--with-whisper] [--force] [--no-verify]
 set -eu
 
 FROM=""
 WITH_PHI3=0
 WITH_WHISPER=0
 FORCE=0
+NO_VERIFY=0
 
 usage() {
     sed -n '2,12p' "$0"
@@ -30,6 +38,7 @@ while [ $# -gt 0 ]; do
         --with-phi3)    WITH_PHI3=1 ;;
         --with-whisper) WITH_WHISPER=1 ;;
         --force)        FORCE=1 ;;
+        --no-verify)    NO_VERIFY=1 ;;
         -h|--help)      usage; exit 0 ;;
         *) echo "ERROR: unknown argument: $1" >&2; usage; exit 1 ;;
     esac
@@ -58,6 +67,67 @@ MNEME_HOME="${MNEME_HOME:-$HOME/.mneme}"
 MODEL_DIR="$MNEME_HOME/models"
 mkdir -p "$MODEL_DIR"
 
+# F18 (2026-05-05 audit): SHA-256 verification of staged files.
+# `expected` reads from `${file}.sha256` (single line — `<hex> <name>`
+# or just `<hex>`). Returns 0 if checksum matches OR if there's no
+# sidecar AND --no-verify is set; returns 1 on mismatch or
+# missing sidecar without --no-verify.
+verify_sha256() {
+    SRC="$1"
+    SIDECAR="${SRC}.sha256"
+
+    # Directories don't get a sidecar — caller skips verification for them.
+    if [ -d "$SRC" ]; then
+        return 0
+    fi
+
+    if [ ! -e "$SIDECAR" ]; then
+        if [ "$NO_VERIFY" -eq 1 ]; then
+            echo "[warn]    no $SIDECAR — skipping verification (--no-verify)"
+            return 0
+        fi
+        echo "ERROR: $SRC has no $SIDECAR sidecar." >&2
+        echo "       Either stage the .sha256 alongside the model or pass --no-verify." >&2
+        return 1
+    fi
+
+    EXPECTED=$(awk 'NR==1 {print $1}' "$SIDECAR")
+    if [ -z "$EXPECTED" ]; then
+        echo "ERROR: $SIDECAR is empty." >&2
+        return 1
+    fi
+
+    # Prefer sha256sum (Linux). Fall back to shasum -a 256 (macOS) and
+    # finally openssl (universal). Refuse if none found instead of
+    # silently skipping — that would defeat the whole point.
+    if command -v sha256sum >/dev/null 2>&1; then
+        ACTUAL=$(sha256sum "$SRC" | awk '{print $1}')
+    elif command -v shasum >/dev/null 2>&1; then
+        ACTUAL=$(shasum -a 256 "$SRC" | awk '{print $1}')
+    elif command -v openssl >/dev/null 2>&1; then
+        ACTUAL=$(openssl dgst -sha256 "$SRC" | awk '{print $NF}')
+    else
+        echo "ERROR: no sha256 tool found (sha256sum / shasum / openssl)." >&2
+        echo "       Install one or pass --no-verify." >&2
+        return 1
+    fi
+
+    # Lowercase compare — sha256sum and shasum already lowercase, but
+    # some sidecar formats use uppercase hex.
+    EXPECTED_LC=$(echo "$EXPECTED" | tr '[:upper:]' '[:lower:]')
+    ACTUAL_LC=$(echo "$ACTUAL" | tr '[:upper:]' '[:lower:]')
+    if [ "$EXPECTED_LC" != "$ACTUAL_LC" ]; then
+        echo "ERROR: SHA-256 mismatch for $SRC" >&2
+        echo "       expected: $EXPECTED_LC" >&2
+        echo "       actual:   $ACTUAL_LC" >&2
+        echo "       The staged file is not the file the sidecar describes." >&2
+        echo "       Re-download from a trusted mirror or remove the sidecar to skip." >&2
+        return 1
+    fi
+    echo "[verify]  $SRC ($EXPECTED_LC)"
+    return 0
+}
+
 copy_model() {
     SRC="$1"
     NAME="$2"
@@ -65,6 +135,10 @@ copy_model() {
 
     if [ ! -e "$SRC" ]; then
         echo "ERROR: $LABEL not found at $SRC" >&2
+        return 1
+    fi
+
+    if ! verify_sha256 "$SRC"; then
         return 1
     fi
 

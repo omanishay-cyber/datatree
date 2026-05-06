@@ -1,11 +1,17 @@
 # Install mneme ML models from a LOCAL source path.
 # REFUSES internet downloads. Models must be pre-staged locally.
+#
+# F18 (2026-05-05 audit): integrity verification.
+# If a `<file>.sha256` sidecar exists alongside each staged model,
+# this script verifies the SHA-256 sum BEFORE installing. Mismatches
+# refuse install. Pass -NoVerify to skip (NOT recommended).
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $false)] [string]$From,
     [switch]$WithPhi3,
     [switch]$WithWhisper,
     [switch]$Force,
+    [switch]$NoVerify,
     [switch]$Quiet
 )
 
@@ -37,10 +43,46 @@ $MnemeHome = if ($env:MNEME_HOME) { $env:MNEME_HOME } else { Join-Path $env:USER
 $ModelDir     = Join-Path $MnemeHome 'models'
 if (-not (Test-Path $ModelDir)) { New-Item -ItemType Directory -Force -Path $ModelDir | Out-Null }
 
+function Test-Sha256([string]$src) {
+    if ((Get-Item $src).PSIsContainer) {
+        return $true
+    }
+    $sidecar = "$src.sha256"
+    if (-not (Test-Path $sidecar)) {
+        if ($NoVerify) {
+            Write-Log "[warn]    no $sidecar -- skipping verification (-NoVerify)"
+            return $true
+        }
+        Write-Host "ERROR: $src has no $sidecar sidecar." -ForegroundColor Red
+        Write-Host "       Either stage the .sha256 alongside the model or pass -NoVerify." -ForegroundColor Red
+        return $false
+    }
+    $expectedLine = (Get-Content -LiteralPath $sidecar -TotalCount 1).Trim()
+    if (-not $expectedLine) {
+        Write-Host "ERROR: $sidecar is empty." -ForegroundColor Red
+        return $false
+    }
+    $expected = ($expectedLine -split '\s+')[0].ToLowerInvariant()
+    $actual   = (Get-FileHash -Algorithm SHA256 -LiteralPath $src).Hash.ToLowerInvariant()
+    if ($expected -ne $actual) {
+        Write-Host "ERROR: SHA-256 mismatch for $src" -ForegroundColor Red
+        Write-Host "       expected: $expected" -ForegroundColor Red
+        Write-Host "       actual:   $actual" -ForegroundColor Red
+        Write-Host "       The staged file is not the file the sidecar describes." -ForegroundColor Red
+        Write-Host "       Re-download from a trusted mirror or remove the sidecar to skip." -ForegroundColor Red
+        return $false
+    }
+    Write-Log "[verify]  $src ($expected)"
+    return $true
+}
+
 function Copy-Model($srcRel, $name, $label) {
     $src = Join-Path $From $srcRel
     if (-not (Test-Path $src)) {
         Write-Host "ERROR: $label not found at $src" -ForegroundColor Red
+        return $false
+    }
+    if (-not (Test-Sha256 $src)) {
         return $false
     }
     $dest = Join-Path $ModelDir $name
