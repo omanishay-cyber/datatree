@@ -24,12 +24,12 @@
 </div>
 <div class="mneme-hero-right">
 
-<div class="mneme-terminal">
-  <div class="mneme-terminal-bar">
+<div class="mneme-terminal" role="img" aria-label="Terminal demo: three example mneme commands showing recall, blast_radius, and why queries">
+  <div class="mneme-terminal-bar" aria-hidden="true">
     <span class="dot"></span><span class="dot"></span><span class="dot"></span>
     <span class="title">~/code/your-project — mneme</span>
   </div>
-  <div class="mneme-terminal-body">
+  <div class="mneme-terminal-body" aria-hidden="true">
 <pre><code><span class="prompt">$</span> <span class="cmd">mneme recall_concept "spawn"</span>
   <span class="arrow">→</span>  <span class="out-strong">crate::manager::WorkerPool::spawn</span>
      <span class="path">supervisor/src/manager.rs:1100</span>
@@ -73,37 +73,37 @@
 <div class="mneme-features">
 
 <div class="mneme-feature">
-  <div class="icon">SR</div>
+  <div class="icon" aria-hidden="true">SR</div>
   <h3>Symbol resolver</h3>
   <p>Three real resolvers — Rust, TypeScript, Python — turn syntactic names like <code>spawn</code>, <code>super::spawn</code>, and <code>crate::manager::spawn</code> into one canonical string per logical symbol. The keystone of v0.4.0.</p>
 </div>
 
 <div class="mneme-feature">
-  <div class="icon">PT</div>
+  <div class="icon" aria-hidden="true">PT</div>
   <h3>Soft-redirect hooks</h3>
   <p>When the AI calls <code>Grep</code> on something resolver-shaped, the PreToolUse hook injects a hint pointing at <code>find_references</code>. Never blocks. Always fail-open.</p>
 </div>
 
 <div class="mneme-feature">
-  <div class="icon">VG</div>
+  <div class="icon" aria-hidden="true">VG</div>
   <h3>Vision SPA</h3>
   <p>14 graph views — call graph, dependency mesh, force-directed galaxy, time-travel, treemap, sunburst, sankey — paint locally in under 500&nbsp;ms.</p>
 </div>
 
 <div class="mneme-feature">
-  <div class="icon">MC</div>
+  <div class="icon" aria-hidden="true">MC</div>
   <h3>50 MCP tools</h3>
   <p>Every query the AI needs: <code>recall_concept</code>, <code>find_references</code>, <code>blast_radius</code>, <code>call_graph</code>, <code>audit_*</code>. Local. Deterministic. Audited.</p>
 </div>
 
 <div class="mneme-feature">
-  <div class="icon">LO</div>
+  <div class="icon" aria-hidden="true">LO</div>
   <h3>Local-only by design</h3>
   <p>Daemon binds to <code>127.0.0.1</code>. Embeddings via ONNX Runtime, the optional LLM via llama.cpp, the graph in plain SQLite under <code>~/.mneme/</code>. No telemetry. No cloud sync.</p>
 </div>
 
 <div class="mneme-feature">
-  <div class="icon">HR</div>
+  <div class="icon" aria-hidden="true">HR</div>
   <h3>Hot rebuild on edit</h3>
   <p>The daemon watches your tree. Save a file and the affected slice of the graph re-builds in under a second. Symbol-anchored embeddings keep the same canonical name across edits.</p>
 </div>
