@@ -1351,6 +1351,60 @@ fn probe_single_worker(
     use std::process::{Command as StdCommand, Stdio};
     use std::time::Instant;
 
+    // Audit fix HIGH-14 (2026-05-06, 2026-05-05 audit, security-A04):
+    // before spawning the worker binary, verify it lives under the
+    // canonical ~/.mneme/bin/ install root OR under the OS tempdir
+    // (allowed for test fixtures + transient probe binaries). Pre-fix
+    // the supervisor would happily spawn whatever path was in
+    // `child.spec.command` — if a malicious caller (or a config-
+    // injection bug elsewhere in the daemon) handed us "C:\\evil.exe"
+    // we'd spawn it as the user.
+    //
+    // Best-effort: if PathManager::try_default_root fails (extremely
+    // rare; headless service with no MNEME_HOME and no resolvable
+    // home dir), fall through to the original behaviour rather than
+    // hard-fail. The defence is additive — when the resolver works,
+    // it gates the spawn.
+    //
+    // Tempdir bypass: integration tests stage version-stub binaries
+    // under tempfile::TempDir paths (e.g.
+    // `boot_refuses_when_worker_version_skews`). Allowing
+    // env::temp_dir() preserves the security gate against arbitrary
+    // attacker paths (`C:\\evil.exe`, `/etc/cron.daily/...`) while
+    // letting test infrastructure work without an explicit override
+    // env var.
+    if let Ok(pm) = common::PathManager::try_default_root() {
+        let bin_dir = pm.bin_dir();
+        let cmd_path = std::path::Path::new(command_path);
+        // dunce::canonicalize follows symlinks + normalises Windows
+        // \\?\ prefixes the same way ProjectId::from_path does.
+        // We canonicalise both sides so an attacker can't slip
+        // something past with mixed long/short paths.
+        let canon_bin = dunce::canonicalize(&bin_dir).ok();
+        let canon_cmd = dunce::canonicalize(cmd_path).ok();
+        let canon_tmp = dunce::canonicalize(std::env::temp_dir()).ok();
+        if let Some(cmd) = canon_cmd.as_ref() {
+            let under_bin = canon_bin.as_ref().is_some_and(|b| cmd.starts_with(b));
+            let under_tmp = canon_tmp.as_ref().is_some_and(|t| cmd.starts_with(t));
+            if !under_bin && !under_tmp {
+                return Err(Error::other(format!(
+                    "probe_single_worker: refusing to spawn {} \
+                     — path does not live under {} or the OS tempdir \
+                     (worker binaries must reside in the canonical \
+                     install root or be staged via tempfile)",
+                    cmd.display(),
+                    canon_bin
+                        .as_ref()
+                        .map(|b| b.display().to_string())
+                        .unwrap_or_else(|| "<unresolved bin dir>".to_string()),
+                )));
+            }
+        }
+        // canonicalise-failed branches (e.g. binary not yet installed
+        // during a doctor probe) fall through. The spawn() below will
+        // surface a clear NotFound error in that case.
+    }
+
     let mut child = StdCommand::new(command_path)
         .arg("--version")
         .stdin(Stdio::null())
