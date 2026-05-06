@@ -610,10 +610,56 @@ impl FallbackBackend {
     }
 
     fn embed_batch(&self, texts: &[&str]) -> Vec<Vec<f32>> {
-        texts
-            .iter()
-            .map(|t| hashing_embed(t, self.tokenizer.as_ref()))
-            .collect()
+        // LOW fix (2026-05-05 audit): the fallback backend was the
+        // hot path for users who hadn't run `mneme models install`
+        // (i.e. no BGE ONNX present). On a 5K-string batch the
+        // sequential map ate ~500-1000ms of single-threaded CPU
+        // while the rest of the cores sat idle. hashing_embed is
+        // fully embarrassingly parallel — no shared mutable state
+        // beyond `self.tokenizer` (which is `&Tokenizer`, Send +
+        // Sync) — so we chunk the input and spread the work across
+        // available cores via std::thread::scope. No rayon dep
+        // needed for a single function.
+        //
+        // Tuning:
+        //   - Below 64 strings: stay sequential. The thread spawn
+        //     overhead is ~50-100µs per thread on Windows; for
+        //     small batches it's net loss.
+        //   - 64-N: split into N_CORES chunks. Fewer chunks than
+        //     cores wastes capacity; more wastes scheduling.
+        //
+        // Output order is preserved: each chunk is owned by a
+        // single thread, results collected in input order.
+        const PAR_THRESHOLD: usize = 64;
+        if texts.len() < PAR_THRESHOLD {
+            return texts
+                .iter()
+                .map(|t| hashing_embed(t, self.tokenizer.as_ref()))
+                .collect();
+        }
+        let n_threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(2)
+            .min(texts.len()); // never more threads than items
+        let chunk_size = texts.len().div_ceil(n_threads);
+        let tokenizer = self.tokenizer.as_ref();
+        std::thread::scope(|s| {
+            let handles: Vec<_> = texts
+                .chunks(chunk_size)
+                .map(|chunk| {
+                    s.spawn(move || {
+                        chunk
+                            .iter()
+                            .map(|t| hashing_embed(t, tokenizer))
+                            .collect::<Vec<Vec<f32>>>()
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .flat_map(|h| h.join().expect("hashing_embed panicked"))
+                .collect()
+        })
     }
 }
 
