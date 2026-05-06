@@ -58,14 +58,31 @@ const MAX_TOKENS: usize = 512;
 /// BUG-A2-007 fix.
 const EMBED_CACHE_CAPACITY: usize = 10_000;
 
-/// Process-wide registry of backends keyed by `(model_path, tokenizer_path)`.
+/// Process-wide registry of backend pools keyed by `(model_path, tokenizer_path)`.
 /// BUG-A2-003 fix: a single `OnceCell` keyed by nothing meant the FIRST call
 /// (often a bogus probe) decided the backend forever; subsequent calls with
 /// real model paths were ignored. Now distinct path pairs get distinct
-/// backends and a `models install` followed by a fresh `Embedder::new` engages
-/// the real BGE backend without a daemon restart.
-static GLOBAL_BACKENDS: OnceCell<DashMap<(PathBuf, PathBuf), Arc<Mutex<Backend>>>> =
+/// backend pools and a `models install` followed by a fresh `Embedder::new`
+/// engages the real BGE backend without a daemon restart.
+///
+/// HIGH-24 fix (2026-05-06, 2026-05-05 audit): each entry is a `Vec` of
+/// independently-loaded backends — the context pool. Round-robin dispatch
+/// via `Inner.next_idx` lets K concurrent embed calls run in parallel
+/// instead of serialising through a single Mutex.
+static GLOBAL_BACKENDS: OnceCell<DashMap<(PathBuf, PathBuf), Vec<Arc<Mutex<Backend>>>>> =
     OnceCell::new();
+
+/// HIGH-24: maximum number of backend Sessions in the Real-path pool. ORT
+/// Sessions consume ~400-800 MB of RAM each on the Real path, so a 32-core
+/// machine without this cap could allocate 25+ GB of ONNX state. 4 is
+/// enough to saturate even an 8-core box's parser+scanner concurrent embed
+/// load, while staying well under the RAM ceiling on a laptop.
+const POOL_SIZE_REAL: usize = 4;
+
+/// HIGH-24: Fallback path is single-slot. `FallbackBackend::embed_batch`
+/// already fans out internally over all cores; an outer pool would just
+/// add Mutex contention with no throughput gain.
+const POOL_SIZE_FALLBACK: usize = 1;
 
 /// Public embedder handle. Cheap to clone.
 #[derive(Clone)]
@@ -74,7 +91,26 @@ pub struct Embedder {
 }
 
 struct Inner {
-    backend: Arc<Mutex<Backend>>,
+    /// HIGH-24 fix: context pool. Each slot is an independently-loaded
+    /// `Backend` behind its own Mutex. Concurrent `embed` / `embed_batch`
+    /// calls select different slots via `next_idx`, so K calls can run
+    /// in parallel instead of serialising through a single lock.
+    ///
+    /// Pool-size policy (set at construction, immutable afterwards):
+    ///   Real path  — `min(available_parallelism, POOL_SIZE_REAL)` slots.
+    ///                Each slot owns one independent ORT Session.
+    ///   Fallback   — `POOL_SIZE_FALLBACK` (= 1). The hashing-trick
+    ///                backend already saturates cores internally; an
+    ///                outer pool would only add lock contention.
+    ///
+    /// The Vec is written ONCE during `Embedder::new` and is read-only
+    /// afterwards — no lock is needed to index into it.
+    backends: Vec<Arc<Mutex<Backend>>>,
+    /// HIGH-24 fix: round-robin counter. `fetch_add(1, Relaxed) %
+    /// backends.len()` selects the next slot. Relaxed ordering is
+    /// sufficient — we only need a different index per call, not
+    /// cross-thread synchronisation of the counter itself.
+    next_idx: std::sync::atomic::AtomicUsize,
     cache: DashMap<[u8; 32], Vec<f32>>,
     /// Insertion order tracker for the LRU eviction in [`Inner::cache`].
     /// BUG-A2-007: a parallel deque guards the cache from unbounded growth.
@@ -109,6 +145,7 @@ impl std::fmt::Debug for Embedder {
             .field("model_path", &self.inner.model_path)
             .field("tokenizer_path", &self.inner.tokenizer_path)
             .field("backend", &self.backend_name())
+            .field("pool_size", &self.inner.backends.len())
             .field("cached", &self.inner.cache.len())
             .finish()
     }
@@ -136,40 +173,65 @@ impl Embedder {
         let registry = GLOBAL_BACKENDS.get_or_init(DashMap::new);
         let key = (model_path.to_path_buf(), tokenizer_path.to_path_buf());
 
-        // Fast path: backend already loaded for these paths.
-        let backend = if let Some(entry) = registry.get(&key) {
+        // HIGH-24 fix: fast path returns the already-built pool. The Vec
+        // contains independently-loaded backends; cloning the Arc<Mutex<_>>
+        // for each slot is cheap (refcount bumps).
+        let backends: Vec<Arc<Mutex<Backend>>> = if let Some(entry) = registry.get(&key) {
             entry.clone()
         } else {
-            // Slow path: insert if absent. `entry().or_insert_with` keeps
-            // the construction inside the dashmap's per-shard lock.
+            // Slow path: build the pool. Strategy:
+            //   1. Probe-load slot 0 to discover Real vs Fallback.
+            //   2. Compute pool_size from kind: Real=min(parallelism,4),
+            //      Fallback=1.
+            //   3. Load the remaining (pool_size - 1) slots independently.
+            //   4. Atomically install via dashmap entry().or_insert_with;
+            //      if a concurrent caller raced us, prefer the existing
+            //      pool and discard ours (refcount drops to 0 cleanly).
+            let probe = Backend::load(model_path, tokenizer_path);
+            let kind_for_size = match &probe {
+                Backend::Real(_) => BACKEND_KIND_REAL,
+                Backend::Fallback(_) => BACKEND_KIND_FALLBACK,
+                Backend::Uninitialized => BACKEND_KIND_UNINITIALIZED,
+            };
+            match &probe {
+                Backend::Real(_) => info!(
+                    model = %model_path.display(),
+                    "BGE embedder loaded - real transformer path active"
+                ),
+                Backend::Fallback(_) => warn!(
+                    model = %model_path.display(),
+                    "BGE model missing or ORT unavailable - embedder running in \
+                     hashing-trick fallback mode. Run `mneme models install <path>` \
+                     and (if needed) set ORT_DYLIB_PATH for full retrieval quality."
+                ),
+                Backend::Uninitialized => {}
+            }
+            let pool_size = if kind_for_size == BACKEND_KIND_REAL {
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(1)
+                    .clamp(1, POOL_SIZE_REAL)
+            } else {
+                POOL_SIZE_FALLBACK
+            };
+            let mut new_pool: Vec<Arc<Mutex<Backend>>> =
+                Vec::with_capacity(pool_size);
+            new_pool.push(Arc::new(Mutex::new(probe)));
+            for _ in 1..pool_size {
+                let extra = Backend::load(model_path, tokenizer_path);
+                new_pool.push(Arc::new(Mutex::new(extra)));
+            }
             registry
                 .entry(key.clone())
-                .or_insert_with(|| Arc::new(Mutex::new(Backend::Uninitialized)))
+                .or_insert_with(|| new_pool)
                 .clone()
         };
 
-        // Eager init. Try real model first, fall back to hashing trick.
-        // Capture the resulting kind tag for the AtomicU8 below
-        // (HIGH-25): we need the value AFTER the lock is released
-        // so the Inner constructor can stamp the cache.
+        // HIGH-24 fix: read the kind tag from any one slot (slot 0 is
+        // populated; all slots load the same kind). Slot 0 read avoids
+        // a second probe on the slow path.
         let kind_tag = {
-            let mut guard = backend.lock();
-            if matches!(*guard, Backend::Uninitialized) {
-                *guard = Backend::load(model_path, tokenizer_path);
-                match &*guard {
-                    Backend::Real(_) => info!(
-                        model = %model_path.display(),
-                        "BGE embedder loaded - real transformer path active"
-                    ),
-                    Backend::Fallback(_) => warn!(
-                        model = %model_path.display(),
-                        "BGE model missing or ORT unavailable - embedder running in \
-                         hashing-trick fallback mode. Run `mneme models install <path>` \
-                         and (if needed) set ORT_DYLIB_PATH for full retrieval quality."
-                    ),
-                    Backend::Uninitialized => unreachable!(),
-                }
-            }
+            let guard = backends[0].lock();
             match &*guard {
                 Backend::Real(_) => BACKEND_KIND_REAL,
                 Backend::Fallback(_) => BACKEND_KIND_FALLBACK,
@@ -179,7 +241,8 @@ impl Embedder {
 
         Ok(Self {
             inner: Arc::new(Inner {
-                backend,
+                backends,
+                next_idx: std::sync::atomic::AtomicUsize::new(0),
                 cache: DashMap::new(),
                 cache_order: Mutex::new(std::collections::VecDeque::with_capacity(
                     EMBED_CACHE_CAPACITY,
@@ -189,6 +252,18 @@ impl Embedder {
                 tokenizer_path: tokenizer_path.to_path_buf(),
             }),
         })
+    }
+
+    /// HIGH-24 fix: select the next pool slot via round-robin. Returns the
+    /// `Arc<Mutex<Backend>>` at index `next_idx % len`. Concurrent callers
+    /// hash to different slots, allowing K parallel inferences.
+    fn next_backend(&self) -> Arc<Mutex<Backend>> {
+        let idx = self
+            .inner
+            .next_idx
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            % self.inner.backends.len();
+        self.inner.backends[idx].clone()
     }
 
     /// True iff the real transformer backend is active. When false, the
@@ -223,30 +298,21 @@ impl Embedder {
 
     /// Embed a single text. Returns a 384-element vector.
     ///
-    /// Audit acknowledgement HIGH-24 (2026-05-05 audit, deferred to
-    /// v0.4 per existing A2-019 / A2-020 source markers): the Mutex
-    /// at line below serialises ALL cache-miss embed calls through a
-    /// single ORT Session. Concurrent callers wait. The cache fast-
-    /// path above is lock-free (DashMap) and covers the steady-state
-    /// case; serialisation only bites on cold-cache parallel work.
-    ///
-    /// Fix path (v0.4): replace `Arc<Mutex<Backend>>` with a pool of
-    /// `Backend` instances and round-robin dispatch, allowing K
-    /// concurrent inferences instead of 1. ORT's `Session::run` is
-    /// safe for this when each thread holds its own Session. Until
-    /// then: (1) cache fast-path absorbs most calls; (2) callers in
-    /// hot paths (cli/src/commands/build.rs:2114, brain/src/worker.rs)
-    /// already batch via embed_batch so per-call lock acquisition is
-    /// amortised; (3) callers expecting blocking behaviour wrap in
-    /// spawn_blocking already.
+    /// HIGH-24 fix (2026-05-06, 2026-05-05 audit): cache-miss embed
+    /// calls dispatch to the next pool slot via round-robin. K
+    /// concurrent calls run in parallel — one per slot — instead of
+    /// serialising through a single Mutex. The cache fast-path above
+    /// remains lock-free (DashMap), so steady-state hits never touch
+    /// the pool at all.
     pub fn embed(&self, text: &str) -> BrainResult<Vec<f32>> {
         let key = hash_key(text);
         if let Some(v) = self.inner.cache.get(&key) {
             return Ok(v.clone());
         }
 
+        let backend = self.next_backend();
         let vec = {
-            let mut guard = self.inner.backend.lock();
+            let mut guard = backend.lock();
             guard.embed_one(text)?
         };
         self.cache_put(key, vec.clone());
@@ -276,8 +342,10 @@ impl Embedder {
         }
 
         if !to_compute_text.is_empty() {
+            // HIGH-24 fix: round-robin pool dispatch for the batch.
+            let backend = self.next_backend();
             let computed = {
-                let mut guard = self.inner.backend.lock();
+                let mut guard = backend.lock();
                 guard.embed_batch(&to_compute_text)?
             };
             for (slot, vec) in to_compute_idx.into_iter().zip(computed) {
