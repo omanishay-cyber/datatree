@@ -94,6 +94,21 @@ function ProjectPicker({ daemonOk }: { daemonOk: boolean }): JSX.Element {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // HIGH-FE-6 fix (2026-05-05 audit): the previous version captured
+  // `projectHash` synchronously inside the load() closure. The 30s
+  // recurring `setTimeout(() => load(false), 30_000)` re-fired with
+  // a STALE projectHash value from initial render. If the user
+  // manually picked B after the initial auto-select happened, the
+  // stale-closure 30s tick re-checked `if (!projectHash && ...)`
+  // against the empty-on-mount value and overwrote B back to A.
+  //
+  // Track `projectHash` in a ref so load() reads the CURRENT value
+  // each time it fires, not the captured-at-effect-mount value.
+  const projectHashRef = useRef<string>(projectHash);
+  useEffect(() => {
+    projectHashRef.current = projectHash;
+  }, [projectHash]);
+
   // A6-016: refresh on 30s cadence AND whenever the daemon health flips
   // from missing -> running. The previous []-deps fetch never re-ran,
   // so newly-built projects never appeared in the dropdown until the
@@ -113,7 +128,11 @@ function ProjectPicker({ daemonOk }: { daemonOk: boolean }): JSX.Element {
         // Auto-select the first project with a built shard when nothing
         // was picked yet — matches the legacy "show the only shard"
         // behaviour for single-project installs.
-        if (!projectHash && r.projects.length > 0) {
+        //
+        // HIGH-FE-6: read CURRENT projectHash via the ref so a 30s
+        // recurring tick respects the user's manual selection rather
+        // than overwriting from a stale closure capture.
+        if (!projectHashRef.current && r.projects.length > 0) {
           const firstReady = r.projects.find((p) => p.has_graph_db) ?? r.projects[0];
           if (firstReady) setProjectHash(firstReady.hash);
         }
@@ -138,7 +157,7 @@ function ProjectPicker({ daemonOk }: { daemonOk: boolean }): JSX.Element {
     };
     // Re-run when daemon transitions to running -- newly-built shards
     // become visible immediately. `projectHash` deliberately omitted to
-    // avoid loops (the auto-select set it).
+    // avoid loops (we read it via projectHashRef instead).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [daemonOk]);
 
