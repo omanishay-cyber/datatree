@@ -736,15 +736,160 @@ pub fn install_bin_dir() -> CliResult<PathBuf> {
 // Network — fetch release JSON + stream asset bytes.
 // ---------------------------------------------------------------------------
 
+/// Audit fix HIGH-12 (2026-05-06, 2026-05-05 audit, security A02):
+/// narrow CA bundle for self-update HTTPS. The previous configuration
+/// trusted EVERY CA in `webpki-roots` (~150 CAs) — any compromised
+/// CA could mint a valid cert for `api.github.com` and MITM the
+/// self-update flow. Combined with a SHA-256 sidecar that was also
+/// served from the same compromised CDN, the entire chain could be
+/// substituted.
+///
+/// Defense: disable webpki-roots' built-in trust store and trust ONLY
+/// the GitHub issuer-chain roots:
+///   * DigiCert Global Root G2 (current api.github.com chain root)
+///   * DigiCert Global Root G3 (ECDSA backup)
+///   * ISRG Root X1 (Let's Encrypt — fallback if GitHub rotates issuer)
+///
+/// This shrinks the trust pool from ~150 CAs to 3, reducing the attack
+/// surface to "compromise a specific named root" instead of "compromise
+/// ANY public CA". If GitHub ever rotates to a 4th root not in this
+/// pool, mneme self-update breaks for that release until a new mneme
+/// version ships with an updated bundle — bounded risk, alternative
+/// install paths (release/install-{mac,linux}.sh, bootstrap-install.ps1)
+/// continue to work.
+///
+/// Belt-and-suspenders: this defends the TLS layer; the existing
+/// SHA-256 sidecar verification (CRIT-9) and minisign signature path
+/// (A1-018, when wired) defend the payload regardless of TLS.
+fn pinned_https_client_builder() -> reqwest::ClientBuilder {
+    let mut builder = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .timeout(HTTP_TOTAL_TIMEOUT)
+        .tls_built_in_root_certs(false);
+
+    // Each PEM may fail to parse on a misconfigured target; that's
+    // a soft fail — we add the parseable ones and rely on the
+    // remaining roots to cover GitHub's chain. Hard-fail when ALL
+    // three fail to parse since we'd then have an empty trust pool.
+    let mut roots_added = 0usize;
+    for (name, pem) in [
+        ("DigiCert Global Root G2", DIGICERT_GLOBAL_ROOT_G2_PEM),
+        ("DigiCert Global Root G3", DIGICERT_GLOBAL_ROOT_G3_PEM),
+        ("ISRG Root X1", ISRG_ROOT_X1_PEM),
+    ] {
+        match reqwest::Certificate::from_pem(pem.as_bytes()) {
+            Ok(cert) => {
+                builder = builder.add_root_certificate(cert);
+                roots_added += 1;
+            }
+            Err(e) => {
+                eprintln!("self-update: WARN: failed to parse pinned root {name}: {e}");
+            }
+        }
+    }
+    if roots_added == 0 {
+        // All three failed to parse — fall back to webpki-roots so the
+        // user is never stranded. The eprintln above flagged the issue.
+        eprintln!(
+            "self-update: WARN: no pinned roots were parseable; \
+             falling back to webpki-roots (HIGH-12 protection NOT active)"
+        );
+        builder = builder.tls_built_in_root_certs(true);
+    }
+    builder
+}
+
+/// DigiCert Global Root G2. PEM source: https://www.digicert.com/CACerts/DigiCertGlobalRootG2.crt.pem.
+/// SHA-256 fingerprint: cb:3c:cb:b7:60:31:e5:e0:13:8f:8d:d3:9a:23:f9:de:47:ff:c3:5e:43:c1:14:4c:ea:27:d4:6a:5a:b1:cb:5f.
+/// Embedded as a constant so the binary's TLS trust pool is verifiable at
+/// compile time + reproducible across builds.
+const DIGICERT_GLOBAL_ROOT_G2_PEM: &str = "-----BEGIN CERTIFICATE-----
+MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
+MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
+d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH
+MjAeFw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVT
+MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j
+b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEcyMIIBIjANBgkqhkiG
+9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/RrohCgiN9RlUyfuI
+2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxpsMNzaHxmx
+1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQ
+q2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5Wz
+tCO7TG1F8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQ
+vIOlCsRnKPZzFBQ9RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAP
+BgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV
+5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcNAQELBQADggEBAGBnKJRvDkhj6zHd6mcY
+1Yl9PMWLSn/pvtsrF9+wX3N3KjITOYFnQoQj8kVnNeyIv/iPsGEMNKSuIEyExtv4
+NeF22d+mQrvHRAiGfzZ0JFrabA0UWTW98kndth/Jsw1HKj2ZL7tcu7XUIOGZX1NG
+Fdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ91
+8rGOmaFvE7FBcf6IKshPECBV1/MUReXgRPTqh5Uykw7+U0b6LJ3/iyK5S9kJRaTe
+pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl
+MrY=
+-----END CERTIFICATE-----
+";
+
+/// DigiCert Global Root G3 (ECDSA). PEM source:
+/// https://www.digicert.com/CACerts/DigiCertGlobalRootG3.crt.pem.
+/// SHA-256 fingerprint: 31:ad:66:48:f8:10:41:38:c7:38:f3:9e:a4:32:01:33:39:3e:3a:18:cc:02:29:6e:f9:7c:2a:c9:ef:73:84:0d.
+const DIGICERT_GLOBAL_ROOT_G3_PEM: &str = "-----BEGIN CERTIFICATE-----
+MIICPzCCAcWgAwIBAgIQBVVWvPJepDU1w6QP1atFcjAKBggqhkjOPQQDAzBhMQsw
+CQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3d3cu
+ZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBHMzAe
+Fw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVTMRUw
+EwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20x
+IDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEczMHYwEAYHKoZIzj0CAQYF
+K4EEACIDYgAE3afZu4q4C/sLfyHS8L6+c/MzXRq8NOrexpu80JX28MzQC7phW1FG
+fp4tn+6OYwwX7Adw9c+ELkCDnOg/QW07rdOkFFk2eJ0DQ+4QE2xy3q6Ip6FrtUPO
+Z9wj/wMco+I+o0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAd
+BgNVHQ4EFgQUs9tIpPmhxdiuNkHMEWNpYim8S8YwCgYIKoZIzj0EAwMDaAAwZQIx
+AK288mw/EkrRLTnDCgmXc/SINoyIJ7vmiI1Qhadj+Z4y3maTD/HMsQmP3Wyr+mt/
+oAIwOWZbwmSNuJ5Q3KjVSaLtx9zRSX8XAbjIho9OjIgrqJqpisXRAL34VOKa5Vt8
+sycX
+-----END CERTIFICATE-----
+";
+
+/// ISRG Root X1 (Let's Encrypt). PEM source:
+/// https://letsencrypt.org/certs/isrgrootx1.pem.
+/// SHA-256 fingerprint: 96:bc:ec:06:26:49:76:f3:74:60:77:9a:cf:28:c5:a7:cf:e8:a3:c0:aa:e1:1a:8f:fc:ee:05:c0:bd:df:08:c6.
+const ISRG_ROOT_X1_PEM: &str = "-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
+TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
+cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
+WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
+ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
+MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
+h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
+0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
+A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
+T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
+B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
+B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
+KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
+OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
+jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
+qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
+rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
+HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
+hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
+ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
+3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
+NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
+ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
+TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
+jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
+oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
+4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
+mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
+emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
+-----END CERTIFICATE-----
+";
+
 async fn fetch_latest_release() -> CliResult<GhRelease> {
     let url = format!(
         "https://api.github.com/repos/{}/{}/releases/latest",
         GITHUB_OWNER, GITHUB_REPO
     );
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .connect_timeout(HTTP_CONNECT_TIMEOUT)
-        .timeout(HTTP_TOTAL_TIMEOUT)
+    let client = pinned_https_client_builder()
         .build()
         .map_err(|e| CliError::Other(format!("reqwest client init: {e}")))?;
     let resp = client
@@ -773,10 +918,7 @@ async fn download_asset(
     expected_size: u64,
     verbose: bool,
 ) -> CliResult<()> {
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .connect_timeout(HTTP_CONNECT_TIMEOUT)
-        .timeout(HTTP_TOTAL_TIMEOUT)
+    let client = pinned_https_client_builder()
         .build()
         .map_err(|e| CliError::Other(format!("reqwest client init: {e}")))?;
     let mut resp = client
@@ -837,10 +979,7 @@ async fn download_asset(
 }
 
 async fn fetch_sha256_sidecar(url: &str, archive_name: &str) -> CliResult<String> {
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .connect_timeout(HTTP_CONNECT_TIMEOUT)
-        .timeout(HTTP_TOTAL_TIMEOUT)
+    let client = pinned_https_client_builder()
         .build()
         .map_err(|e| CliError::Other(format!("reqwest client init: {e}")))?;
     let resp = client

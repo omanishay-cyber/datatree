@@ -477,8 +477,7 @@ mod tests {
         let mut f = std::fs::File::create(&path).unwrap();
         f.write_all(b"NOTDTB1").unwrap();
         drop(f);
-        let store =
-            EmbedStore::open(tmp.path()).expect("open must not panic on a corrupt file");
+        let store = EmbedStore::open(tmp.path()).expect("open must not panic on a corrupt file");
         // Result: empty in-memory state. Search returns nothing.
         let hits = store.nearest(&vec_seed(1), 5);
         assert_eq!(hits.len(), 0);
