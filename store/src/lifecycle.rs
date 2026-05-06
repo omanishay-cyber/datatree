@@ -126,8 +126,32 @@ impl DbLifecycle for DefaultLifecycle {
                     let bak = dst
                         .with_extension(format!("pre-restore.{}", Timestamp::now().as_dirname()));
                     fs::rename(&dst, &bak)?;
+                    // LOW fix (2026-05-05 audit): clear stale `-wal`
+                    // and `-shm` sidecars left behind by the in-flight
+                    // shard. Those files reference the OLD database
+                    // page identity (via the WAL header's salt) and a
+                    // freshly-restored DB will be rejected as
+                    // inconsistent if SQLite opens it alongside an
+                    // unrelated WAL. Best-effort: missing sidecars are
+                    // fine, that's the steady state for a checkpointed
+                    // shard.
+                    for ext in ["-wal", "-shm"] {
+                        let mut sidecar = dst.clone().into_os_string();
+                        sidecar.push(ext);
+                        let _ = fs::remove_file(std::path::PathBuf::from(sidecar));
+                    }
                 }
-                fs::copy(&src, &dst)?;
+                // LOW fix (2026-05-05 audit): use SQLite Online Backup
+                // (same path as snapshot) instead of `fs::copy`.
+                // fs::copy of a SQLite file is technically safe ONLY
+                // when both source and destination have no live
+                // connections AND no -wal/-shm sidecars in flight.
+                // Online Backup does the right thing in all cases:
+                // serializes a transactional copy via the SQLite
+                // engine, automatically merges any pending WAL pages,
+                // and writes the destination as a fresh
+                // self-consistent file with no stale sidecars.
+                online_backup(&src, &dst)?;
             }
             warn!(project = %project, snapshot = %snapshot, "restored from snapshot");
             Ok(())
