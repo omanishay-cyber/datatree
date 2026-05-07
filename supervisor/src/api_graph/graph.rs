@@ -109,16 +109,20 @@ pub(super) async fn api_graph_nodes(
     // unauthenticated curl probes; clamp at MAX_GRAPH_LIMIT to keep
     // the daemon responsive.
     let limit = q.limit.unwrap_or(2000).min(MAX_GRAPH_LIMIT);
-    let sql = format!(
-        "SELECT qualified_name, name, kind, file_path \
-         FROM nodes ORDER BY id LIMIT {}",
-        limit
-    );
+    // SEC-7 fix: bind `limit` as a SQL parameter rather than interpolating
+    // it into the query string. The usize type already prevents string
+    // injection today, but parameterisation makes the handler robust to
+    // any future widening of the param type (e.g. f64 / String).
     let nodes: Vec<GraphNodeOut> =
         with_layer_db_sync(&state, "graph", q.project.as_deref(), move |conn| {
-            let mut stmt = conn.prepare(&sql).ok()?;
+            let mut stmt = conn
+                .prepare(
+                    "SELECT qualified_name, name, kind, file_path \
+                     FROM nodes ORDER BY id LIMIT ?1",
+                )
+                .ok()?;
             let rows = stmt
-                .query_map([], |r| {
+                .query_map(rusqlite::params![limit as i64], |r| {
                     Ok((
                         r.get::<_, String>(0)?,
                         r.get::<_, Option<String>>(1)?,
@@ -185,23 +189,29 @@ pub(super) async fn api_graph_edges(
     // Same node window the SPA's nodes call materialises. Using `limit`
     // for both keeps the contract symmetric — fetch N nodes, fetch up
     // to N edges contained within those N nodes.
-    let sql = format!(
-        "WITH visible_nodes AS ( \
-             SELECT qualified_name FROM nodes ORDER BY id LIMIT {limit} \
-         ) \
-         SELECT e.id, e.source_qualified, e.target_qualified, e.kind \
-         FROM edges e \
-         INNER JOIN visible_nodes vs ON vs.qualified_name = e.source_qualified \
-         INNER JOIN visible_nodes vt ON vt.qualified_name = e.target_qualified \
-         ORDER BY e.id \
-         LIMIT {limit}",
-        limit = limit
-    );
+    //
+    // SEC-7 fix: bind `limit` twice as positional SQL parameters instead
+    // of interpolating it into the query string. Today usize prevents
+    // string injection, but parameterisation hardens the handler against
+    // any future param-type widening.
     let edges: Vec<GraphEdgeOut> =
         with_layer_db_sync(&state, "graph", q.project.as_deref(), move |conn| {
-            let mut stmt = conn.prepare(&sql).ok()?;
+            let mut stmt = conn
+                .prepare(
+                    "WITH visible_nodes AS ( \
+                         SELECT qualified_name FROM nodes ORDER BY id LIMIT ?1 \
+                     ) \
+                     SELECT e.id, e.source_qualified, e.target_qualified, e.kind \
+                     FROM edges e \
+                     INNER JOIN visible_nodes vs ON vs.qualified_name = e.source_qualified \
+                     INNER JOIN visible_nodes vt ON vt.qualified_name = e.target_qualified \
+                     ORDER BY e.id \
+                     LIMIT ?2",
+                )
+                .ok()?;
+            let limit_i64 = limit as i64;
             let rows = stmt
-                .query_map([], |r| {
+                .query_map(rusqlite::params![limit_i64, limit_i64], |r| {
                     Ok((
                         r.get::<_, i64>(0)?,
                         r.get::<_, String>(1)?,
