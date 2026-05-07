@@ -44,7 +44,7 @@
 //!   - session-prime      (SessionStart)
 //!   - session-end        (SessionEnd)
 //!
-//! Authors: Anish Trivedi & Kruti Trivedi. Apache-2.0.
+//! Authors: Anish Trivedi & Kruti Trivedi. Mneme Personal-Use License.
 
 // CRATE-LEVEL: only mneme-hook is GUI subsystem. mneme-cli stays
 // console subsystem (the entire point of this whole exercise).

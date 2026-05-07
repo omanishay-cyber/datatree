@@ -117,7 +117,7 @@ pub fn print_banner() {
         .unwrap_or(false);
     if term_too_narrow {
         println!(
-            "mneme doctor v{} -- 100% local Apache-2.0 -- (c) 2026 Anish & Kruti Trivedi",
+            "mneme doctor v{} -- 100% local Personal-Use License -- (c) 2026 Anish & Kruti Trivedi",
             env!("CARGO_PKG_VERSION")
         );
         return;
@@ -135,7 +135,7 @@ pub fn print_banner() {
     // count is reported in render_mcp_tool_probe_box.
     println!("║   persistent memory * code graph * drift detector            ║");
     print_banner_line(&format!(
-        "   v{} · 100% local · Apache-2.0",
+        "   v{} · 100% local · Personal-Use License",
         env!("CARGO_PKG_VERSION")
     ));
     println!("║                                                              ║");
