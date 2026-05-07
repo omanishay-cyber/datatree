@@ -157,7 +157,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: LICENSE file exists
-        run: test -f LICENSE && grep -qi "apache license" LICENSE
+        run: test -f LICENSE && grep -qi "mneme personal-use license" LICENSE
 
   audit:
     name: Cargo audit (RUSTSEC advisories)
