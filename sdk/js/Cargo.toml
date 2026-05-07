@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Node.js bindings for mneme's tree-sitter-based code graph extractor"
-license.workspace = true
+license-file.workspace = true
 # publish = false — npm distribution is handled via `npm publish` after `napi build`
 
 [lib]

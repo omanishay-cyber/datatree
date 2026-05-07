@@ -3,7 +3,7 @@ name = "mneme-hook"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license-file.workspace = true
 authors.workspace = true
 description = "Windowless hook entry point for Claude Code / Cursor / etc. — kills the cmd.exe flash on every UserPromptSubmit + PreToolUse fire."
 

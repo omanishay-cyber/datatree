@@ -3,7 +3,7 @@ name = "mneme-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license-file.workspace = true
 authors.workspace = true
 description = "Mneme CLI: the `mneme` command-line tool. Drives install/build/view/audit/recall/step plus all hook entry points."
 

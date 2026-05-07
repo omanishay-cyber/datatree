@@ -3,7 +3,7 @@ name = "mneme-daemon"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license-file.workspace = true
 authors.workspace = true
 description = "Mneme master supervisor: spawns and watches all worker child processes."
 

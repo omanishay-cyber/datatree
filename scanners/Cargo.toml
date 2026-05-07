@@ -3,7 +3,7 @@ name = "mneme-scanners"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license-file.workspace = true
 authors.workspace = true
 description = "Mneme scanner worker pool: applies drift / theme / security / a11y / perf / ipc / markdown / secrets / types rules and writes findings to findings.db via the store IPC."
 
