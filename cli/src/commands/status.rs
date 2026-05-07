@@ -606,18 +606,9 @@ async fn render_supervisor_detail(
             // type isn't linked into the CLI crate by design.
             // Show the first 8 to keep the screen readable.
             for snap in children.iter().take(8) {
-                let name = snap
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("?");
-                let status_str = snap
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("?");
-                let pid = snap
-                    .get("pid")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
+                let name = snap.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                let status_str = snap.get("status").and_then(|v| v.as_str()).unwrap_or("?");
+                let pid = snap.get("pid").and_then(|v| v.as_u64()).unwrap_or(0);
                 let uptime_ms = snap
                     .get("current_uptime_ms")
                     .and_then(|v| v.as_u64())
