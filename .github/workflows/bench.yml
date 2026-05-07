@@ -51,41 +51,20 @@ jobs:
       - name: Build bench binary
         run: cargo build --release -p benchmarks --bin bench_retrieval
 
-      # Bug #25 (2026-05-07): bench.yml was missing the BGE install
-      # step. Without ~/.mneme/models/bge-small-en-v1.5.onnx the
-      # Embedder silently falls back to hashing-trick (a 384-dim
-      # MurmurHash sketch). Recall numbers in CI looked artificially
-      # bad because every multi-word natural-language query missed —
-      # the WARN was at the top of bench-run.log but the workflow
-      # passed because regression-vs-baseline only fires for >10%
-      # WORSE deltas, and the baseline itself was generated with the
-      # same broken setup. Adding the install here fixes both bench.yml
-      # and (in parallel) bench-baseline.yml so the next baseline
-      # refresh captures BGE-on numbers; PR regression checks will
-      # finally compare apples to apples. Cache key matches
-      # bench-weekly.yml so all 3 workflows share the 133 MB download.
-      - name: Cache BGE embedding model
-        id: cache-bge
-        uses: actions/cache@v4
-        with:
-          path: ~/.mneme/models
-          key: bge-small-en-v1.5-${{ runner.os }}
-
-      - name: Install BGE embedding model
-        if: steps.cache-bge.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.mneme/models
-          # URL mirrors what release/install-{linux,mac}.sh use.
-          curl -fsSL --retry 3 \
-            "https://huggingface.co/aaditya4u/mneme-models/resolve/main/bge-small-en-v1.5.onnx" \
-            -o ~/.mneme/models/bge-small-en-v1.5.onnx
-          curl -fsSL --retry 3 \
-            "https://huggingface.co/aaditya4u/mneme-models/resolve/main/tokenizer.json" \
-            -o ~/.mneme/models/tokenizer.json
-          ls -la ~/.mneme/models/
-
+      # 2026-05-07 strategic decision (revisits Bug #25): the per-PR
+      # bench gate stays on the hashing-trick fallback path. The full
+      # BGE pipeline indexes the entire mneme self-repo end-to-end and
+      # ran 25+ minutes on ubuntu and Windows on 2-core github
+      # runners — too slow to gate every push. Truthful BGE numbers
+      # are still published, but only by:
+      #   * .github/workflows/bench-weekly.yml  — Monday cron,    BGE on
+      #   * .github/workflows/bench-baseline.yml — manual dispatch, BGE on
+      # bench.yml's job is "did the binary still produce a valid CSV
+      # and does the comparator delta stay within 10%?" — a regression
+      # canary, not a recall measurement. Comparator stays apples-to-
+      # apples because both PR run and baseline lookup hit the
+      # hashing-trick path. The "ort/BGE init failed" WARN in the
+      # log is therefore expected and intentional in this workflow.
       - name: Run bench-all (bash)
         if: runner.os != 'Windows'
         shell: bash
