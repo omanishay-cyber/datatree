@@ -15,8 +15,11 @@ use common::{ids::ProjectId, paths::PathManager};
 /// CLI args for `mneme history`.
 #[derive(Debug, Args)]
 pub struct HistoryArgs {
-    /// Free-form query.
-    pub query: String,
+    /// Free-form query. Bug #39 (2026-05-07): now optional. When
+    /// omitted, lists the N most recent ledger entries (no FTS filter)
+    /// — matches user expectation that `mneme history` alone shows
+    /// the chronological log, not a silent-exit clap parse error.
+    pub query: Option<String>,
 
     /// Unix ms lower bound (or 0 to skip).
     #[arg(long)]
@@ -80,57 +83,48 @@ pub async fn run(args: HistoryArgs) -> CliResult<()> {
 
     // Schema (store/src/schema.rs §ledger_entries):
     //   id, session_id, timestamp (INTEGER unix ms), kind, summary, rationale, …
-    let like = format!("%{}%", args.query.replace('%', r"\%").replace('_', r"\_"));
-    let base = "SELECT timestamp, kind, summary, rationale FROM ledger_entries \
-         WHERE (summary LIKE ?1 ESCAPE '\\' OR rationale LIKE ?1 ESCAPE '\\' OR kind LIKE ?1 ESCAPE '\\')";
-    let rows_iter: Box<dyn Iterator<Item = _>> = if let Some(since) = args.since {
-        let sql = format!("{base} AND timestamp >= ?2 ORDER BY timestamp DESC LIMIT ?3");
-        let mut stmt = conn
-            .prepare(&sql)
-            .map_err(|e| CliError::Other(format!("prep: {e}")))?;
-        let mapped = stmt
-            .query_map(rusqlite::params![like, since, args.limit as i64], |row| {
-                Ok(HistoryRow {
-                    timestamp_ms: row.get::<_, i64>(0)?,
-                    kind: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                    summary: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                    rationale: row.get::<_, Option<String>>(3)?,
-                })
-            })
-            .map_err(|e| CliError::Other(format!("exec: {e}")))?;
-        Box::new(
-            mapped
-                .filter_map(|r| r.ok())
-                .collect::<Vec<_>>()
-                .into_iter(),
-        )
-    } else {
-        let sql = format!("{base} ORDER BY timestamp DESC LIMIT ?2");
-        let mut stmt = conn
-            .prepare(&sql)
-            .map_err(|e| CliError::Other(format!("prep: {e}")))?;
-        let mapped = stmt
-            .query_map(rusqlite::params![like, args.limit as i64], |row| {
-                Ok(HistoryRow {
-                    timestamp_ms: row.get::<_, i64>(0)?,
-                    kind: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                    summary: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                    rationale: row.get::<_, Option<String>>(3)?,
-                })
-            })
-            .map_err(|e| CliError::Other(format!("exec: {e}")))?;
-        Box::new(
-            mapped
-                .filter_map(|r| r.ok())
-                .collect::<Vec<_>>()
-                .into_iter(),
-        )
+    //
+    // Bug #39 (2026-05-07): query is optional. With a query, FTS-LIKE
+    // filter all three text columns; without one, just list everything
+    // ordered by timestamp DESC. Both branches still respect --since
+    // and --limit.
+    let rows: Vec<HistoryRow> = match (&args.query, args.since) {
+        (Some(q), Some(since)) => {
+            let like = format!("%{}%", q.replace('%', r"\%").replace('_', r"\_"));
+            let sql = "SELECT timestamp, kind, summary, rationale FROM ledger_entries \
+                       WHERE (summary LIKE ?1 ESCAPE '\\' OR rationale LIKE ?1 ESCAPE '\\' OR kind LIKE ?1 ESCAPE '\\') \
+                         AND timestamp >= ?2 \
+                       ORDER BY timestamp DESC LIMIT ?3";
+            collect_rows(&conn, sql, rusqlite::params![like, since, args.limit as i64])?
+        }
+        (Some(q), None) => {
+            let like = format!("%{}%", q.replace('%', r"\%").replace('_', r"\_"));
+            let sql = "SELECT timestamp, kind, summary, rationale FROM ledger_entries \
+                       WHERE (summary LIKE ?1 ESCAPE '\\' OR rationale LIKE ?1 ESCAPE '\\' OR kind LIKE ?1 ESCAPE '\\') \
+                       ORDER BY timestamp DESC LIMIT ?2";
+            collect_rows(&conn, sql, rusqlite::params![like, args.limit as i64])?
+        }
+        (None, Some(since)) => {
+            let sql = "SELECT timestamp, kind, summary, rationale FROM ledger_entries \
+                       WHERE timestamp >= ?1 \
+                       ORDER BY timestamp DESC LIMIT ?2";
+            collect_rows(&conn, sql, rusqlite::params![since, args.limit as i64])?
+        }
+        (None, None) => {
+            let sql = "SELECT timestamp, kind, summary, rationale FROM ledger_entries \
+                       ORDER BY timestamp DESC LIMIT ?1";
+            collect_rows(&conn, sql, rusqlite::params![args.limit as i64])?
+        }
     };
 
+    let header = match &args.query {
+        Some(q) => format!("history hits for `{}`:", q),
+        None => format!("recent history (latest {} entries):", args.limit),
+    };
     let mut shown = 0usize;
-    for r in rows_iter {
+    for r in &rows {
         if shown == 0 {
-            println!("history hits for `{}`:", args.query);
+            println!("{header}");
             println!();
         }
         println!("  [{}] {}", r.kind, format_ms_utc(r.timestamp_ms));
@@ -146,9 +140,36 @@ pub async fn run(args: HistoryArgs) -> CliResult<()> {
         shown += 1;
     }
     if shown == 0 {
-        println!("no history entries match `{}`", args.query);
+        match &args.query {
+            Some(q) => println!("no history entries match `{}`", q),
+            None => println!("no history entries yet — run any mneme command in this project to start populating"),
+        }
     }
     Ok(())
+}
+
+/// Bug #39 helper: collapse the four query variants into one
+/// stmt-prepare + map. Keeps the match arms readable instead of each
+/// repeating the same row-extraction loop.
+fn collect_rows(
+    conn: &Connection,
+    sql: &str,
+    params: &[&dyn rusqlite::ToSql],
+) -> CliResult<Vec<HistoryRow>> {
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| CliError::Other(format!("prep: {e}")))?;
+    let mapped = stmt
+        .query_map(params, |row| {
+            Ok(HistoryRow {
+                timestamp_ms: row.get::<_, i64>(0)?,
+                kind: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                summary: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                rationale: row.get::<_, Option<String>>(3)?,
+            })
+        })
+        .map_err(|e| CliError::Other(format!("exec: {e}")))?;
+    Ok(mapped.filter_map(|r| r.ok()).collect())
 }
 
 /// Format a unix-millis timestamp as `YYYY-MM-DD HH:MM:SS UTC`.
