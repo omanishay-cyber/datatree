@@ -258,18 +258,28 @@ async fn probe_daemon_socket(socket: &Path) -> Probe {
 }
 
 #[cfg(windows)]
-fn socket_exists(socket: &Path) -> bool {
-    // On Windows the daemon listens on a named pipe whose name is
-    // returned by `daemon_socket_path()`. We can't `Path::exists` a
-    // pipe, but we can attempt to open the parent dir + check for
-    // recent activity. For now just return true if the daemon's PID
-    // file is present alongside the socket — same heuristic doctor.rs
-    // uses for the liveness probe.
-    let pid_file = socket
-        .parent()
-        .map(|p| p.join("daemon.pid"))
-        .unwrap_or_else(|| PathBuf::from("daemon.pid"));
-    pid_file.exists()
+fn socket_exists(_socket: &Path) -> bool {
+    // 2026-05-07 fix: the prior implementation looked for `daemon.pid`
+    // in `socket.parent()`. Windows named pipes have paths like
+    // `\\.\pipe\mneme-supervisor`, and `.parent()` returns the
+    // pipe-namespace `\\.\pipe` which is NOT a real filesystem
+    // directory — so the `daemon.pid` probe always returned false and
+    // status reported the daemon as down even when doctor reported it
+    // running with 10/10 workers and 70s uptime (VM round 2 bug).
+    //
+    // Fix: route through the same PID-liveness check doctor uses
+    // (~/.mneme/run/daemon.pid + sysinfo refresh + name filter for
+    // Windows PID reuse). When the file is missing or the PID is
+    // dead, status reports "not running"; when alive, "up". Now
+    // status and doctor agree on the daemon's liveness verdict.
+    use crate::commands::doctor::{check_daemon_pid_liveness, DaemonPidState};
+    let root = common::paths::PathManager::default_root()
+        .root()
+        .to_path_buf();
+    matches!(
+        check_daemon_pid_liveness(&root),
+        DaemonPidState::AliveProbeFresh
+    )
 }
 
 #[cfg(unix)]
