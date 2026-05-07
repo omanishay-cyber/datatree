@@ -15,6 +15,7 @@ pub mod doctor;
 pub mod drift;
 pub mod export;
 pub mod federated;
+pub mod find_references;
 pub mod godnodes;
 pub mod graph_diff;
 pub mod graphify;

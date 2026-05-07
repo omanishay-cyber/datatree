@@ -131,6 +131,11 @@ enum Command {
     Recall(commands::recall::RecallArgs),
     /// Blast radius for a file or function.
     Blast(commands::blast::BlastArgs),
+    /// Find every reference (definition + callers + imports + uses) to a
+    /// symbol — the same surface as the MCP `find_references` tool, now
+    /// available from the terminal too. BENCH-FIX-2.5 (v0.4.0).
+    #[command(name = "find-references", alias = "find_references")]
+    FindReferences(commands::find_references::FindReferencesArgs),
     /// Multimodal extraction pass (PDF, image, audio, video, .ipynb...).
     Graphify(commands::graphify::GraphifyArgs),
     /// Top-N most-connected concepts.
@@ -310,6 +315,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
         Command::Audit(args) => commands::audit::run(args, socket_override).await,
         Command::Recall(args) => commands::recall::run(args, socket_override).await,
         Command::Blast(args) => commands::blast::run(args, socket_override).await,
+        Command::FindReferences(args) => commands::find_references::run(args).await,
         Command::Graphify(args) => commands::graphify::run(args, socket_override).await,
         Command::Godnodes(args) => commands::godnodes::run(args, socket_override).await,
         Command::Drift(args) => commands::drift::run(args, socket_override).await,
