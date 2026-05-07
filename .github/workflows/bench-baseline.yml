@@ -94,8 +94,19 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          just bench-all . 1> bench-run.csv 2> bench-run.log
-          if ($LASTEXITCODE -ne 0) { Write-Host "bench-all exited $LASTEXITCODE; continuing to capture outputs" }
+          # Bug #26 (2026-05-07): same fix as bench.yml — bypass `just`
+          # on Windows. PS 5.1's `-Command` mode (which `set windows-
+          # shell` in the justfile invokes) mangles dash-args to native
+          # exes, so `bench-all` lands in argv weirdly and clap fails.
+          # Call the binary directly via `&` so PS 7 (pwsh) routes args
+          # cleanly. The previous baseline runs all silently failed with
+          # the same masked error — every bench-baseline-windows-latest
+          # artifact pre-2026-05-07 should be considered untrustworthy.
+          & "./target/release/bench_retrieval.exe" bench-all . 1> bench-run.csv 2> bench-run.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "bench-all exited $LASTEXITCODE; tail of bench-run.log:"
+            Get-Content bench-run.log -Tail 20
+          }
 
       - name: Extract JSON summary from stderr log
         shell: bash

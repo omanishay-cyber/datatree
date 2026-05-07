@@ -97,12 +97,29 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          just bench-all . 1> bench-run.csv 2> bench-run.log
-          if ($LASTEXITCODE -ne 0) { Write-Host "bench-all exited $LASTEXITCODE; continuing to capture outputs" }
-          # PowerShell auto-propagates a native command's non-zero LASTEXITCODE
-          # to the step result even after a soft-handle above. Reset so the
-          # step succeeds and the later "Extract JSON summary" / "Upload bench
-          # artifacts" steps can still run and preserve partial output.
+          # Bug #26 (2026-05-07): Windows bench was silently broken for
+          # the entire history of this workflow. `just bench-all .` on
+          # Windows triggers the justfile's windows-shell setting,
+          # which calls `powershell.exe -Command "./target/release/
+          # bench_retrieval bench-all ."`. PS 5.1's `-Command` string
+          # mode parses the whole expression up-front and mangles
+          # native-exe args containing dashes — clap then sees argv
+          # that includes `bench-all` in an unexpected position and
+          # rejects it with `error: unexpected argument 'bench-all'
+          # found`. Workflow used to mask this with `$LASTEXITCODE = 0`
+          # so every "Bench (windows-latest) ✅" check was meaningless.
+          # Fix: invoke the binary directly via the call operator (&),
+          # bypassing just + windows-shell entirely. PS 7 (pwsh) handles
+          # native-arg passing correctly when `&` is used. Also drop the
+          # silent-exit trick — surface real failures so a regression in
+          # the binary doesn't hide forever again.
+          & "./target/release/bench_retrieval.exe" bench-all . 1> bench-run.csv 2> bench-run.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "bench-all exited $LASTEXITCODE; tail of bench-run.log:"
+            Get-Content bench-run.log -Tail 20
+          }
+          # Step still proceeds even on bench failure so Extract / Upload
+          # artifact steps can preserve partial output for inspection.
           $global:LASTEXITCODE = 0
           exit 0
 
