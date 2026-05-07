@@ -396,8 +396,14 @@ async fn probe_ipc(daemon_alive: bool, socket_override: Option<PathBuf>) -> Samp
 }
 
 fn probe_mcp() -> Sample {
-    let claude_json = match dirs::home_dir() {
-        Some(h) => h.join(".claude").join("claude.json"),
+    // 2026-05-07 fix (round 4 follow-up): mirror the status.rs fix
+    // (commit 8cce748). Claude Code's primary config is at
+    // ~/.claude.json (file in HOME), not ~/.claude/claude.json. The
+    // hooks file at ~/.claude/settings.json is also a valid place for
+    // MCP server entries depending on Claude Code version. Either
+    // file containing "mneme" = OK.
+    let home = match dirs::home_dir() {
+        Some(h) => h,
         None => {
             return Sample {
                 wire: "mcp",
@@ -407,20 +413,36 @@ fn probe_mcp() -> Sample {
             };
         }
     };
-    if !claude_json.exists() {
-        return Sample {
-            wire: "mcp",
-            verdict: Verdict::Warn,
-            detail: "~/.claude/claude.json not found".into(),
-            latency_ms: None,
-        };
+    let candidates = [
+        home.join(".claude.json"),
+        home.join(".claude").join("settings.json"),
+    ];
+    let mut any_exists = false;
+    for path in &candidates {
+        if !path.exists() {
+            continue;
+        }
+        any_exists = true;
+        let content = std::fs::read_to_string(path).unwrap_or_default();
+        if content.contains("\"mneme\"") {
+            return Sample {
+                wire: "mcp",
+                verdict: Verdict::Ok,
+                detail: format!(
+                    "mneme registered in {}",
+                    path.file_name()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                ),
+                latency_ms: None,
+            };
+        }
     }
-    let content = std::fs::read_to_string(&claude_json).unwrap_or_default();
-    if content.contains("\"mneme\"") {
+    if !any_exists {
         Sample {
             wire: "mcp",
-            verdict: Verdict::Ok,
-            detail: "mneme registered".into(),
+            verdict: Verdict::Warn,
+            detail: "Claude Code config not found".into(),
             latency_ms: None,
         }
     } else {
@@ -434,6 +456,12 @@ fn probe_mcp() -> Sample {
 }
 
 fn probe_models(paths: &PathManager) -> Sample {
+    // 2026-05-07 fix (round 4 follow-up): mirror the status.rs fix
+    // (commit de045ff). The flat layout (`models/bge-small-en-v1.5.onnx`
+    // + `models/tokenizer.json`) is the one brain::Embedder loads from
+    // and the install scripts produce. The nested layout
+    // (`models/bge-small-en-v1.5/{model.onnx,tokenizer.json}`) is the
+    // legacy v0.3 fallback. Either present = OK.
     let models_dir = paths.root().join("models");
     if !models_dir.is_dir() {
         return Sample {
@@ -443,12 +471,25 @@ fn probe_models(paths: &PathManager) -> Sample {
             latency_ms: None,
         };
     }
-    let bge = models_dir.join("bge-small-en-v1.5");
-    if bge.is_dir() && bge.join("tokenizer.json").is_file() {
+    let bge_present = models_dir.join("bge-small-en-v1.5").is_dir()
+        || models_dir.join("bge-small-en-v1.5.onnx").is_file();
+    let tokenizer_present = models_dir.join("tokenizer.json").is_file()
+        || models_dir
+            .join("bge-small-en-v1.5")
+            .join("tokenizer.json")
+            .is_file();
+    if bge_present && tokenizer_present {
         Sample {
             wire: "models",
             verdict: Verdict::Ok,
             detail: "BGE + tokenizer present".into(),
+            latency_ms: None,
+        }
+    } else if bge_present {
+        Sample {
+            wire: "models",
+            verdict: Verdict::Warn,
+            detail: "BGE present but tokenizer.json missing".into(),
             latency_ms: None,
         }
     } else {
