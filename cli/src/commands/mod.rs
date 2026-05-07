@@ -80,7 +80,10 @@ mod display_path_tests {
 
     #[test]
     fn passes_through_posix_path() {
-        assert_eq!(display_path("/home/anish/proj/auth.py"), "/home/anish/proj/auth.py");
+        assert_eq!(
+            display_path("/home/anish/proj/auth.py"),
+            "/home/anish/proj/auth.py"
+        );
     }
 
     #[test]
@@ -97,6 +100,9 @@ mod display_path_tests {
     fn passes_through_unc() {
         // \\server\share\... is a real UNC path, NOT the long-path prefix.
         // Only \\?\ should be stripped.
-        assert_eq!(display_path(r"\\server\share\file.txt"), r"\\server\share\file.txt");
+        assert_eq!(
+            display_path(r"\\server\share\file.txt"),
+            r"\\server\share\file.txt"
+        );
     }
 }

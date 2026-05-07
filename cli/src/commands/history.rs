@@ -95,7 +95,11 @@ pub async fn run(args: HistoryArgs) -> CliResult<()> {
                        WHERE (summary LIKE ?1 ESCAPE '\\' OR rationale LIKE ?1 ESCAPE '\\' OR kind LIKE ?1 ESCAPE '\\') \
                          AND timestamp >= ?2 \
                        ORDER BY timestamp DESC LIMIT ?3";
-            collect_rows(&conn, sql, rusqlite::params![like, since, args.limit as i64])?
+            collect_rows(
+                &conn,
+                sql,
+                rusqlite::params![like, since, args.limit as i64],
+            )?
         }
         (Some(q), None) => {
             let like = format!("%{}%", q.replace('%', r"\%").replace('_', r"\_"));
