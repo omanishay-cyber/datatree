@@ -411,12 +411,26 @@ fn probe_models(paths: &PathManager) -> Probe {
             detail: format!("missing: {}", models_dir.display()),
         };
     }
+    // 2026-05-07 fix: probe BOTH possible layouts. The flat layout
+    // (`models/bge-small-en-v1.5.onnx` + `models/tokenizer.json`) is the
+    // one `brain::Embedder::from_default_path` actually loads from
+    // (brain/src/embeddings.rs::from_default_path) and the one the
+    // public install scripts produce. The nested layout
+    // (`models/bge-small-en-v1.5/{model.onnx,tokenizer.json}`) is the
+    // legacy v0.3 layout still on some user machines.
+    //
+    // The prior code checked the .onnx file in EITHER layout but only
+    // checked tokenizer.json in the NESTED layout — so on a fresh
+    // install with the flat layout it falsely reported
+    // "BGE present but tokenizer.json missing" while the embedder was
+    // happily loading the same file.
     let bge_present = models_dir.join("bge-small-en-v1.5").is_dir()
         || models_dir.join("bge-small-en-v1.5.onnx").is_file();
-    let tokenizer_present = models_dir
-        .join("bge-small-en-v1.5")
-        .join("tokenizer.json")
-        .is_file();
+    let tokenizer_present = models_dir.join("tokenizer.json").is_file()
+        || models_dir
+            .join("bge-small-en-v1.5")
+            .join("tokenizer.json")
+            .is_file();
     if bge_present && tokenizer_present {
         Probe {
             label: "models",
