@@ -2095,19 +2095,12 @@
             <td>1,111 s · 38,275 t · $6.01 · <strong>6.4/10 avg</strong></td>
             <td>478 s · 32,821 t · $4.63 · <strong>8.2/10 avg</strong></td>
           </tr>
-          <tr style="background: var(--bg-3); font-weight: 700; border-top: 2px solid var(--accent-green);">
-            <td>Overall <span style="color: var(--muted); font-weight: 400; font-size: 0.85em;">(quality + speed + cost + capabilities)</span></td>
-            <td style="color: var(--accent-green); font-size: 1.1em;"><strong>8.75 / 10</strong> &nbsp;<span style="background: var(--accent-green); color: var(--bg); padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">#1</span></td>
-            <td><strong>5.75 / 10</strong></td>
-            <td><strong>4.70 / 10</strong></td>
-            <td><strong>6.55 / 10</strong></td>
-          </tr>
         </tbody>
       </table>
     </div>
 
     <p class="lead-callout">
-      <strong>Overall ranking — mneme #1 (8.75 / 10).</strong> Combining the four axes a real user actually weighs — answer quality, wall time, dollar cost, and unique capabilities the others don't have (persistent memory, multimodal, conventions, drift detection, federated patterns, the 14-view vision app, the 22 sharded SQLite stores) — mneme leads the panel by 2.2 points. Tree-sitter edges out raw answer-quality (9.0 vs 8.0 on the five queries) but pays for it with 1.4× the cost, 1.8× the tokens, and 1.8× the wall time, and has zero of the seven features that make mneme a persistent superbrain rather than a parser.
+      <strong>Honest read of the bench.</strong> Tree-sitter wins on raw answer quality (9.0/10 average; answered all five). Mneme wins on cost ($4.86, cheapest of the MCPs that finished all five) and speed (411 s wall, fastest). Mneme answered 4/5 with full citations; Q3 scored 5/10 because the bench-time daemon was in red state (39 workers pending, queue_depth 790, project not fully indexed) and the model correctly refused to fabricate a call tree against missing data — not a parser gap. CRG and graphify each had queries hit budget. Pick mneme if you need persistent memory across sessions, multimodal ingestion, drift detection, or any of the other features the others don't ship; pick tree-sitter if you only need a single-purpose code-graph parser and the per-query overhead is acceptable.
     </p>
 
     <h4 class="section-h4">The four-axis breakdown</h4>
@@ -2150,13 +2143,6 @@
             <td>1.0 <span style="color: var(--muted); font-size: 0.85em;">(0 of 7)</span></td>
             <td>1.0 <span style="color: var(--muted); font-size: 0.85em;">(0 of 7)</span></td>
             <td>1.0 <span style="color: var(--muted); font-size: 0.85em;">(0 of 7)</span></td>
-          </tr>
-          <tr style="background: var(--bg-3); font-weight: 700; border-top: 2px solid var(--accent-green);">
-            <td>Overall (avg of 4)</td>
-            <td style="color: var(--accent-green); font-size: 1.1em;"><strong>8.75</strong> &nbsp;<span style="background: var(--accent-green); color: var(--bg); padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">#1</span></td>
-            <td>5.75</td>
-            <td>4.70</td>
-            <td>6.55</td>
           </tr>
         </tbody>
       </table>
