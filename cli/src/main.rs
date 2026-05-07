@@ -136,6 +136,11 @@ enum Command {
     /// available from the terminal too. BENCH-FIX-2.5 (v0.4.0).
     #[command(name = "find-references", alias = "find_references")]
     FindReferences(commands::find_references::FindReferencesArgs),
+    /// Print the BFS call graph for a function — who calls it, what it
+    /// calls, or both. Bounded by --depth. CLI counterpart of the
+    /// MCP `call_graph` tool. BENCH-FIX-2.5 (v0.4.0).
+    #[command(name = "call-graph", alias = "call_graph")]
+    CallGraph(commands::call_graph::CallGraphArgs),
     /// Multimodal extraction pass (PDF, image, audio, video, .ipynb...).
     Graphify(commands::graphify::GraphifyArgs),
     /// Top-N most-connected concepts.
@@ -316,6 +321,7 @@ async fn dispatch(cli: Cli) -> CliResult<()> {
         Command::Recall(args) => commands::recall::run(args, socket_override).await,
         Command::Blast(args) => commands::blast::run(args, socket_override).await,
         Command::FindReferences(args) => commands::find_references::run(args).await,
+        Command::CallGraph(args) => commands::call_graph::run(args).await,
         Command::Graphify(args) => commands::graphify::run(args, socket_override).await,
         Command::Godnodes(args) => commands::godnodes::run(args, socket_override).await,
         Command::Drift(args) => commands::drift::run(args, socket_override).await,

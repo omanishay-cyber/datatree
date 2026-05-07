@@ -10,6 +10,7 @@ pub mod blast;
 pub mod build;
 pub mod build_state;
 pub mod cache;
+pub mod call_graph;
 pub mod daemon;
 pub mod doctor;
 pub mod drift;
