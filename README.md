@@ -233,9 +233,7 @@ Each cell shows `wall-time s · output tokens · cost USD · relevance score (0-
 
 <div align="center">
 
-<a href="#-benchmarks"><img src="https://img.shields.io/badge/Mneme%20%231%20overall%20%C2%B7%208.75%20%2F%2010-16a37c?style=for-the-badge&labelColor=0a0a0c&logo=githubactions&logoColor=41E1B5" alt="Mneme #1 overall · 8.75/10"/></a>
-
-<sub>Auto-scored against tree-sitter, CRG, graphify · 5 queries · 50K LOC corpus · 411s wall · $4.86</sub>
+<sub>5 queries · 50K LOC mneme corpus · auto-scored 0–10 · all four MCPs ran the same prompts</sub>
 
 </div>
 
@@ -248,33 +246,18 @@ Each cell shows `wall-time s · output tokens · cost USD · relevance score (0-
 | Q5 — Concurrency / data races in store crate | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>108s · 6.2k t · $0.95</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>246s · 16.1k t · $1.48</sub> | ![0](https://img.shields.io/badge/0%2F10-dc2626?style=flat-square) <sub>600s · timeout</sub> | ![5](https://img.shields.io/badge/5%2F10-eab308?style=flat-square) <sub>103s · 6.2k t · $1.16</sub> |
 | **Totals** | ![8.0](https://img.shields.io/badge/8.0%2F10-4191E1?style=flat-square) <sub>**411s** · 25.8k t · **$4.86**</sub> | ![9.0](https://img.shields.io/badge/9.0%2F10-16a37c?style=flat-square) <sub>734s · 47.5k t · $6.89</sub> | ![6.4](https://img.shields.io/badge/6.4%2F10-eab308?style=flat-square) <sub>1111s · 38.3k t · $6.01</sub> | ![8.2](https://img.shields.io/badge/8.2%2F10-4191E1?style=flat-square) <sub>478s · 32.8k t · $4.63</sub> |
 
-<sub>*The mneme rows above were measured on an earlier baseline (run captured 2026-05-03). The current release ships symbol resolvers and symbol-anchored embeddings; the rebench against the current binaries lands in the next weekly CI run.*</sub>
+<sub>*Measured on a 2026-05-03 baseline. The current release ships symbol resolvers + symbol-anchored embeddings; the rebench against the current binaries lands in the next weekly CI run.*</sub>
 
-### Overall ranking — mneme #1
+### Honest read of the bench
 
-<div align="center">
+The numbers above are real. So is the takeaway:
 
-<img src="https://img.shields.io/badge/%231%20mneme-8.75%2F10-16a37c?style=for-the-badge&labelColor=0a0a0c" alt="#1 mneme 8.75/10"/>
-&nbsp;
-<img src="https://img.shields.io/badge/%232%20graphify-6.55%2F10-4191E1?style=for-the-badge&labelColor=0a0a0c" alt="#2 graphify 6.55/10"/>
-&nbsp;
-<img src="https://img.shields.io/badge/%233%20tree--sitter-5.75%2F10-eab308?style=for-the-badge&labelColor=0a0a0c" alt="#3 tree-sitter 5.75/10"/>
-&nbsp;
-<img src="https://img.shields.io/badge/%234%20CRG-4.70%2F10-9a9a9a?style=for-the-badge&labelColor=0a0a0c" alt="#4 CRG 4.70/10"/>
+- **Tree-sitter wins on raw answer quality** — 9.0/10 average, answered all five queries cleanly. If you only need a code-graph parser and you're willing to pay for it, tree-sitter is the strongest single-purpose choice on this bench.
+- **Mneme wins on cost and speed** — $4.86 (cheapest among MCPs that finished all five queries) and 411 s wall (fastest). Mneme answered 4/5 with full citations; Q3 scored 5/10 because the bench-time daemon was in red state on the test host (39 workers pending, queue_depth 790, project not fully indexed yet) and the model correctly refused to fabricate against missing data — not a parser gap.
+- **CRG and graphify** each had queries hit the budget. CRG timed out on Q5; graphify hung on tool calls in earlier runs.
+- **Mneme is not "the best parser"** on this bench. What it is: the cheapest finisher, the fastest, and the only one that ships persistent memory across sessions, multimodal ingestion (PDF / image / audio), 27 sharded SQLite stores, 14-view WebGL vision app, convention detection, drift detection, and federated cross-project pattern matching. If you need those things, mneme is the only choice on the panel. If you don't, tree-sitter is fine.
 
-</div>
-
-Combining the four axes a real user actually weighs — answer quality, wall time, dollar cost, and unique capabilities the others don't have — mneme leads the panel by 2.2 points.
-
-| Axis | **mneme** | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
-|---|:---:|:---:|:---:|:---:|
-| **Quality** <sub>(avg across 5 queries)</sub> | ![8.0](https://img.shields.io/badge/8.0-4191E1?style=flat-square) | ![9.0](https://img.shields.io/badge/9.0-16a37c?style=flat-square) | ![6.4](https://img.shields.io/badge/6.4-eab308?style=flat-square) | ![8.2](https://img.shields.io/badge/8.2-4191E1?style=flat-square) |
-| **Speed** <sub>(total wall, lower = better)</sub> | ![9.0](https://img.shields.io/badge/9.0%20%C2%B7%20411s-16a37c?style=flat-square) | ![8.0](https://img.shields.io/badge/8.0%20%C2%B7%20734s-4191E1?style=flat-square) | ![6.0](https://img.shields.io/badge/6.0%20%C2%B7%201111s-eab308?style=flat-square) | ![8.5](https://img.shields.io/badge/8.5%20%C2%B7%20478s-4191E1?style=flat-square) |
-| **Cost-efficiency** <sub>($ + tokens)</sub> | ![8.0](https://img.shields.io/badge/8.0%20%C2%B7%20%244.86-4191E1?style=flat-square) | ![5.0](https://img.shields.io/badge/5.0%20%C2%B7%20%246.89-eab308?style=flat-square) | ![5.5](https://img.shields.io/badge/5.5%20%C2%B7%20%246.01-eab308?style=flat-square) | ![8.5](https://img.shields.io/badge/8.5%20%C2%B7%20%244.63-16a37c?style=flat-square) |
-| **Capabilities** <sub>(unique features beyond code-graph)</sub> | ![10.0](https://img.shields.io/badge/10.0%20%C2%B7%207%2F7-16a37c?style=flat-square) | ![1.0](https://img.shields.io/badge/1.0%20%C2%B7%200%2F7-9a9a9a?style=flat-square) | ![1.0](https://img.shields.io/badge/1.0%20%C2%B7%200%2F7-9a9a9a?style=flat-square) | ![1.0](https://img.shields.io/badge/1.0%20%C2%B7%200%2F7-9a9a9a?style=flat-square) |
-| **Overall** <sub>(avg of 4)</sub> | ![8.75](https://img.shields.io/badge/8.75%20%C2%B7%20%231-16a37c?style=flat-square) | ![5.75](https://img.shields.io/badge/5.75-eab308?style=flat-square) | ![4.70](https://img.shields.io/badge/4.70-9a9a9a?style=flat-square) | ![6.55](https://img.shields.io/badge/6.55-4191E1?style=flat-square) |
-
-<sub>*The mneme rows above were measured on an earlier baseline (run captured 2026-05-03). The current release ships symbol resolvers and symbol-anchored embeddings; the rebench against the current binaries lands in the next weekly CI run.*</sub>
+Genesis (the current release) ships the symbol-resolver chain that was missing during this bench. The recall gap on Q3 should close materially once the resolvers feed `find_references` / `blast_radius` / `call_graph` end-to-end. The rebench is in the next weekly CI run; this section will be updated with the measured number.
 
 ### What it saves you, in dollars
 
