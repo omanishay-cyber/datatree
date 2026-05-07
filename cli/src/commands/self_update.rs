@@ -1539,6 +1539,13 @@ fn locate_primary_mneme(target: &Path) -> Option<PathBuf> {
 /// Best-effort — if individual restores fail, we log and continue so
 /// the user is left with the most-recent set of backups intact.
 fn rollback_swaps(swaps: &[BinarySwap], verbose: bool) {
+    // REL-NEW-G (2026-05-07 audit): track per-rollback failures and log a
+    // single CRITICAL summary at the end. Previously the per-binary
+    // `eprintln!("WARNING: failed to restore ...")` lines were the only
+    // signal — across N partial rollbacks they could be lost in scrollback
+    // and the user would have no clear "X of N rollbacks failed" message.
+    let total = swaps.len();
+    let mut failed: Vec<String> = Vec::new();
     for swap in swaps.iter().rev() {
         let backup = match &swap.backup {
             Some(b) => b,
@@ -1573,6 +1580,7 @@ fn rollback_swaps(swaps: &[BinarySwap], verbose: bool) {
                             swap.current.display(),
                             deleteme.display(),
                         );
+                        failed.push(format!("{} (.deleteme: {e})", swap.current.display()));
                     }
                     continue;
                 }
@@ -1600,7 +1608,22 @@ fn rollback_swaps(swaps: &[BinarySwap], verbose: bool) {
                 swap.current.display(),
                 backup.display()
             );
+            failed.push(format!("{} (backup: {e})", swap.current.display()));
         }
+    }
+    if !failed.is_empty() {
+        eprintln!(
+            "self-update: CRITICAL: {} of {total} rollback(s) failed. \
+             Some binaries may be in an inconsistent state. Failed targets:",
+            failed.len()
+        );
+        for entry in &failed {
+            eprintln!("  - {entry}");
+        }
+        eprintln!(
+            "self-update: Restore manually from .old / .deleteme files in the install dir, \
+             or re-run install. The mneme command may not work until you do."
+        );
     }
 }
 
@@ -1643,6 +1666,16 @@ fn health_check_new_binary(mneme_exe: &Path) -> Result<(), String> {
                         mneme_exe.display()
                     ));
                 }
+                // REL-NEW-K (2026-05-07 audit) — verified safe.
+                // Although `pub async fn run` is async (line 208),
+                // the entire `replace_binaries_atomically` chain is
+                // executed inside a `tokio::task::spawn_blocking`
+                // closure (line 386, the CRIT-8 fix from 2026-05-05).
+                // That isolates this sync helper to the blocking pool
+                // — `std::thread::sleep` does NOT block a tokio
+                // worker thread here. If the spawn_blocking wrapper
+                // is ever removed, this sleep would need to switch to
+                // tokio::time::sleep. See line 377 comment block.
                 std::thread::sleep(Duration::from_millis(100));
             }
             Err(e) => return Err(format!("try_wait on child: {e}")),
@@ -1775,7 +1808,22 @@ fn swap_one_binary(staged: &Path, current: &Path, verbose: bool) -> CliResult<Bi
 #[cfg(target_os = "macos")]
 fn clear_macos_quarantine(target: &Path) {
     use std::process::Command;
-    let _ = Command::new("xattr").arg("-cr").arg(target).status();
+    // SEC-6 (2026-05-07 audit, CWE-78): use absolute path `/usr/bin/xattr`
+    // instead of PATH lookup. The default `Command::new("xattr")` resolves
+    // via PATH, so a hostile `xattr` shim earlier in PATH (common with
+    // pyenv/nvm/rbenv/Homebrew shims that prepend to PATH) would execute
+    // as the user running `mneme self-update`. The macOS system `xattr`
+    // is shipped at `/usr/bin/xattr` on every supported macOS version
+    // (10.5+); pinning to the absolute path defeats the PATH-prepend
+    // attack while still being a no-op if the file is somehow missing.
+    let xattr = Path::new("/usr/bin/xattr");
+    if !xattr.exists() {
+        // System xattr unexpectedly absent. Skip rather than fall back to
+        // PATH lookup. Quarantine clearing is advisory; the install still
+        // works, the user just gets the standard Gatekeeper prompt.
+        return;
+    }
+    let _ = Command::new(xattr).arg("-cr").arg(target).status();
 }
 
 #[cfg(not(target_os = "macos"))]
