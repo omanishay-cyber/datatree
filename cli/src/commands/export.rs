@@ -887,7 +887,11 @@ pub fn emit_jsonld(
             "@type": "Person",
             "name": "Anish Trivedi & Kruti Trivedi",
         },
-        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        // Bug #33 followup (REVIEW-2, 2026-05-07): mneme migrated from
+        // Apache-2.0 to the Mneme Personal-Use License v1.0 on 2026-05-06.
+        // The JSON-LD export was missed in the original banner-string sweep
+        // and was emitting a stale Apache URL in machine-readable metadata.
+        "license": "https://github.com/omanishay-cyber/mneme/blob/main/LICENSE",
         "isAccessibleForFree": true,
         "hasPart": parts,
         "isBasedOn": relations,
