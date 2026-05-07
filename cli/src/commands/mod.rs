@@ -50,3 +50,53 @@ pub mod update;
 pub mod userprompt_submit;
 pub mod view;
 pub mod why;
+
+/// Bug #38 (2026-05-07): strip the Windows `\\?\` long-path prefix
+/// from a path string before display. The prefix is added by
+/// `std::fs::canonicalize` on Windows and stored verbatim in the
+/// graph, but it's pure visual cruft for the user — every recall /
+/// blast / find-references / call-graph result carried it. No-op on
+/// POSIX. Idempotent (safe to call on already-stripped strings).
+///
+/// Use this at the *display boundary* only. SQL lookups still match
+/// the stored canonical form (some queries explicitly accept both
+/// `path` and `\\?\path` shapes — see blast.rs:225).
+#[inline]
+pub fn display_path(p: &str) -> &str {
+    p.strip_prefix(r"\\?\").unwrap_or(p)
+}
+
+#[cfg(test)]
+mod display_path_tests {
+    use super::display_path;
+
+    #[test]
+    fn strips_windows_long_path_prefix() {
+        assert_eq!(
+            display_path(r"\\?\C:\Users\User\bench-test\auth.py"),
+            r"C:\Users\User\bench-test\auth.py"
+        );
+    }
+
+    #[test]
+    fn passes_through_posix_path() {
+        assert_eq!(display_path("/home/anish/proj/auth.py"), "/home/anish/proj/auth.py");
+    }
+
+    #[test]
+    fn passes_through_already_stripped() {
+        assert_eq!(display_path(r"C:\foo\bar.rs"), r"C:\foo\bar.rs");
+    }
+
+    #[test]
+    fn passes_through_empty() {
+        assert_eq!(display_path(""), "");
+    }
+
+    #[test]
+    fn passes_through_unc() {
+        // \\server\share\... is a real UNC path, NOT the long-path prefix.
+        // Only \\?\ should be stripped.
+        assert_eq!(display_path(r"\\server\share\file.txt"), r"\\server\share\file.txt");
+    }
+}

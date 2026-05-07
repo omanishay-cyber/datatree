@@ -537,9 +537,12 @@ fn print_hits(hits: &[Hit], query: &str) {
     println!("{} hit(s) for `{}`:", hits.len(), query);
     println!();
     for h in hits {
+        // Bug #38: strip Windows long-path prefix at display boundary.
         let loc = match (&h.file_path, h.line_start) {
-            (Some(f), Some(l)) if l > 0 => format!("{}:{}", f, l),
-            (Some(f), _) => f.clone(),
+            (Some(f), Some(l)) if l > 0 => {
+                format!("{}:{}", super::display_path(f), l)
+            }
+            (Some(f), _) => super::display_path(f).to_string(),
             _ => "-".into(),
         };
         println!("  [{}] {}", h.kind, h.qualified_name);

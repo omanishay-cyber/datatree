@@ -281,9 +281,10 @@ fn print_graph(query: &str, direction: Direction, nodes: &[CallNode]) {
             println!("depth {d}:");
         }
         for n in layer {
+            // Bug #38: strip Windows long-path prefix at display boundary.
             let loc = match (&n.file, n.line) {
-                (Some(f), Some(l)) if l > 0 => format!("{f}:{l}"),
-                (Some(f), _) => f.clone(),
+                (Some(f), Some(l)) if l > 0 => format!("{}:{l}", super::display_path(f)),
+                (Some(f), _) => super::display_path(f).to_string(),
                 _ => "-".into(),
             };
             let label = if n.name == n.qualified_name {

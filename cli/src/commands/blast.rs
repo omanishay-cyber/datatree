@@ -274,9 +274,12 @@ fn print_layers(target: &str, layers: &[Vec<String>], conn: Option<&Connection>)
                     } else {
                         &e.name
                     };
+                    // Bug #38: strip Windows long-path prefix at display boundary.
                     let loc = match (e.file_path.as_deref(), e.line_start) {
-                        (Some(f), Some(l)) if l > 0 => format!("{f}:{l}"),
-                        (Some(f), _) => f.to_string(),
+                        (Some(f), Some(l)) if l > 0 => {
+                            format!("{}:{l}", super::display_path(f))
+                        }
+                        (Some(f), _) => super::display_path(f).to_string(),
                         _ => "-".into(),
                     };
                     println!("  [{kind}] {name} @ {loc}");
