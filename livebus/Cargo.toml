@@ -3,7 +3,7 @@ name = "mneme-livebus"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license-file.workspace = true
+license.workspace = true
 authors.workspace = true
 description = "Mneme Live Bus: local SSE/WebSocket fan-out of worker events for Claude Code, vision app, and multi-agent sessions."
 

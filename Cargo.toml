@@ -28,6 +28,7 @@ exclude = [
 version = "0.4.0"
 edition = "2021"
 rust-version = "1.78"
+license = "LicenseRef-Mneme-Personal-Use"
 license-file = "LICENSE"
 authors = ["Anish Trivedi", "Kruti Trivedi"]
 repository = "https://github.com/omanishay-cyber/mneme"
