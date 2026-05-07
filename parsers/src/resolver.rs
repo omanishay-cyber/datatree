@@ -59,7 +59,7 @@
 //!
 //! ## Authors
 //!
-//! Anish Trivedi & Kruti Trivedi. Apache-2.0.
+//! Anish Trivedi & Kruti Trivedi. Mneme Personal-Use License.
 
 use crate::language::Language;
 use std::fmt;
