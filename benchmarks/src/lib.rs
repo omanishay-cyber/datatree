@@ -408,6 +408,13 @@ pub fn run_one_query(conn: &rusqlite::Connection, q: &GoldenQuery) -> BenchResul
 
 /// Text search across nodes.name + nodes.qualified_name, ranked by the
 /// number of matching nodes per file.
+///
+/// BENCH-FIX-2 (2026-05-07): when LIKE returns nothing, fall through to a
+/// semantic embedding scan against `semantic.db::embeddings`. Multi-word
+/// natural-language queries ("where is DbLayer defined", "drift detection")
+/// don't share a token with any symbol name and would otherwise return
+/// empty — that's the reported 7-of-10-bench-empty result. Item #117
+/// symbol-anchored embeddings ARE populated; this finally reads them.
 fn recall_files(conn: &rusqlite::Connection, query: &str) -> BenchResult<Vec<String>> {
     let like = format!("%{}%", query.to_lowercase());
     let sql = "SELECT file_path, COUNT(*) AS c \
@@ -417,11 +424,16 @@ fn recall_files(conn: &rusqlite::Connection, query: &str) -> BenchResult<Vec<Str
                GROUP BY file_path \
                ORDER BY c DESC \
                LIMIT 5";
-    let mut stmt = conn.prepare(sql)?;
-    let rows = stmt.query_map([&like], |r| r.get::<_, String>(0))?;
     let mut out = Vec::new();
-    for row in rows {
-        out.push(row?);
+    {
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map([&like], |r| r.get::<_, String>(0))?;
+        for row in rows {
+            out.push(row?);
+        }
+    }
+    if out.is_empty() {
+        out = recall_semantic_fallback(conn, query, 5).unwrap_or_default();
     }
     Ok(out)
 }
@@ -998,17 +1010,130 @@ pub fn run_one_query_top_n(
              LIMIT ?2"
         }
     };
-    let mut stmt = conn.prepare(sql)?;
-    let bound_like = match q.kind {
-        QueryKind::Recall => &q_like,
-        _ => &like,
-    };
-    let rows = stmt.query_map(rusqlite::params![bound_like, limit], |r| {
-        r.get::<_, String>(0)
-    })?;
     let mut out = Vec::new();
-    for row in rows {
-        out.push(row?);
+    {
+        let mut stmt = conn.prepare(sql)?;
+        let bound_like = match q.kind {
+            QueryKind::Recall => &q_like,
+            _ => &like,
+        };
+        let rows = stmt.query_map(rusqlite::params![bound_like, limit], |r| {
+            r.get::<_, String>(0)
+        })?;
+        for row in rows {
+            out.push(row?);
+        }
+    }
+    // BENCH-FIX-2 (2026-05-07): same semantic fallback as recall_files,
+    // but only for the Recall query kind (Blast and References want
+    // structural lookups, not embedding similarity).
+    if out.is_empty() && matches!(q.kind, QueryKind::Recall) {
+        out = recall_semantic_fallback(conn, &q.query, n).unwrap_or_default();
+    }
+    Ok(out)
+}
+
+/// BENCH-FIX-2 (2026-05-07): brute-force semantic recall against
+/// `semantic.db::embeddings`. Mirrors `cli/src/commands/recall.rs::
+/// recall_semantic` so the bench harness measures the same recall
+/// quality a CLI user gets after BENCH-FIX-1 shipped.
+///
+/// Returns up to `limit` distinct file paths, ordered by descending
+/// cosine similarity to the query embedding. Skips silently (returns
+/// empty `Ok(vec![])`) when:
+///   - graph.db connection has no on-disk path (in-memory test fixture)
+///   - sibling `semantic.db` doesn't exist (project never had embeddings)
+///   - embedder model isn't installed (`is_ready() == false`) — using the
+///     hashing-trick fallback would just add noise
+///   - query embedding has unexpected dimension
+///   - any individual SQLite row fails to decode
+///
+/// `BenchError::Internal` is reserved for genuinely unexpected failures
+/// (embed crate panic, etc.); the caller's `unwrap_or_default()` keeps
+/// the bench going regardless.
+fn recall_semantic_fallback(
+    graph_conn: &rusqlite::Connection,
+    query: &str,
+    limit: usize,
+) -> BenchResult<Vec<String>> {
+    use brain::{cosine_similarity, Embedder, EMBEDDING_DIM};
+
+    let graph_path = match graph_conn.path() {
+        Some(p) => PathBuf::from(p),
+        None => return Ok(Vec::new()),
+    };
+    let semantic_path = match graph_path.parent() {
+        Some(d) => d.join("semantic.db"),
+        None => return Ok(Vec::new()),
+    };
+    if !semantic_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let embedder = match Embedder::from_default_path() {
+        Ok(e) => e,
+        Err(_) => return Ok(Vec::new()),
+    };
+    if !embedder.is_ready() {
+        return Ok(Vec::new());
+    }
+    let qvec = match embedder.embed(query) {
+        Ok(v) => v,
+        Err(_) => return Ok(Vec::new()),
+    };
+    if qvec.len() != EMBEDDING_DIM {
+        return Ok(Vec::new());
+    }
+
+    let sem_conn = rusqlite::Connection::open_with_flags(
+        &semantic_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+
+    let mut top: Vec<(i64, f32)> = Vec::new();
+    {
+        let mut stmt =
+            sem_conn.prepare("SELECT node_id, vector FROM embeddings WHERE node_id IS NOT NULL")?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let node_id: i64 = row.get(0)?;
+            let blob: Vec<u8> = row.get(1)?;
+            if blob.len() != qvec.len() * 4 {
+                continue;
+            }
+            let mut vec = Vec::with_capacity(qvec.len());
+            for chunk in blob.chunks_exact(4) {
+                vec.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+            }
+            let score = cosine_similarity(&qvec, &vec);
+            if score.is_finite() {
+                top.push((node_id, score));
+            }
+        }
+    }
+
+    top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    // De-dup file paths in descending-score order, capped at `limit`.
+    // Looking up each node individually keeps the SQL trivially indexed
+    // on `nodes.id` (PRIMARY KEY) — for typical limit=5..50 this is
+    // microseconds vs constructing an IN clause and re-sorting.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for (node_id, _score) in top {
+        if out.len() >= limit {
+            break;
+        }
+        let row: rusqlite::Result<Option<String>> = graph_conn.query_row(
+            "SELECT file_path FROM nodes WHERE id = ?1",
+            rusqlite::params![node_id],
+            |r| r.get::<_, Option<String>>(0),
+        );
+        if let Ok(Some(fp)) = row {
+            if seen.insert(fp.clone()) {
+                out.push(fp);
+            }
+        }
     }
     Ok(out)
 }
