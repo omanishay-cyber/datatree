@@ -347,14 +347,14 @@ impl AdapterContext {
             "## Mneme (the AI superbrain)\n\
              \n\
              - Persistent per-project memory across sessions and compactions.\n\
-             - 30+ MCP tools: see `mneme --help` or run `/mn-recall`, `/mn-blast`, `/mn-graphify`, `/mn-step`.\n\
+             - 49 MCP tools: see `mneme --help` or run `/mn-recall`, `/mn-blast`, `/mn-graphify`, `/mn-step`.\n\
              - Step Ledger guarantees Claude resumes the *correct* step after compaction.\n\
              - Drift detector enforces this project's rules from CLAUDE.md / .claude/rules.\n\
              - Local-only: zero network egress in the hot path.\n\
              - Vision app: `mneme view`\n\
              - Daemon: `mneme daemon status`\n\
              \n\
-             v{version} — see https://github.com/anishtrivedi/mneme\n",
+             v{version} — see https://github.com/omanishay-cyber/mneme\n",
             version = env!("CARGO_PKG_VERSION")
         )
     }

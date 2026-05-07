@@ -61,7 +61,7 @@ use tracing::error;
 #[command(
     name = "mneme",
     version,
-    about = "Mneme — the AI superbrain. Persistent per-project memory + 14-view graph + drift detector + 30+ MCP tools.",
+    about = "Mneme — the AI superbrain. Persistent per-project memory + 14-view graph + drift detector + 49 MCP tools.",
     long_about = None,
     propagate_version = true,
 )]
