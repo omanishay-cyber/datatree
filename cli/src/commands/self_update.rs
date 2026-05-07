@@ -55,6 +55,16 @@ use crate::error::{CliError, CliResult};
 const GITHUB_OWNER: &str = "omanishay-cyber";
 const GITHUB_REPO: &str = "mneme";
 
+/// SEC-5 fix (2026-05-07 audit): canonical prefix every release asset URL
+/// must start with. Validated immediately after deserializing the
+/// `/releases/latest` JSON in [`fetch_latest_release`] so a single
+/// poisoned `browser_download_url` (compromised release tag, MitM that
+/// defeats the pinned CA, redirect injection) cannot smuggle a download
+/// pointer to an attacker-controlled host. Hard-coded to the upstream
+/// repo coordinates above — if they ever change, update both.
+const CANONICAL_RELEASE_PREFIX: &str =
+    "https://github.com/omanishay-cyber/mneme/releases/download/";
+
 /// User-Agent the GitHub API requires on every request. Identifies the
 /// CLI so abuse rate-limiting can pin per-version.
 const USER_AGENT: &str = concat!("mneme-self-update/", env!("CARGO_PKG_VERSION"));
@@ -910,6 +920,28 @@ async fn fetch_latest_release() -> CliResult<GhRelease> {
         .json()
         .await
         .map_err(|e| CliError::Other(format!("parse release JSON: {e}")))?;
+
+    // SEC-5 fix (2026-05-07 audit): validate every asset URL starts with
+    // the canonical release prefix BEFORE any of them is fed to
+    // `download_asset` or `fetch_sha256_sidecar`. Without this, a
+    // compromised release tag (or a CA-compromise MitM defeating
+    // `pinned_https_client_builder`) could substitute one or more
+    // `browser_download_url` values to point at attacker-controlled
+    // hosts. Rejecting the whole release on a single mismatch prevents
+    // a poisoned URL from contaminating either the binary download or
+    // the sha256 sidecar lookup.
+    for asset in &release.assets {
+        if !asset
+            .browser_download_url
+            .starts_with(CANONICAL_RELEASE_PREFIX)
+        {
+            return Err(CliError::Other(format!(
+                "self-update: rejecting release with non-canonical asset URL: {} (expected prefix: {})",
+                asset.browser_download_url, CANONICAL_RELEASE_PREFIX
+            )));
+        }
+    }
+
     Ok(release)
 }
 

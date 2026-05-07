@@ -319,6 +319,29 @@ pub async fn run(args: InstallArgs) -> CliResult<()> {
         print_capability_summary_for(args.platform.as_deref());
     }
 
+    // UX-2 (2026-05-07): first-time users with no prior receipt see a
+    // numbered next-steps block so they know what to do after install.
+    // Detected via: receipt_count == 0 BEFORE this run (i.e. truly first-time
+    // for this platform). Printed only on real installs (not --dry-run).
+    //
+    // Simplification per UX-2 spec: use the easiest-available signal —
+    // "real install that actually wired hooks" = `!args.dry_run` AND
+    // `hooks_written_total > 0`. That covers the dominant fresh-install
+    // path (Claude Code default flow); --skip-hooks / --skip-mcp niche
+    // re-runs intentionally don't see the checklist, which is fine —
+    // they're already past the first-time stage by definition.
+    let first_time_install = hooks_written_total > 0;
+    if !args.dry_run && first_time_install {
+        println!();
+        println!("== Next steps ==");
+        println!("  1. Restart your AI client (Claude Code / Cursor / etc.) so hooks activate.");
+        println!("  2. Open a project directory and run: mneme build .");
+        println!("  3. In your AI client, try: \"recall the auth flow\"");
+        println!("  4. Verify health: mneme doctor");
+        println!();
+        println!("  Documentation: https://omanishay-cyber.github.io/mneme/");
+    }
+
     Ok(())
 }
 

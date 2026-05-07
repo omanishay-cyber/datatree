@@ -641,6 +641,28 @@ async fn handle_conn(
     }
 }
 
+// SEC-3 (2026-05-07 audit): structural caps on graph-query parameters
+// supplied via the IPC pipe. A local caller passing `usize::MAX` for
+// `Blast.depth` or `GodNodes.n` could otherwise wedge the blocking
+// query thread or exhaust heap. Blast depth >10 is structurally
+// meaningless on real graphs (impact set saturates well before 10
+// hops); GodNodes mirrors the HTTP `MAX_GRAPH_LIMIT` already in
+// api_graph.
+const MAX_BLAST_DEPTH: usize = 10;
+const MAX_GODNODES_N: usize = 50_000; // matches MAX_GRAPH_LIMIT
+
+// SEC-1 (2026-05-07 audit): per-field size caps on hook write IPC
+// commands. The 16 MiB IPC frame ceiling alone lets any local process
+// flood disk by sending oversized `content` / `result_json` /
+// `params_json` blobs through WriteTurn / WriteLedgerEntry /
+// WriteToolCall / WriteFileEvent. These caps are validated in the
+// dispatch arm BEFORE the store write is attempted.
+const MAX_HOOK_CONTENT_BYTES: usize = 1_048_576; // 1 MiB
+const MAX_HOOK_PARAMS_JSON_BYTES: usize = 1_048_576; // 1 MiB
+const MAX_HOOK_RESULT_JSON_BYTES: usize = 1_048_576; // 1 MiB
+const MAX_HOOK_FILE_PATH_BYTES: usize = 4096; // 4 KiB
+const MAX_HOOK_SHORT_FIELD_BYTES: usize = 256; // session_id, role, kind, tool, actor
+
 async fn dispatch(
     cmd: ControlCommand,
     manager: Arc<ChildManager>,
@@ -857,6 +879,11 @@ async fn dispatch(
                     message: "project not found or not registered".into(),
                 };
             }
+            // SEC-3: clamp depth to MAX_BLAST_DEPTH. Blast depth >10 is
+            // structurally meaningless on real graphs (the impact set
+            // saturates well before 10 hops); an unbounded depth from a
+            // local caller can wedge the blocking thread or exhaust heap.
+            let depth = depth.min(MAX_BLAST_DEPTH);
             match query_runner::run_blast(&project, &target, depth) {
                 Ok(impacted) => ControlResponse::BlastResults { impacted },
                 Err(e) => ControlResponse::Error { message: e },
@@ -868,6 +895,8 @@ async fn dispatch(
                     message: "project not found or not registered".into(),
                 };
             }
+            // SEC-3: clamp n to MAX_GODNODES_N (matches MAX_GRAPH_LIMIT).
+            let n = n.min(MAX_GODNODES_N);
             match query_runner::run_godnodes(&project, n) {
                 Ok(nodes) => ControlResponse::GodNodesResults { nodes },
                 Err(e) => ControlResponse::Error { message: e },
@@ -1107,55 +1136,163 @@ async fn dispatch(
             session_id,
             role,
             content,
-        } => match hook_store_write_turn(&project, &session_id, &role, &content).await {
-            Ok(()) => ControlResponse::Ok { message: None },
-            Err(e) => ControlResponse::Error { message: e },
-        },
+        } => {
+            // SEC-1: per-field size caps before disk write.
+            if let Err(resp) =
+                check_hook_field("session_id", session_id.len(), MAX_HOOK_SHORT_FIELD_BYTES)
+            {
+                return resp;
+            }
+            if let Err(resp) = check_hook_field("role", role.len(), MAX_HOOK_SHORT_FIELD_BYTES) {
+                return resp;
+            }
+            if let Err(resp) = check_hook_field("content", content.len(), MAX_HOOK_CONTENT_BYTES) {
+                return resp;
+            }
+            // SEC-2: project must be a registered shard, not arbitrary user-writable path.
+            if !is_existing_project_dir(&project) {
+                return ControlResponse::Error {
+                    message: format!("project not registered: {}", project.display()),
+                };
+            }
+            match hook_store_write_turn(&project, &session_id, &role, &content).await {
+                Ok(()) => ControlResponse::Ok { message: None },
+                Err(e) => ControlResponse::Error { message: e },
+            }
+        }
         ControlCommand::WriteLedgerEntry {
             project,
             session_id,
             kind,
             summary,
             rationale,
-        } => match hook_store_write_ledger(
-            &project,
-            &session_id,
-            &kind,
-            &summary,
-            rationale.as_deref(),
-        )
-        .await
-        {
-            Ok(()) => ControlResponse::Ok { message: None },
-            Err(e) => ControlResponse::Error { message: e },
-        },
+        } => {
+            // SEC-1: per-field size caps before disk write.
+            if let Err(resp) =
+                check_hook_field("session_id", session_id.len(), MAX_HOOK_SHORT_FIELD_BYTES)
+            {
+                return resp;
+            }
+            if let Err(resp) = check_hook_field("kind", kind.len(), MAX_HOOK_SHORT_FIELD_BYTES) {
+                return resp;
+            }
+            if let Err(resp) = check_hook_field("summary", summary.len(), MAX_HOOK_CONTENT_BYTES) {
+                return resp;
+            }
+            if let Some(ref r) = rationale {
+                if let Err(resp) = check_hook_field("rationale", r.len(), MAX_HOOK_CONTENT_BYTES) {
+                    return resp;
+                }
+            }
+            // SEC-2: project must be a registered shard.
+            if !is_existing_project_dir(&project) {
+                return ControlResponse::Error {
+                    message: format!("project not registered: {}", project.display()),
+                };
+            }
+            match hook_store_write_ledger(
+                &project,
+                &session_id,
+                &kind,
+                &summary,
+                rationale.as_deref(),
+            )
+            .await
+            {
+                Ok(()) => ControlResponse::Ok { message: None },
+                Err(e) => ControlResponse::Error { message: e },
+            }
+        }
         ControlCommand::WriteToolCall {
             project,
             session_id,
             tool,
             params_json,
             result_json,
-        } => match hook_store_write_tool_call(
-            &project,
-            &session_id,
-            &tool,
-            &params_json,
-            &result_json,
-        )
-        .await
-        {
-            Ok(()) => ControlResponse::Ok { message: None },
-            Err(e) => ControlResponse::Error { message: e },
-        },
+        } => {
+            // SEC-1: per-field size caps before disk write.
+            if let Err(resp) =
+                check_hook_field("session_id", session_id.len(), MAX_HOOK_SHORT_FIELD_BYTES)
+            {
+                return resp;
+            }
+            if let Err(resp) = check_hook_field("tool", tool.len(), MAX_HOOK_SHORT_FIELD_BYTES) {
+                return resp;
+            }
+            if let Err(resp) =
+                check_hook_field("params_json", params_json.len(), MAX_HOOK_PARAMS_JSON_BYTES)
+            {
+                return resp;
+            }
+            if let Err(resp) =
+                check_hook_field("result_json", result_json.len(), MAX_HOOK_RESULT_JSON_BYTES)
+            {
+                return resp;
+            }
+            // SEC-2: project must be a registered shard.
+            if !is_existing_project_dir(&project) {
+                return ControlResponse::Error {
+                    message: format!("project not registered: {}", project.display()),
+                };
+            }
+            match hook_store_write_tool_call(
+                &project,
+                &session_id,
+                &tool,
+                &params_json,
+                &result_json,
+            )
+            .await
+            {
+                Ok(()) => ControlResponse::Ok { message: None },
+                Err(e) => ControlResponse::Error { message: e },
+            }
+        }
         ControlCommand::WriteFileEvent {
             project,
             file_path,
             event_type,
             actor,
-        } => match hook_store_write_file_event(&project, &file_path, &event_type, &actor).await {
-            Ok(()) => ControlResponse::Ok { message: None },
-            Err(e) => ControlResponse::Error { message: e },
-        },
+        } => {
+            // SEC-1: per-field size caps before disk write.
+            if let Err(resp) =
+                check_hook_field("file_path", file_path.len(), MAX_HOOK_FILE_PATH_BYTES)
+            {
+                return resp;
+            }
+            if let Err(resp) =
+                check_hook_field("event_type", event_type.len(), MAX_HOOK_SHORT_FIELD_BYTES)
+            {
+                return resp;
+            }
+            if let Err(resp) = check_hook_field("actor", actor.len(), MAX_HOOK_SHORT_FIELD_BYTES) {
+                return resp;
+            }
+            // SEC-2: project must be a registered shard.
+            if !is_existing_project_dir(&project) {
+                return ControlResponse::Error {
+                    message: format!("project not registered: {}", project.display()),
+                };
+            }
+            match hook_store_write_file_event(&project, &file_path, &event_type, &actor).await {
+                Ok(()) => ControlResponse::Ok { message: None },
+                Err(e) => ControlResponse::Error { message: e },
+            }
+        }
+    }
+}
+
+/// SEC-1 helper: validate a hook write field against its byte cap.
+/// Returns Ok(()) when within cap, or an `Error` ControlResponse the
+/// dispatcher can return directly. Centralised so the four hook write
+/// arms produce identical error wording.
+fn check_hook_field(field: &str, len: usize, cap: usize) -> Result<(), ControlResponse> {
+    if len > cap {
+        Err(ControlResponse::Error {
+            message: format!("field {field} exceeds {cap} byte cap (got {len})"),
+        })
+    } else {
+        Ok(())
     }
 }
 
