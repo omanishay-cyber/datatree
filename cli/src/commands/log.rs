@@ -271,12 +271,24 @@ fn socket_exists(socket: &Path) -> bool {
 }
 
 #[cfg(windows)]
-fn socket_exists(socket: &Path) -> bool {
-    let pid_file = socket
-        .parent()
-        .map(|p| p.join("daemon.pid"))
-        .unwrap_or_else(|| PathBuf::from("daemon.pid"));
-    pid_file.exists()
+fn socket_exists(_socket: &Path) -> bool {
+    // 2026-05-07 fix: same pattern as status.rs::socket_exists. Named
+    // pipe paths like \\.\pipe\mneme-supervisor have a parent of
+    // \\.\pipe (the namespace, not a real fs dir), so the prior
+    // daemon.pid lookup always returned false. Edge-case agent
+    // confirmed `mneme log` reported the daemon DOWN while `mneme
+    // status` (now fixed) reported it UP — same root cause.
+    //
+    // Route through doctor::check_daemon_pid_liveness for the actual
+    // liveness check.
+    use crate::commands::doctor::{check_daemon_pid_liveness, DaemonPidState};
+    let root = common::paths::PathManager::default_root()
+        .root()
+        .to_path_buf();
+    matches!(
+        check_daemon_pid_liveness(&root),
+        DaemonPidState::AliveProbeFresh
+    )
 }
 
 fn probe_daemon_socket(socket: &Path, alive: bool) -> Sample {
