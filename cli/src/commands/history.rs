@@ -232,7 +232,8 @@ mod tests {
         // we can verify the function exits 0.)
         let td = tempfile::tempdir().unwrap();
         let args = HistoryArgs {
-            query: "anything".into(),
+            // Bug #39 (2026-05-07): query is now Option<String>; was bare String.
+            query: Some("anything".into()),
             since: None,
             limit: 10,
             project: Some(td.path().to_path_buf()),
