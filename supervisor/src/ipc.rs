@@ -1021,8 +1021,17 @@ async fn dispatch(
                     // and queue-full drops to the CLI via the response
                     // message so the operator can re-run with a
                     // narrower scope or wait for the queue to drain.
-                    let mut msg =
-                        format!("audit dispatched: {queued} files queued ({scanned} scanned)");
+                    // 2026-05-07 fix (edge-case agent W3): the prior
+                    // wording "{queued} files queued ({scanned} scanned)"
+                    // confused users — "queued < scanned" reads like
+                    // counts that should match. Reality: `scanned` is
+                    // the enumeration walk count (every file the
+                    // scanner SAW), `queued` is the subset that needed
+                    // a scanner job (filtered by mtime/skip rules).
+                    // New wording makes the relationship explicit.
+                    let mut msg = format!(
+                        "audit dispatched: {queued} file(s) queued for scanning (out of {scanned} enumerated)"
+                    );
                     if truncated {
                         msg.push_str(&format!(
                             "; WARNING: enumeration truncated at scan cap -- partial audit, re-run with a narrower path"
