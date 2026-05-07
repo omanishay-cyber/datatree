@@ -276,10 +276,43 @@ jobs:
             echo "ERROR: no artifacts found to upload" >&2
             exit 1
           fi
-          echo "Assets to upload:"
+          echo "Binary assets to upload:"
           echo "$ASSETS"
           # shellcheck disable=SC2086
           gh release upload "$TAG" $ASSETS \
+            --repo "${{ github.repository }}" \
+            --clobber
+
+      # 2026-05-06: also re-upload the four install-script assets so a
+      # binary rebuild doesn't leave stale `bootstrap-install.ps1` /
+      # `install-{linux,mac}.sh` / `lib-common.sh` in place. Without
+      # this, a fix to `release/bootstrap-install.ps1` lands in source
+      # but the live release one-liner keeps pointing at the previous
+      # version of the script. Burned us once with the byte[] manifest
+      # parser bug and the schtasks /Delete stderr abort — both fixes
+      # were in source for hours before the live one-liner picked them
+      # up.
+      - name: Upload install scripts to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          SCRIPTS=""
+          for f in release/bootstrap-install.ps1 release/install-linux.sh \
+                   release/install-mac.sh release/lib-common.sh; do
+            if [ -f "$f" ]; then
+              SCRIPTS="$SCRIPTS $f"
+            else
+              echo "warning: $f missing in checkout — skipping" >&2
+            fi
+          done
+          if [ -z "$SCRIPTS" ]; then
+            echo "ERROR: no install scripts found in release/ to upload" >&2
+            exit 1
+          fi
+          echo "Install scripts to upload:$SCRIPTS"
+          # shellcheck disable=SC2086
+          gh release upload "$TAG" $SCRIPTS \
             --repo "${{ github.repository }}" \
             --clobber
 
