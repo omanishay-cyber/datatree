@@ -116,7 +116,11 @@ enum Command {
     /// convention of `rustup self update`, `gh self-update`, and
     /// `cargo install --self`: "update the binary itself" vs
     /// "update the project index".
-    #[command(name = "self-update")]
+    // UX-1 (2026-05-07): users overwhelmingly type "upgrade" expecting
+    // binary upgrade. Adding `upgrade` as an alias means both
+    // `mneme self-update` and `mneme upgrade` work; the convention
+    // remains canonical at self-update for power users / scripts.
+    #[command(name = "self-update", alias = "upgrade")]
     SelfUpdate(commands::self_update::SelfUpdateArgs),
     /// Print graph stats / drift findings count / last build time.
     Status(commands::status::StatusArgs),
