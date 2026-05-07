@@ -1,8 +1,8 @@
 # Symbol-anchored embeddings
 
-The second piece of the v0.4.0 keystone. The symbol resolver from the previous chapter produces canonical names; this chapter explains how those names get stitched into the embedding text so semantic recall actually returns the right thing.
+The second piece of the Genesis keystone. The symbol resolver from the previous chapter produces canonical names; this chapter explains how those names get stitched into the embedding text so semantic recall actually returns the right thing.
 
-## Before v0.4.0 — file-anchored
+## Before the keystone — file-anchored
 
 The embedding pipeline ran on graph nodes. For each node it produced text from this fallback chain:
 
@@ -16,9 +16,9 @@ So a function `pub async fn spawn(...) -> Result<JobId>` got embedded with text 
 
 Vector similarity for the query "where is spawn?" weighted both candidates roughly the same. Often the README won because it mentioned `spawn` more times than the signature did.
 
-This is the root cause of the recall gap the 2026-05-05 audit measured: on a 10-query golden benchmark, Mneme (pre-v0.4.0) hit **2 of 10 queries** while CRG hit **6 of 10**.
+This is the root cause of the recall gap the 2026-05-05 audit measured: on a 10-query golden benchmark, Mneme (pre-keystone) hit **2 of 10 queries** while CRG hit **6 of 10**.
 
-## After v0.4.0 — symbol-anchored
+## After the keystone — symbol-anchored
 
 `derive_text_for_embedding` now prepends a canonical anchor in front of the body:
 
@@ -71,7 +71,7 @@ Less precise than a real resolver, but better than nothing — the file path sti
 
 ## Migration on upgrade
 
-v0.3.x users have populated `embedding_id` columns pointing at file-anchored vectors. The v0.4.0 schema migration v1→v2 clears them:
+v0.3.x users have populated `embedding_id` columns pointing at file-anchored vectors. The Genesis schema migration v1→v2 clears them:
 
 - `graph.db`: `UPDATE nodes SET embedding_id = NULL WHERE embedding_id IS NOT NULL`
 - `semantic.db`: `DELETE FROM embeddings`

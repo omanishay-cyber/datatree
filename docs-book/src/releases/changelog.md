@@ -1,6 +1,6 @@
 # Full changelog
 
-The full version history. For the v0.4.0 highlights, see [v0.4.0 — Keystone](./v0.4.0.md).
+The full version history. For the Genesis highlights, see [Genesis — Keystone](./v0.4.0.md).
 
 The canonical source is [`CHANGELOG.md`](https://github.com/omanishay-cyber/mneme/blob/main/CHANGELOG.md) in the repo. We mirror notable entries here with a stable URL the AI host (and human readers) can link to.
 

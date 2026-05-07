@@ -89,6 +89,6 @@ mneme self-update          # download + verify + atomic swap
                            # restores from .old backup on failure
 ```
 
-The post-swap verification was added in v0.4.0 — if `mneme --version` doesn't exit 0 within 5 s on the new binary, every `.old` backup is restored over the new one. You're never left with a broken install.
+The post-swap verification was added in Genesis — if `mneme --version` doesn't exit 0 within 5 s on the new binary, every `.old` backup is restored over the new one. You're never left with a broken install.
 
 [Auto-update internals →](../releases/v0.4.0.md#auto-update-apply-mode)

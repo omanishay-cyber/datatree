@@ -18,7 +18,7 @@ Output:
    ...
 ```
 
-The Symbol resolver + symbol-anchored embeddings (v0.4.0 keystone) are why the function row outranks any README chunk that mentions the word "spawn". Pre-v0.4.0, the README usually won.
+The Symbol resolver + symbol-anchored embeddings (Genesis keystone) are why the function row outranks any README chunk that mentions the word "spawn". Pre-keystone, the README usually won.
 
 ## More recall flavours
 
@@ -34,7 +34,7 @@ mneme recall_file "supervisor"        # files matching the keyword
 
 ```bash
 mneme blast supervisor/src/manager.rs --depth=2
-mneme why "Why does v0.4.0 exist?"
+mneme why "Why does Genesis exist?"
 mneme history "auth refactor"
 mneme godnodes --n=20
 ```
@@ -55,7 +55,7 @@ Your AI host's tool browser should show all 50 tools after `mneme install --plat
 
 If `recall_concept "spawn"` returns the README's "the spawn function manages workers" line as the top hit, two things to check:
 
-1. **Have you re-built since upgrading to v0.4.0?** v0.3.x file-anchored embeddings still work but don't get the symbol-anchor benefit. The schema migration v1→v2 clears them on first build after upgrade — run `mneme build .` to trigger.
+1. **Have you re-built since upgrading to the Genesis keystone?** v0.3.x file-anchored embeddings still work but don't get the symbol-anchor benefit. The schema migration v1→v2 clears them on first build after upgrade — run `mneme build .` to trigger.
 
 2. **Is BGE actually loaded?**
 
@@ -72,6 +72,6 @@ If `recall_concept "spawn"` returns the README's "the spawn function manages wor
 
 ## See also
 
-- [Symbol resolver](../concepts/resolver.md) — why v0.4.0 changed the recall game
+- [Symbol resolver](../concepts/resolver.md) — why Genesis changed the recall game
 - [Symbol-anchored embeddings](../concepts/embeddings.md) — how the anchor gets stitched in
 - [MCP tools](../mcp/tools.md) — the full 50-tool inventory for AI consumption

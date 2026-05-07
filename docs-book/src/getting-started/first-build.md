@@ -65,7 +65,7 @@ Opens `http://localhost:7777/?project=<hash>` in your default browser (or in the
 
 ## When build is slow
 
-The keystone v0.4.0 migration runs ONE TIME on first build after upgrade — it clears v0.3.x file-anchored embeddings so the new symbol-anchored anchor takes effect. On a 100K-row shard this can take 5-30 seconds with no progress output. Watch the heartbeat:
+The Genesis keystone migration runs ONE TIME on first build after upgrade — it clears v0.3.x file-anchored embeddings so the new symbol-anchored anchor takes effect. On a 100K-row shard this can take 5-30 seconds with no progress output. Watch the heartbeat:
 
 ```text
 [INFO ] applying schema migration (may take a moment on large shards) layer=Graph from=1 to=2

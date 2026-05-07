@@ -6,7 +6,7 @@ Mneme's web UI lives at `http://127.0.0.1:7777/`. 14 views over your code-graph,
 
 | View | What it shows |
 |---|---|
-| **Force Galaxy** | Force-directed graph of every node (16K+ on big repos). v0.4.0 first-paint <500 ms via server-pre-computed sunflower-spiral seed. |
+| **Force Galaxy** | Force-directed graph of every node (16K+ on big repos). Genesis first-paint <500 ms via server-pre-computed sunflower-spiral seed. |
 | **3D Galaxy** | Three.js orbital scene; pan + rotate + zoom for spatial exploration. |
 | **Treemap** | Hierarchical area chart sized by file/directory weight. |
 | **Sunburst** | Radial hierarchy (alternative treemap). |
@@ -36,7 +36,7 @@ Then refresh. Or use `mneme view` from inside a project — it computes the proj
 
 If multiple projects are indexed, the SPA shows a dropdown to switch between them. The URL parameter `?project=<hash>` selects which `~/.mneme/projects/<hash>/graph.db` the views read from.
 
-## Server-pre-computed layout (v0.4.0 keystone)
+## Server-pre-computed layout (Genesis keystone)
 
 Force Galaxy used to render with random initial positions + a 1-2 iteration FA2 warm-up before paint. On a 17K-node graph that was a 3-second white screen. Item #124 added `/api/graph/layout` — the server runs a deterministic community-aware sunflower spiral and returns `(qualified_name, x, y)` triples in the same window the SPA fetches. Sigma seeds positions from the snapshot before WebGL paints — first-paint drops to <500 ms.
 
@@ -82,5 +82,5 @@ bun run build               # produces dist/ — copied into ~/.mneme/static/vis
 ## See also
 
 - [Architecture](./architecture.md) — where the daemon's HTTP layer fits in
-- [v0.4.0 release](../releases/v0.4.0.md) — the layout endpoint + first-paint perf win
+- [Genesis release](../releases/v0.4.0.md) — the layout endpoint + first-paint perf win
 - [Troubleshooting](../troubleshooting.md) — when views go empty / port conflicts

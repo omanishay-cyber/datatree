@@ -1,6 +1,6 @@
 # Self-ping enforcement (3 layers)
 
-Mneme's job is to be the AI's persistent code-graph memory. But an AI that has Mneme installed will still default to grep + read if it forgets the tool exists. v0.4.0 ships a 3-layer hook system that nudges the AI back toward Mneme on every turn — without ever blocking the user's workflow.
+Mneme's job is to be the AI's persistent code-graph memory. But an AI that has Mneme installed will still default to grep + read if it forgets the tool exists. Genesis ships a 3-layer hook system that nudges the AI back toward Mneme on every turn — without ever blocking the user's workflow.
 
 The motto: **soft-redirect, never block, fail-open.**
 
@@ -88,7 +88,7 @@ The user's session is NEVER bricked by Mneme. If you see any tool call blocked, 
 
 Claude Code spawns a hook process for every PreToolUse. On Windows, every command-line process gets a console window unless the binary is built for the GUI subsystem.
 
-v0.4.0 ships `mneme-hook.exe` — a separate Windows GUI-subsystem binary that handles the 3 hook subcommands without flashing a console. The platform integration writes hook entries pointing at `mneme-hook.exe`; everything else (`mneme build`, `mneme recall`, etc.) still uses the regular `mneme.exe` so terminal output works normally.
+Genesis ships `mneme-hook.exe` — a separate Windows GUI-subsystem binary that handles the 3 hook subcommands without flashing a console. The platform integration writes hook entries pointing at `mneme-hook.exe`; everything else (`mneme build`, `mneme recall`, etc.) still uses the regular `mneme.exe` so terminal output works normally.
 
 On Linux and macOS this binary is unnecessary — those OSes don't allocate console windows for child processes — but the build matrix produces it on all platforms for path-uniformity. The platform-integration code only swaps mneme → mneme-hook on Windows.
 
@@ -111,6 +111,6 @@ blast_radius_freshness_seconds = 600   # 10 min
 enforce_recall_before_grep = true
 ```
 
-Defaults shipped with v0.4.0. Set any to `false` to disable that layer.
+Defaults shipped with Genesis. Set any to `false` to disable that layer.
 
 [Layer 1 source](../hooks/userprompt.md) · [Layer 2 source](../hooks/pretool-edit.md) · [Layer 3 source](../hooks/pretool-grep.md)

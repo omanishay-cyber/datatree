@@ -64,7 +64,7 @@ ls ~/.mneme/mcp/node_modules/zod/package.json
 
 Two things to check:
 
-1. **Have you re-built since upgrading to v0.4.0?** v0.3.x embeddings are file-anchored. The schema migration v1→v2 clears them on first build, but the build has to actually run. `mneme build .` from any indexed project triggers it.
+1. **Have you re-built since upgrading to the Genesis keystone?** v0.3.x embeddings are file-anchored. The schema migration v1→v2 clears them on first build, but the build has to actually run. `mneme build .` from any indexed project triggers it.
 
 2. **Is BGE actually loaded?** `mneme doctor` reports the active embedder backend at the bottom. If it says `hashing-trick`, the BGE model isn't installed:
 
@@ -88,8 +88,8 @@ Second run is fast because Defender has cached the scan. If it rolls back twice 
 
 Three layers can drop edges silently:
 
-1. **Node window mismatch** — fixed in v0.4.0 (`?limit=` parameter symmetric across `/nodes`, `/edges`, `/layout`)
-2. **Server-side INNER JOIN** — fixed in v0.4.0 (Item #111)
+1. **Node window mismatch** — fixed in Genesis (`?limit=` parameter symmetric across `/nodes`, `/edges`, `/layout`)
+2. **Server-side INNER JOIN** — fixed in Genesis (Item #111)
 3. **No edges in graph.db** — possible on a fresh `--no-edges` build or a project whose parser doesn't yet emit call edges
 
 Check edge count:

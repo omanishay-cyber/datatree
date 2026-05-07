@@ -18,12 +18,11 @@ Same flow as Linux. The mac-specific bits the installer handles:
 
 ```bash
 ARCH=arm64                       # or x86_64 on Intel Macs (uses Rosetta)
-VERSION=v0.4.0
-ARCHIVE=mneme-${VERSION}-darwin-${ARCH}.tar.gz
-curl -fsSLO https://github.com/omanishay-cyber/mneme/releases/download/${VERSION}/${ARCHIVE}
+ARCHIVE=mneme-darwin-${ARCH}.tar.gz
+curl -fsSLO https://github.com/omanishay-cyber/mneme/releases/latest/download/${ARCHIVE}
 
 # Verify
-curl -fsSLO https://github.com/omanishay-cyber/mneme/releases/download/${VERSION}/release-checksums.json
+curl -fsSLO https://github.com/omanishay-cyber/mneme/releases/latest/download/release-checksums.json
 shasum -a 256 -c <(jq -r ".\"${ARCHIVE}\".sha256 + \"  ${ARCHIVE}\"" release-checksums.json)
 
 # Extract
@@ -47,7 +46,7 @@ mneme --version
 | M1 / M2 / M3 / M4 | `darwin-arm64` (native) | Native speed |
 | Intel | `darwin-arm64` via Rosetta 2 | ~5-10% overhead |
 
-A separate `darwin-x86_64` build was deferred — the v0.4.0 multi-arch matrix builds arm64 only. The install script transparently uses Rosetta for Intel users; the first `mneme` invocation prompts to install Rosetta if missing. After that initial prompt, `mneme` runs identically on both architectures.
+A separate `darwin-x86_64` build was deferred — the current multi-arch matrix builds arm64 only. The install script transparently uses Rosetta for Intel users; the first `mneme` invocation prompts to install Rosetta if missing. After that initial prompt, `mneme` runs identically on both architectures.
 
 ## Models
 

@@ -20,11 +20,11 @@ Mneme integrates with AI hosts via 3 PreToolUse-style hooks plus the MCP server.
 [hooks]
 inject_user_prompt_reminder = true       # Layer 1
 enforce_blast_radius_before_edit = true  # Layer 2
-enforce_recall_before_grep = true        # Layer 3 (default: true since v0.4.0)
+enforce_recall_before_grep = true        # Layer 3 (default: true since Genesis)
 blast_radius_freshness_seconds = 600     # Layer 2: 10 min freshness window
 ```
 
-Set any to `false` to disable that layer. Defaults shipped with v0.4.0 are appropriate for normal use; the soft-redirect is non-blocking, so leaving Layer 3 ON is a free upgrade.
+Set any to `false` to disable that layer. Defaults shipped with Genesis are appropriate for normal use; the soft-redirect is non-blocking, so leaving Layer 3 ON is a free upgrade.
 
 ## Hook output protocol
 
@@ -54,7 +54,7 @@ Every hook handler returns Ok(()) regardless of internal errors:
 - Stdin parse fails → approve
 - Config malformed → fall back to defaults, approve
 
-For defense-in-depth, the CLI dispatch layer wraps each hook subcommand in `run_hook_failopen` (added in the v0.4.0 audit Wave 2 fix REL-001) — any future regression that propagates an error via `?` gets converted to a fail-open JSON envelope before reaching `main.rs`'s exit handler, preventing Claude Code from interpreting a non-zero exit as BLOCK.
+For defense-in-depth, the CLI dispatch layer wraps each hook subcommand in `run_hook_failopen` (added in the Genesis audit Wave 2 fix REL-001) — any future regression that propagates an error via `?` gets converted to a fail-open JSON envelope before reaching `main.rs`'s exit handler, preventing Claude Code from interpreting a non-zero exit as BLOCK.
 
 ## Windows GUI dispatcher
 

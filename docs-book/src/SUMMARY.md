@@ -30,7 +30,7 @@
 
 # Releases
 
-- [v0.4.0 — keystone](./releases/v0.4.0.md)
+- [Genesis — keystone](./releases/v0.4.0.md)
 - [Full changelog](./releases/changelog.md)
 
 # Operations

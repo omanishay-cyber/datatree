@@ -1,6 +1,6 @@
 # Symbol resolver
 
-The keystone of v0.4.0. Three per-language algorithms (Rust + TypeScript/JavaScript + Python) that turn syntactic names into one canonical string per logical symbol — the foundation for every "find references" query, every blast-radius computation, and every embedding the corpus indexes.
+The keystone of Genesis. Three per-language algorithms (Rust + TypeScript/JavaScript + Python) that turn syntactic names into one canonical string per logical symbol — the foundation for every "find references" query, every blast-radius computation, and every embedding the corpus indexes.
 
 ## The problem
 
@@ -12,9 +12,9 @@ Without that mapping:
 - `find_references "WorkerPool"` returns text matches, not structural matches. `mod::WorkerPool`, `crate::mod::WorkerPool`, `WorkerPool` (after `use crate::mod::WorkerPool`) all look like distinct strings.
 - `blast_radius "manager.rs"` underestimates impact because cross-file calls via `use` or `import` chains aren't tied back to the function definition.
 
-The 2026-05-05 audit ran the same 10-query golden benchmark against Mneme and CRG on identical hardware. Before v0.4.0, Mneme returned a correct hit on **2 of 10 queries**; CRG returned **6 of 10**. The same run measured token reduction at **1.34×** against CRG's claimed **6.8×**. Both gaps share one root cause: no symbol resolver.
+The 2026-05-05 audit ran the same 10-query golden benchmark against Mneme and CRG on identical hardware. Before the keystone, Mneme returned a correct hit on **2 of 10 queries**; CRG returned **6 of 10**. The same run measured token reduction at **1.34×** against CRG's claimed **6.8×**. Both gaps share one root cause: no symbol resolver.
 
-## What v0.4.0 ships
+## What Genesis ships
 
 Three real per-language resolvers, plus a passthrough fallback for languages without a resolver yet.
 
@@ -38,7 +38,7 @@ Coverage:
 - Bare names looked up in a `UseMap` derived from the file's `use` statements; multi-step aliasing (`use a::b as c`) and group imports (`use a::{b, c::d}`) are flattened on construction.
 - Cross-crate references (`std::collections::HashMap`) — left verbatim. We don't try to resolve external crates; their canonical form is already what the source spelled.
 
-Out of scope (deferred to v0.4.1+):
+Out of scope (on the roadmap):
 
 - `pub use` re-export chasing
 - Trait impl resolution (`<Foo as Bar>::method`)
@@ -48,7 +48,7 @@ Out of scope (deferred to v0.4.1+):
 
 The same shape adapted to TS/JS resolution rules:
 
-- File-prefix from relative path, with extension stripped (`.tsx` / `.ts` / `.jsx` / `.js` / `.mjs` / `.cjs` precedence-ordered). v0.4.0 audit fix: keeping the extension caused def/ref namespace mismatch where a relative import `./Foo` resolved without extension while the definition lived at `Foo.tsx::Bar`.
+- File-prefix from relative path, with extension stripped (`.tsx` / `.ts` / `.jsx` / `.js` / `.mjs` / `.cjs` precedence-ordered). Genesis audit fix: keeping the extension caused def/ref namespace mismatch where a relative import `./Foo` resolved without extension while the definition lived at `Foo.tsx::Bar`.
 - Relative imports (`./Foo`, `../bar`, `./..`)
 - tsconfig `paths` aliases (wildcard + exact match, first-match-wins)
 - Bare module specifiers (`react`, `@scope/pkg`) — passed through verbatim, can't resolve to a project file
@@ -68,17 +68,17 @@ Rust and TS share `::` as their canonical separator because the resolver-side st
 
 ## What's NOT yet wired
 
-The resolver algorithms ship as a library in v0.4.0. Three downstream consumers need to wire through them:
+The resolver algorithms ship as a library in Genesis. Three downstream consumers need to wire through them:
 
 | Consumer | Status | When |
 |----|----|----|
-| `canonical_embed_anchor` (used by the embedding pass) | uses `*_file_prefix` helpers ✓ | v0.4.0 |
-| `extractor.rs` (writes `nodes.qualified_name` into graph.db) | uses blake3 stable_id (legacy) | v0.4.1 |
-| `find_references` / `blast_radius` (read graph.db) | reads the legacy stable_id | v0.4.1 |
+| `canonical_embed_anchor` (used by the embedding pass) | uses `*_file_prefix` helpers ✓ | Genesis |
+| `extractor.rs` (writes `nodes.qualified_name` into graph.db) | uses blake3 stable_id (legacy) | roadmap |
+| `find_references` / `blast_radius` (read graph.db) | reads the legacy stable_id | roadmap |
 
-The embedding pass already takes effect — `recall_concept` queries should now hit the function row instead of the README chunk. The graph queries (`find_references`, `blast_radius`, `call_graph`) still use the legacy hash-based qualified_name and won't see structural improvement until v0.4.1 wires the full resolver into the extractor.
+The embedding pass already takes effect — `recall_concept` queries should now hit the function row instead of the README chunk. The graph queries (`find_references`, `blast_radius`, `call_graph`) still use the legacy hash-based qualified_name and won't see structural improvement until the resolver wires into the extractor.
 
-The 2026-05-05 audit's recall improvement (from 2 correct hits to ~6 on the 10-query golden benchmark) is the embedding side of the fix. The graph-query side is its own bench, scheduled for v0.4.1 with the extractor wiring.
+The 2026-05-05 audit's recall improvement (from 2 correct hits to ~6 on the 10-query golden benchmark) is the embedding side of the fix. The graph-query side is its own bench, scheduled for the next release with the extractor wiring.
 
 ## Test surface
 
@@ -102,7 +102,7 @@ Plus 9 integration tests in `cli/src/commands/build.rs` that exercise `canonical
 
 ## Migration on upgrade
 
-When you first run `mneme build` after upgrading from v0.3.x to v0.4.0, the schema migration framework runs once:
+When you first run `mneme build` after upgrading to the Genesis keystone, the schema migration framework runs once:
 
 ```text
 migrating graph.db: UPDATE nodes SET embedding_id = NULL ...

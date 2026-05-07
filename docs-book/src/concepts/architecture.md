@@ -53,7 +53,7 @@ tasks.db      — step ledger
 
 Each shard has its own `PRAGMA user_version`. Migrations run forward-only on shard open via `apply_migrations(layer)`. Per-layer dispatch lets each layer's migration set reference its own tables without breaking shards on other layers.
 
-v0.4.0 schema is at `user_version = 2`. The v1→v2 migration clears file-anchored embeddings on first build after upgrade.
+The current schema is at `user_version = 2`. The v1→v2 migration clears file-anchored embeddings on first build after upgrade.
 
 ## IPC
 
@@ -105,7 +105,7 @@ The vector dimension is 384 (BGE-small-en-v1.5). Other dimensions (768 for BGE-b
 
 [See the resolver concept page →](./resolver.md)
 
-The resolver currently feeds the embedding pass via `*_file_prefix` helpers. Wiring the full algorithm into the extractor (so `qualified_name` is the resolved canonical, not a blake3 hash) is queued for v0.4.1 — the keystone gap the audit flagged is mostly closed by the embedding side; the graph-query side still uses the legacy stable_id.
+The resolver currently feeds the embedding pass via `*_file_prefix` helpers. Wiring the full algorithm into the extractor (so `qualified_name` is the resolved canonical, not a blake3 hash) is on the roadmap — the keystone gap the audit flagged is mostly closed by the embedding side; the graph-query side still uses the legacy stable_id.
 
 ## Local-only model loading
 

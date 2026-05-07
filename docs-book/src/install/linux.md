@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/omanishay-cyber/mneme/main/release/
 The script:
 
 1. Detects your CPU arch (`x86_64` or `aarch64`)
-2. Downloads `mneme-v0.4.0-linux-<arch>.tar.gz` from the GitHub release
+2. Downloads `mneme-linux-<arch>.tar.gz` from the latest GitHub release
 3. Verifies SHA-256 against the release checksums file
 4. Extracts to `~/.mneme/`
 5. Symlinks `~/.mneme/bin/mneme` and `~/.mneme/bin/mnemeos` into a directory on PATH (auto-detects `~/.local/bin`, `/usr/local/bin`, etc.)
@@ -22,12 +22,11 @@ The script:
 ```bash
 # 1. Download
 ARCH=$(uname -m)            # x86_64 or aarch64
-VERSION=v0.4.0
-ARCHIVE=mneme-${VERSION}-linux-${ARCH}.tar.gz
-curl -fsSLO https://github.com/omanishay-cyber/mneme/releases/download/${VERSION}/${ARCHIVE}
+ARCHIVE=mneme-linux-${ARCH}.tar.gz
+curl -fsSLO https://github.com/omanishay-cyber/mneme/releases/latest/download/${ARCHIVE}
 
 # 2. Verify
-curl -fsSLO https://github.com/omanishay-cyber/mneme/releases/download/${VERSION}/release-checksums.json
+curl -fsSLO https://github.com/omanishay-cyber/mneme/releases/latest/download/release-checksums.json
 sha256sum -c <(jq -r ".\"${ARCHIVE}\".sha256 + \"  ${ARCHIVE}\"" release-checksums.json)
 
 # 3. Extract

@@ -60,10 +60,10 @@ The hook never adds a `_truncated` envelope — hint strings are bounded at 80/1
 
 ```toml
 [hooks]
-enforce_recall_before_grep = true     # default true since v0.4.0
+enforce_recall_before_grep = true     # default true since Genesis
 ```
 
-The default flipped to TRUE in v0.4.0 to align with the Rust + TS bindings (the v0.4.0 audit Wave 2 fix REL-002 caught a prior false-on-TS / true-on-Rust mismatch). Set to false for legacy passthrough.
+The default flipped to TRUE in Genesis to align with the Rust + TS bindings (the Genesis audit Wave 2 fix REL-002 caught a prior false-on-TS / true-on-Rust mismatch). Set to false for legacy passthrough.
 
 ## Source
 

@@ -35,7 +35,7 @@ The auto-run + inject pattern means the AI's NEXT turn can immediately retry the
 
 ## Source
 
-[`cli/src/commands/pretool_edit_write.rs`][src] (Rust dispatcher) and [`mcp/src/hooks/pretool-edit-write.ts`][ts] (the design-of-record TS implementation). v0.4.0 ships the Rust path as a skeleton always-approve; the full IPC-driven gate is queued for v0.4.1 once the symbol resolver is wired into the extractor.
+[`cli/src/commands/pretool_edit_write.rs`][src] (Rust dispatcher) and [`mcp/src/hooks/pretool-edit-write.ts`][ts] (the design-of-record TS implementation). Genesis ships the Rust path as a skeleton always-approve; the full IPC-driven gate is on the roadmap once the symbol resolver is wired into the extractor.
 
 [src]: https://github.com/omanishay-cyber/mneme/blob/main/cli/src/commands/pretool_edit_write.rs
 [ts]: https://github.com/omanishay-cyber/mneme/blob/main/mcp/src/hooks/pretool-edit-write.ts

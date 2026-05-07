@@ -42,7 +42,7 @@ Mneme's CLI is intentionally thin — every subcommand maps 1:1 to a handler in 
 | `mneme post-tool` | Hook entry: PostToolUse. |
 | `mneme turn-end` | Hook entry: Stop (between turns). |
 | `mneme session-end` | Hook entry: session end. |
-| `mneme userprompt-submit` | Hook entry: Layer 1 self-ping (v0.4.0). |
+| `mneme userprompt-submit` | Hook entry: Layer 1 self-ping (Genesis). |
 | `mneme pretool-edit-write` | Hook entry: Layer 2 self-ping. |
 | `mneme pretool-grep-read` | Hook entry: Layer 3 self-ping. |
 

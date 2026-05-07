@@ -25,7 +25,7 @@ iwr -useb https://raw.githubusercontent.com/omanishay-cyber/mneme/main/release/b
 The bootstrap script:
 
 1. Detects `x64` or `arm64`
-2. Downloads `mneme-v0.4.0-windows-<arch>.zip` from the GitHub release
+2. Downloads `mneme-windows-<arch>.zip` from the latest GitHub release
 3. Verifies SHA-256 against the release checksums file
 4. Extracts to `%USERPROFILE%\.mneme\`
 5. Adds `%USERPROFILE%\.mneme\bin` to your user PATH (persistent)
@@ -42,15 +42,14 @@ The `mnemeos` package is a thin Python wrapper around the bootstrap installer â€
 ## Manual install
 
 ```powershell
-$Version = "v0.4.0"
 $Arch = "x64"                 # or "arm64"
-$Archive = "mneme-$Version-windows-$Arch.zip"
+$Archive = "mneme-windows-$Arch.zip"
 
 # Download
-Invoke-WebRequest -Uri "https://github.com/omanishay-cyber/mneme/releases/download/$Version/$Archive" -OutFile $Archive
+Invoke-WebRequest -Uri "https://github.com/omanishay-cyber/mneme/releases/latest/download/$Archive" -OutFile $Archive
 
 # Verify SHA-256
-Invoke-WebRequest -Uri "https://github.com/omanishay-cyber/mneme/releases/download/$Version/release-checksums.json" -OutFile release-checksums.json
+Invoke-WebRequest -Uri "https://github.com/omanishay-cyber/mneme/releases/latest/download/release-checksums.json" -OutFile release-checksums.json
 $expected = (Get-Content release-checksums.json | ConvertFrom-Json).$Archive.sha256
 $actual = (Get-FileHash $Archive -Algorithm SHA256).Hash.ToLower()
 if ($expected -ne $actual) { throw "checksum mismatch" }
@@ -75,7 +74,7 @@ mneme --version
 
 Windows shows a console window for every command-line process unless the binary is built for the GUI subsystem. Claude Code fires `mneme` as a hook on every `UserPromptSubmit` and `PreToolUse` â€” that's potentially dozens of console flashes per minute.
 
-v0.4.0 ships `mneme-hook.exe`, a separate Windows GUI-subsystem binary that handles the 3 hook subcommands (`userprompt-submit`, `pretool-edit-write`, `pretool-grep-read`) without flashing. The platform integration writes hook entries pointing at `mneme-hook.exe`; everything else (`mneme build`, `mneme recall`, etc.) still uses `mneme.exe` so terminal output works normally.
+Genesis ships `mneme-hook.exe`, a separate Windows GUI-subsystem binary that handles the 3 hook subcommands (`userprompt-submit`, `pretool-edit-write`, `pretool-grep-read`) without flashing. The platform integration writes hook entries pointing at `mneme-hook.exe`; everything else (`mneme build`, `mneme recall`, etc.) still uses `mneme.exe` so terminal output works normally.
 
 ## Scheduled Task
 

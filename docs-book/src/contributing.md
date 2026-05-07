@@ -94,7 +94,7 @@ The script knows about every version-tied file in the repo (Cargo.toml, package.
 ## Reading order for new contributors
 
 1. [Architecture](./concepts/architecture.md) — what's running, where, and why
-2. [Symbol resolver](./concepts/resolver.md) — the v0.4.0 keystone work
+2. [Symbol resolver](./concepts/resolver.md) — the Genesis keystone work
 3. [Self-ping enforcement](./concepts/self-ping.md) — the AI integration story
 4. `cli/src/main.rs` — the CLI dispatch tree, every subcommand maps to one handler
 5. `supervisor/src/api_graph.rs` — the HTTP API the vision SPA + external automation talk to

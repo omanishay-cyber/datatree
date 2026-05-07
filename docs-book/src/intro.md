@@ -2,7 +2,7 @@
 <div class="mneme-hero-grid">
 <div class="mneme-hero-left">
 
-<span class="eyebrow">v0.4.0 — Keystone shipped</span>
+<span class="eyebrow">Genesis — Keystone shipped</span>
 
 <h1 class="hero-title">Stop grepping.<br />Start recalling.</h1>
 
@@ -41,9 +41,9 @@
      <span class="out">— cli/src/commands/build.rs (2×)</span>
      <span class="out">— supervisor/src/api_graph.rs (1×)</span>
 
-<span class="prompt">$</span> <span class="cmd">mneme why "Why does v0.4.0 exist?"</span>
-  <span class="arrow">→</span>  <span class="out">pre-v0.4.0: </span><span class="num">2</span><span class="out"> of 10 benchmark hits (CRG: 6). Root cause:</span>
-     <span class="out">no symbol resolver. v0.4.0 ships three real resolvers</span>
+<span class="prompt">$</span> <span class="cmd">mneme why "Why does Genesis exist?"</span>
+  <span class="arrow">→</span>  <span class="out">pre-keystone: </span><span class="num">2</span><span class="out"> of 10 benchmark hits (CRG: 6). Root cause:</span>
+     <span class="out">no symbol resolver. Genesis ships three real resolvers</span>
      <span class="out">+ symbol-anchored embeddings — closes gap to ~6.</span>
      <span class="out-strong">→  ledger</span><span class="out">: keystone-2026-05-05</span><span class="mneme-terminal-cursor"></span></code></pre>
   </div>
@@ -61,7 +61,7 @@
 </div>
 
 <div class="mneme-trust-strip">
-  <div class="mneme-trust-item"><span class="trust-num">3 resolvers</span><span class="trust-lbl">Rust · TypeScript · Python (v0.4.0 audit)</span></div>
+  <div class="mneme-trust-item"><span class="trust-num">3 resolvers</span><span class="trust-lbl">Rust · TypeScript · Python (Genesis audit)</span></div>
   <div class="mneme-trust-item"><span class="trust-num">&lt; 500 ms</span><span class="trust-lbl">Server-rendered first paint on a 50k-node graph</span></div>
   <div class="mneme-trust-item"><span class="trust-num">0 bytes</span><span class="trust-lbl">Outbound on the default install</span></div>
 </div>
@@ -75,7 +75,7 @@
 <div class="mneme-feature">
   <div class="icon" aria-hidden="true">SR</div>
   <h3>Symbol resolver</h3>
-  <p>Three real resolvers — Rust, TypeScript, Python — turn syntactic names like <code>spawn</code>, <code>super::spawn</code>, and <code>crate::manager::spawn</code> into one canonical string per logical symbol. The keystone of v0.4.0.</p>
+  <p>Three real resolvers — Rust, TypeScript, Python — turn syntactic names like <code>spawn</code>, <code>super::spawn</code>, and <code>crate::manager::spawn</code> into one canonical string per logical symbol. The keystone of Genesis.</p>
 </div>
 
 <div class="mneme-feature">
@@ -176,7 +176,7 @@ winget install Anish.Mneme
 
 <a class="mneme-read-card" href="./concepts/resolver.html">
   <span class="step">02</span><span class="step-title">Symbol resolver</span><span class="arrow">→</span>
-  <span class="step-desc">The keystone of v0.4.0. The reason your AI gives a sharper answer than yesterday.</span>
+  <span class="step-desc">The keystone of Genesis. The reason your AI gives a sharper answer than yesterday.</span>
 </a>
 
 <a class="mneme-read-card" href="./mcp/tools.html">
@@ -221,7 +221,7 @@ Anything that speaks the Model Context Protocol (MCP) — Claude Code, Claude De
 <summary><span>How do I update? Will my graph survive?</span><span class="chev">+</span></summary>
 <div class="answer">
 
-Run <code>mneme update</code>. v0.4.0 ships an apply-with-rollback updater: it downloads the new binary, runs a post-swap health check, and restores the old binary automatically if the check fails. Your graph survives the update — the schema is forward-only, never drops columns, never renames. On v0.4.0 specifically, run <code>mneme rebuild</code> once after upgrade to pick up the symbol-anchored embeddings.
+Run <code>mneme update</code>. Genesis ships an apply-with-rollback updater: it downloads the new binary, runs a post-swap health check, and restores the old binary automatically if the check fails. Your graph survives the update — the schema is forward-only, never drops columns, never renames. On the keystone release specifically, run <code>mneme rebuild</code> once after upgrade to pick up the symbol-anchored embeddings.
 
 </div>
 </details>
@@ -232,7 +232,7 @@ Run <code>mneme update</code>. v0.4.0 ships an apply-with-rollback updater: it d
 
 <p>When you ask an AI "where does <code>WorkerPool::spawn</code> get called?", the cheap answer is regex over text. The slightly less-cheap answer is grep. Both miss <code>super::spawn</code>, <code>crate::manager::spawn</code>, <code>use crate::manager; spawn()</code>, and aliased re-exports. Mneme answers with structural certainty — parser-built call graphs, symbol resolver, BGE embeddings anchored on canonical names — all in a daemon the AI talks to via MCP.</p>
 
-<p>The 2026-05-05 audit ran the same 10-query golden benchmark against Mneme, CRG, and graphify on identical hardware. Before v0.4.0, Mneme returned a correct hit on 2 of those 10 queries; CRG returned 6. The audit traced both that recall gap and the 1.34× vs CRG's claimed 6.8× token-reduction gap to one root cause: no symbol resolver. v0.4.0 ships three real per-language resolvers and closes the gap to ~6/10 parity.</p>
+<p>The 2026-05-05 audit ran the same 10-query golden benchmark against Mneme, CRG, and graphify on identical hardware. Before the keystone, Mneme returned a correct hit on 2 of those 10 queries; CRG returned 6. The audit traced both that recall gap and the 1.34× vs CRG's claimed 6.8× token-reduction gap to one root cause: no symbol resolver. Genesis ships three real per-language resolvers and closes the gap to ~6/10 parity.</p>
 
 <div class="mneme-callout">
 <div class="mneme-callout-title"><span class="dot"></span>Local-only by design</div>
@@ -245,12 +245,12 @@ Run <code>mneme update</code>. v0.4.0 ships an apply-with-rollback updater: it d
   <h2>Ready to give your AI a memory?</h2>
   <p>Install once, run forever. The graph stays fresh as you edit. Apache-2.0, no signup, no telemetry.</p>
   <a class="mneme-cta mneme-cta-primary mneme-cta-large" href="./install/index.html">Install in one line<span class="arrow">&nbsp;→</span></a>
-  <p class="final-cta-meta">or <a href="./releases/v0.4.0.html">read the v0.4.0 release notes</a></p>
+  <p class="final-cta-meta">or <a href="./releases/v0.4.0.html">read the Genesis release notes</a></p>
 </div>
 
 <div class="mneme-footer">
   <div class="footer-meta">
-    <strong>Mneme</strong> &middot; built by <strong>Anish Trivedi & Kruti Trivedi</strong> &middot; <span class="version-pill">v0.4.0</span>
+    <strong>Mneme</strong> &middot; built by <strong>Anish Trivedi & Kruti Trivedi</strong> &middot; <span class="version-pill">Genesis</span>
   </div>
   <div class="footer-links">
     <a href="https://github.com/omanishay-cyber/mneme">GitHub</a>
