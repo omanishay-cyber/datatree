@@ -963,8 +963,21 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use livebus::{Event, EventBus, SubscriberManager};
     use std::sync::Arc;
+    use std::sync::Mutex;
     use tempfile::TempDir;
     use tower::ServiceExt;
+
+    /// Bug #27 (2026-05-07): two tests in this module mutate the
+    /// process-global env vars `MNEME_HOME` and `MNEME_STATIC_DIR` to
+    /// drive `resolve_static_dir()`. Cargo runs tests in parallel by
+    /// default — when both ran concurrently on macOS CI the override
+    /// test would leave `MNEME_STATIC_DIR` set to its tempdir while
+    /// the find-static-vision test was checking the resolver, so
+    /// step 1 (override branch) won and the test asserted on the
+    /// wrong path. Linux + Windows CI got lucky with their thread
+    /// schedulers; macOS reliably exposed the race. Both tests now
+    /// hold this mutex across env mutation + resolve + restore.
+    static ENV_MUTATION_LOCK: Mutex<()> = Mutex::new(());
 
     fn empty_app_state() -> AppState {
         let cfg = SupervisorConfig::default_layout();
@@ -1384,6 +1397,7 @@ mod tests {
     /// different user context than the install).
     #[tokio::test]
     async fn resolve_static_dir_honors_mneme_static_dir_env_override() {
+        let _lock = ENV_MUTATION_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let tmp = TempDir::new().expect("tempdir");
         // The override must point to a dir containing index.html
         // (otherwise it's a config error and the resolver should fall
@@ -1505,6 +1519,7 @@ mod tests {
     /// `~/.mneme/` install.
     #[tokio::test]
     async fn resolve_static_dir_finds_user_profile_mneme_static_vision() {
+        let _lock = ENV_MUTATION_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let tmp = TempDir::new().expect("tempdir");
         let static_vision = tmp.path().join("static").join("vision");
         std::fs::create_dir_all(&static_vision).expect("create static/vision");
@@ -1512,15 +1527,24 @@ mod tests {
             .expect("write index.html");
 
         // SAFETY: a single-threaded test mutating MNEME_HOME for the
-        // duration of `resolve_static_dir()`. Other tests don't depend
-        // on this var being unset; the resolver consults it once at
-        // call time.
-        let prev = std::env::var_os("MNEME_HOME");
+        // duration of `resolve_static_dir()`. The ENV_MUTATION_LOCK
+        // above serializes us against the override test that touches
+        // `MNEME_STATIC_DIR` (Bug #27 race). Other tests don't depend
+        // on these vars being unset; the resolver consults them once
+        // at call time. Also clear MNEME_STATIC_DIR for the duration
+        // so a leak from prior failed test runs in this process can't
+        // win step 1 of the resolver before our step-2 expectation.
+        let prev_home = std::env::var_os("MNEME_HOME");
+        let prev_static = std::env::var_os("MNEME_STATIC_DIR");
         std::env::set_var("MNEME_HOME", tmp.path());
+        std::env::remove_var("MNEME_STATIC_DIR");
         let resolved = resolve_static_dir();
-        match prev {
+        match prev_home {
             Some(v) => std::env::set_var("MNEME_HOME", v),
             None => std::env::remove_var("MNEME_HOME"),
+        }
+        if let Some(v) = prev_static {
+            std::env::set_var("MNEME_STATIC_DIR", v);
         }
 
         let resolved =
