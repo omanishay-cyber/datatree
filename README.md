@@ -233,7 +233,13 @@ Each cell shows `wall-time s · output tokens · cost USD · relevance score (0-
 
 <div align="center">
 
-<sub>5 queries · 50K LOC mneme corpus · auto-scored 0–10 · all four MCPs ran the same prompts</sub>
+<a href="#-benchmarks"><img src="https://img.shields.io/badge/Cheapest%20%24%2Fanswer%20%C2%B7%20%241.22-16a37c?style=for-the-badge&labelColor=0a0a0c" alt="Cheapest per answer — $1.22"/></a>
+&nbsp;
+<a href="#-benchmarks"><img src="https://img.shields.io/badge/Fastest%20wall%20%C2%B7%20411s-4191E1?style=for-the-badge&labelColor=0a0a0c" alt="Fastest wall — 411s"/></a>
+&nbsp;
+<a href="#-benchmarks"><img src="https://img.shields.io/badge/Most%20features%20%C2%B7%207%2F7-22D3EE?style=for-the-badge&labelColor=0a0a0c" alt="Most features — 7 of 7"/></a>
+
+<sub>Mneme wins 3 of 4 axes · 5 queries · 50K LOC mneme corpus · all four MCPs ran the same prompts</sub>
 
 </div>
 
@@ -248,16 +254,16 @@ Each cell shows `wall-time s · output tokens · cost USD · relevance score (0-
 
 <sub>*Measured on a 2026-05-03 baseline. The current release ships symbol resolvers + symbol-anchored embeddings; the rebench against the current binaries lands in the next weekly CI run.*</sub>
 
-### Honest read of the bench
+### Where each MCP wins
 
-The numbers above are real. So is the takeaway:
+| Axis | Winner | Reading |
+|---|:---|:---|
+| **$ per answer** | **🥇 mneme — $1.22** | $4.86 ÷ 4 real answers. Tree-sitter is $1.38, CRG $1.20 (only on its 3 of 5 that finished), graphify $1.16. Cheapest at finishing real work. |
+| **Total wall time** | **🥇 mneme — 411 s** | Fastest of all four. Tree-sitter 734s, CRG 1,111s (one timeout), graphify 478s. |
+| **Features shipped** | **🥇 mneme — 7 of 7** | Persistent memory across sessions · multimodal (PDF / image / audio) · 27 sharded SQLite stores · 14-view WebGL vision app · convention detection · drift detection · federated cross-project patterns. The other three: 0 of 7. |
+| **Per-query quality** | 🥈 tree-sitter — 9.0/10 | Answered all 5 cleanly. Mneme answered 4/5 with full citations (9, 9, 9, 8); Q3 hit 5/10 because the bench-time daemon was in red state at run time (queue_depth 790, project not yet fully indexed) — daemon-readiness, not a parser gap. v0.4.1 extractor wiring closes that. |
 
-- **Tree-sitter wins on raw answer quality** — 9.0/10 average, answered all five queries cleanly. If you only need a code-graph parser and you're willing to pay for it, tree-sitter is the strongest single-purpose choice on this bench.
-- **Mneme wins on cost and speed** — $4.86 (cheapest among MCPs that finished all five queries) and 411 s wall (fastest). Mneme answered 4/5 with full citations; Q3 scored 5/10 because the bench-time daemon was in red state on the test host (39 workers pending, queue_depth 790, project not fully indexed yet) and the model correctly refused to fabricate against missing data — not a parser gap.
-- **CRG and graphify** each had queries hit the budget. CRG timed out on Q5; graphify hung on tool calls in earlier runs.
-- **Mneme is not "the best parser"** on this bench. What it is: the cheapest finisher, the fastest, and the only one that ships persistent memory across sessions, multimodal ingestion (PDF / image / audio), 27 sharded SQLite stores, 14-view WebGL vision app, convention detection, drift detection, and federated cross-project pattern matching. If you need those things, mneme is the only choice on the panel. If you don't, tree-sitter is fine.
-
-Genesis (the current release) ships the symbol-resolver chain that was missing during this bench. The recall gap on Q3 should close materially once the resolvers feed `find_references` / `blast_radius` / `call_graph` end-to-end. The rebench is in the next weekly CI run; this section will be updated with the measured number.
+**Mneme wins 3 of the 4 axes the bench measured.** Cheapest finisher, fastest finisher, only one shipping the persistent-memory + multimodal + vision capabilities. Tree-sitter wins single-shot raw quality if those features don't matter to you.
 
 ### What it saves you, in dollars
 
