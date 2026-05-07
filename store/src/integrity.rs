@@ -290,10 +290,23 @@ pub fn cross_shard_integrity_audit(
         &mut orphans,
     )?;
 
-    if !orphans.is_empty() {
+    // 2026-05-07 fix (round 5): gate the WARN at the same threshold
+    // as audit.rs::run_cross_shard_audit (>=25). On clean incrementals
+    // small counts (1-6) are typically transient drift (file deleted
+    // mid-build before referrer re-scan); the alarming WARN message
+    // confused users into thinking mneme was broken. Below 25 we log
+    // at info! level so operators tailing logs at WARN don't see the
+    // false alarm but the data is still discoverable in the audit
+    // findings table.
+    if orphans.len() >= 25 {
         warn!(
             count = orphans.len(),
             "cross-shard integrity audit found orphan rows; run `mneme rebuild` to clear them"
+        );
+    } else if !orphans.is_empty() {
+        tracing::info!(
+            count = orphans.len(),
+            "cross-shard integrity: small orphan count (transient drift)"
         );
     }
 
