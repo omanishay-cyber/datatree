@@ -15,7 +15,7 @@
 # winget, MSI installs, daemon start). We can't run it end-to-end in a
 # unit test. Instead we EXTRACT the relevant logic blocks via brace-
 # balanced regex (same pattern as install-py-detect.tests.ps1) and
-# exercise them in isolation — specifically:
+# exercise them in isolation -- specifically:
 #
 #   - The mutually-exclusive validation block.
 #   - The -LocalZip path-existence validation.
@@ -79,7 +79,7 @@ if (-not $paramBlockOk) { exit 1 }
 
 # ---------------------------------------------------------------------------
 # Test fixture: a minimal pre-extracted ~/.mneme layout. We DON'T touch
-# the user's real ~/.mneme — every test creates a temp dir and pretends
+# the user's real ~/.mneme -- every test creates a temp dir and pretends
 # it's $env:USERPROFILE for the duration of one test.
 #
 # Layout we synthesize:
@@ -158,7 +158,7 @@ $tests += @{
             }
             $localZip = (Resolve-Path -LiteralPath $localZip).Path
             # Critical assertion: we never set up a network mock, but
-            # also never invoke Invoke-RestMethod — the local-zip branch
+            # also never invoke Invoke-RestMethod -- the local-zip branch
             # bypasses it entirely.
             $networkCalls = 0
             # (No real network probe needed; the assertion is that we
@@ -215,7 +215,7 @@ $tests += @{
         $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('mneme-test-' + [Guid]::NewGuid().ToString('N'))
         try {
             $home2 = Join-Path $tmp 'fakehome'
-            # Note: no -WithMnemeExe — ~/.mneme exists but is empty.
+            # Note: no -WithMnemeExe -- ~/.mneme exists but is empty.
             $mhome = New-FakeMnemeHome -Root $home2
             $bin   = Join-Path $mhome 'bin'
 
@@ -237,7 +237,7 @@ $tests += @{
 
 # Case 4: install_default_still_fetches_from_github (smoke test)
 #
-# We don't actually run the installer — that would download tens of
+# We don't actually run the installer -- that would download tens of
 # megabytes and modify ~/.mneme. Instead we verify install.ps1 still
 # has the GitHub-fetch code path, i.e. nothing has been deleted.
 # Skipped on `-Skip` if Pester is available and no network.
@@ -263,14 +263,14 @@ $tests += @{
     }
     Verify = { param($r) $r.ok }
     # In Pester runs we mark -Skip when no internet; in fallback runs we
-    # always execute (the test does no network IO — it just greps the
+    # always execute (the test does no network IO -- it just greps the
     # script source for the markers).
     PesterSkipIfOffline = $true
 }
 
 # ---------------------------------------------------------------------------
 # Helper for case 4: detect "no internet" in a way that doesn't itself
-# require internet. We probe DNS for github.com — if that's blocked
+# require internet. We probe DNS for github.com -- if that's blocked
 # we treat the smoke test as -Skip in Pester mode.
 # ---------------------------------------------------------------------------
 

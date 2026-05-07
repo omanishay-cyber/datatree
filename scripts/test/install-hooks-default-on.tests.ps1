@@ -2,7 +2,7 @@
 #
 # Bug B regression: install.ps1 step 7/8 must invoke `mneme install` (which
 # defaults to writing hooks per the K1 fix in v0.3.2), NOT `mneme register-mcp`
-# (which hardcodes `skip_hooks: true` internally — see
+# (which hardcodes `skip_hooks: true` internally -- see
 # cli/src/commands/register_mcp.rs:87, the implicit "--skip-hooks" the
 # postmortem refers to). Result of the bug: phase6_smoke shows
 # settings_hook_count=0 and the persistent-memory pipeline stays empty.
@@ -13,14 +13,14 @@
 #
 # Plan reference: docs/superpowers/plans/2026-04-29-mneme-12-bug-fix.md task B.
 #
-# WILL RUN ON EC2 — Pester 3.4.0 is also available on the local AWS test instance.
+# WILL RUN ON EC2 -- Pester 3.4.0 is also available on the local AWS test instance.
 
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SourceRoot  = Resolve-Path (Join-Path $ScriptDir '..\..')
 $InstallPs1  = Join-Path $SourceRoot 'scripts\install.ps1'
 
 # Strip PowerShell line comments (`# ...`) so the assertions don't trip on
-# documentation. Keep block-comment / string-literal handling minimal —
+# documentation. Keep block-comment / string-literal handling minimal --
 # install.ps1 doesn't use here-strings or `<# #>` blocks for these terms.
 function Get-NonCommentBody {
     param([string]$Path)
@@ -38,7 +38,7 @@ function Get-NonCommentBody {
     return ($body -join "`n")
 }
 
-Describe 'Bug B — install.ps1 step 7/8 invokes `mneme install` so K1 hooks register' {
+Describe 'Bug B -- install.ps1 step 7/8 invokes `mneme install` so K1 hooks register' {
     $body = Get-NonCommentBody -Path $InstallPs1
 
     It 'install.ps1 exists' {
@@ -46,7 +46,7 @@ Describe 'Bug B — install.ps1 step 7/8 invokes `mneme install` so K1 hooks reg
     }
 
     It 'install.ps1 invokes `mneme install` (K1 default-on hooks path) at step 7/8' {
-        # Match the actual invocation: `& $MnemeBin install ...` — register-mcp
+        # Match the actual invocation: `& $MnemeBin install ...` -- register-mcp
         # bypasses the hooks pipeline so we expect `install` instead.
         ($body -match '\$MnemeBin\s+install\b') | Should Be $true
     }

@@ -4,7 +4,7 @@ param(
 )
 $ErrorActionPreference = "Continue"
 
-# S7 — Memory + thread idle-return (THE leak gate)
+# S7 -- Memory + thread idle-return (THE leak gate)
 # Phase A: capture baseline at idle
 # Phase B: hammer status under load
 # Phase C: capture under-load
@@ -19,7 +19,7 @@ $mneme = "C:\Users\Administrator\.mneme\bin\mneme.exe"
 function Get-DaemonMetrics {
     $p = Get-Process mneme-daemon -ErrorAction SilentlyContinue
     if (-not $p) { return $null }
-    # Use the supervisor (highest PID handle? — nope, just first). All PIDs returned will be same proc family
+    # Use the supervisor (highest PID handle? -- nope, just first). All PIDs returned will be same proc family
     $sup = $p[0]
     return [pscustomobject]@{
         Pid = $sup.Id

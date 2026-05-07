@@ -3,7 +3,7 @@ param(
 )
 $ErrorActionPreference = "Continue"
 
-# S9 — Big-data multimodal corpus
+# S9 -- Big-data multimodal corpus
 # 100+ files: mix .rs, .ts, .py, .md, with edge cases (0 bytes, BOM, etc.)
 # Acceptance: no panic, all processed (success or graceful skip), doctor green
 

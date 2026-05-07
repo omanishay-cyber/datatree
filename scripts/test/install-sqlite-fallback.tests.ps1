@@ -1,8 +1,8 @@
 # install-sqlite-fallback.tests.ps1
 #
 # Bug G regression: install.ps1:720 hardcoded
-# `https://www.sqlite.org/2025/sqlite-tools-win-x64-3470100.zip` — postmortem
-# §3.G captured a live `(404) Not Found`. sqlite.org rotates filenames every
+# `https://www.sqlite.org/2025/sqlite-tools-win-x64-3470100.zip` -- postmortem
+# S3.G captured a live `(404) Not Found`. sqlite.org rotates filenames every
 # release, so any hardcoded URL eventually breaks.
 #
 # Fix: G7 must try winget primary (`winget install --id SQLite.SQLite`), and
@@ -13,13 +13,13 @@
 #
 # Plan reference: docs/superpowers/plans/2026-04-29-mneme-12-bug-fix.md task G.
 #
-# WILL RUN ON EC2 — Pester 3.4.0 is also available on the local AWS test instance.
+# WILL RUN ON EC2 -- Pester 3.4.0 is also available on the local AWS test instance.
 
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SourceRoot  = Resolve-Path (Join-Path $ScriptDir '..\..')
 $InstallPs1  = Join-Path $SourceRoot 'scripts\install.ps1'
 
-Describe 'Bug G — install.ps1 G7 SQLite install: winget primary, HEAD-probed fallback' {
+Describe 'Bug G -- install.ps1 G7 SQLite install: winget primary, HEAD-probed fallback' {
     $body = Get-Content $InstallPs1 -Raw
 
     It 'install.ps1 exists' {
@@ -40,7 +40,7 @@ Describe 'Bug G — install.ps1 G7 SQLite install: winget primary, HEAD-probed f
     }
 
     It 'G7 HEAD-probes candidate sqlite.org URLs before downloading' {
-        # The fallback must not blindly download — it should HEAD-probe each
+        # The fallback must not blindly download -- it should HEAD-probe each
         # candidate URL and only download from one that returns 200.
         ($body -match '-Method\s+Head') | Should Be $true
     }
@@ -56,7 +56,7 @@ Describe 'Bug G — install.ps1 G7 SQLite install: winget primary, HEAD-probed f
         # The literal failure mode: Invoke-WebRequest to a single hardcoded
         # $sqliteUrl with no probe. We allow Invoke-WebRequest as long as
         # the URL came from a probed list (asserted by the HEAD-probe test
-        # above) — but the OLD assignment pattern
+        # above) -- but the OLD assignment pattern
         # `$sqliteUrl = 'https://...sqlite-tools-...'` followed
         # IMMEDIATELY by Invoke-WebRequest to that URL is the smell.
         #
@@ -68,7 +68,7 @@ Describe 'Bug G — install.ps1 G7 SQLite install: winget primary, HEAD-probed f
 
     It 'G7 emits a clear warning if both winget and the portable fallback fail' {
         # On total failure the user must learn `mneme cache du` etc. still work,
-        # and SQLite is optional — match any "manual" / "skip" / "optional" hint.
+        # and SQLite is optional -- match any "manual" / "skip" / "optional" hint.
         ($body -match '(?ms)\[G7\][^"]*(install manually|skipping|optional)') | Should Be $true
     }
 }

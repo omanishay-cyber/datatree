@@ -1,8 +1,8 @@
 param()
 $ErrorActionPreference = "Continue"
 
-# Phase D — Privacy / data-leak audit
-# Acceptance: 100% local invariant holds — no outbound TCP/UDP to non-localhost addresses
+# Phase D -- Privacy / data-leak audit
+# Acceptance: 100% local invariant holds -- no outbound TCP/UDP to non-localhost addresses
 # during normal operation (build/recall/mcp/daemon up).
 
 $mneme = "C:\Users\Administrator\.mneme\bin\mneme.exe"

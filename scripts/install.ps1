@@ -1,4 +1,4 @@
-﻿# Mneme - one-line installer for Windows (v0.3.1+)
+# Mneme - one-line installer for Windows (v0.3.1+)
 #
 # Usage (PowerShell, as current user - elevation is optional, see below):
 #   iwr -useb https://raw.githubusercontent.com/omanishay-cyber/mneme/main/scripts/install.ps1 | iex
@@ -148,9 +148,9 @@ $env:MNEME_INSTALLED_BY_SCRIPT = '1'
 # ----------------------------------------------------------------------------
 # Without this, Windows PowerShell 5.1 inherits the OEM code page (CP437 on
 # US-English Windows). When the script (or its child processes -- `mneme.exe
-# register-mcp`, `mneme.exe doctor`) writes Unicode glyphs (✓ U+2713,
-# ✗ U+2717, ─ U+2500, -- U+2014), the console renders the UTF-8 byte
-# sequences as separate CP437 chars: ✓ → "Γ£ô", ─ → "ΓöÇ", -- → "ΓÇö".
+# register-mcp`, `mneme.exe doctor`) writes Unicode glyphs ([OK] U+2713,
+# [FAIL] U+2717, - U+2500, -- U+2014), the console renders the UTF-8 byte
+# sequences as separate CP437 chars: [OK] -> "GammaGBPo", - -> "GammaoC", -- -> "GammaCo".
 # Setting both [Console]::OutputEncoding (governs how PS reads child stdout)
 # and $OutputEncoding (governs how PS encodes when piping to children) to
 # UTF-8 fixes both directions. Wrapped in try/catch because some hosts
@@ -1150,7 +1150,7 @@ if ($UsePreExtracted) {
         # a TLS MITM or compromised mirror can substitute a malicious
         # zip that we then Expand-Archive straight into ~/.mneme. The
         # bootstrap entry point (release/bootstrap-install.ps1) already
-        # does this via $ExpectedHashes — scripts/install.ps1 was the
+        # does this via $ExpectedHashes -- scripts/install.ps1 was the
         # only download path that didn't.
         #
         # Manifest is best-effort: legacy releases that pre-date
@@ -1302,7 +1302,7 @@ if ($UsePreExtracted) {
                 # (e.g. cleaned by a prior partial run, or never extracted
                 # in the first place) don't trigger a "could not remove
                 # orphan" warning. The end-of-loop "removed N orphan(s)"
-                # summary line still prints — it's the per-file warnings
+                # summary line still prints -- it's the per-file warnings
                 # that were noisy (41 fired on a typical AWS upgrade).
                 if (Test-Path -LiteralPath $abs) {
                     try {
@@ -2100,7 +2100,7 @@ if ($NoModels) {
         }
     } elseif ($LocalZip -and (Test-Path -LiteralPath $LocalZip)) {
         try {
-            # <bundle>/release/<localzip>  →  <bundle>/models
+            # <bundle>/release/<localzip>  ->  <bundle>/models
             $bundleRoot = Split-Path -Parent (Split-Path -Parent (Resolve-Path -LiteralPath $LocalZip).Path)
             $candidate  = Join-Path $bundleRoot 'models'
             if (Test-Path -LiteralPath $candidate) {

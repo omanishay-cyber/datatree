@@ -1,4 +1,4 @@
-# check-doc-counts.ps1 — CI guard for doc-vs-code count drift.
+# check-doc-counts.ps1 -- CI guard for doc-vs-code count drift.
 #
 # Greps the repo's user-facing docs for fragile literal counts that should
 # track first-class facts in the codebase. Exits non-zero on drift.
@@ -66,7 +66,7 @@ function Get-StaticToolCount {
 function ConvertTo-Sanitised {
     param([string]$Line)
     $s = $Line
-    # Strip URLs (http(s), data:) — they contain "%20", "%2F" badges.
+    # Strip URLs (http(s), data:) -- they contain "%20", "%2F" badges.
     $s = [regex]::Replace($s, 'https?://\S+', ' ')
     # Drop URL-encoded bytes.
     $s = [regex]::Replace($s, '%[0-9A-Fa-f]{2}', ' ')

@@ -1,7 +1,7 @@
 param()
 $ErrorActionPreference = "Continue"
 
-# S5 — daemon lifecycle 5 cycles
+# S5 -- daemon lifecycle 5 cycles
 # Each cycle: start, status, stop, verify clean. No proc leak between cycles.
 
 $mneme = "C:\Users\Administrator\.mneme\bin\mneme.exe"

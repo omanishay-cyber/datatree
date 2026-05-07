@@ -89,7 +89,7 @@ $script:SftpId = $sftpSess.SessionId
 OK "ssh session=$($sshSess.SessionId) sftp session=$($sftpSess.SessionId)"
 
 # ---------------------------------------------------------------------------
-# Phase 1 — Backup VM credentials + models
+# Phase 1 -- Backup VM credentials + models
 # ---------------------------------------------------------------------------
 
 Section "Phase 1: Backup VM credentials + models"
@@ -123,7 +123,7 @@ $global:Results.phases.phase1_backup = $out
 OK $out
 
 # ---------------------------------------------------------------------------
-# Phase 2 — Uninstall old Mneme on VM
+# Phase 2 -- Uninstall old Mneme on VM
 # ---------------------------------------------------------------------------
 
 Section "Phase 2: Uninstall old Mneme on VM"
@@ -152,7 +152,7 @@ if (Test-Path $standalone) {
 # Step c: detached cmd /c has 10s timeout; wait 14s to be safe
 Start-Sleep 14
 
-# Step d: belt-and-suspenders — manual rm if anything remains
+# Step d: belt-and-suspenders -- manual rm if anything remains
 Get-Process mneme* -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep 2
 if (Test-Path "$env:USERPROFILE\.mneme") {
@@ -196,7 +196,7 @@ $global:Results.phases.phase2_uninstall = $out
 OK "uninstall complete (see report)"
 
 # ---------------------------------------------------------------------------
-# Phase 3 — Restore credentials
+# Phase 3 -- Restore credentials
 # ---------------------------------------------------------------------------
 
 Section "Phase 3: Restore VM credentials"
@@ -215,7 +215,7 @@ $global:Results.phases.phase3_restore = $out
 OK $out
 
 # ---------------------------------------------------------------------------
-# Phase 4 — Upload zip + install.ps1
+# Phase 4 -- Upload zip + install.ps1
 # ---------------------------------------------------------------------------
 
 Section "Phase 4: Upload new zip + install.ps1 to VM"
@@ -252,7 +252,7 @@ $global:Results.phases.phase4_upload = $out
 OK $out
 
 # ---------------------------------------------------------------------------
-# Phase 5 — Install fresh
+# Phase 5 -- Install fresh
 # ---------------------------------------------------------------------------
 
 Section "Phase 5: Install fresh Mneme on VM via install.ps1 -LocalZip"
@@ -267,7 +267,7 @@ $global:Results.phases.phase5_install = $out
 OK "install.ps1 -LocalZip complete (see exit code in report)"
 
 # ---------------------------------------------------------------------------
-# Phase 6 — Post-install smoke
+# Phase 6 -- Post-install smoke
 # ---------------------------------------------------------------------------
 
 Section "Phase 6: Post-install smoke checks"
@@ -309,7 +309,7 @@ $global:Results.phases.phase6_smoke = $out
 OK $out
 
 # ---------------------------------------------------------------------------
-# Phase 7 — Targeted Wave 2 bug verifications
+# Phase 7 -- Targeted Wave 2 bug verifications
 # ---------------------------------------------------------------------------
 
 Section "Phase 7: Wave 2 bug-fix verifications (B-001..B-007 + A2)"
@@ -399,7 +399,7 @@ $global:Results.phases.phase7_bug_verify = $out
 OK "bug verifications complete"
 
 # ---------------------------------------------------------------------------
-# Phase 8 — Comprehensive: S5 lifecycle + Un uninstall (S2 too if time allows)
+# Phase 8 -- Comprehensive: S5 lifecycle + Un uninstall (S2 too if time allows)
 # ---------------------------------------------------------------------------
 
 Section "Phase 8: Comprehensive (S5 lifecycle + Un uninstall)"
@@ -442,7 +442,7 @@ $global:Results.phases.phase8_s5 = $out
 OK $out
 
 # ---------------------------------------------------------------------------
-# Phase 9 — Smoke: 28 CLI subcommands + spot-check MCP tools
+# Phase 9 -- Smoke: 28 CLI subcommands + spot-check MCP tools
 # ---------------------------------------------------------------------------
 
 Section "Phase 9: Smoke (CLI subcommands + MCP tools)"

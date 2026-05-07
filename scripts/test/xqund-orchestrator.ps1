@@ -45,30 +45,30 @@ if (-not (Test-Path $x2Corpus)) {
 Ensure-Daemon | Out-Null
 
 # ---------- Phase X ----------
-Step-Header "Phase X — Cross-test"
+Step-Header "Phase X -- Cross-test"
 $xOut = & node "C:\Users\Administrator\x-cross-test.mjs" 2>&1 | Out-String
 Write-Host $xOut
 
 # ---------- Phase Q ----------
-Step-Header "Phase Q — Edge cases"
+Step-Header "Phase Q -- Edge cases"
 Ensure-Daemon | Out-Null
 $qOut = & node "C:\Users\Administrator\q-edge-cases.mjs" 2>&1 | Out-String
 Write-Host $qOut
 
 # ---------- Phase D ----------
-Step-Header "Phase D — Privacy"
+Step-Header "Phase D -- Privacy"
 Ensure-Daemon | Out-Null
 $dOut = & powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Administrator\d-privacy.ps1" 2>&1 | Out-String
 Write-Host $dOut
 
 # ---------- Phase Re ----------
-Step-Header "Phase Re — Resilience"
+Step-Header "Phase Re -- Resilience"
 Ensure-Daemon | Out-Null
 $reOut = & powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Administrator\re-resilience.ps1" 2>&1 | Out-String
 Write-Host $reOut
 
-# ---------- Phase Un (DESTRUCTIVE — runs last) ----------
-Step-Header "Phase Un — Uninstall (DESTRUCTIVE)"
+# ---------- Phase Un (DESTRUCTIVE -- runs last) ----------
+Step-Header "Phase Un -- Uninstall (DESTRUCTIVE)"
 Ensure-Daemon | Out-Null
 $unOut = & powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Administrator\un-uninstall.ps1" -SkipReinstall 2>&1 | Out-String
 Write-Host $unOut

@@ -24,7 +24,7 @@
 param(
     [string]$SourceRoot = "$env:USERPROFILE\Desktop\mneme-source",
     # Empty default forces auto-detect from $SourceRoot/Cargo.toml so VERSION.txt
-    # tracks whatever the bumper script flipped — no need for the workflow YAML
+    # tracks whatever the bumper script flipped -- no need for the workflow YAML
     # to know about the version. Caller can still override with -Version "x.y.z".
     [string]$Version = "",
     [string]$OutZip = "$env:USERPROFILE\Desktop\mneme-v0.3.2-windows-x64.zip",
@@ -89,7 +89,7 @@ foreach ($p in @($mcp, $visionDist, $scripts, $plugin)) {
 # Required binaries (workspace).
 # 2026-05-05: added mneme-hook.exe (BUG-NEW-H true fix). It's the
 # Windows GUI-subsystem dispatcher that Claude Code's settings.json
-# now points at for hook commands — no transient cmd.exe flash on
+# now points at for hook commands -- no transient cmd.exe flash on
 # UserPromptSubmit / PreToolUse fire. Built from `mneme-hook` workspace
 # member; cargo build --workspace already produces it alongside
 # mneme.exe.
@@ -116,7 +116,7 @@ OK ("all {0} required release binaries present" -f $requiredBins.Count)
 
 # Optional: vision Tauri binary. The Cargo package name is `mneme-vision-tauri`
 # so the binary lands as `mneme-vision-tauri.exe`. We rename it to
-# `mneme-vision.exe` when staging into bin/ — that's the canonical install
+# `mneme-vision.exe` when staging into bin/ -- that's the canonical install
 # name (CLI's `mneme view` looks for ~/.mneme/bin/mneme-vision.exe; see
 # `cli/src/commands/view.rs::resolve_vision_exe`).
 $visionTauri = Join-Path $SourceRoot "vision\tauri\target\release\mneme-vision-tauri.exe"
@@ -325,7 +325,7 @@ $stageScripts = Join-Path $StageDir "scripts"
 & robocopy $scripts $stageScripts /E /NFL /NDL /NJH /NJS /NP /XD test | Out-Null
 $rc = $LASTEXITCODE
 if ($rc -gt 7) { Fail ("robocopy scripts/ failed with code {0}" -f $rc) }
-# Drop the test/ subtree on purpose — VM-test scripts aren't needed at install time.
+# Drop the test/ subtree on purpose -- VM-test scripts aren't needed at install time.
 OK "scripts/ complete (test/ excluded)"
 
 # Drop the K19 standalone uninstaller at the zip root for visibility.
@@ -354,7 +354,7 @@ OK ("plugin/ complete: {0:N1} MB" -f $pluginSize)
 Section "VERSION.txt"
 
 # Auto-detect $Version from Cargo.toml when caller passed empty -Version (default).
-# Same logic as scripts/test/stage-release-archive.sh — keeps VERSION.txt in
+# Same logic as scripts/test/stage-release-archive.sh -- keeps VERSION.txt in
 # the staged archive locked to whatever the bumper flipped in Cargo.toml.
 if ([string]::IsNullOrEmpty($Version)) {
     $cargoToml = Join-Path $SourceRoot 'Cargo.toml'
