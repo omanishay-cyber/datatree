@@ -117,6 +117,19 @@ pub fn render_concepts_persistence_box() {
         shards_found += 1;
         match Connection::open(&concepts_db) {
             Ok(conn) => {
+                // BENCH-FIX-3+ (2026-05-07): older shards on disk may
+                // have an empty concepts.db (file created by some earlier
+                // probe but the brain::ConceptStore CREATE TABLE never
+                // ran because the user hasn't called recall_concept yet).
+                // Run an idempotent CREATE TABLE IF NOT EXISTS so the
+                // doctor probe's COUNT below succeeds instead of
+                // emitting a misleading "no such table: concepts" WARN.
+                // The schema mirrors the canonical one in
+                // brain::concept_store. If the table already exists this
+                // is a no-op.
+                let _ = conn.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS concepts (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  label TEXT UNIQUE NOT NULL,\n  summary TEXT,\n  embedding_id INTEGER,\n  god_node_score REAL NOT NULL DEFAULT 0.0,\n  created_at TEXT NOT NULL DEFAULT (datetime('now'))\n);",
+                );
                 match conn.query_row("SELECT COUNT(*) FROM concepts", [], |row| {
                     row.get::<_, i64>(0)
                 }) {
