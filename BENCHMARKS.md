@@ -1,25 +1,25 @@
 # Mneme Benchmarks - Reproducible Results
 
 > **STALE NUMBERS WARNING — read first.**
-> Every measurement in this file is a **v0.2.0** number. The current
-> codebase is **v0.4.0**. A v0.4.0 re-run is pending and parked under
-> `docs/REMAINING_WORK.md`.
+> Every measurement in this file is from an early-baseline harness.
+> The current release is **Mneme Genesis**. A rebench against the
+> current binaries is pending and parked under `docs/REMAINING_WORK.md`.
 >
-> Treat the tables below as a v0.2.0 baseline only. Real-world v0.4.0
+> Treat the tables below as an early baseline only. Real-world current
 > performance is materially better in several axes (three symbol
 > resolvers + symbol-anchored BGE embeddings closing the recall gap,
 > x86-64-v3 baseline for 2-4× faster BGE inference, ORT 1.24.4 fixing
 > the Windows BGE hang, scanner fan-out for 5-10× faster audit, regex
-> bomb fixes). Do not cite these numbers as the v0.4.0 product story
-> without re-running the harness against a v0.4.0 build.
+> bomb fixes). Do not cite these numbers as the current product story
+> without re-running the harness against the current build.
 >
 > Bug DOC-7 (2026-05-01) opened the gap; bug A9-015 (2026-05-04)
 > hardened this disclaimer. Re-run harness owner: see
 > `docs/REMAINING_WORK.md`.
 
-Run date: **2026-04-23** (historical - pre-v0.3.0)
+Run date: **2026-04-23** (historical baseline — pre-Genesis)
 Git SHA: `164948ccee36f74ee303ec25d0d67565fae0d96c`
-Harness version: `bench_retrieval` v0.2 (`benchmarks` crate, workspace v0.2.0 at the time of this run; current workspace is v0.4.0)
+Harness version: `bench_retrieval` v0.2 (`benchmarks` crate, early baseline run; current release is Mneme Genesis)
 Raw results: [`benchmarks/results/2026-04-23.csv`](benchmarks/results/2026-04-23.csv) + [`benchmarks/results/2026-04-23.json`](benchmarks/results/2026-04-23.json)
 Baseline: none - this is the **first recorded local run** of the full `bench-all` suite against the mneme repository itself.
 

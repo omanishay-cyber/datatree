@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 420" role="img" aria-labelledby="title desc">
+  <title id="title">mneme — the persistent memory layer for AI coding</title>
+  <desc id="desc">50 MCP tools, 27 SQLite shards, 19 AI tools wired. Light theme banner.</desc>
+  <defs>
+    <style><![CDATA[
+      .wm-m { font: 800 168px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; letter-spacing: -0.04em; fill: url(#wmGrad); }
+      .tagline { font: 600 32px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; fill: #1a1a1f; letter-spacing: -0.015em; }
+      .tagline-soft { fill: #5b6370; }
+      .pill-text { font: 600 16px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; fill: #0f1115; letter-spacing: 0.01em; }
+      .pill-num { font: 700 16px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; }
+      .ver-text { font: 600 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; fill: #ffffff; letter-spacing: 0.04em; text-transform: uppercase; }
+      .corner-text { font: 500 12px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; fill: #8a93a3; letter-spacing: 0.06em; }
+    ]]></style>
+    <linearGradient id="wmGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#16a37c"/>
+      <stop offset="45%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#4191E1"/>
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fafaf7"/>
+      <stop offset="100%" stop-color="#f1f3ee"/>
+    </linearGradient>
+    <radialGradient id="glowMint" cx="0.18" cy="0.7" r="0.5">
+      <stop offset="0%" stop-color="#41E1B5" stop-opacity="0.32"/>
+      <stop offset="60%" stop-color="#41E1B5" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#41E1B5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowBlue" cx="0.85" cy="0.25" r="0.55">
+      <stop offset="0%" stop-color="#4191E1" stop-opacity="0.30"/>
+      <stop offset="60%" stop-color="#4191E1" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#4191E1" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowCyan" cx="0.55" cy="0.92" r="0.5">
+      <stop offset="0%" stop-color="#22D3EE" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="pillGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.65"/>
+    </linearGradient>
+    <linearGradient id="verPill" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#16a37c"/>
+      <stop offset="100%" stop-color="#22D3EE"/>
+    </linearGradient>
+    <pattern id="dotGrid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="1.4" cy="1.4" r="1.1" fill="#0f1115" fill-opacity="0.05"/>
+    </pattern>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
+      <feOffset dx="0" dy="4" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.18"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="420" fill="url(#bgGrad)"/>
+  <rect width="1280" height="420" fill="url(#dotGrid)"/>
+  <rect width="1280" height="420" fill="url(#glowMint)"/>
+  <rect width="1280" height="420" fill="url(#glowBlue)"/>
+  <rect width="1280" height="420" fill="url(#glowCyan)"/>
+
+  <!-- Geometric flow lines (subtle) -->
+  <g stroke="#16a37c" stroke-opacity="0.08" stroke-width="1" fill="none">
+    <path d="M 0 320 Q 320 220 640 280 T 1280 200"/>
+    <path d="M 0 360 Q 320 260 640 320 T 1280 240"/>
+    <path d="M 0 280 Q 320 180 640 240 T 1280 160"/>
+  </g>
+
+  <!-- Orbiting nodes (like a graph) -->
+  <g opacity="0.55">
+    <circle cx="1110" cy="92" r="3" fill="#4191E1"/>
+    <circle cx="1158" cy="138" r="2" fill="#22D3EE"/>
+    <circle cx="1190" cy="76" r="2.5" fill="#41E1B5"/>
+    <circle cx="92" cy="338" r="3" fill="#16a37c"/>
+    <circle cx="138" cy="296" r="2" fill="#22D3EE"/>
+    <circle cx="56" cy="280" r="2.5" fill="#4191E1"/>
+    <line x1="1110" y1="92" x2="1158" y2="138" stroke="#4191E1" stroke-opacity="0.25" stroke-width="1"/>
+    <line x1="1158" y1="138" x2="1190" y2="76" stroke="#41E1B5" stroke-opacity="0.25" stroke-width="1"/>
+    <line x1="92" y1="338" x2="138" y2="296" stroke="#16a37c" stroke-opacity="0.25" stroke-width="1"/>
+    <line x1="138" y1="296" x2="56" y2="280" stroke="#22D3EE" stroke-opacity="0.25" stroke-width="1"/>
+  </g>
+
+  <!-- Version pill (corner) -->
+  <g transform="translate(1066, 36)">
+    <rect width="178" height="30" rx="15" fill="url(#verPill)" filter="url(#cardShadow)"/>
+    <circle cx="16" cy="15" r="4" fill="#ffffff"/>
+    <circle cx="16" cy="15" r="4" fill="#ffffff" opacity="0.6">
+      <animate attributeName="r" values="4;6;4" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0;0.6" dur="2.2s" repeatCount="indefinite"/>
+    </circle>
+    <text x="30" y="19" class="ver-text">Mneme Genesis · live</text>
+  </g>
+
+  <!-- Coordinate label (top-left, dev feel) -->
+  <text x="48" y="48" class="corner-text">~/.mneme · local-first · apache-2.0</text>
+
+  <!-- Wordmark + dot -->
+  <g transform="translate(60, 200)" filter="url(#softGlow)">
+    <!-- Custom geometric "m" mark -->
+    <g transform="scale(8)" fill="url(#wmGrad)">
+      <!-- Pulled from the existing logo path: M8 22 L8 12 L11 12 L16 18 L21 12 L24 12 L24 22 -->
+      <path d="M8 22 L8 12 L11 12 L16 18 L21 12 L24 12 L24 22 L21 22 L21 16 L17 21 L15 21 L11 16 L11 22 Z"/>
+      <!-- Dot above -->
+      <circle cx="16" cy="8" r="2.2"/>
+    </g>
+    <!-- Wordmark "mneme" -->
+    <text x="270" y="22" class="wm-m">mneme</text>
+  </g>
+
+  <!-- Tagline -->
+  <text x="60" y="262" class="tagline">Claude remembers your code.
+    <tspan class="tagline-soft"> Even when you don't.</tspan>
+  </text>
+
+  <!-- Stat pills row -->
+  <g transform="translate(60, 308)">
+    <!-- Pill 1: 50 MCP tools -->
+    <g>
+      <rect x="0" y="0" width="200" height="48" rx="24" fill="url(#pillGrad)" stroke="#16a37c" stroke-opacity="0.35" filter="url(#cardShadow)"/>
+      <circle cx="26" cy="24" r="7" fill="#16a37c"/>
+      <circle cx="26" cy="24" r="3.2" fill="#ffffff"/>
+      <text x="48" y="29" class="pill-num" fill="#16a37c">50</text>
+      <text x="78" y="29" class="pill-text">MCP tools</text>
+    </g>
+    <!-- Pill 2: 27 SQLite shards -->
+    <g transform="translate(220, 0)">
+      <rect x="0" y="0" width="232" height="48" rx="24" fill="url(#pillGrad)" stroke="#4191E1" stroke-opacity="0.35" filter="url(#cardShadow)"/>
+      <g transform="translate(20, 14)">
+        <rect x="0" y="0" width="14" height="4" rx="1" fill="#4191E1"/>
+        <rect x="0" y="6" width="14" height="4" rx="1" fill="#4191E1" opacity="0.7"/>
+        <rect x="0" y="12" width="14" height="4" rx="1" fill="#4191E1" opacity="0.45"/>
+      </g>
+      <text x="48" y="29" class="pill-num" fill="#4191E1">27</text>
+      <text x="78" y="29" class="pill-text">SQLite shards</text>
+    </g>
+    <!-- Pill 3: 19 AI tools wired -->
+    <g transform="translate(472, 0)">
+      <rect x="0" y="0" width="240" height="48" rx="24" fill="url(#pillGrad)" stroke="#22D3EE" stroke-opacity="0.4" filter="url(#cardShadow)"/>
+      <g transform="translate(20, 12)" stroke="#22D3EE" stroke-width="1.6" fill="none">
+        <circle cx="6" cy="12" r="4"/>
+        <circle cx="18" cy="6" r="3"/>
+        <circle cx="18" cy="18" r="3"/>
+        <line x1="9.5" y1="10" x2="15" y2="7"/>
+        <line x1="9.5" y1="14" x2="15" y2="17"/>
+      </g>
+      <text x="50" y="29" class="pill-num" fill="#0e9bb3">19</text>
+      <text x="80" y="29" class="pill-text">AI tools wired</text>
+    </g>
+  </g>
+
+  <!-- Right-side schematic (subtle architecture preview) -->
+  <g transform="translate(880, 142)" opacity="0.95">
+    <!-- AI box -->
+    <g>
+      <rect x="0" y="0" width="320" height="36" rx="8" fill="#ffffff" stroke="#d8dde6" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="16" y="23" class="corner-text" fill="#0f1115" style="font-size:13px; letter-spacing:0.02em;">claude · cursor · codex · 16 more</text>
+      <circle cx="298" cy="18" r="4" fill="#16a37c"/>
+    </g>
+    <!-- arrow -->
+    <line x1="160" y1="40" x2="160" y2="64" stroke="#8a93a3" stroke-width="1.4" marker-end="url(#arrowL)"/>
+    <!-- MCP -->
+    <g transform="translate(0, 64)">
+      <rect x="0" y="0" width="320" height="36" rx="8" fill="#ffffff" stroke="#d8dde6" stroke-width="1" filter="url(#cardShadow)"/>
+      <text x="16" y="23" class="corner-text" fill="#0f1115" style="font-size:13px; letter-spacing:0.02em;">mcp server · 50 tools · bun ts</text>
+    </g>
+    <line x1="160" y1="104" x2="160" y2="128" stroke="#8a93a3" stroke-width="1.4" marker-end="url(#arrowL)"/>
+    <!-- Supervisor -->
+    <g transform="translate(0, 128)">
+      <rect x="0" y="0" width="320" height="36" rx="8" fill="#0f1115" stroke="#16a37c" stroke-width="1.2"/>
+      <text x="16" y="23" class="corner-text" fill="#ffffff" style="font-size:13px; letter-spacing:0.02em;">rust supervisor · daemon · :7777</text>
+      <circle cx="298" cy="18" r="3.5" fill="#41E1B5">
+        <animate attributeName="opacity" values="1;0.3;1" dur="1.6s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+  </g>
+  <defs>
+    <marker id="arrowL" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#8a93a3"/>
+    </marker>
+  </defs>
+
+  <!-- Bottom border accent -->
+  <rect x="0" y="416" width="1280" height="4" fill="url(#wmGrad)" opacity="0.7"/>
+</svg>

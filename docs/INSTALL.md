@@ -4,32 +4,32 @@ This guide is written to be readable by **humans AND by AI coding assistants**
 (Claude Code, Cursor, Gemini, Codex, etc.). If a user asks any AI agent "install
 mneme", the AI should follow the steps in this document.
 
-Current version: **v0.4.0**.
+Current release: **Mneme Genesis** — *Where the memory begins.*
 
 ---
 
 ## TL;DR - one command per OS
 
-Each one-liner downloads the v0.4.0 release bootstrap script, auto-detects your
+Each one-liner downloads the latest release bootstrap script, auto-detects your
 CPU architecture, fetches the right binary archive, extracts to `~/.mneme`,
 registers the MCP server with Claude Code, and starts the daemon.
 
 ### Windows (PowerShell, any user, no admin needed)
 
 ```powershell
-iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)
+iex (irm https://github.com/omanishay-cyber/mneme/releases/latest/download/bootstrap-install.ps1)
 ```
 
 ### macOS (Intel or Apple Silicon)
 
 ```bash
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-mac.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-mac.sh | bash
 ```
 
 ### Linux (x86_64 or aarch64)
 
 ```bash
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-linux.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-linux.sh | bash
 ```
 
 > **Requirements:** 64-bit OS (x64 or ARM64) * CPU with AVX2 / BMI2 / FMA
@@ -49,7 +49,7 @@ release-asset download for the host platform behind a single command:
 
 1. Stop any running mneme daemon (so the fresh binary is not file-locked).
 2. Detect host OS + CPU arch (`x64` or `arm64`) and pick the matching tarball.
-3. Download the `mneme-v0.4.0-<os>-<arch>.zip` (or `.tar.gz`) release asset.
+3. Download the latest `mneme-<os>-<arch>.zip` (or `.tar.gz`) release asset from the [latest release page](https://github.com/omanishay-cyber/mneme/releases/latest).
 4. Verify SHA256, extract to `~/.mneme/`.
 5. Download model assets from Hugging Face Hub (primary) - bge-small-en-v1.5
    (~33 MB), Qwen 2.5 Coder 0.5B (~340 MB), Qwen 2.5 Embed 0.5B (~340 MB),
@@ -115,7 +115,7 @@ If anything looks wrong, the path is always:
 # Windows
 Get-Process | Where-Object { $_.ProcessName -match '^mneme' } | Stop-Process -Force
 Remove-Item -Recurse -Force $env:USERPROFILE\.mneme
-iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)
+iex (irm https://github.com/omanishay-cyber/mneme/releases/latest/download/bootstrap-install.ps1)
 ```
 
 ```bash
@@ -123,9 +123,9 @@ iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/boots
 pkill -f mneme || true
 rm -rf ~/.mneme
 # macOS:
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-mac.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-mac.sh | bash
 # Linux:
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-linux.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-linux.sh | bash
 ```
 
 If MCP was registered and you want to unregister it:
@@ -182,7 +182,7 @@ surprise files.
 After install, all three checks should pass:
 
 ```
-mneme --version       # should print "mneme 0.4.0"
+mneme --version       # prints the installed semver (current Genesis era is 0.4.x)
 mneme daemon status   # should show "running" + worker list
 mneme doctor          # prints a full health box including per-MCP-tool status
 ```
@@ -315,7 +315,7 @@ at https://huggingface.co/aaditya4u/mneme-models in any directory.
 ## For enterprise / air-gapped users
 
 The release ZIP at
-`https://github.com/omanishay-cyber/mneme/releases/tag/v0.4.0` is
+`https://github.com/omanishay-cyber/mneme/releases/latest` is
 self-contained for the binaries. Download it on a machine with network,
 transfer to the target, extract to `~/.mneme/`, add the bin directory to
 PATH. For models, download from the HF mirror

@@ -1,4 +1,6 @@
-# INSTALL.md - mneme v0.4.0
+# INSTALL.md — Mneme Genesis
+
+> *"Where the memory begins."*
 
 Three ways to use mneme:
 
@@ -18,14 +20,14 @@ Each script auto-detects your architecture (x64 / ARM64), downloads the matching
 
 ```powershell
 # PowerShell * no admin needed * auto-detects PROCESSOR_ARCHITECTURE
-iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)
+iex (irm https://github.com/omanishay-cyber/mneme/releases/latest/download/bootstrap-install.ps1)
 ```
 
 ### macOS (Apple Silicon arm64)
 
 ```bash
 # auto-detects via uname -m
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-mac.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-mac.sh | bash
 ```
 
 > **Intel Macs (x86_64): build from source.** The current release ships only an `aarch64-apple-darwin` binary. Intel Mac users: `git clone` + `cargo build --release --workspace`. Native Intel Mac binaries may return in a later release if GitHub-hosted runner capacity recovers.
@@ -34,7 +36,7 @@ curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/ins
 
 ```bash
 # auto-detects via uname -m
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-linux.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-linux.sh | bash
 ```
 
 ### Python wrapper (any OS, pip-friendly)
@@ -70,9 +72,9 @@ Use this when you have the `mneme final` home zip and want to install the binary
 # 1. Open PowerShell (any user, no admin needed)
 # 2. Extract the home zip wherever you want, then:
 cd "<extracted-path>\mneme final 2026-04-29\release"
-Expand-Archive -Path mneme-v0.4.0-windows-x64.zip -DestinationPath "$env:USERPROFILE\.mneme" -Force
+Expand-Archive -Path mneme-windows-x64.zip -DestinationPath "$env:USERPROFILE\.mneme" -Force
 cd "$env:USERPROFILE\.mneme"
-.\scripts\install.ps1 -LocalZip "<extracted-path>\mneme final 2026-04-29\release\mneme-v0.4.0-windows-x64.zip"
+.\scripts\install.ps1 -LocalZip "<extracted-path>\release\mneme-windows-x64.zip"
 ```
 
 Either path - the installer:
@@ -352,7 +354,7 @@ Mirrors the canonical table in [`CLAUDE.md`](CLAUDE.md) §"Known limitations". S
 | WebSocket livebus relay (`/ws`) | dev-only, partial | `livebus/` crate compiles + SSE/WebSocket schema defined, but production daemon does not host the `/ws` endpoint. Used only in dev when both Bun server and Tauri are local. |
 | Voice navigation (`/api/voice`) | stub | Endpoint returns `{enabled: false, phase: "stub"}`. No voice recognition wired. |
 | Per-worker `rss_mb` on Windows | resolved | Supervisor SLA snapshot reports real `rss_mb` values on Windows via `GetProcessMemoryInfo`. |
-| Tesseract OCR (image text) | **on by default at runtime** | install.ps1 auto-installs `UB-Mannheim.TesseractOCR` via winget on Windows (and the OS package on macOS/Linux). multimodal-bridge probes both `PATH` and `C:\Program Files\Tesseract-OCR\tesseract.exe` at runtime and shells out. No rebuild needed. Falls back gracefully (logs + skips) if Tesseract isn't found. Whisper / ffmpeg remain compile-time opt-in — planned for v0.5. |
+| Tesseract OCR (image text) | **on by default at runtime** | install.ps1 auto-installs `UB-Mannheim.TesseractOCR` via winget on Windows (and the OS package on macOS/Linux). multimodal-bridge probes both `PATH` and `C:\Program Files\Tesseract-OCR\tesseract.exe` at runtime and shells out. No rebuild needed. Falls back gracefully (logs + skips) if Tesseract isn't found. Whisper / ffmpeg remain compile-time opt-in — on the roadmap. |
 | Real BGE-small ONNX embeddings | **on by default** | The bootstrap pulls 5 model files (~3.4 GB) from the HF Hub mirror at install time. ONNX Runtime 1.24.4 is bundled in `~/.mneme/bin/onnxruntime.dll`; `brain` auto-pins `ORT_DYLIB_PATH` to it on first BGE call (defeats Win11 24H2 System32 hijack). Set `MNEME_FORCE_HASH_EMBED=1` to bypass BGE if you need the pure-Rust hashing-trick fallback. |
 | Claude Code hooks | default-on | `mneme install` writes the 8 hook entries under `~/.claude/settings.json::hooks` by default. Without hooks the persistent-memory pipeline (history.db, tasks.db, tool_cache.db, livestate.db) stays empty. To skip, pass `--no-hooks` / `--skip-hooks`. Every hook binary reads STDIN JSON and exits 0 on internal error — a mneme bug can never block the user's tool calls. |
 

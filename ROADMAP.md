@@ -1,6 +1,6 @@
 # Mneme Roadmap
 
-Public milestones. Current version: **v0.4.0**. Updated 2026-05-06.
+Public milestones. Current release: **Mneme Genesis** — *Where the memory begins.* Updated 2026-05-06.
 
 Detailed engineering backlog lives in [`docs/dev/v0.4-backlog.md`](docs/dev/v0.4-backlog.md).
 
@@ -8,9 +8,9 @@ Detailed engineering backlog lives in [`docs/dev/v0.4-backlog.md`](docs/dev/v0.4
 
 ## Shipped
 
-### v0.4.0 — recall + token keystone (2026-05-05)
+### Mneme Genesis — recall + token keystone (2026-05-05)
 
-- **Three symbol resolvers** — Rust, TypeScript/JavaScript, Python. Each rewrites syntactic paths (`super::`, `crate::`, tsconfig `paths`, N-leading-dot Python relative imports) into one canonical string per logical symbol. Library-level in v0.4.0 (graph-side wiring deferred to v0.4.1; embed-side wiring is live now).
+- **Three symbol resolvers** — Rust, TypeScript/JavaScript, Python. Each rewrites syntactic paths (`super::`, `crate::`, tsconfig `paths`, N-leading-dot Python relative imports) into one canonical string per logical symbol. Library-level in Genesis (graph-side wiring is the headline patch coming next; embed-side wiring is live now).
 - **Symbol-anchored BGE embeddings** — embedder prepends the resolver's canonical prefix before signature/summary text, so `recall_concept "spawn"` matches the actual function instead of the README chunk.
 - **PreToolUse Grep/Read soft-redirect** — when Grep is called with a symbol-shaped pattern, or Read is called on a source file, the hook injects an `additionalContext` hint pointing at `find_references` / `blast_radius`. Never blocks.
 - **Server-pre-computed ForceGalaxy layout** — `/api/graph/layout` returns deterministic community-aware sunflower-spiral positions. ForceGalaxy first-paint drops from ~3 s to <500 ms on the mneme repo (17 K nodes).
@@ -75,7 +75,7 @@ Detailed engineering backlog lives in [`docs/dev/v0.4-backlog.md`](docs/dev/v0.4
   flags - see `docs-and-memory/phase-a-issues.md` and ROADMAP I-20).
   Supervised multi-process architecture.
 - Known critical install bugs - see CHANGELOG entry for v0.3.1.
-- Note: as of v0.4.0 the tool count is **50** and image OCR ships
+- Note: as of Genesis the tool count is **50** and image OCR ships
   on-by-default via runtime shellout (B-1 fix); BGE-small ONNX
   embeddings are also on-by-default (auto-pulled from the HF Hub
   mirror). The opt-in language above is historical for v0.3.0.
@@ -103,22 +103,20 @@ the README/INSTALL/ROADMAP drift on this status.
 
 ---
 
-## In progress - v0.4.1 + v0.5
+## Coming next
 
-**v0.4.1 (next patch — target 2026-05-13):**
-- **Symbol-resolver wiring through `extractor.rs`.** v0.4.0 ships the resolver libraries (`parsers/src/resolver.rs::{RustResolver, TypeScriptResolver, PythonResolver}`) and uses them on the embed side, but the graph-query side (`find_references`, `blast_radius`, `call_graph`) still uses syntactic matching. This wires resolver output into extractor so graph queries match canonical symbols. Lifts the recall benchmark from 2/10 → 6/10 expected parity with CRG.
-- **Graph diff (commit-to-commit).** Wraps the existing snapshot tool with delta compute. Closes the last "doesn't have YET" gap vs CRG.
-- **Standalone `mneme-vision.exe` Tauri shell.** v0.4.0 serves the SPA via the daemon HTTP fallback at `http://127.0.0.1:7777`. The standalone Tauri shell with native window chrome and direct `#[tauri::command]` invocations is in-progress.
-- **Bench rebench against v0.4.0 binaries.** Re-run `bench_retrieval bench-all` against the v0.4.0 release; publish the new numbers in `BENCHMARKS.md` and the GH Pages bench tables (currently labeled "v0.3.2 baseline").
-
-**v0.5 (target 2026-06):**
-- **Reproducible benchmarks** — `BENCHMARKS-results.md` with raw `bench_retrieval` stdout + hardware spec + rustc version. Reproducible by any reader.
+The next round of work — patches inside the current Genesis era:
+- **Closing the recall loop end-to-end.** Genesis ships the symbol resolvers as a library and uses them on the embed side; the next patches wire them through the extractor so graph-side queries (`find_references`, `blast_radius`, `call_graph`) match canonical symbols. This is what flips recall on the 10-query golden benchmark from 2/10 to ~6/10 parity with CRG.
+- **Standalone vision shell.** Genesis serves the SPA via the daemon's HTTP fallback at `http://127.0.0.1:7777`. The standalone shell with native window chrome and direct `#[tauri::command]` invocations is in-progress.
+- **Bench rebench against the current binaries.** Re-run `bench_retrieval bench-all` against the live release; publish updated numbers in `BENCHMARKS.md` and the GH Pages bench tables (currently labeled as an earlier baseline).
 - **Marketplace listings** — submissions to `awesome-mcp-servers`, Cursor gallery, smithery, mcp.so.
-- **Multilingual Whisper polish** — v0.4.0 ships transcription, v0.5 adds the language-routing rules CRG/Graphify pioneered.
-- **Hosted browser demo / playground** — Tier 1.5.G.
 
-**Stretch (post-v0.5):**
-- Homebrew / Scoop / Winget formula auto-bump on release.
+## On the roadmap
+
+Beyond the Genesis patches:
+- Reproducible benchmarks — raw `bench_retrieval` stdout + hardware spec + rustc version, reproducible by any reader.
+- Hosted browser demo / playground.
+- Homebrew / Scoop formula auto-bump on release.
 - `mneme doctor --web` serving the SLA dashboard.
 - Full branded VS Code extension (.vsix) with sidebar tree view, inline hover context, status bar indicator.
 - `mneme selftest` with a 10-artifact acceptance gate per release.

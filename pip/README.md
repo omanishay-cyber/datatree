@@ -48,7 +48,7 @@ mneme-bootstrap  # legacy alias — still works
 ```bash
 mnemeos --check          # show what would happen, do nothing
 mnemeos --force          # re-download even if cached
-mnemeos --release v0.4.0 # pin a specific release
+mnemeos --release latest # pin to a specific release tag
 mnemeos --platform Linux # override platform detection
 mnemeos --no-verify      # skip the SHA-256 check (beta only)
 mnemeos -- --no-models   # pass arguments through to the installer

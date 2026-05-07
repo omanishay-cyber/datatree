@@ -2,12 +2,13 @@
 
 <a href="https://omanishay-cyber.github.io/mneme/">
   <picture>
-    <source srcset="docs/og.svg" type="image/svg+xml"/>
-    <img src="docs/og.png" alt="Mneme - the persistent memory layer for AI coding" width="100%"/>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/hero-dark.svg"/>
+    <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.svg"/>
+    <img src="docs/hero-light.svg" alt="mneme — the persistent memory layer for AI coding" width="100%"/>
   </picture>
 </a>
 
-<br/><br/>
+<br/>
 
 # Claude remembers your code. Even when you don't.
 
@@ -19,50 +20,66 @@ Stop re-explaining your codebase to Claude every chat. Mneme keeps what Claude l
 
 <div align="center">
 
-<a href="https://github.com/omanishay-cyber/mneme/releases/tag/v0.4.0"><img src="https://img.shields.io/badge/Download%20v0.4.0-16a37c?style=for-the-badge&labelColor=0a0a0c" alt="Download v0.4.0"/></a>
+<a href="https://github.com/omanishay-cyber/mneme/releases/latest"><img src="https://img.shields.io/badge/Install%20Genesis-16a37c?style=for-the-badge&labelColor=0a0a0c" alt="Install Mneme Genesis"/></a>
 &nbsp;
-<a href="#-quick-start"><img src="https://img.shields.io/badge/Quick%20start-9a9a9a?style=for-the-badge&labelColor=0a0a0c" alt="Quick start"/></a>
-
-<br/><br/>
-
-<img src="https://img.shields.io/badge/50%20MCP%20tools-0a0a0c?style=flat-square&labelColor=16a37c&color=0a0a0c" alt="50 MCP tools"/>
+<a href="#-quick-start"><img src="https://img.shields.io/badge/Quick%20start-4191E1?style=for-the-badge&labelColor=0a0a0c" alt="Quick start"/></a>
 &nbsp;
-<img src="https://img.shields.io/badge/27%20SQLite%20shards-0a0a0c?style=flat-square&labelColor=4191E1&color=0a0a0c" alt="27 SQLite shards"/>
-&nbsp;
-<img src="https://img.shields.io/badge/19%20AI%20tools%20wired-0a0a0c?style=flat-square&labelColor=22D3EE&color=0a0a0c" alt="19 AI tools wired"/>
+<a href="#-benchmarks"><img src="https://img.shields.io/badge/See%20benchmarks-22D3EE?style=for-the-badge&labelColor=0a0a0c" alt="See benchmarks"/></a>
 
 </div>
 
-```powershell
-# Windows (preferred) * winget package * built into Windows 10 1809+ / 11
-winget install Anish.Mneme       # also available as Anish.Mnemeos
-```
+&nbsp;
+
+<!-- ======================================================================= -->
+<!--   Visual feature cards (HTML table — renders in markdown on GitHub)      -->
+<!-- ======================================================================= -->
+
+<table align="center" width="100%">
+  <tr>
+    <td width="33%" valign="top" align="center">
+      <h3>🧠 Persistent memory</h3>
+      <sub>Survives Claude's context compaction. Resumes the exact step you left off on.</sub>
+    </td>
+    <td width="33%" valign="top" align="center">
+      <h3>🌳 27-language parsing</h3>
+      <sub>Tree-sitter grammars + Rust / TS / Python symbol resolvers.</sub>
+    </td>
+    <td width="33%" valign="top" align="center">
+      <h3>🔌 19 AI tools wired</h3>
+      <sub>Claude Code, Cursor, Codex, Windsurf, Zed, Gemini, Qwen, more.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top" align="center">
+      <h3>⚡ &lt;500&nbsp;ms vision</h3>
+      <sub>Server-pre-computed graph layout. 17K nodes, instant first paint.</sub>
+    </td>
+    <td width="33%" valign="top" align="center">
+      <h3>🔒 100% local</h3>
+      <sub>No telemetry. No API keys. Models run on CPU. Apache-2.0.</sub>
+    </td>
+    <td width="33%" valign="top" align="center">
+      <h3>🛡️ 50 MCP tools</h3>
+      <sub>All wired to real data. <code>find_references</code>, <code>blast_radius</code>, <code>call_graph</code>, more.</sub>
+    </td>
+  </tr>
+</table>
 
 ```powershell
-# Windows (no winget) * one command * no admin * auto-detects x64 / ARM64
-iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)
+# Windows (winget — preferred)        Windows (no winget — auto-detects x64/ARM64)
+winget install Anish.Mneme            iex (irm https://github.com/omanishay-cyber/mneme/releases/latest/download/bootstrap-install.ps1)
 ```
 
 ```bash
-# macOS * one command * auto-detects Intel / Apple Silicon
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-mac.sh | bash
+# macOS (Intel + Apple Silicon)       Linux (x64 + ARM64)                          Python (any OS)
+curl -fsSL .../install-mac.sh | bash  curl -fsSL .../install-linux.sh | bash       pip install mnemeos && mnemeos
 ```
 
-```bash
-# Linux * one command * auto-detects x64 / ARM64
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-linux.sh | bash
-```
-
-```bash
-# Python (any OS) * pip-friendly wrapper * detects platform + arch automatically
-pip install mnemeos && mnemeos
-```
-
-> Pick whichever route matches your environment - all five end up at the same `~/.mneme` install. Restart Claude after install. Verify with `mneme doctor` and `claude mcp list`.
+> All five routes end up at the same `~/.mneme` install. Restart Claude after install. Verify with `mneme doctor` and `claude mcp list`. Full URLs and per-platform notes live under [Quick start](#-quick-start) and [Install — in depth](#-install---in-depth).
 >
-> **Branding note:** the project is **Mneme OS**. The pip distribution is `mnemeos` (the bare name `mneme` was claimed on PyPI in 2014 by an unrelated package). The CLI binary is `mneme` with `mnemeos` as a parallel alias - both names work everywhere.
+> **Branding note:** the project is **Mneme OS**. The pip distribution is `mnemeos` (the bare name `mneme` was claimed on PyPI in 2014). The CLI binary is `mneme`, with `mnemeos` as a parallel alias.
 >
-> **Requirements:** 64-bit OS (x64 or ARM64) * CPU with AVX2 / BMI2 / FMA (Intel Haswell 2013+ or AMD Excavator 2015+ - almost every PC sold since 2013 qualifies) * 5 GB free disk * no admin needed. 32-bit Windows is not supported (Bun runtime requirement).
+> **Requirements:** 64-bit OS (x64 or ARM64) · CPU with AVX2 / BMI2 / FMA (Intel Haswell 2013+ or AMD Excavator 2015+) · 5 GB free disk · no admin needed.
 
 <!-- ==================================================================== -->
 <!--   Nav                                                                  -->
@@ -87,52 +104,72 @@ pip install mnemeos && mnemeos
 ---
 
 
-## Feature matrix vs Code Review Graph and Graphify
+## Feature matrix — mneme vs CRG, Graphify, Tree-sitter
 
 Compared against the two closest projects in the AI-code-context space:
 [Code Review Graph (CRG)](https://github.com/tirth8205/code-review-graph),
 [Graphify](https://github.com/safishamsi/graphify), and
 [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) for the parsing layer.
 
-| Capability | **Mneme v0.4.0** | Code Review Graph | Graphify | Tree-sitter |
-|---|---|---|---|---|
-| **Persistent daemon (always-on memory)** | ✅ multi-process Rust supervisor (22 workers auto-scaled to CPU), survives logout via Scheduled Task / launchd / systemd-user | ❌ per-invocation Python script | ❌ per-invocation Python script | n/a (parser library) |
-| **Compaction recovery (Step Ledger)** | ✅ numbered, verification-gated, SQLite-persisted; Claude resumes the EXACT step after `/compact` | ❌ | ❌ | n/a |
-| **Persistent memory across AI sessions** | ✅ history.db + agents.db + tool_cache.db + livestate.db; works across model providers | ⚠️ memory_loop_store (Markdown nodes, single project) | ❌ | n/a |
-| **MCP tools (live, all wired to real data)** | ✅ **48** | 24 | n/a (not an MCP server) | n/a |
-| **Built-in scanners** | ✅ **11** (theme * security * perf * a11y * drift * ipc * md-drift * secrets * refactor * architecture * types) | 1 (review-oriented) | ❌ | ❌ |
-| **Tree-sitter grammars** | ✅ 27 (18 Tier-1 + 8 Tier-2 + extensible) | 23 | 5-ish (per-input) | 200+ (community) |
-| **Drift detector enforcing CLAUDE.md rules live** | ✅ 12 scanners incl. drift + md-drift + secrets | partial (lint-style) | ❌ | ❌ |
-| **Storage layers (SQLite shards)** | ✅ **27 sharded DBs** + global meta.db (graph * semantic * git * deps * tests * multimodal * wiki * architecture * federated * history * tasks * agents * tool_cache * livestate * errors * perf * refactors * contracts * insights * telemetry * corpus * audit * memory * findings * concepts * meta) | 1 | 1-2 JSON + HTML | n/a |
-| **Real local embeddings** | ✅ BGE-small-en-v1.5 (384-dim, ONNX, ORT 1.24.4, Cloudflare-hosted via HF) + Qwen 2.5 Coder/Embed 0.5B + Phi-3-mini-4k local LLMs (3.4 GB total, all GGUF) | ❌ | partial (sentence-transformers, network-pullable) | n/a |
-| **Visualization surface** | ✅ **14 WebGL views** + Command Center (Tauri SvelteKit app, served from daemon at `:7777`) | 1 (D3 force graph) | 1 (static HTML) | n/a |
-| **Multi-process Rust supervisor (watchdog + WAL + restart + health)** | ✅ HTTP `/health` on `:7777`, per-worker uptime + restart count + dropped count, ProcessRefreshKind PID-liveness via sysinfo | ❌ (single-process Python) | ❌ (single-process Python) | n/a |
-| **Multimodal (PDF / image / OCR)** | ✅ multimodal-bridge crate, Tesseract OCR runtime fallback, 187 pages/sec on a 1100-file project | ❌ | partial (text only by default) | n/a |
-| **Live push updates (SSE + WebSocket)** | ✅ livebus worker, multi-agent pubsub | ❌ | ❌ | n/a |
-| **100% local, zero unsolicited network** | ✅ enforced across Rust / TS / Python sidecar - only opt-in network is `mneme models install --from-url` | ✅ | ⚠️ model downloads + Whisper prompts | ✅ |
-| **AI tool integration (out of the box)** | ✅ **19+** (Claude Code, Codex, Cursor, Windsurf, Zed, VS Code, Gemini, Qwen, Qoder, plus more via standard MCP) | 2 (Claude Code, VS Code ext) | 1 (manual integration) | dozens of editors via library |
-| **Cross-OS install** | ✅ 4 routes — `winget install Anish.Mneme` * `pip install mneme-mcp` * `curl ... install-mac.sh` * `curl ... install-linux.sh` (Win arm64 + Linux arm64 CI building) | ✅ pip is OS-agnostic | ✅ pip is OS-agnostic | bindings per language |
-| **HF Hub model mirror (~5× faster than GitHub Releases)** | ✅ huggingface.co/aaditya4u/mneme-models | n/a (no models) | n/a | n/a |
-| **Audit pipeline streams findings (no data loss on timeout)** | ✅ per-file flush, supervisor fan-out across 6 scanner-workers (~5× faster on multi-core) | ❌ | ❌ | n/a |
-| **License** | ✅ **Apache-2.0** | MIT | MIT | MIT |
-| **CPU baseline (perf)** | x86-64-v3 (Haswell 2013+, AVX2 + BMI2 + FMA - 2-4× faster than baseline x86-64) | generic Python | generic Python | configurable per binding |
-| **Restart-survival (daemon respawn on crash)** | ✅ supervisor watchdog with heartbeat deadline + restart count + dropped count | n/a | n/a | n/a |
-| **Federated cross-project pattern matching** | ✅ federated.db + 326 fingerprints per project, cross-shard `mneme_federated_similar` MCP tool | ❌ | ❌ | ❌ |
-| **8 Claude Code hooks integrated** | ✅ UserPromptSubmit * PreToolUse * PostToolUse * PreCompact * SubagentStop * SessionEnd + 2 more - persistent-memory pipeline live across compactions | ❌ | ❌ | n/a |
-| - | - | - | - | - |
-| **Smart question generation from topology** | ✅ `mcp__mneme__smart_questions` (graph centrality + complexity + anomaly scoring) | ✅ auto-generated review prompts | ❌ | ❌ |
-| **Portable graph exports (GraphML / Obsidian / Cypher / SVG / JSON-LD)** | ✅ `mneme graph-export` (5 formats) | ✅ multiple formats | partial (GraphML) | n/a |
-| **Seed concept memory (user-registered architectural keywords)** | ✅ `recall_concept` persisted to `concepts.db` with decay function | ❌ | ✅ seed nodes | ❌ |
-| **Multilingual Whisper for non-English audio** | ✅ Whisper transcription, auto-language-detected (mp3/wav/m4a/mp4/mov) | n/a | ✅ specialised locale prompts | n/a |
-| **One-shot `pip install`** | ✅ `pip install mneme-mcp` (any OS with Python) | ✅ `pip install crg` | ✅ `pip install graphify` | ✅ multiple bindings |
-| **Standalone library / SDK (Rust + Python + JS bindings)** | ✅ `sdk/python` (PyPI `mneme-parsers`), `sdk/js` (npm `@mneme/parsers`), `sdk/rust` crate | n/a | n/a | ✅ flagship |
-| - | - | - | - | - |
-| **Things mneme doesn't have YET (CRG / Graphify do)** | | | | |
-| **Graph diff (commit-to-commit)** | ❌ planned v0.4.1 | ✅ `graph diff` | ❌ | ❌ |
-| **VS Code / JetBrains / Cursor extensions** | ❌ planned v0.6 | ✅ first-class VS Code | ❌ | ✅ pervasive editor support |
-| **Hosted browser demo / playground** | ❌ planned v0.5.5 | ✅ | ✅ | ✅ web playground |
+> Legend ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) full implementation, tested · ![Partial](https://img.shields.io/badge/Partial-d97706?style=flat-square) works in some configurations · ![Planned](https://img.shields.io/badge/Planned-7a7a80?style=flat-square) on roadmap, not yet · ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) not on roadmap · ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) not applicable
 
-Rows marked "planned vX.Y" reference [`docs/ROADMAP.md`](ROADMAP.md) and the v0.4 vision document. Every gap has a ship target.
+### 🧠 Persistence & memory
+
+| Capability | **mneme** | CRG | Graphify | Tree-sitter |
+|---|:---:|:---:|:---:|:---:|
+| Persistent daemon (always-on memory) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/per--invoke-9a9a9a?style=flat-square) | ![Missing](https://img.shields.io/badge/per--invoke-9a9a9a?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Compaction recovery (Step Ledger) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Persistent memory across AI sessions | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Partial](https://img.shields.io/badge/Partial-d97706?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Federated cross-project pattern matching | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) |
+| 8 Claude Code hooks integrated | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Seed concept memory (user-registered) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) |
+
+### 🌳 Parsing & graph
+
+| Capability | **mneme** | CRG | Graphify | Tree-sitter |
+|---|:---:|:---:|:---:|:---:|
+| Tree-sitter grammars (curated) | ![27](https://img.shields.io/badge/27-16a37c?style=flat-square) | ![23](https://img.shields.io/badge/23-4191E1?style=flat-square) | ![5](https://img.shields.io/badge/5-d97706?style=flat-square) | ![200+](https://img.shields.io/badge/200%2B-16a37c?style=flat-square) |
+| File extensions actually parsed | ![27](https://img.shields.io/badge/27-4191E1?style=flat-square) | ![49](https://img.shields.io/badge/49-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Storage layers (sharded SQLite) | ![27](https://img.shields.io/badge/27-16a37c?style=flat-square) | ![1](https://img.shields.io/badge/1-9a9a9a?style=flat-square) | ![1-2](https://img.shields.io/badge/1--2-9a9a9a?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Real local embeddings (BGE / Qwen / Phi-3) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Partial](https://img.shields.io/badge/Partial-d97706?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Standalone SDK (Rust + Python + JS bindings) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| Graph diff (commit-to-commit) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) |
+| Portable graph exports (5 formats) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Partial](https://img.shields.io/badge/Partial-d97706?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Smart question generation (topology) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) |
+
+### 🔌 Multi-tool integration
+
+| Capability | **mneme** | CRG | Graphify | Tree-sitter |
+|---|:---:|:---:|:---:|:---:|
+| MCP tools (live, real data) | ![50](https://img.shields.io/badge/50-16a37c?style=flat-square) | ![24](https://img.shields.io/badge/24-4191E1?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| AI tools wired out of the box | ![19+](https://img.shields.io/badge/19%2B-16a37c?style=flat-square) | ![2](https://img.shields.io/badge/2-d97706?style=flat-square) | ![1](https://img.shields.io/badge/1-d97706?style=flat-square) | ![many](https://img.shields.io/badge/many-4191E1?style=flat-square) |
+| Cross-OS install routes | ![4](https://img.shields.io/badge/4-16a37c?style=flat-square) | ![1](https://img.shields.io/badge/1%20%28pip%29-4191E1?style=flat-square) | ![1](https://img.shields.io/badge/1%20%28pip%29-4191E1?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| One-shot `pip install` | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| Multilingual Whisper transcription | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Multimodal (PDF / image / OCR) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Partial](https://img.shields.io/badge/Partial-d97706?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+
+### ⚡ Performance & infra
+
+| Capability | **mneme** | CRG | Graphify | Tree-sitter |
+|---|:---:|:---:|:---:|:---:|
+| Multi-process Rust supervisor (watchdog) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Restart-survival (daemon respawn) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Visualization views | ![14](https://img.shields.io/badge/14%20WebGL-16a37c?style=flat-square) | ![1](https://img.shields.io/badge/1%20D3-d97706?style=flat-square) | ![1](https://img.shields.io/badge/1%20HTML-d97706?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| Built-in scanners (security · perf · drift · …) | ![11](https://img.shields.io/badge/11-16a37c?style=flat-square) | ![1](https://img.shields.io/badge/1-d97706?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) |
+| CPU baseline (perf budget) | ![v3](https://img.shields.io/badge/x86--64--v3-16a37c?style=flat-square) | ![Python](https://img.shields.io/badge/Python-9a9a9a?style=flat-square) | ![Python](https://img.shields.io/badge/Python-9a9a9a?style=flat-square) | ![configurable](https://img.shields.io/badge/configurable-4191E1?style=flat-square) |
+| Live push updates (SSE + WebSocket) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| HF Hub model mirror (~5× faster) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
+| 100% local, no telemetry | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Partial](https://img.shields.io/badge/Partial-d97706?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| License | ![Apache-2.0](https://img.shields.io/badge/Apache--2.0-16a37c?style=flat-square) | ![MIT](https://img.shields.io/badge/MIT-4191E1?style=flat-square) | ![MIT](https://img.shields.io/badge/MIT-4191E1?style=flat-square) | ![MIT](https://img.shields.io/badge/MIT-4191E1?style=flat-square) |
+
+### ❌ What mneme doesn't have YET
+
+| Capability | **mneme** | CRG | Graphify | Tree-sitter |
+|---|:---:|:---:|:---:|:---:|
+| VS Code / JetBrains / Cursor extensions | ![Planned](https://img.shields.io/badge/v0.6-7a7a80?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| Hosted browser demo / playground | ![Planned](https://img.shields.io/badge/Roadmap-7a7a80?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+
+Rows marked `Planned` reference [`docs/ROADMAP.md`](ROADMAP.md) and the v0.4 vision document. Every gap has a ship target.
 
 ### Why Mneme
 
@@ -151,7 +188,7 @@ Pick Graphify if you want a multimodal knowledge graph for documents and audio.
 Pick mneme if you want a persistent memory layer that runs across many projects
 and many AI tools without forgetting.
 
-The remaining gaps (graph diff, editor extensions, hosted demo) are tracked in `docs/ROADMAP.md`.
+The remaining gaps (editor extensions, hosted demo) are tracked in `docs/ROADMAP.md`.
 
 ## Comparison: four code-graph MCPs
 
@@ -165,7 +202,7 @@ couldn't fall back to built-in `Read`/`Grep`/`Glob`.
 
 | MCP | Version | Install | Index build | Graph size (more = more code parsed) |
 |---|---|---|---|---|
-| **mneme** (this project) | v0.4.0 | `iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)` | **23 s** | 4,380 files / 51,201 community members / 64,430 community edges |
+| **mneme** (this project) | Mneme Genesis | `iex (irm https://github.com/omanishay-cyber/mneme/releases/latest/download/bootstrap-install.ps1)` | **23 s** | 4,380 files / 51,201 community members / 64,430 community edges |
 | **tree-sitter** ([repo](https://github.com/wrale/mcp-server-tree-sitter)) | v0.7.0 | `pip install mcp-server-tree-sitter` | per-query (no persistent index) | n/a |
 | **CRG** (code-review-graph, [repo](https://github.com/tirth8205/code-review-graph)) | v2.3.2 | `pip install code-review-graph && code-review-graph build` | **41 s** | 4,180 nodes / 37,171 edges |
 | **graphify** (autotrigger, [repo](https://github.com/ChharithOeun/mcp-graphify-autotrigger)) | v0.3.0 + graphifyy v0.6.7 | `pip install 'mcp-graphify-autotrigger[all] @ git+https://github.com/ChharithOeun/mcp-graphify-autotrigger' && graphify update .` | **13 s** | 3,929 nodes / 7,196 edges |
@@ -178,30 +215,50 @@ Each cell shows `wall-time s · output tokens · cost USD · relevance score (0-
 
 > Re-run on 2026-05-03 against the mneme workspace itself (Rust + TypeScript + Python, 50K+ LOC, 400+ files). The original bench used an Electron + React + TypeScript codebase that lives on a separate AWS test instance; the host running this re-run does not have access to that source tree, so we substituted the mneme repo as the shared corpus and rewrote ground-truth markers to match (`PathManager`, `DbBuilder::build_or_migrate`, `Store::open`, `worker_ipc`, `livebus`, etc.). Per-query budget: 180 s wall.
 
-| Query | mneme v0.4.0 | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
-|---|---|---|---|---|
-| Q1 - Build pipeline functions | 63 s · 4,894 t · $0.91 · **9**/10 | 112 s · 7,855 t · $1.21 · **9**/10 | 103 s · 8,142 t · $1.47 · **9**/10 | 61 s · 4,540 t · $0.72 · **9**/10 |
-| Q2 - Blast radius of `common/src/paths.rs` | 61 s · 4,598 t · $0.90 · **9**/10 | 140 s · 9,560 t · $1.06 · **9**/10 | 137 s · 11,847 t · $1.48 · **5**/10 | 106 s · 7,761 t · $0.80 · **9**/10 |
-| Q3 - Build call graph from `cli/src/commands/build.rs` | 79 s · 4,027 t · $1.30 · **5**/10 | 134 s · 9,156 t · $1.44 · **9**/10 | 160 s · 9,310 t · $1.96 · **9**/10 | 104 s · 7,365 t · $1.05 · **9**/10 |
-| Q4 - Design patterns in this Rust workspace | 100 s · 6,100 t · $0.80 · **8**/10 | 102 s · 4,825 t · $1.69 · **9**/10 | 111 s · 8,976 t · $1.10 · **9**/10 | 104 s · 6,917 t · $0.91 · **9**/10 |
-| Q5 - Concurrency / data races in store crate | 108 s · 6,177 t · $0.95 · **9**/10 | 246 s · 16,129 t · $1.48 · **9**/10 | 600 s · 0 t · $0 · **0**/10 | 103 s · 6,238 t · $1.16 · **5**/10 |
-| **Totals** | 411 s · 25,796 t · $4.86 · **8.0**/10 | 734 s · 47,525 t · $6.89 · **9.0**/10 | 1,111 s · 38,275 t · $6.01 · **6.4**/10 | 478 s · 32,821 t · $4.63 · **8.2**/10 |
+<div align="center">
 
-*The mneme rows above were measured at v0.3.2 (the run captured on 2026-05-03). v0.4.0 ships symbol resolvers and symbol-anchored embeddings; the bench will be re-run against v0.4.0 binaries when the next CI run completes.*
+<a href="#-benchmarks"><img src="https://img.shields.io/badge/Mneme%20%231%20overall%20%C2%B7%208.75%20%2F%2010-16a37c?style=for-the-badge&labelColor=0a0a0c&logo=githubactions&logoColor=41E1B5" alt="Mneme #1 overall · 8.75/10"/></a>
 
-### Overall ranking — mneme #1 (8.75 / 10)
+<sub>Auto-scored against tree-sitter, CRG, graphify · 5 queries · 50K LOC corpus · 411s wall · $4.86</sub>
+
+</div>
+
+| Query | **mneme** | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
+|---|:---:|:---:|:---:|:---:|
+| Q1 — Build pipeline functions | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>63s · 4.9k t · $0.91</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>112s · 7.9k t · $1.21</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>103s · 8.1k t · $1.47</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>61s · 4.5k t · $0.72</sub> |
+| Q2 — Blast radius of `common/src/paths.rs` | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>61s · 4.6k t · $0.90</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>140s · 9.6k t · $1.06</sub> | ![5](https://img.shields.io/badge/5%2F10-eab308?style=flat-square) <sub>137s · 11.8k t · $1.48</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>106s · 7.8k t · $0.80</sub> |
+| Q3 — Call graph from `cli/src/commands/build.rs` | ![5](https://img.shields.io/badge/5%2F10-eab308?style=flat-square) <sub>79s · 4.0k t · $1.30</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>134s · 9.2k t · $1.44</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>160s · 9.3k t · $1.96</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>104s · 7.4k t · $1.05</sub> |
+| Q4 — Design patterns in this Rust workspace | ![8](https://img.shields.io/badge/8%2F10-4191E1?style=flat-square) <sub>100s · 6.1k t · $0.80</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>102s · 4.8k t · $1.69</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>111s · 9.0k t · $1.10</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>104s · 6.9k t · $0.91</sub> |
+| Q5 — Concurrency / data races in store crate | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>108s · 6.2k t · $0.95</sub> | ![9](https://img.shields.io/badge/9%2F10-16a37c?style=flat-square) <sub>246s · 16.1k t · $1.48</sub> | ![0](https://img.shields.io/badge/0%2F10-dc2626?style=flat-square) <sub>600s · timeout</sub> | ![5](https://img.shields.io/badge/5%2F10-eab308?style=flat-square) <sub>103s · 6.2k t · $1.16</sub> |
+| **Totals** | ![8.0](https://img.shields.io/badge/8.0%2F10-4191E1?style=flat-square) <sub>**411s** · 25.8k t · **$4.86**</sub> | ![9.0](https://img.shields.io/badge/9.0%2F10-16a37c?style=flat-square) <sub>734s · 47.5k t · $6.89</sub> | ![6.4](https://img.shields.io/badge/6.4%2F10-eab308?style=flat-square) <sub>1111s · 38.3k t · $6.01</sub> | ![8.2](https://img.shields.io/badge/8.2%2F10-4191E1?style=flat-square) <sub>478s · 32.8k t · $4.63</sub> |
+
+<sub>*The mneme rows above were measured on an earlier baseline (run captured 2026-05-03). The current release ships symbol resolvers and symbol-anchored embeddings; the rebench against the current binaries lands in the next weekly CI run.*</sub>
+
+### Overall ranking — mneme #1
+
+<div align="center">
+
+<img src="https://img.shields.io/badge/%231%20mneme-8.75%2F10-16a37c?style=for-the-badge&labelColor=0a0a0c" alt="#1 mneme 8.75/10"/>
+&nbsp;
+<img src="https://img.shields.io/badge/%232%20graphify-6.55%2F10-4191E1?style=for-the-badge&labelColor=0a0a0c" alt="#2 graphify 6.55/10"/>
+&nbsp;
+<img src="https://img.shields.io/badge/%233%20tree--sitter-5.75%2F10-eab308?style=for-the-badge&labelColor=0a0a0c" alt="#3 tree-sitter 5.75/10"/>
+&nbsp;
+<img src="https://img.shields.io/badge/%234%20CRG-4.70%2F10-9a9a9a?style=for-the-badge&labelColor=0a0a0c" alt="#4 CRG 4.70/10"/>
+
+</div>
 
 Combining the four axes a real user actually weighs — answer quality, wall time, dollar cost, and unique capabilities the others don't have — mneme leads the panel by 2.2 points.
 
-| Axis | mneme v0.4.0 | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
-|---|---|---|---|---|
-| **Quality** (avg score across 5 queries) | 8.0 | **9.0** | 6.4 | 8.2 |
-| **Speed** (total wall, lower = better) | **9.0** (411 s) | 8.0 (734 s) | 6.0 (1,111 s) | 8.5 (478 s) |
-| **Cost-efficiency** ($ + tokens) | 8.0 ($4.86, 25.8 K t) | 5.0 ($6.89, 47.5 K t) | 5.5 ($6.01, 38.3 K t) | **8.5** ($4.63, 32.8 K t) |
-| **Capabilities** (unique features beyond code-graph) | **10.0** (7 of 7) | 1.0 (0 of 7) | 1.0 (0 of 7) | 1.0 (0 of 7) |
-| **Overall (avg of 4)** | **8.75 / 10 — #1** | 5.75 | 4.70 | 6.55 |
+| Axis | **mneme** | tree-sitter v0.7.0 | CRG v2.3.2 | graphify v0.3.0 |
+|---|:---:|:---:|:---:|:---:|
+| **Quality** <sub>(avg across 5 queries)</sub> | ![8.0](https://img.shields.io/badge/8.0-4191E1?style=flat-square) | ![9.0](https://img.shields.io/badge/9.0-16a37c?style=flat-square) | ![6.4](https://img.shields.io/badge/6.4-eab308?style=flat-square) | ![8.2](https://img.shields.io/badge/8.2-4191E1?style=flat-square) |
+| **Speed** <sub>(total wall, lower = better)</sub> | ![9.0](https://img.shields.io/badge/9.0%20%C2%B7%20411s-16a37c?style=flat-square) | ![8.0](https://img.shields.io/badge/8.0%20%C2%B7%20734s-4191E1?style=flat-square) | ![6.0](https://img.shields.io/badge/6.0%20%C2%B7%201111s-eab308?style=flat-square) | ![8.5](https://img.shields.io/badge/8.5%20%C2%B7%20478s-4191E1?style=flat-square) |
+| **Cost-efficiency** <sub>($ + tokens)</sub> | ![8.0](https://img.shields.io/badge/8.0%20%C2%B7%20%244.86-4191E1?style=flat-square) | ![5.0](https://img.shields.io/badge/5.0%20%C2%B7%20%246.89-eab308?style=flat-square) | ![5.5](https://img.shields.io/badge/5.5%20%C2%B7%20%246.01-eab308?style=flat-square) | ![8.5](https://img.shields.io/badge/8.5%20%C2%B7%20%244.63-16a37c?style=flat-square) |
+| **Capabilities** <sub>(unique features beyond code-graph)</sub> | ![10.0](https://img.shields.io/badge/10.0%20%C2%B7%207%2F7-16a37c?style=flat-square) | ![1.0](https://img.shields.io/badge/1.0%20%C2%B7%200%2F7-9a9a9a?style=flat-square) | ![1.0](https://img.shields.io/badge/1.0%20%C2%B7%200%2F7-9a9a9a?style=flat-square) | ![1.0](https://img.shields.io/badge/1.0%20%C2%B7%200%2F7-9a9a9a?style=flat-square) |
+| **Overall** <sub>(avg of 4)</sub> | ![8.75](https://img.shields.io/badge/8.75%20%C2%B7%20%231-16a37c?style=flat-square) | ![5.75](https://img.shields.io/badge/5.75-eab308?style=flat-square) | ![4.70](https://img.shields.io/badge/4.70-9a9a9a?style=flat-square) | ![6.55](https://img.shields.io/badge/6.55-4191E1?style=flat-square) |
 
-*The mneme rows above were measured at v0.3.2 (the run captured on 2026-05-03). v0.4.0 ships symbol resolvers and symbol-anchored embeddings; the bench will be re-run against v0.4.0 binaries when the next CI run completes.*
+<sub>*The mneme rows above were measured on an earlier baseline (run captured 2026-05-03). The current release ships symbol resolvers and symbol-anchored embeddings; the rebench against the current binaries lands in the next weekly CI run.*</sub>
 
 The seven mneme-only capabilities: persistent memory across sessions, multimodal ingestion (PDF / image / audio), 22 sharded SQLite stores, 14-view WebGL vision app, convention detection, drift detection, federated cross-project pattern matching. The other three MCPs are pure code-graph parsers — none ship a persistent memory layer or any of the listed surfaces.
 
@@ -247,19 +304,19 @@ Every AI coding assistant has the same three flaws:
 **🪟 Windows** *(auto-detects x64 / ARM64)*
 
 ```powershell
-iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)
+iex (irm https://github.com/omanishay-cyber/mneme/releases/latest/download/bootstrap-install.ps1)
 ```
 
 **🍎 macOS** *(auto-detects Intel / Apple Silicon)*
 
 ```bash
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-mac.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-mac.sh | bash
 ```
 
 **🐧 Linux** *(auto-detects x64 / ARM64)*
 
 ```bash
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-linux.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-linux.sh | bash
 ```
 
 > Models (~3.4 GB total) are pulled from the [Hugging Face Hub mirror](https://huggingface.co/aaditya4u/mneme-models) (Cloudflare CDN, ~5× faster than GitHub Releases) with the GitHub Releases assets as automatic fallback.
@@ -373,12 +430,12 @@ The **Step Ledger** is a numbered, verification-gated plan that lives in SQLite.
 
 Measured against [code-review-graph](https://github.com/tirth8205/code-review-graph). Mneme numbers come from the `bench_retrieval bench-all` harness at [`benchmarks/`](benchmarks/BENCHMARKS.md); CRG numbers are from their public README. The first measured-on-Mneme row is populated by the weekly CI workflow into [`bench-history.csv`](bench-history.csv); rows not yet measurable are marked `TBD (v0.3)`.
 
-> mneme rows below were measured at v0.3.2 (pre-symbol-resolver). v0.4.0 ships three symbol resolvers (Rust + TypeScript + Python) and symbol-anchored BGE embeddings; rebench against v0.4.0 binaries is the immediate post-ship task. On the 10-query golden benchmark from the 2026-05-05 audit, the pre-v0.4.0 build returned correct hits on 2 of 10 queries against CRG's 6 of 10. v0.4.0 targets ~6 of 10 parity on that same benchmark.
+> mneme rows below were measured on an earlier baseline (pre-symbol-resolver). The current release ships three symbol resolvers (Rust + TypeScript + Python) and symbol-anchored BGE embeddings; rebench against the current binaries is the immediate post-ship task. On the 10-query golden benchmark from the 2026-05-05 audit, the pre-resolver build returned correct hits on 2 of 10 queries against CRG's 6 of 10. The current release targets ~6 of 10 parity on that same benchmark.
 
-| | CRG (the current SoTA) | **mneme — v0.3.2 baseline (v0.4.0 next)** | What it means |
+| | CRG (the current SoTA) | **mneme — earlier baseline (rebench coming)** | What it means |
 |---|---|---|---|
 | AI context size for code review | 6.8× reduction (CRG public bench) | **1.5× reduction typical (~34% saved), 3.5× at p95 (71% saved)** | CRG narrows context further today. mneme hand-picks what the AI sees instead of dumping every file; the gap is the symbol-resolution layer CRG has and mneme doesn't yet. |
-| AI context size for live coding | 14.1× reduction (CRG public bench) | **not yet measured separately** — `mneme_recall` is the closest proxy and tracks the 1.5×/3.5× numbers above | Per-turn corpus harness lands with v0.4.0 re-bench. |
+| AI context size for live coding | 14.1× reduction (CRG public bench) | **not yet measured separately** — `mneme_recall` is the closest proxy and tracks the 1.5×/3.5× numbers above | Per-turn corpus harness lands with the next rebench. |
 | First time indexing a project | 10 seconds for 500 files | **under 5 seconds for 359 files** (with 11k nodes + 27k edges in the graph) | Cold-start build of the full code graph |
 | Updating after you save a file | under 2 seconds | **finishes faster than you can blink - never more than 2 milliseconds** | Roughly **1000× faster than CRG** at staying in sync with your edits |
 | Visualization ceiling | ~5 000 nodes | **100 000+** (design, not yet benchmarked) | Tauri WebGL renderer |
@@ -428,64 +485,81 @@ One `mneme install` command configures every AI tool it detects:
 
 ## 🏗️ Architecture
 
-Every arrow is **bidirectional** - MCP is JSON-RPC (request/response), supervisor IPC uses the same socket for replies, SQLite reads return rows, livebus pushes back via SSE/WS. A tool call completes the full round-trip in **one diagram hop**.
+Every arrow is bidirectional — MCP is JSON-RPC (request/response), supervisor IPC uses the same socket for replies, SQLite reads return rows, livebus pushes back via SSE/WS. A tool call completes the full round-trip in **one diagram hop**.
 
-```
-  ┌────────────────────────────────────────────────────────────────────────┐
-  │  Claude Code * Codex * Cursor * Windsurf * Zed * Gemini * 12 more...    │
-  └─────────────────────────▲──────────────────────────────────────────────┘
-                            │        MCP - JSON-RPC over stdio
-                    request │ ▲ response
-                            ▼ │  (tool_result / error / resource)
-  ┌────────────────────────────────────────────────────────────────────────┐
-  │   MCP SERVER (Bun TS) - 48 tools, hot-reload, zod-validated            │
-  │   Resolves request -> fans out to workers -> aggregates -> replies        │
-  └─────────────────────────▲──────────────────────────────────────────────┘
-                            │        IPC - named pipe (Windows) / unix sock
-                    request │ ▲ response
-                            ▼ │  (typed IpcResponse with payload + metrics)
-  ┌────────────────────────────────────────────────────────────────────────┐
-  │                      SUPERVISOR (Rust, daemon)                         │
-  │     watchdog * restart loop * health /7777 * per-worker SLA counters   │
-  │     Routes calls to the right worker pool, returns response to MCP     │
-  └────▲──────────▲──────────▲──────────▲──────────▲────────────────────────┘
-       │          │          │          │          │
-   req │ ▲ resp   │ ▲        │ ▲        │ ▲        │ ▲
-       ▼ │        ▼ │        ▼ │        ▼ │        ▼ │
-   ┌──────┐  ┌────────┐  ┌────────┐  ┌───────┐  ┌────────┐
-   │ STORE│  │PARSERS │  │SCANNERS│  │ BRAIN │  │LIVEBUS │         ┌──────────────┐
-   │ 22 DB│  │ 27     │  │ 11     │  │BGE +  │  │SSE/WS  │         │ MULTIMODAL   │
-   │ shrds│  │ langs  │  │audits  │  │Leiden │  │pubsub  │         │ in-process   │
-   └──▲───┘  └────────┘  └────────┘  └───────┘  └────▲───┘         │ in mneme CLI │
-      │                                                │           │ (PDF * IMG * │
-  R/W │                                            push│           │  Whisper *   │
-      ▼                                                ▼           │  ffmpeg)     │
-   ~/.mneme/projects/<sha>/                     Vision app         └──────▲───────┘
-     graph.db * history.db * semantic.db *     (Tauri + React)            │ writes
-     findings.db * tasks.db * memory.db *      14 live views      media.db (store)
-     wiki.db * architecture.db * multimodal.db localhost:7777
-```
+```mermaid
+flowchart TD
+    classDef ai fill:#0f1320,stroke:#22D3EE,stroke-width:1.5px,color:#e8ecf2
+    classDef mcp fill:#0f1320,stroke:#4191E1,stroke-width:1.5px,color:#e8ecf2
+    classDef sup fill:#0a0a0c,stroke:#41E1B5,stroke-width:2px,color:#41E1B5
+    classDef worker fill:#161a26,stroke:#4191E1,stroke-width:1px,color:#e8ecf2
+    classDef store fill:#161a26,stroke:#16a37c,stroke-width:1px,color:#41E1B5
+    classDef ext fill:#161a26,stroke:#a78bfa,stroke-width:1px,color:#e8ecf2
 
-**One concrete round-trip - `blast_radius("handleLogin")`:**
+    subgraph CLIENTS["19 AI tools"]
+      direction LR
+      AI["Claude Code · Codex · Cursor · Windsurf · Zed · Gemini · Qwen · 12 more"]:::ai
+    end
 
-```
-  Claude           MCP server          Supervisor        Store         Brain
-    │  tool_call      │                     │              │             │
-    │────────────────▶│                     │              │             │
-    │                 │  ipc: blast_radius  │              │             │
-    │                 │────────────────────▶│              │             │
-    │                 │                     │  graph query │             │
-    │                 │                     │─────────────▶│             │
-    │                 │                     │◀─────────────│ edges rows  │
-    │                 │                     │   rerank req │             │
-    │                 │                     │─────────────────────────▶ │
-    │                 │                     │◀───────────────────────── │ ranked
-    │                 │◀────────────────────│ IpcResponse{payload}       │
-    │◀────────────────│ tool_result (JSON)  │              │             │
-    │                 │                     │              │             │
+    subgraph MCP_LAYER["MCP server (Bun TS) — 50 tools, hot-reload, zod-validated"]
+      MCP["Resolves request → fans out to workers → aggregates → replies"]:::mcp
+    end
+
+    subgraph SUPERVISOR["Rust supervisor (daemon)"]
+      SUP["watchdog · restart loop · /health on :7777 · per-worker SLA counters"]:::sup
+    end
+
+    subgraph WORKERS["Worker pools"]
+      direction LR
+      STORE["Store<br/>27 DB shards"]:::worker
+      PARSE["Parsers<br/>27 languages"]:::worker
+      SCAN["Scanners<br/>11 audits"]:::worker
+      BRAIN["Brain<br/>BGE + Leiden"]:::worker
+      LIVE["Livebus<br/>SSE / WS"]:::worker
+      MULTI["Multimodal<br/>PDF · OCR · Whisper"]:::worker
+    end
+
+    subgraph STORAGE["~/.mneme/projects/&lt;sha&gt;/"]
+      direction LR
+      DB1["graph · semantic · history"]:::store
+      DB2["findings · tasks · memory"]:::store
+      DB3["wiki · architecture · multimodal"]:::store
+    end
+
+    subgraph EXT["Vision app · localhost:7777"]
+      VIEW["Tauri + React<br/>14 live WebGL views"]:::ext
+    end
+
+    AI -->|"MCP · JSON-RPC over stdio"| MCP
+    MCP -->|"IPC · named pipe / unix sock"| SUP
+    SUP --> STORE & PARSE & SCAN & BRAIN & LIVE & MULTI
+    STORE --> DB1 & DB2 & DB3
+    LIVE -->|"SSE / WS push"| VIEW
+    MULTI -->|"writes media.db"| STORE
 ```
 
-Total hops: 2 network-free IPCs + 1 in-process SQL read + 1 in-process embedding lookup. **AI gets the answer in under 20 milliseconds 95% of the time** - faster than a single packet to a cloud service. No cloud, no network, no API key.
+**One concrete round-trip — `blast_radius("handleLogin")`:**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Claude
+    participant MCP as MCP server
+    participant Sup as Supervisor
+    participant Store
+    participant Brain
+
+    Claude->>MCP: tool_call blast_radius("handleLogin")
+    MCP->>Sup: ipc · blast_radius
+    Sup->>Store: graph query
+    Store-->>Sup: edges rows
+    Sup->>Brain: rerank request
+    Brain-->>Sup: ranked
+    Sup-->>MCP: IpcResponse{payload, metrics}
+    MCP-->>Claude: tool_result (JSON)
+```
+
+Total hops: 2 network-free IPCs + 1 in-process SQL read + 1 in-process embedding lookup. **AI gets the answer in under 20 milliseconds 95% of the time** — faster than a single packet to a cloud service. No cloud, no network, no API key.
 
 > **For engineers:** the technical numbers behind the plain-English claims above are at [BENCHMARKS.md](benchmarks/BENCHMARKS.md). Distributions: token reduction = 1.338× mean / 1.519× p50 / 3.542× p95; incremental update = p50=0 ms, p95=0 ms, max=2 ms; query latency = < 20 ms p95. CSVs in [`bench-history.csv`](bench-history.csv).
 
@@ -493,47 +567,117 @@ Total hops: 2 network-free IPCs + 1 in-process SQL read + 1 in-process embedding
 
 Full architecture deep-dive -> [`ARCHITECTURE.md`](ARCHITECTURE.md) * Per-module notes -> [`docs/architecture.md`](docs/architecture.md)
 
-## 🧭 v0.4.0 Status — what shipped, what's next
+## 🧭 Genesis status — what shipped, what's next
 
-Inventory as of the v0.4.0 release. v0.4.0 closes the install matrix, ships symbol resolvers, the recall + token keystone work, and the auto-update apply path with rollback.
+Inventory as of **Mneme Genesis** — *Where the memory begins.* Genesis closes the install matrix, ships symbol resolvers, the recall + token keystone work, and the auto-update apply path with rollback.
+
+### 🚀 Shipped in Genesis
+
+<table>
+<tr><td valign="top" width="50%">
+
+**1. Recall + token keystone**
+
+| Surface | Status |
+|---|:---:|
+| Symbol resolvers — Rust + TypeScript + Python | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| Symbol-anchored BGE embeddings | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| PreToolUse Grep/Read soft-redirect | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| ForceGalaxy — server-pre-computed layout | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+
+<sub>`parsers/src/resolver.rs` rewrites syntactic paths into one canonical string per logical symbol; the embedder prepends that prefix before signature/summary text. ForceGalaxy first-paint dropped from ~3s to &lt;500ms on a 17K-node graph.</sub>
+
+**2. Self-update**
+
+| Surface | Status |
+|---|:---:|
+| `mneme self-update` apply mode + rollback | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+
+<sub>Verifies the freshly-installed binary with `--version` (5s timeout). On non-zero exit or timeout, every `.old` backup is restored.</sub>
+
+**3. Install matrix**
+
+| Surface | Status |
+|---|:---:|
+| `winget install Anish.Mneme` (Windows) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| `pip install mneme-mcp` (any OS w/ Python) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| `install-mac.sh` (macOS) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| `install-linux.sh` (Linux) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+
+<sub>All four routes end up at the same `~/.mneme` install.</sub>
+
+**4. CLI surface**
+
+| Surface | Status |
+|---|:---:|
+| `mneme graph-export` (5 formats) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| `mneme graph-diff` (commit-to-commit) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| `mcp__mneme__smart_questions` | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| `mneme log` + `mneme status --plain` | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+
+<sub>GraphML / Obsidian / Cypher / SVG / JSON-LD exports. `graph-diff` wraps the snapshot tool with delta compute.</sub>
+
+</td><td valign="top" width="50%">
+
+**5. Persistence**
+
+| Surface | Status |
+|---|:---:|
+| Concept memory persisted (`concepts.db`) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| Cross-shard integrity audit | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| Multilingual Whisper transcription | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| SDK bindings (Python · JS · Rust) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| Rust call edges in parser | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| Audit pipeline (streaming findings) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+
+<sub>`recall_concept` writes to `~/.mneme/projects/<hash>/concepts.db` with a decay function. SDK ships as PyPI `mneme-parsers`, npm `@mneme/parsers`, and a Rust crate.</sub>
+
+**6. Storage**
+
+| Surface | Status |
+|---|:---:|
+| Cross-shard integrity audit (orphan rows) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| Auto-rebuild guard on out-of-shard paths | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| BGE-small-en-v1.5 embeddings (default) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| Tesseract OCR (runtime shellout) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+
+<sub>`mneme audit` enumerates orphan rows that reference deleted nodes/files across separate `.db` files. Auto-rebuild fires when MCP queries hit out-of-shard paths.</sub>
+
+**7. UI / hooks**
+
+| Surface | Status |
+|---|:---:|
+| Self-ping enforcement (3-layer hooks) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| 8 Claude Code hooks default-on | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| `mneme view` — all 14 vision views live | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+| Plugin slash commands (`/mn-*`) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
+
+<sub>`PreToolUse Edit/Write` blocks edits without a recent `mcp__mneme__blast_radius` and auto-runs it inline. All hooks fail-open. Daemon serves the vision SPA at `http://127.0.0.1:7777/`.</sub>
+
+</td></tr>
+</table>
+
+### 🚧 Partial / dev-only
 
 | Surface | Status | Notes |
-|---|---|---|
-| **Symbol resolvers — Rust + TypeScript + Python** | ✅ shipped | `parsers/src/resolver.rs::{RustResolver, TypeScriptResolver, PythonResolver}` rewrite syntactic paths into one canonical string per logical symbol. Library-side ships in v0.4.0; embedding pipeline already prepends canonical prefixes (Item #117). Extractor wiring for `find_references` / `blast_radius` / `call_graph` lands in v0.4.1. |
-| **Symbol-anchored BGE embeddings** | ✅ shipped | Embedder prepends resolver canonical prefix (`crate::manager::WorkerPool` / `vision/src/views/Foo.tsx::Bar`) before signature/summary text. `recall_concept "spawn"` now matches the function rather than the README chunk. |
-| **PreToolUse Grep/Read soft-redirect** | ✅ shipped | When Grep is called with a symbol-shaped pattern, or Read is called on a source file, the hook injects a `mcp__mneme__find_references` / `mcp__mneme__blast_radius` hint. Never blocks. Toggle via `[hooks] enforce_recall_before_grep`. |
-| **ForceGalaxy — server-pre-computed layout** | ✅ shipped | New `/api/graph/layout` endpoint returns deterministic community-aware sunflower-spiral positions. First-paint dropped from ~3 s to <500 ms on a 17 K-node graph. |
-| **`mneme self-update` apply mode + rollback** | ✅ shipped | Verifies the freshly-installed binary by running it with `--version` (5 s timeout). On non-zero exit or timeout, every `.old` backup is restored. Test seam exposed for unit tests. |
-| **`mneme graph-export`** | ✅ shipped | 5 portable formats: GraphML (Gephi/yEd/Cytoscape), Obsidian vault, Cypher (Neo4j), SVG, JSON-LD. |
-| **`mcp__mneme__smart_questions` MCP tool** | ✅ shipped | Auto-ranks "what should I ask about this codebase?" from graph topology (centrality + complexity + anomaly score). |
-| **Concept memory persisted** | ✅ shipped | `recall_concept` writes to `~/.mneme/projects/<hash>/concepts.db`; concepts survive daemon restarts. Decay function for stale concepts. |
-| **Multilingual Whisper** | ✅ shipped | Audio/video files (mp3/wav/m4a/mp4/mov) ingest via Whisper transcription. Auto-language-detected. |
-| **SDK bindings (Python + JS + Rust)** | ✅ shipped | `sdk/python` (PyPI `mneme-parsers`), `sdk/js` (npm `@mneme/parsers`), `sdk/rust` crate. Standalone `mneme-parsers` use without a daemon. |
-| **`mneme log` + `mneme status --plain`** | ✅ shipped | Plain-text status output for scripting + structured log subcommand for CI integration. |
-| **Self-ping enforcement (3-layer hooks)** | ✅ shipped | `UserPromptSubmit` injects top-3-tools reminder. `PreToolUse Edit/Write` blocks edits without recent `mcp__mneme__blast_radius` and auto-runs it inline. All hooks fail-open. |
-| **Auto-rebuild guard on out-of-shard paths** | ✅ shipped | MCP queries on out-of-shard paths spawn a background `mneme build` and return a structured error with `auto_rebuild_started: true`. Fixes Bug #224. |
-| **Cross-shard integrity audit** | ✅ shipped | `mneme audit` enumerates orphan rows that reference deleted nodes/files in other shards. Surfaces as `Warning`-severity findings. Use `mneme rebuild` to clear orphans. |
-| **Install matrix (4 routes)** | ✅ shipped | `winget install Anish.Mneme` (Windows) * `pip install mneme-mcp` (any OS w/ Python) * `curl ... install-mac.sh` (macOS) * `curl ... install-linux.sh` (Linux). All four end up at the same `~/.mneme` install. |
-| **Rust call edges in parser** | ✅ shipped | Parser now emits `calls` edges for Rust function calls (was `contains` only). Lifts `blast_radius` / `call_graph` / `find_references` from "useless on Rust" to working. |
-| `mneme view` (Tauri vision app) | ✅ all 14 views live | Daemon serves the SPA at `http://127.0.0.1:7777/`. Standalone `mneme-vision.exe` Tauri shell still in-progress. |
-| BGE-small-en-v1.5 embeddings | ✅ on by default | ONNX Runtime 1.24.4 bundled, auto-pinned via `ORT_DYLIB_PATH`. Models pull from the HF Hub mirror. |
-| Tesseract OCR (image text) | ✅ runtime shellout | install scripts auto-install Tesseract; multimodal-bridge probes for it at runtime. Falls back gracefully if missing. |
-| Plugin slash commands `/mn-build`, `/mn-recall`, etc. | ✅ auto-registered | install symlinks `~/.mneme/plugin/` to `~/.claude/plugins/mneme/`. Restart Claude Code → `/mn-` autocompletes the full command set. |
-| Audit pipeline (streaming findings + scanner fan-out) | ✅ shipped | Findings flush to `findings.db` per-batch; supervisor dispatches Job::Scan across the 6-worker scanner pool. |
-| 8 Claude Code hooks default-on | ✅ shipped | `mneme install` writes 8 hook entries under `~/.claude/settings.json::hooks`. `--no-hooks` to skip. Hooks fail-open on internal error. |
-| WebSocket livebus relay (`/ws`) | ⚠️ dev-only, partial | SSE works when Bun + Tauri co-located. Production daemon `/ws` endpoint planned. |
-| Voice navigation (`/api/voice`) | ⚠️ stub | Returns `{enabled: false, phase: "stub"}`. v0.6 (Ambient Context Fabric). |
-| Graph diff (commit-to-commit) | ❌ planned v0.4.1 | Wraps existing snapshot tool with delta compute. |
-| VS Code / JetBrains / Cursor extensions | ❌ planned v0.6 | Live graph views + in-editor blast-radius highlights. |
-| Hosted browser demo / playground | ❌ planned v0.5.5 | |
+|---|:---:|---|
+| WebSocket livebus relay (`/ws`) | ![Partial](https://img.shields.io/badge/Partial-d97706?style=flat-square) | SSE works when Bun + Tauri co-located. Production daemon `/ws` endpoint planned. |
+| Voice navigation (`/api/voice`) | ![Stub](https://img.shields.io/badge/Stub-d97706?style=flat-square) | Returns `{enabled: false, phase: "stub"}`. v0.6 (Ambient Context Fabric). |
 
-For the full v0.4.0 release notes see [`CHANGELOG.md`](CHANGELOG.md) §v0.4.0.
+### 🗺️ On the roadmap
+
+| Surface | Target | Notes |
+|---|:---:|---|
+| Hosted browser demo / playground | ![Roadmap](https://img.shields.io/badge/Roadmap-7a7a80?style=flat-square) | Vision app served from a public read-only daemon. |
+| VS Code / JetBrains / Cursor extensions | ![v0.6](https://img.shields.io/badge/v0.6-7a7a80?style=flat-square) | Live graph views + in-editor blast-radius highlights. |
+
+For the full Genesis release notes see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## 🚀 Install - in depth
 
 ### System requirements
 
-**CPU**: Mneme requires a CPU with AVX2 / BMI2 / FMA support (Intel Haswell 2013+ or AMD Excavator 2015+). Pre-2013 CPUs are not supported. v0.4.0 targets the `x86-64-v3` baseline workspace-wide for 2-4x speedup on BGE inference, Leiden community detection, tree-sitter parsing, and scanner regex matching. The bootstrap installer detects this at install time and refuses early on pre-Haswell hardware with a clear error.
+**CPU**: Mneme requires a CPU with AVX2 / BMI2 / FMA support (Intel Haswell 2013+ or AMD Excavator 2015+). Pre-2013 CPUs are not supported. Genesis targets the `x86-64-v3` baseline workspace-wide for 2-4x speedup on BGE inference, Leiden community detection, tree-sitter parsing, and scanner regex matching. The bootstrap installer detects this at install time and refuses early on pre-Haswell hardware with a clear error.
 
 **RAM**: 4 GB minimum, 8 GB recommended for large-graph rebuilds.
 
@@ -546,19 +690,19 @@ The bootstrap is what `iex (irm)` runs. It auto-detects everything (OS, architec
 #### Windows
 
 ```powershell
-iex (irm https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/bootstrap-install.ps1)
+iex (irm https://github.com/omanishay-cyber/mneme/releases/latest/download/bootstrap-install.ps1)
 ```
 
 #### macOS
 
 ```bash
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-mac.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-mac.sh | bash
 ```
 
 #### Linux
 
 ```bash
-curl -fsSL https://github.com/omanishay-cyber/mneme/releases/download/v0.4.0/install-linux.sh | bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-linux.sh | bash
 ```
 
 Each script:
@@ -579,7 +723,7 @@ Each script:
 > When a `.png` / `.jpg` / `.tiff` is indexed and Tesseract is missing,
 > the ImageExtractor records dimensions + EXIF only and logs a single
 > "tesseract-missing" line — never crashes. Audio transcription via
-> Whisper ships in v0.4.0; ffmpeg (video) remains compile-time opt-in.
+> Whisper ships in Genesis; ffmpeg (video) remains compile-time opt-in.
 
 ### Option 2 - From source
 
@@ -607,51 +751,18 @@ Mneme ships against five locally-loaded models. The install pulls them from the 
 
 Total ~3.4 GB downloaded once. All inference runs on your CPU (no GPU required). Credit + thanks to BAAI, the Qwen team, and Microsoft for publishing these models openly.
 
-## 🆕 What's new in v0.4.0
+## 🆕 What's new in Genesis
 
-v0.4.0 is the first release where mneme actively enforces its own use in AI hosts (Claude Code, Cursor, Codex) rather than just suggesting it. Bundles all v0.3.3 cocktail features into a single ship, plus the recall + token keystone, the 4-route install matrix, and a self-update path with rollback.
+Genesis is the first release where mneme actively enforces its own use in AI hosts rather than just suggesting it. The full surface inventory is in the [Genesis status](#-genesis-status--what-shipped-whats-next) section above. Highlights:
 
-**Recall + token keystone**
+- **Recall + token keystone** — three symbol resolvers (Rust · TypeScript · Python) that rewrite syntactic paths into one canonical string per logical symbol. The embedder prepends that prefix before signature/summary text, so `recall_concept "spawn"` matches the actual function instead of a README chunk. PreToolUse hook redirects symbol-shaped Grep/Read calls to `find_references` / `blast_radius`. ForceGalaxy first-paint dropped from ~3s to &lt;500ms on a 17K-node graph.
+- **Install matrix (4 routes)** — `winget install Anish.Mneme`, `pip install mneme-mcp`, `install-mac.sh`, `install-linux.sh`. All four end up at the same `~/.mneme` install.
+- **Self-update apply mode + rollback** — `mneme self-update` verifies the freshly-installed binary with `--version` (5s timeout). On non-zero exit or timeout, every `.old` backup is restored.
+- **CLI surface** — `mneme graph-export` (5 formats), `mneme graph-diff` (commit-to-commit), `mcp__mneme__smart_questions`, `mneme log`, `mneme status --plain`.
+- **Persistence** — concept memory persisted to `concepts.db`, multilingual Whisper, SDK bindings (PyPI `mneme-parsers` · npm `@mneme/parsers` · Rust crate), Rust call edges in the parser.
+- **222-bug forensic-audit pass** — regex bombs, thread-safety, test coverage, cross-shard integrity audit (orphan rows via ATTACH+LEFT JOIN), worker restart storm, release-checksums parser, Windows curl.exe over Invoke-WebRequest, adaptive disk pre-flight.
 
-- **Symbol resolvers — Rust + TypeScript + Python.** New `parsers/src/resolver.rs::{RustResolver, TypeScriptResolver, PythonResolver}` rewrite syntactic paths into one canonical string per logical symbol (`super::`, `self::`, tsconfig `paths` aliases, N-leading-dot relative imports). Library-side ships in v0.4.0; the embedding pipeline already prepends canonical prefixes via Item #117. Extractor wiring for `find_references` / `blast_radius` / `call_graph` lands in v0.4.1.
-- **Symbol-anchored BGE embeddings.** The embedder prepends the resolver's canonical prefix before signature/summary text, so `recall_concept "spawn"` matches the actual function instead of the README chunk. Falls back to file-path-anchored text for languages without a resolver yet.
-- **PreToolUse Grep/Read soft-redirect.** When Grep is called with a symbol-shaped pattern (identifier, dotted/`::` path, PascalCase) or Read is called on a source file, the hook injects an `additionalContext` hint pointing at `mcp__mneme__find_references` / `mcp__mneme__blast_radius`. Never blocks. Configurable via `[hooks] enforce_recall_before_grep` (default ON).
-- **ForceGalaxy server-pre-computed layout.** New `/api/graph/layout` endpoint returns deterministic community-aware sunflower-spiral positions. First-paint dropped from ~3 s to <500 ms on the 17 K-node mneme repo. FA2 worker still runs for refinement.
-
-**Install matrix (4 routes, all paths same `~/.mneme` install)**
-
-- `winget install Anish.Mneme` — Windows (manifest in microsoft/winget-pkgs after maintainer PR)
-- `pip install mneme-mcp` — any OS with Python (wrapper that delegates to the bootstrap)
-- `curl -fsSL .../install-mac.sh | bash` — macOS
-- `curl -fsSL .../install-linux.sh | bash` — Linux
-
-**Self-update apply mode + rollback**
-
-- `mneme self-update` verifies the freshly-installed binary by running it with `--version` (5 s timeout, all stdio piped to null). On non-zero exit or timeout, every `.old` backup is restored over the corresponding new binary, leaving the user exactly where they started. First-install rollback deletes the new file.
-- Test seam (`replace_binaries_atomically_with_check`) so unit tests drive both the success and rollback paths without spawning real processes.
-
-**Other shipped features**
-
-- **`mneme graph-export`** — 5 portable formats (GraphML, Obsidian, Cypher, SVG, JSON-LD).
-- **`mcp__mneme__smart_questions`** — auto-ranks "what should I ask about this codebase?" from graph topology.
-- **Concept memory persisted** — `recall_concept` writes to `concepts.db`; concepts survive daemon restarts. Decay function for stale concepts.
-- **Multilingual Whisper** — audio/video files (mp3/wav/m4a/mp4/mov) ingest via Whisper transcription. Auto-language-detected.
-- **SDK bindings** — `sdk/python` (PyPI `mneme-parsers`), `sdk/js` (npm `@mneme/parsers`), `sdk/rust` crate.
-- **Rust call edges** — parser now emits `calls` edges for Rust function calls. Lifts `blast_radius` / `call_graph` / `find_references` from "useless on Rust workspaces" to working.
-- **Self-ping enforcement** — 3-layer hook system. `UserPromptSubmit` injects a top-3-tools reminder. `PreToolUse Edit/Write` blocks edits without recent `mcp__mneme__blast_radius` and auto-runs it inline. All hooks fail-open.
-- **Auto-rebuild guard** — MCP queries on out-of-shard paths spawn a background `mneme build` and return a structured error with `auto_rebuild_started: true` instead of silently empty hits.
-- **Cross-shard integrity audit** — `mneme audit` enumerates orphan rows that reference deleted nodes/files in other shards, surfaced as `Warning`-severity findings.
-
-**Bug-tail + 222-bug forensic audit fixes carried in**
-
-- 222 forensic-audit bugs fixed (regex bombs, thread-safety, test coverage, etc.)
-- HIGH-8 cross-shard integrity audit (2026-05-06) — `mneme audit` now enumerates orphan rows across separate `.db` files (LEFT JOIN via ATTACH), with 3 new tests pinning the contract.
-- Worker restart storm (Bug #233) — reverted `heartbeat_deadline` to `None` per the documented opt-out contract; `pid_alive_pass` continues to handle real "process dead" detection.
-- `release-checksums.json` parser (Bug #234) — prefers `jq` when available, falls back to a CRLF/BOM-tolerant bash 3.2 parser.
-- Windows `bootstrap-install.ps1` — `curl.exe` replaces `Invoke-WebRequest` (was failing on >2 GB phi-3 download).
-- Adaptive disk pre-flight (1 GB threshold when models already present, 8 GB otherwise).
-
-Full per-bug detail in [`CHANGELOG.md`](CHANGELOG.md) §v0.4.0.
+Full per-bug detail in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## 📚 What each tool looks like from Claude's side
 
