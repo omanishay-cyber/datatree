@@ -230,7 +230,14 @@ fn print_gods(gods: &[GodNode]) {
     println!("top {} most-connected concept(s):", gods.len());
     println!();
     for (i, g) in gods.iter().enumerate() {
-        let loc = g.file_path.clone().unwrap_or_else(|| "-".into());
+        // Bug #38 followup (REVIEW-1, 2026-05-07): strip Windows long-path
+        // \\?\ prefix at display boundary — same pattern as recall/blast/
+        // find-references/call-graph; godnodes was missed in the original sweep.
+        let loc = g
+            .file_path
+            .as_deref()
+            .map(|f| super::display_path(f).to_string())
+            .unwrap_or_else(|| "-".into());
         let display_name = if g.name.is_empty() {
             g.qualified_name.clone()
         } else {

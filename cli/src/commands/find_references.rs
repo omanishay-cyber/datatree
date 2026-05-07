@@ -68,7 +68,7 @@ pub async fn run(args: FindReferencesArgs) -> CliResult<()> {
     }
     if args.symbol.contains('\0') {
         return Err(CliError::Other(
-            "symbol contains NUL byte (\\0) — SQLite would truncate the search; remove the NUL"
+            "symbol contains NUL byte (\\0) -- SQLite would truncate the search; remove the NUL"
                 .to_string(),
         ));
     }
