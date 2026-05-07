@@ -67,12 +67,19 @@ pub struct RebuildArgs {
 pub async fn run(args: RebuildArgs, socket_override: Option<PathBuf>) -> CliResult<()> {
     let project = resolve_project(args.project)?;
     if !args.yes {
+        // 2026-05-07 fix: edge-case agent caught this returning exit 0
+        // when rebuild was REFUSED. CI scripts and shell pipelines
+        // would think rebuild succeeded silently — `if mneme rebuild
+        // .; then ...` would proceed even though nothing happened.
+        // Return a non-zero error so the absence of --yes is a real
+        // failure condition the caller can detect.
         eprintln!(
             "warning: rebuild will discard the cached graph for {} and re-parse from scratch.",
             project.display()
         );
-        eprintln!("re-run with --yes to confirm.");
-        return Ok(());
+        return Err(CliError::Other(
+            "rebuild requires --yes to confirm; no action taken".to_string(),
+        ));
     }
 
     // Step 1: optimistically try the IPC path (future-proof — if/when
