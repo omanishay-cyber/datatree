@@ -402,9 +402,22 @@ pub(crate) async fn run_direct_subprocess_with_registry(
     // at this point, so a cross-shard error should never hide real findings.
     let cross_shard_findings = run_cross_shard_audit(&project_id, &paths, severity_floor).await;
     let orphan_count = cross_shard_findings.len();
-    if orphan_count > 0 {
+    // 2026-05-07 fix (edge-case agent W5): the prior code printed
+    // a top-level "cross-shard integrity: N orphan row(s) found"
+    // message for ANY orphan count, including the 1-6 range that's
+    // typically transient drift (a file deleted mid-build, then the
+    // referrer hasn't been re-scanned yet). Users saw this scary
+    // message on otherwise-clean incrementals and assumed mneme was
+    // broken. The orphans are still added to `kept` and surface in
+    // the standard findings table — they're just no longer
+    // separately flagged with a free-floating header. For
+    // operationally-significant drift (>= 25 orphans) we keep the
+    // dedicated header so it doesn't get lost in a long findings
+    // table.
+    if orphan_count >= 25 {
         println!(
-            "cross-shard integrity: {} orphan row(s) found (rule: cross_shard_orphan.*)",
+            "cross-shard integrity: {} orphan row(s) found (rule: cross_shard_orphan.*) — \
+             consider `mneme rebuild` to clear",
             orphan_count
         );
     }
