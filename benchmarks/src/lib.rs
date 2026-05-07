@@ -30,6 +30,35 @@ use parsers::{
 };
 use store::{inject::InjectOptions, Store};
 
+/// Bug #30 fix (2026-05-07): all SQLite opens in this harness must set a
+/// `busy_timeout` so the bench fails loudly instead of hanging forever
+/// when another process (CI parallelism, an orphaned previous bench run,
+/// the live mneme daemon, antivirus scanning the WAL file) is holding
+/// a lock on the shard graph DB.
+///
+/// Anish caught this: a 26-minute hang on his desktop where the bench
+/// process sat at exactly the same CPU sample with zero forward
+/// progress, even after `[bench-all] indexed:` finished cleanly. Root
+/// cause: `Connection::open_with_flags(.., READ_ONLY)` blocks
+/// indefinitely on Windows when an existing handle is in WAL-checkpoint
+/// or busy state. With a 30 s timeout we surface a real error
+/// (`SQLITE_BUSY`) the moment contention can't be resolved, instead of
+/// silently spinning forever.
+const BENCH_BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Open a shard graph DB read-only with the bench harness's standard
+/// safety knobs: URI parsing on (so `?mode=ro` and `?immutable=1` are
+/// honored if the caller passes them in the path), and a 30 s busy
+/// timeout (Bug #30 — never hang forever on a locked shard).
+pub(crate) fn bench_open_readonly(path: &Path) -> BenchResult<rusqlite::Connection> {
+    let conn = rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+    )?;
+    conn.busy_timeout(BENCH_BUSY_TIMEOUT)?;
+    Ok(conn)
+}
+
 /// Small fixed query set used when callers want a canned 10-query workload
 /// against any repo (token-reduction and incremental benches). Queries are
 /// intentionally generic so the set works against arbitrary codebases.
@@ -359,10 +388,7 @@ pub fn run_query_set(
     shard_graph_db: &Path,
     queries: &[GoldenQuery],
 ) -> BenchResult<QuerySetReport> {
-    let conn = rusqlite::Connection::open_with_flags(
-        shard_graph_db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
-    )?;
+    let conn = bench_open_readonly(shard_graph_db)?;
 
     let mut results = Vec::with_capacity(queries.len());
     let mut total_elapsed_ms = 0u64;
@@ -536,10 +562,7 @@ pub fn compare_vs_cold(
     shard_graph_db: &Path,
     queries: &[GoldenQuery],
 ) -> BenchResult<CompareReport> {
-    let conn = rusqlite::Connection::open_with_flags(
-        shard_graph_db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
-    )?;
+    let conn = bench_open_readonly(shard_graph_db)?;
 
     let mut rows = Vec::with_capacity(queries.len());
     let mut dt_tokens = 0u64;
@@ -760,10 +783,7 @@ pub fn bench_token_reduction(
 ) -> BenchResult<TokenReductionReport> {
     let repo = dunce::canonicalize(repo)
         .map_err(|e| BenchError::InvalidPath(format!("{}: {e}", repo.display())))?;
-    let conn = rusqlite::Connection::open_with_flags(
-        shard_graph_db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
-    )?;
+    let conn = bench_open_readonly(shard_graph_db)?;
 
     let mut ratios = Vec::with_capacity(GENERIC_QUERIES.len());
     let mut mneme_total = 0u64;
@@ -932,10 +952,7 @@ pub fn bench_viz_scale(shard_graph_db: &Path) -> BenchResult<VizScaleReport> {
     let size = std::fs::metadata(shard_graph_db)
         .map(|m| m.len())
         .unwrap_or(0);
-    let conn = rusqlite::Connection::open_with_flags(
-        shard_graph_db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
-    )?;
+    let conn = bench_open_readonly(shard_graph_db)?;
     let nodes: u64 = conn
         .query_row("SELECT COUNT(*) FROM nodes", [], |r| r.get::<_, i64>(0))
         .unwrap_or(0) as u64;
@@ -957,10 +974,7 @@ pub fn bench_viz_scale(shard_graph_db: &Path) -> BenchResult<VizScaleReport> {
 
 /// Precision@10 over a golden query fixture.
 pub fn bench_recall(shard_graph_db: &Path, queries: &[GoldenQuery]) -> BenchResult<RecallReport> {
-    let conn = rusqlite::Connection::open_with_flags(
-        shard_graph_db,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
-    )?;
+    let conn = bench_open_readonly(shard_graph_db)?;
 
     let mut hits = 0u32;
     let mut total_expected = 0u32;
@@ -1089,6 +1103,8 @@ fn recall_semantic_fallback(
         &semantic_path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )?;
+    // Bug #30: bound the wait so this never hangs forever on a locked shard.
+    sem_conn.busy_timeout(BENCH_BUSY_TIMEOUT)?;
 
     let mut top: Vec<(i64, f32)> = Vec::new();
     {
