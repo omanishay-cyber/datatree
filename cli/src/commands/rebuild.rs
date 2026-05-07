@@ -266,9 +266,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rebuild_without_yes_flag_prints_warning_and_returns_ok() {
-        // Default --yes=false path: run() should print a warning and
-        // exit cleanly without touching anything.
+    async fn rebuild_without_yes_flag_prints_warning_and_returns_err() {
+        // 2026-05-07 fix (a63228f): default --yes=false path should
+        // print the warning AND return a non-zero error so shell
+        // pipelines and CI scripts don't silently treat 'rebuild
+        // refused' as 'rebuild succeeded'. The prior contract
+        // returned Ok which conflated the two outcomes.
         let td = tempfile::tempdir().unwrap();
         let args = RebuildArgs {
             project: Some(td.path().to_path_buf()),
@@ -277,10 +280,13 @@ mod tests {
             no_ipc: true,
         };
         let r = run(args, None).await;
-        assert!(
-            r.is_ok(),
-            "expected Ok from --yes=false short-circuit, got {r:?}"
-        );
+        match r {
+            Err(CliError::Other(msg)) => assert!(
+                msg.contains("--yes"),
+                "error should mention --yes; got: {msg}"
+            ),
+            other => panic!("expected Err(Other(\"... --yes ...\")), got {other:?}"),
+        }
     }
 
     #[test]
