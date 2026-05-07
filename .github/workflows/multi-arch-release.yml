@@ -23,7 +23,7 @@ name: Multi-Arch Release
 #   - Linux glibc (gnu) chosen over musl for broadest compatibility.
 #     musl static builds are a future enhancement.
 #
-# Authors: Anish Trivedi & Kruti Trivedi. Apache-2.0.
+# Authors: Anish Trivedi & Kruti Trivedi. Mneme Personal-Use License v1.0.
 
 on:
   workflow_dispatch:
@@ -280,6 +280,67 @@ jobs:
           echo "$ASSETS"
           # shellcheck disable=SC2086
           gh release upload "$TAG" $ASSETS \
+            --repo "${{ github.repository }}" \
+            --clobber
+
+      # 2026-05-07: Generate + upload release-checksums.json so the
+      # SHA256 verification baked into bootstrap-install.ps1 / install-
+      # {mac,linux}.sh (HIGH-13 fix) actually matches the binaries we
+      # just shipped. Previously this manifest was hand-rolled by
+      # `scripts/gen-release-checksums.ps1` and never auto-regenerated
+      # — every binary rebuild left the published manifest pointing at
+      # the OLD SHAs, breaking install with "checksum mismatch" until
+      # someone noticed and re-ran the script by hand. Now CI does it
+      # in lockstep with the binaries, atomically, on the same job that
+      # uploads the archives. Format must match gen-release-checksums
+      # .ps1 exactly: uppercase hex, files keyed by basename, ISO-8601
+      # UTC `generated` timestamp.
+      - name: Generate release-checksums.json
+        env:
+          TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          set -euo pipefail
+          OUT=release-checksums.json
+          GENERATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          {
+            printf '{\n'
+            printf '  "version": "%s",\n' "$TAG"
+            printf '  "generated": "%s",\n' "$GENERATED"
+            printf '  "files": {\n'
+            FIRST=1
+            # Iterate sorted so manifest output is byte-stable across runs.
+            while IFS= read -r f; do
+              base=$(basename "$f")
+              sha=$(sha256sum "$f" | awk '{print toupper($1)}')
+              if [ $FIRST -eq 1 ]; then
+                FIRST=0
+              else
+                printf ',\n'
+              fi
+              printf '    "%s": "%s"' "$base" "$sha"
+            done < <(find artifacts -type f \( -name '*.zip' -o -name '*.tar.gz' \) | sort)
+            printf '\n  }\n'
+            printf '}\n'
+          } > "$OUT"
+          echo "--- generated $OUT ---"
+          cat "$OUT"
+          # Sanity gate: parse it, count entries, fail if zero.
+          python3 - "$OUT" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          n = len(d.get("files", {}))
+          if n == 0:
+              print("ERROR: 0 files in manifest", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK: manifest has {n} file(s)")
+          PY
+
+      - name: Upload release-checksums.json to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          gh release upload "$TAG" release-checksums.json \
             --repo "${{ github.repository }}" \
             --clobber
 
