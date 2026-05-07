@@ -302,38 +302,57 @@ jobs:
           set -euo pipefail
           OUT=release-checksums.json
           GENERATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          {
-            printf '{\n'
-            printf '  "version": "%s",\n' "$TAG"
-            printf '  "generated": "%s",\n' "$GENERATED"
-            printf '  "files": {\n'
-            FIRST=1
-            # Iterate sorted so manifest output is byte-stable across runs.
-            while IFS= read -r f; do
-              base=$(basename "$f")
-              sha=$(sha256sum "$f" | awk '{print toupper($1)}')
-              if [ $FIRST -eq 1 ]; then
-                FIRST=0
-              else
-                printf ',\n'
-              fi
-              printf '    "%s": "%s"' "$base" "$sha"
-            done < <(find artifacts -type f \( -name '*.zip' -o -name '*.tar.gz' \) | sort)
-            printf '\n  }\n'
-            printf '}\n'
-          } > "$OUT"
+          # Bug #32 (2026-05-07): build the file map in Python so we can
+          # cleanly merge two sources — fresh sha256sum of binary artifacts
+          # plus the static SHAs of HuggingFace model files in
+          # release/model-checksums.json. Previously the manifest only
+          # tracked binaries, leaving every install with 5 unverified
+          # multi-GB downloads ("no pinned SHA-256 for ..." WARNs).
+          python3 - "$OUT" "$TAG" "$GENERATED" <<'PY'
+          import hashlib, json, os, pathlib, sys
+          out_path, tag, generated = sys.argv[1], sys.argv[2], sys.argv[3]
+          files = {}
+          # 1) Binaries from artifacts/ — sha256 fresh from disk, basename keys, sorted.
+          binaries = sorted(
+              p for p in pathlib.Path("artifacts").rglob("*")
+              if p.is_file() and p.suffix in (".zip", ".gz")
+          )
+          for p in binaries:
+              h = hashlib.sha256()
+              with p.open("rb") as f:
+                  for chunk in iter(lambda: f.read(1 << 20), b""):
+                      h.update(chunk)
+              files[p.name] = h.hexdigest().upper()
+          print(f"binary entries: {len(files)}")
+          # 2) Static model SHAs from release/model-checksums.json — committed,
+          #    versioned with mneme source. Only update when an upstream model
+          #    is replaced (rare; these point at fixed HuggingFace blobs).
+          model_path = pathlib.Path("release/model-checksums.json")
+          model_count = 0
+          if model_path.exists():
+              with model_path.open() as f:
+                  blob = json.load(f)
+              for name, sha in blob.get("files", {}).items():
+                  files[name] = sha.upper()
+                  model_count += 1
+              print(f"model entries from {model_path}: {model_count}")
+          else:
+              print(f"WARN: {model_path} missing — model SHAs not pinned")
+          # Sort keys for byte-stable output across runs.
+          payload = {
+              "version": tag,
+              "generated": generated,
+              "files": dict(sorted(files.items())),
+          }
+          with open(out_path, "w") as f:
+              json.dump(payload, f, indent=2)
+              f.write("\n")
+          print(f"OK: manifest has {len(files)} file(s) ({len(binaries)} binary + {model_count} model)")
+          if not files:
+              sys.exit("ERROR: 0 files in manifest")
+          PY
           echo "--- generated $OUT ---"
           cat "$OUT"
-          # Sanity gate: parse it, count entries, fail if zero.
-          python3 - "$OUT" <<'PY'
-          import json, sys
-          d = json.load(open(sys.argv[1]))
-          n = len(d.get("files", {}))
-          if n == 0:
-              print("ERROR: 0 files in manifest", file=sys.stderr)
-              sys.exit(1)
-          print(f"OK: manifest has {n} file(s)")
-          PY
 
       - name: Upload release-checksums.json to release
         env:

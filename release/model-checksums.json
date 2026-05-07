@@ -1,0 +1,11 @@
+{
+  "_comment": "SHA-256 manifest for ML model assets that mneme bootstrap downloads from Hugging Face. These are static — bumped only when we replace a model file upstream — so they live in source instead of being computed in the release workflow. The release-checksums.json generation step in .github/workflows/multi-arch-release.yml merges this file's `files` map into the binary-artifact entries before publishing. Bug #32 (2026-05-07): without these, every install printed 5 'no pinned SHA-256' WARNs and skipped integrity verification on 3.5 GB of downloaded weights.",
+  "version": "static",
+  "files": {
+    "bge-small-en-v1.5.onnx": "828E1496D7FABB79CFA4DCD84FA38625C0D3D21DA474A00F08DB0F559940CF35",
+    "tokenizer.json": "FFB28886478B9B17A8C06F4FE6741B970D5DD3DE13330CCC3B9F686DF8A0545A",
+    "qwen-embed-0.5b.gguf": "06507C7B42688469C4E7298B0A1E16DEFF06CAF291CF0A5B278C308249C3E439",
+    "qwen-coder-0.5b.gguf": "1D9614638D18024D0FBB36575A15F1302A3ADF044DF10345688EC4F6E1C4FF32",
+    "phi-3-mini-4k.gguf": "8A83C7FB9049A9B2E92266FA7AD04933BB53AA1E85136B7B30F1B8000FF2EDEF"
+  }
+}
