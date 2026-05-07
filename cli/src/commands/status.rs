@@ -597,11 +597,56 @@ async fn render_supervisor_detail(
                 style("·").dim(),
                 children.len()
             );
-            // Pretty-print the first 8 to keep the screen readable; full
-            // detail lives in `mneme doctor`.
+            // Bug #37 (2026-05-07): pretty-print one line per worker
+            // instead of dumping raw serde JSON. Format matches the doctor
+            // per-worker box but trimmed to one line each so `mneme status`
+            // stays brief — full detail still lives in `mneme doctor`.
+            // CLI receives children as Vec<serde_json::Value> so we extract
+            // fields with .get().and_then() — supervisor's ChildSnapshot
+            // type isn't linked into the CLI crate by design.
+            // Show the first 8 to keep the screen readable.
             for snap in children.iter().take(8) {
-                let line = serde_json::to_string(snap).unwrap_or_default();
-                println!("    {}", style(line).dim());
+                let name = snap
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                let status_str = snap
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                let pid = snap
+                    .get("pid")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let uptime_ms = snap
+                    .get("current_uptime_ms")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let restarts = snap
+                    .get("restart_count")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let mark = if status_str == "running" {
+                    style("✓").green()
+                } else {
+                    style("!").yellow()
+                };
+                let uptime_s = uptime_ms / 1000;
+                let uptime_pretty = if uptime_s >= 3600 {
+                    format!("{}h {}m", uptime_s / 3600, (uptime_s % 3600) / 60)
+                } else if uptime_s >= 60 {
+                    format!("{}m {}s", uptime_s / 60, uptime_s % 60)
+                } else {
+                    format!("{uptime_s}s")
+                };
+                println!(
+                    "    {} {:<22} pid={:<6} up {:<10} restarts={}",
+                    mark,
+                    style(name).bold(),
+                    pid,
+                    uptime_pretty,
+                    restarts
+                );
             }
             if children.len() > 8 {
                 println!(

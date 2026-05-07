@@ -145,7 +145,8 @@ pub struct SelfUpdateArgs {
     #[arg(long)]
     pub force: bool,
     /// Print what would happen without modifying any binaries.
-    #[arg(long, alias = "dry-run")]
+    /// Aliases: --dry-run (legacy), --check (npm/gh convention; Bug #36, 2026-05-07).
+    #[arg(long, aliases = ["dry-run", "check"])]
     pub check_only: bool,
     /// Skip stopping the daemon (for advanced users).
     #[arg(long)]
@@ -1791,6 +1792,10 @@ mod tests {
         // --dry-run alias of --check-only.
         let h = Harness::try_parse_from(["x", "--dry-run"]).unwrap();
         assert!(h.args.check_only, "--dry-run must alias --check-only");
+
+        // Bug #36 (2026-05-07): --check is the npm/gh-convention alias real users type.
+        let h = Harness::try_parse_from(["x", "--check"]).unwrap();
+        assert!(h.args.check_only, "--check must alias --check-only");
 
         // --allow-unsigned propagates.
         let h = Harness::try_parse_from(["x", "--check-only", "--allow-unsigned"]).unwrap();
