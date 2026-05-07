@@ -34,6 +34,38 @@ jobs:
       - name: Build bench binary
         run: cargo build --release -p benchmarks --bin bench_retrieval
 
+      # BENCH-FIX-2 follow-up (2026-05-07): install the BGE embedding model
+      # into the runner's `~/.mneme/models/` so the bench harness's semantic
+      # recall fallback can actually run. Without these files Embedder
+      # is_ready() returns false (hashing-trick fallback only),
+      # recall_semantic_fallback returns empty, and every multi-word
+      # natural-language query in the golden set permanently misses.
+      # The 2026-05-07 04:18 baseline run showed 7 of 10 queries returning
+      # `-` for exactly this reason — ONNX + tokenizer were never present.
+      #
+      # Cache the models between runs because the ONNX is ~133 MB and
+      # there's no point re-downloading from HuggingFace every Monday.
+      - name: Cache BGE embedding model
+        id: cache-bge
+        uses: actions/cache@v4
+        with:
+          path: ~/.mneme/models
+          key: bge-small-en-v1.5-${{ runner.os }}
+
+      - name: Install BGE embedding model
+        if: steps.cache-bge.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.mneme/models
+          # URL mirrors what release/install-linux.sh already uses.
+          curl -fsSL --retry 3 \
+            "https://huggingface.co/aaditya4u/mneme-models/resolve/main/bge-small-en-v1.5.onnx" \
+            -o ~/.mneme/models/bge-small-en-v1.5.onnx
+          curl -fsSL --retry 3 \
+            "https://huggingface.co/aaditya4u/mneme-models/resolve/main/tokenizer.json" \
+            -o ~/.mneme/models/tokenizer.json
+          ls -la ~/.mneme/models/
+
       - name: Run bench-all against Mneme itself
         run: just bench-all . > bench-run.csv 2> bench-run.log
 
