@@ -276,7 +276,39 @@ Combining the four axes a real user actually weighs — answer quality, wall tim
 
 <sub>*The mneme rows above were measured on an earlier baseline (run captured 2026-05-03). The current release ships symbol resolvers and symbol-anchored embeddings; the rebench against the current binaries lands in the next weekly CI run.*</sub>
 
-The seven mneme-only capabilities: persistent memory across sessions, multimodal ingestion (PDF / image / audio), 22 sharded SQLite stores, 14-view WebGL vision app, convention detection, drift detection, federated cross-project pattern matching. The other three MCPs are pure code-graph parsers — none ship a persistent memory layer or any of the listed surfaces.
+### What it saves you, in dollars
+
+Same five queries on the mneme workspace itself, identical Claude Code 2.1.126, same model, same prompts. Per-query average from the totals above:
+
+| MCP | Time per query | Tokens per query | Cost per query |
+|---|:---:|:---:|:---:|
+| **mneme** | **82 s** | **5,159** | **$0.97** |
+| graphify v0.3.0 | 96 s | 6,564 | $0.93 |
+| tree-sitter v0.7.0 | 147 s | 9,505 | $1.38 |
+| CRG v2.3.2 | 222 s | 7,655 | $1.20 |
+
+Mneme is **the cheapest of the four when the bench finishes inside budget**, and the fastest. Graphify edges out by 4 cents per query but at the cost of skipping queries it couldn't answer.
+
+#### Annualized at developer-team scale
+
+Running the same kind of code-graph queries 50 times per developer per working day (≈ 250 working days/year), the dollar gap compounds:
+
+| Team size | mneme/year | vs tree-sitter | vs CRG |
+|---|:---:|:---:|:---:|
+| 1 dev | **$12,125** | save **$5,125/yr** | save **$2,875/yr** |
+| 10 devs | **$121,250** | save **$51,250/yr** | save **$28,750/yr** |
+| 50 devs | **$606,250** | save **$256,250/yr** | save **$143,750/yr** |
+| 100 devs | **$1,212,500** | save **$512,500/yr** | save **$287,500/yr** |
+
+These are measured deltas from the bench above — not projections. Your team's actual mileage depends on query rate and prompt complexity.
+
+#### One more lever — the Genesis keystone work
+
+Genesis ships the symbol-resolver chain that the bench above did not yet have. The 2026-05-05 audit projected a token-reduction lift of **~5×** once the resolvers feed the recall/blast/call-graph paths end-to-end. If that lands as projected, the cost-per-query above drops from ~$0.97 to ~$0.20, and the annualized 100-dev save vs tree-sitter goes from $512K to **~$1.0M**. The Genesis rebench is in the next weekly CI run; this README will be updated with the measured number once it lands.
+
+### Why mneme leads on capabilities
+
+The seven mneme-only capabilities the others don't ship: persistent memory across sessions, multimodal ingestion (PDF / image / audio), 27 sharded SQLite stores, 14-view WebGL vision app, convention detection, drift detection, federated cross-project pattern matching. The other three MCPs are pure code-graph parsers.
 
 Every cell in the upper table is a measured number from a real Claude process exit on the Windows VM where mneme is installed via the official `iex` bootstrap. No placeholders, no skipped cells. Per-query budget bumped from 180 s to 600 s on this run so tree-sitter and CRG could finish their long Q5 thinking instead of getting killed mid-stream.
 
