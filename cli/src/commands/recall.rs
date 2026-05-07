@@ -111,6 +111,23 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
     // it twice if IPC fails.
     let project_root = resolve_project_root(args.project.clone());
 
+    // 2026-05-07 (edge-case agent W1): if neither graph.db nor
+    // semantic.db exist for the resolved project, no path can return
+    // hits. Surface a helpful error UP FRONT instead of letting the
+    // query silently return "no results" — first-time users running
+    // `mneme recall` from outside a project directory should see why
+    // their search came back empty, not assume the index is broken.
+    let graph_db_for_check = graph_db_path(&project_root)?;
+    let semantic_db_for_check = semantic_db_path(&project_root)?;
+    if !graph_db_for_check.exists() && !semantic_db_for_check.exists() {
+        return Err(CliError::Other(format!(
+            "no mneme index found for `{}`.\n\
+             Either run `mneme build .` from inside a project, or pass \
+             `--project <path>` pointing at one that has been indexed.",
+            project_root.display()
+        )));
+    }
+
     // HIGH-48 (2026-05-06, 2026-05-05 audit): consolidated IPC dispatch via
     // cli::ipc_helpers::try_ipc_dispatch. Error arms are shared; success arm
     // is inline here because it is specific to recall (RecallResults variant).
