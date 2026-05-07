@@ -83,7 +83,8 @@ pub async fn run(args: RebuildArgs, socket_override: Option<PathBuf>) -> CliResu
         if client.is_running().await {
             match client
                 .request(IpcRequest::Rebuild {
-                    project: project.clone(),
+                    project_id: project.clone(),
+                    force: false,
                 })
                 .await
             {

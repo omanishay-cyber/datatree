@@ -106,9 +106,19 @@ pub enum IpcRequest {
     /// Run a full self-test.
     Doctor,
     /// Drop all DBs and re-parse from scratch.
+    ///
+    /// 2026-05-07 fix (edge-case agent): the supervisor's wire schema
+    /// (supervisor/src/ipc.rs::ControlCommand::Rebuild) expects field
+    /// names `project_id` + optional `force`. The prior CLI variant
+    /// used `project` which serde rejected with `missing field
+    /// 'project_id'`, breaking `mneme rebuild --yes` end-to-end.
+    /// Rename to align with the daemon contract.
     Rebuild {
-        /// Project to rebuild.
-        project: PathBuf,
+        /// Project root path. Aligned with supervisor schema.
+        project_id: PathBuf,
+        /// Forcefully kill running workers (default false: drain).
+        #[serde(default)]
+        force: bool,
     },
     /// Run all configured scanners.
     Audit {
