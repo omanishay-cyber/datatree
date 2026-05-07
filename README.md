@@ -61,14 +61,34 @@ Stop re-explaining your codebase to Claude every chat. Mneme keeps what Claude l
   </tr>
 </table>
 
+**🪟 Windows** — winget (preferred, built into Windows 10 1809+ / 11)
+
 ```powershell
-# Windows (winget — preferred)        Windows (no winget — auto-detects x64/ARM64)
-winget install Anish.Mneme            iex (irm https://github.com/omanishay-cyber/mneme/releases/latest/download/bootstrap-install.ps1)
+winget install Anish.Mneme
 ```
 
+**🪟 Windows** — no winget (one command, no admin, auto-detects x64 / ARM64)
+
+```powershell
+iex (irm https://github.com/omanishay-cyber/mneme/releases/latest/download/bootstrap-install.ps1)
+```
+
+**🍎 macOS** — Apple Silicon (Intel = build from source)
+
 ```bash
-# macOS (Intel + Apple Silicon)       Linux (x64 + ARM64)                          Python (any OS)
-curl -fsSL .../install-mac.sh | bash  curl -fsSL .../install-linux.sh | bash       pip install mnemeos && mnemeos
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-mac.sh | bash
+```
+
+**🐧 Linux** — auto-detects x64 / ARM64
+
+```bash
+curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-linux.sh | bash
+```
+
+**🐍 Python** (any OS) — pip-friendly wrapper
+
+```bash
+pip install mnemeos && mnemeos
 ```
 
 > All five routes end up at the same `~/.mneme` install. Restart Claude after install. Verify with `mneme doctor` and `claude mcp list`. Full URLs and per-platform notes live under [Quick start](#-quick-start) and [Install — in depth](#-install---in-depth).
