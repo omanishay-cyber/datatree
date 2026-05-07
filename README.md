@@ -335,7 +335,7 @@ curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/ins
 curl -fsSL https://github.com/omanishay-cyber/mneme/releases/latest/download/install-linux.sh | bash
 ```
 
-> Models (~3.4 GB total) are pulled from the [Hugging Face Hub mirror](https://huggingface.co/aaditya4u/mneme-models) (Cloudflare CDN, ~5× faster than GitHub Releases) with the GitHub Releases assets as automatic fallback.
+> Models (~3.4 GB total) are pulled from the Hugging Face Hub mirror (Cloudflare CDN, ~5× faster than GitHub Releases) with the GitHub Releases assets as automatic fallback.
 
 Then, in any project:
 
@@ -726,7 +726,7 @@ Each script:
 1. Detects your OS + architecture (x64 / ARM64) and downloads the matching binary archive
 2. Verifies the CPU has AVX2 / BMI2 / FMA (refuses early on pre-Haswell hardware with a clear error)
 3. Installs Bun if missing, runs `bun install --frozen-lockfile` for the MCP server
-4. Pulls 5 model files from the [Hugging Face Hub mirror](https://huggingface.co/aaditya4u/mneme-models) (`bge-small-en-v1.5.onnx`, `tokenizer.json`, `qwen-embed-0.5b.gguf`, `qwen-coder-0.5b.gguf`, and `phi-3-mini-4k.gguf` as a single 2.23 GB file). GitHub Releases is the automatic fallback if HF is unreachable - phi-3 falls back to two parts (`.part00` + `.part01`) there because GitHub caps individual release assets at 2 GB; the bootstrap concatenates them client-side before install.
+4. Pulls 5 model files from the Hugging Face Hub mirror (`bge-small-en-v1.5.onnx`, `tokenizer.json`, `qwen-embed-0.5b.gguf`, `qwen-coder-0.5b.gguf`, and `phi-3-mini-4k.gguf` as a single 2.23 GB file). GitHub Releases is the automatic fallback if HF is unreachable - phi-3 falls back to two parts (`.part00` + `.part01`) there because GitHub caps individual release assets at 2 GB; the bootstrap concatenates them client-side before install.
 5. Adds Defender exclusions for `~/.mneme` and `~/.claude` (best-effort if not elevated)
 6. Registers the MCP server + Claude Code plugin commands (`/mn-build`, `/mn-recall`, `/mn-why`, ...) + 8 hook entries
 7. Starts the daemon in the background and runs `mneme doctor` for a green-light verdict
@@ -755,7 +755,7 @@ See [INSTALL.md](INSTALL.md) for troubleshooting and platform-specific notes.
 
 ## 🤗 Models
 
-Mneme ships against five locally-loaded models. The install pulls them from the **[Hugging Face Hub mirror](https://huggingface.co/aaditya4u/mneme-models)** (`aaditya4u/mneme-models`) — Cloudflare CDN, ~5× faster than GitHub Releases globally, and no asset cap. GitHub Releases remains a fallback if Hugging Face is unreachable.
+Mneme ships against five locally-loaded models. The install pulls them from the **Hugging Face Hub mirror** (the model mirror) — Cloudflare CDN, ~5× faster than GitHub Releases globally, and no asset cap. GitHub Releases remains a fallback if Hugging Face is unreachable.
 
 | File | Purpose | Size | Source |
 |---|---|---|---|

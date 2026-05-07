@@ -39,7 +39,7 @@ Detailed engineering backlog lives in [`docs/dev/v0.4-backlog.md`](docs/dev/v0.4
 
 - 22+ install + audit + UX bugs fixed in place under the v0.3.2 tag (no version bump).
 - Cross-OS install commands per platform (Windows / macOS / Linux), each auto-detecting x64 vs ARM64.
-- Models migrated to a Hugging Face Hub primary mirror (`aaditya4u/mneme-models`); GitHub Releases stays as the fallback.
+- Models migrated to a Hugging Face Hub primary mirror (the model mirror); GitHub Releases stays as the fallback.
 - Workspace compiles for the `x86-64-v3` baseline (AVX2 / BMI2 / FMA) - 2-4x faster BGE inference, scanners, and tree-sitter parsing.
 - Audit findings now stream to `findings.db` per-batch and the audit phase fans out across the supervisor's scanner-worker pool (5-10x faster).
 - ONNX Runtime DLL bumped to 1.24.4 - fixes the silent BGE inference hang on Windows.

@@ -27,7 +27,7 @@ No. mneme runs **100% locally**. No cloud, no telemetry, no API keys, no "phone 
 
 The bootstrap installer is the only one-time network event - it pulls binaries
 from `github.com/omanishay-cyber/mneme/releases` and models from
-`huggingface.co/aaditya4u/mneme-models` (with GitHub Releases as a fallback
+`the Hugging Face Hub mirror` (with GitHub Releases as a fallback
 mirror for the model weights). After that, nothing leaves your machine.
 
 ### How is this different from code-review-graph or graphify?

@@ -145,7 +145,7 @@ The audit comparing mneme to CRG and graphify (2026-05-05) identified one root c
 ### Added
 
 - **`mneme build --rebuild` flag.** Forces a clean rebuild from scratch - wipes `build-state.json`, ignores the resume cursor, optionally drops embeddings. Previously users had to manually `Remove-Item` shard files. `--full` retains its meaning of "force re-parse, keep DB"; `--rebuild` means "start over from zero".
-- **Hugging Face Hub model mirror** (`aaditya4u/mneme-models`). Primary download path for all 5 model files (~3.4 GB total). Cloudflare CDN, ~5× faster than GitHub Releases globally, no 2 GB asset cap. GitHub Releases stays as fallback for users in regions where HF is blocked.
+- **Hugging Face Hub model mirror** (the model mirror). Primary download path for all 5 model files (~3.4 GB total). Cloudflare CDN, ~5× faster than GitHub Releases globally, no 2 GB asset cap. GitHub Releases stays as fallback for users in regions where HF is blocked.
 - **`x86-64-v3` baseline** (AVX2 / BMI2 / FMA). Workspace `.cargo/config.toml` now sets `target-cpu=x86-64-v3`. **2–4× faster** BGE inference, scanners, tree-sitter parsing, regex matching on Haswell-or-newer CPUs (Intel 2013+, AMD Excavator 2015+ - covers 99%+ of installed Windows PCs in 2026).
 - **Multi-architecture Windows support** (x64 today, ARM64 planned). Single bootstrap script auto-detects `$env:PROCESSOR_ARCHITECTURE` and downloads the right zip. Cross-OS scripts (`install-mac.sh`, `install-linux.sh`) coming soon - each auto-detects via `uname -m`.
 - **Pre-Haswell CPU refusal at install time** with a clear error (`This build requires AVX2/BMI2/FMA - Intel Haswell 2013+ or AMD Excavator 2015+`). Better than a cryptic SIGILL crash on first BGE inference.

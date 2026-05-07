@@ -89,7 +89,7 @@ operation.
 | Host | When | Why |
 |---|---|---|
 | `github.com` | install + self-update | Release zip, `bootstrap-install.ps1`, GitHub Releases fallback for model files |
-| `huggingface.co` | first-run model fetch (primary) | BGE-small ONNX + Phi-3 model bundles via the `aaditya4u/mneme-models` mirror |
+| `huggingface.co` | first-run model fetch (primary) | BGE-small ONNX + Phi-3 model bundles via the the model mirror mirror |
 | `bun.sh` | install (only if Bun is missing) | Bun runtime installer for the MCP server |
 
 All requests are HTTPS-only. There are no telemetry, analytics, or

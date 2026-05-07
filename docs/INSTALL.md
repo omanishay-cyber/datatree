@@ -308,7 +308,7 @@ mneme models install --from-path /path/to/local/mirror
 ```
 
 The local mirror just needs the four `.gguf` / `.onnx` files from the HF mirror
-at https://huggingface.co/aaditya4u/mneme-models in any directory.
+at the Hugging Face Hub mirror in any directory.
 
 ---
 
@@ -319,7 +319,7 @@ The release ZIP at
 self-contained for the binaries. Download it on a machine with network,
 transfer to the target, extract to `~/.mneme/`, add the bin directory to
 PATH. For models, download from the HF mirror
-https://huggingface.co/aaditya4u/mneme-models on a connected machine and
+the Hugging Face Hub mirror on a connected machine and
 copy them to the target. Then:
 
 ```bash

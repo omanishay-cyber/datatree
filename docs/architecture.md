@@ -69,7 +69,7 @@ Each worker (parsers, scanners, brain, livebus, store, md-ingest) runs as a sepa
 No outbound network calls in the hot path. **As of v0.3.2, real
 BGE-small-en-v1.5 ONNX embeddings (384-dim) are on by default**: the
 bootstrap downloads the model once (~133 MB) from the HF Hub mirror
-at `huggingface.co/aaditya4u/mneme-models` and the `brain` crate
+at `the Hugging Face Hub mirror` and the `brain` crate
 loads it via ONNX Runtime 1.24.4 (bundled `onnxruntime.dll` in
 `~/.mneme/bin/`, auto-pinned via `ORT_DYLIB_PATH` so the bundled
 copy always wins over Win11 24H2's System32 hijack). The pure-Rust
@@ -88,7 +88,7 @@ The model lineup that ships with v0.3.2:
 | **Phi-3-mini-4k-instruct Q4_K_M** (GGUF) | ~2.28 GB | reasoning + summary |
 
 Models are downloaded once from
-https://huggingface.co/aaditya4u/mneme-models (primary) with a GitHub
+the Hugging Face Hub mirror (primary) with a GitHub
 Releases fallback. The only other "network" exception is `mneme models
 install --from-path <local-mirror>` which copies pre-downloaded model files
 from a path you specify - still local.

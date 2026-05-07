@@ -140,7 +140,7 @@ Output hash: SHA256 (recorded alongside the zip as `mneme final.zip.sha256`).
 - **Voice navigation `/api/voice`** - stub by design (returns `{enabled: false, phase: "stub"}`).
 - **Per-worker rss_mb on Windows** - fixed in v0.3.2 per CHANGELOG (C1 fix). Briefly checked via `/health` body in Phase 6.
 - **Tesseract OCR** - **on by default at runtime in v0.3.2 (B-1 fix)**. install.ps1 auto-installs `UB-Mannheim.TesseractOCR` via winget and `multimodal-bridge/src/image.rs` shells out at indexing time. Whisper / ffmpeg remain compile-time opt-in - planned for v0.5.
-- **Real BGE-small ONNX embeddings** - **on by default in v0.3.2**. Bootstrap pulls 5 model files (~3.4 GB) from `huggingface.co/aaditya4u/mneme-models`; bundled `~/.mneme/bin/onnxruntime.dll` (1.24.4) auto-pinned via `ORT_DYLIB_PATH`. Set `MNEME_FORCE_HASH_EMBED=1` to bypass.
+- **Real BGE-small ONNX embeddings** - **on by default in v0.3.2**. Bootstrap pulls 5 model files (~3.4 GB) from `the Hugging Face Hub mirror`; bundled `~/.mneme/bin/onnxruntime.dll` (1.24.4) auto-pinned via `ORT_DYLIB_PATH`. Set `MNEME_FORCE_HASH_EMBED=1` to bypass.
 
 ---
 

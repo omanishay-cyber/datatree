@@ -14,7 +14,7 @@ All three are documented below.
 
 ## Public bootstrap (one command per OS)
 
-Each script auto-detects your architecture (x64 / ARM64), downloads the matching binary archive, pulls 5 model files (~3.4 GB) from the [Hugging Face Hub mirror](https://huggingface.co/aaditya4u/mneme-models) with GitHub Releases as automatic fallback, registers the MCP server + plugin commands + hooks, and starts the daemon.
+Each script auto-detects your architecture (x64 / ARM64), downloads the matching binary archive, pulls 5 model files (~3.4 GB) from the Hugging Face Hub mirror with GitHub Releases as automatic fallback, registers the MCP server + plugin commands + hooks, and starts the daemon.
 
 ### Windows (x64 / ARM64)
 
@@ -85,7 +85,7 @@ Either path - the installer:
 4. **Runs `bun install --frozen-lockfile`** in `~/.mneme/mcp/` to populate `node_modules` (B1 hotfix 2026-05-02 - without this the MCP server crashed on first start with `ENOENT while resolving package 'zod'`)
 5. Adds `~/.mneme/bin` to user PATH
 6. Adds Defender exclusions for `~/.mneme` and `~/.claude` (best-effort if not elevated)
-7. Pulls 5 model files from the [Hugging Face Hub mirror](https://huggingface.co/aaditya4u/mneme-models) (`bge-small-en-v1.5.onnx` + `tokenizer.json` + `qwen-embed-0.5b.gguf` + `qwen-coder-0.5b.gguf` + `phi-3-mini-4k.gguf` as a single 2.23 GB file - no part-merge anymore), with GitHub Releases as automatic fallback
+7. Pulls 5 model files from the Hugging Face Hub mirror (`bge-small-en-v1.5.onnx` + `tokenizer.json` + `qwen-embed-0.5b.gguf` + `qwen-coder-0.5b.gguf` + `phi-3-mini-4k.gguf` as a single 2.23 GB file - no part-merge anymore), with GitHub Releases as automatic fallback
 8. Starts the mneme daemon in the background
 9. Registers the mneme MCP server with Claude Code: writes the `mcpServers.mneme` entry to `~/.claude.json` AND writes the 8 mneme hook entries under `~/.claude/settings.json::hooks` so the persistent-memory pipeline (history.db, tasks.db, tool_cache.db, livestate.db) actually fills. Pass `--no-hooks` / `--skip-hooks` to opt out. Hook bodies are crash-safe: every hook binary reads STDIN JSON and exits 0 on any internal error, so a mneme bug can never block your tool calls.
 10. Registers the mneme **plugin slash commands** (`/mn-build`, `/mn-recall`, `/mn-why`, `/mn-resume`, `/mn-blast`, `/mn-doctor`, ...) with Claude Code so they show up in autocomplete (B1.5 hotfix 2026-05-02)
