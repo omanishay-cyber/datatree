@@ -102,7 +102,7 @@ Note: UX critical count 3 + Error-handler critical count 8 = 11. The 4 already-f
 ### Unfixed — Security
 
 - [ ] **SEC-4** — `cli/src/commands/self_update.rs:123` — `MNEME_RELEASE_PUBKEY: Option<&str> = None`; supply-chain protection is inert
-- [ ] **SEC-6** — `cli/src/commands/self_update.rs:1733` — `clear_macos_quarantine` invokes `xattr` via PATH lookup; vulnerable to PATH-prepend attack
+- [x] **SEC-6** — `cli/src/commands/self_update.rs:1808` — `clear_macos_quarantine` now pins to `/usr/bin/xattr` absolute path (defeats PATH-prepend attack from pyenv/nvm/Homebrew shims) (Batch 3, PENDING-COMMIT)
 
 ### Unfixed — Performance
 
@@ -224,11 +224,11 @@ Note: UX critical count 3 + Error-handler critical count 8 = 11. The 4 already-f
 
 - [ ] **REL-NEW-E** — `supervisor/src/manager.rs:449` — `monitor_child` swallows `wait()` error with no restart trigger; worker stranded forever
 - [ ] **REL-NEW-F** — `supervisor/src/manager.rs:421` — stdout/stderr forwarder tasks have no error handling on `push_raw` or unbounded line size
-- [ ] **REL-NEW-G** — `cli/src/commands/self_update.rs:1466` — Rollback after health-check failure swallows every `fs::rename` error; bricked install silent
+- [x] **REL-NEW-G** — `cli/src/commands/self_update.rs:1541` — `rollback_swaps` now tracks per-binary failures + logs CRITICAL summary at end (count + list + recovery hint) (Batch 3, PENDING-COMMIT)
 - [ ] **REL-NEW-H** — `supervisor/src/manager.rs:1196` — `dispatch_job` holds per-worker stdin Mutex for full 10s timeout, serialising the pool
 - [ ] **REL-NEW-I** — `supervisor/src/ipc.rs:2178` — `write_response` has no timeout — slow client stalls per-connection task; semaphore exhaustion
 - [ ] **REL-NEW-J** — `supervisor/src/manager.rs:909` — Backoff `tokio::time::sleep` not interruptible by shutdown; graceful stop waits up to max_backoff
-- [ ] **REL-NEW-K** — `cli/src/commands/self_update.rs:1614` — `health_check_new_binary` uses `std::thread::sleep` inside CLI async context
+- [x] **REL-NEW-K** — `cli/src/commands/self_update.rs:1668` — VERIFIED FALSE POSITIVE: `replace_binaries_atomically` is wrapped in `tokio::task::spawn_blocking` at self_update.rs:386 (CRIT-8 fix from 2026-05-05 audit), so `thread::sleep` inside the sync chain runs on the blocking pool, not on a tokio worker. Annotated in source with line reference. (Batch 3, PENDING-COMMIT)
 - [ ] **REL-NEW-L** — `supervisor/src/manager.rs:936` — `shutdown_all` aborts monitor tasks but doesn't await child exit; orphaned workers possible
 
 ### Pragmatic
