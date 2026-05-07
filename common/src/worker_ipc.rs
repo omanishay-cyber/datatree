@@ -232,7 +232,7 @@ fn is_acceptable_supervisor_path(raw: &str) -> bool {
         let starts_pipe = lower.starts_with(r"\\.\pipe\") || lower.starts_with(r"\\?\pipe\");
         let bare_name = !raw.contains('\\') && !raw.contains('/');
         let mentions_mneme = lower.contains("mneme-");
-        return mentions_mneme && (starts_pipe || bare_name);
+        mentions_mneme && (starts_pipe || bare_name)
     }
     #[cfg(unix)]
     {

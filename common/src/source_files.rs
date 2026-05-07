@@ -59,10 +59,7 @@ pub fn is_source_file_str(path: &str) -> bool {
         return false;
     }
     // Find the LAST dot after the LAST path separator.
-    let last_sep = trimmed
-        .rfind(|c: char| c == '/' || c == '\\')
-        .map(|i| i + 1)
-        .unwrap_or(0);
+    let last_sep = trimmed.rfind(['/', '\\']).map(|i| i + 1).unwrap_or(0);
     let basename = &trimmed[last_sep..];
     let Some(dot_pos) = basename.rfind('.') else {
         return false;
