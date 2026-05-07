@@ -364,34 +364,58 @@ async fn probe_ipc_roundtrip(daemon_alive: bool, socket_override: Option<PathBuf
 }
 
 fn probe_mcp_registration(paths: &PathManager) -> Probe {
-    // The Claude Code config file lives in ~/.claude/claude.json on
-    // every platform. We don't read it (cross-tool coupling) — we just
-    // confirm the file exists and is non-empty so the user knows the
-    // MCP wire isn't dangling.
-    let claude_json = match dirs::home_dir() {
-        Some(h) => h.join(".claude").join("claude.json"),
+    // 2026-05-07 fix: Claude Code's primary settings file is at
+    // `~/.claude.json` (a FILE in $HOME, NOT inside the `.claude/`
+    // directory). The prior probe looked at `~/.claude/claude.json`
+    // — a path that doesn't exist on stock Claude Code installs —
+    // so the probe always reported "not found" and told users to run
+    // `mneme register-mcp` even when `claude mcp list` showed mneme
+    // connected. Same lying-status pattern as the daemon liveness
+    // bug (commit 3d7c2f7) and the tokenizer.json probe (commit
+    // de045ff). We check both locations: `~/.claude.json` (current,
+    // primary) and `~/.claude/settings.json` (where hooks live and
+    // where MCP servers may also be declared depending on Claude
+    // Code version). Either holding `"mneme"` = OK.
+    let _ = paths; // unused; keeps the same signature shape as other probes
+    let home = match dirs::home_dir() {
+        Some(h) => h,
         None => {
             return Probe {
                 label: "mcp",
                 verdict: Verdict::Warn,
-                detail: "$HOME unset — can't locate ~/.claude/claude.json".into(),
-            }
+                detail: "$HOME unset — can't locate Claude Code config".into(),
+            };
         }
     };
-    let _ = paths; // unused; keeps the same signature shape as other probes
-    if !claude_json.exists() {
-        return Probe {
-            label: "mcp",
-            verdict: Verdict::Warn,
-            detail: "~/.claude/claude.json not found (run `mneme register-mcp`)".into(),
-        };
+    let candidates = [
+        home.join(".claude.json"),
+        home.join(".claude").join("settings.json"),
+    ];
+    let mut any_exists = false;
+    for path in &candidates {
+        if !path.exists() {
+            continue;
+        }
+        any_exists = true;
+        let content = std::fs::read_to_string(path).unwrap_or_default();
+        if content.contains("\"mneme\"") {
+            return Probe {
+                label: "mcp",
+                verdict: Verdict::Ok,
+                detail: format!(
+                    "mneme registered in {}",
+                    path.file_name()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                ),
+            };
+        }
     }
-    let content = std::fs::read_to_string(&claude_json).unwrap_or_default();
-    if content.contains("\"mneme\"") {
+    if !any_exists {
         Probe {
             label: "mcp",
-            verdict: Verdict::Ok,
-            detail: "mneme registered in ~/.claude/claude.json".into(),
+            verdict: Verdict::Warn,
+            detail: "Claude Code config not found (run `mneme register-mcp`)".into(),
         }
     } else {
         Probe {
