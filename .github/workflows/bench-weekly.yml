@@ -17,6 +17,19 @@ jobs:
   bench:
     name: Bench (mneme self, ubuntu-latest)
     runs-on: ubuntu-latest
+    # Anish 2026-05-07: a Bug #30 follow-up. The `bench-all` step on the
+    # full mneme self-corpus with BGE-on does 6 sequential rebuilds
+    # (token-reduction, viz-scale, incremental, compare, recall, first-
+    # build) and ran 99 minutes on a 2-core ubuntu CI runner before we
+    # cancelled by hand. With no `timeout-minutes` set, GitHub's default
+    # is the 6-hour job ceiling — way too long to silently burn CI
+    # minutes on a Monday cron that's supposed to be a regression gate.
+    # 60 minutes is a deliberate ceiling: if a future run can't land in
+    # an hour, it auto-cancels and surfaces the design problem instead
+    # of consuming hours of compute. The followup is to subset the
+    # bench corpus or move to a 4-core runner; until then this guards
+    # against runaway cost.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
