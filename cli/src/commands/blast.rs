@@ -89,7 +89,7 @@ pub async fn run(args: BlastArgs, socket_override: Option<PathBuf>) -> CliResult
                     count = impacted.len(),
                     "blast served"
                 );
-                print_layers_from_items(&args.target, &impacted, depth);
+                print_layers_from_items(&args.target, &impacted, depth, &project_root);
                 Some(Ok(()))
             }
             _ => None,
@@ -164,7 +164,7 @@ pub async fn run(args: BlastArgs, socket_override: Option<PathBuf>) -> CliResult
         }
     }
 
-    print_layers(&args.target, &layers);
+    print_layers(&args.target, &layers, Some(&conn));
     Ok(())
 }
 
@@ -172,7 +172,19 @@ pub async fn run(args: BlastArgs, socket_override: Option<PathBuf>) -> CliResult
 /// path produces. Supervisor-side BFS emits a flat `Vec<BlastItem>` with
 /// per-item `depth` so we can reconstruct the layered presentation here
 /// without the CLI having to track BFS state itself.
-fn print_layers_from_items(target: &str, items: &[BlastItem], max_depth: usize) {
+///
+/// BENCH-FIX-3 (2026-05-07): open a read-only graph.db connection (if
+/// available) to enrich opaque `n_<hex>` qualified_names with friendly
+/// `[kind] name @ file:line` rows. Without this, blast prints internal
+/// stable_ids that the user can't act on. `project_root` is the same
+/// resolved root used in `run` — falls back to None on path-derive
+/// failure (rare).
+fn print_layers_from_items(
+    target: &str,
+    items: &[BlastItem],
+    max_depth: usize,
+    project_root: &std::path::Path,
+) {
     let mut layers: Vec<Vec<String>> = vec![Vec::new()];
     for _ in 0..max_depth {
         layers.push(Vec::new());
@@ -182,7 +194,17 @@ fn print_layers_from_items(target: &str, items: &[BlastItem], max_depth: usize) 
             layer.push(it.qualified_name.clone());
         }
     }
-    print_layers(target, &layers);
+    // Best-effort enrichment: open a read-only graph.db conn just for
+    // the lookup. If the path can't be derived (project hash failed) or
+    // the file isn't there yet, fall through to the raw-id printer.
+    let conn = graph_db_path(project_root).ok().and_then(|p| {
+        Connection::open_with_flags(
+            &p,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .ok()
+    });
+    print_layers(target, &layers, conn.as_ref());
 }
 
 /// Resolve a target string to one or more starting node qualified_names.
@@ -225,7 +247,12 @@ fn resolve_target(conn: &Connection, target: &str) -> CliResult<Vec<String>> {
     Ok(out)
 }
 
-fn print_layers(target: &str, layers: &[Vec<String>]) {
+/// BENCH-FIX-3 (2026-05-07): when a graph.db `Connection` is available,
+/// each `qualified_name` gets resolved to its `[kind] name @ file:line`
+/// representation via `enrich_qn`. Without enrichment users see opaque
+/// stable_ids like `n_9919e10ae058faed` that are useless without a
+/// follow-up `mneme recall`.
+fn print_layers(target: &str, layers: &[Vec<String>], conn: Option<&Connection>) {
     let total: usize = layers.iter().skip(1).map(|l| l.len()).sum();
     println!("blast radius for `{target}` — {total} dependent(s)");
     println!();
@@ -239,10 +266,56 @@ fn print_layers(target: &str, layers: &[Vec<String>]) {
         }
         println!("depth {depth}: {} dependent(s)", layer.len());
         for q in layer {
-            println!("  {q}");
+            match conn.and_then(|c| enrich_qn(c, q)) {
+                Some(e) => {
+                    let kind = if e.kind.is_empty() { "?" } else { &e.kind };
+                    let name = if e.name.is_empty() {
+                        q.as_str()
+                    } else {
+                        &e.name
+                    };
+                    let loc = match (e.file_path.as_deref(), e.line_start) {
+                        (Some(f), Some(l)) if l > 0 => format!("{f}:{l}"),
+                        (Some(f), _) => f.to_string(),
+                        _ => "-".into(),
+                    };
+                    println!("  [{kind}] {name} @ {loc}");
+                }
+                None => println!("  {q}"),
+            }
         }
         println!();
     }
+}
+
+/// One enriched node row used by `print_layers` to render
+/// `[kind] name @ file:line` instead of the raw `qualified_name`.
+struct EnrichedNode {
+    kind: String,
+    name: String,
+    file_path: Option<String>,
+    line_start: Option<i64>,
+}
+
+/// Look up a single `qualified_name` row to produce the friendly display.
+/// Returns `None` on any error (missing row, prepared-stmt failure, etc.) —
+/// the caller falls back to printing the raw qualified_name in that case,
+/// so the user still sees something rather than the lookup failing the
+/// whole blast print.
+fn enrich_qn(conn: &Connection, qn: &str) -> Option<EnrichedNode> {
+    conn.query_row(
+        "SELECT kind, name, file_path, line_start FROM nodes WHERE qualified_name = ?1 LIMIT 1",
+        rusqlite::params![qn],
+        |row| {
+            Ok(EnrichedNode {
+                kind: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                file_path: row.get::<_, Option<String>>(2)?,
+                line_start: row.get::<_, Option<i64>>(3)?,
+            })
+        },
+    )
+    .ok()
 }
 
 #[cfg(test)]
@@ -279,8 +352,9 @@ mod tests {
 
     #[test]
     fn print_layers_handles_empty_input() {
-        // smoke: should not panic with an empty layer list.
-        print_layers("nothing", &[]);
+        // smoke: should not panic with an empty layer list. `None` for
+        // the conn — no enrichment lookup is attempted.
+        print_layers("nothing", &[], None);
     }
 
     #[test]
@@ -327,18 +401,22 @@ mod tests {
     #[test]
     fn print_layers_skips_layer_zero() {
         // depth-0 is the target itself (already in header) — must not be
-        // re-printed even if populated. Also must not panic.
+        // re-printed even if populated. Also must not panic. Pass `None`
+        // for the conn (no enrichment) — the test just verifies depth-0
+        // is skipped, not the rendering format.
         let layers = vec![
             vec!["self".to_string()],
             vec!["a".to_string(), "b".to_string()],
         ];
-        print_layers("self", &layers);
+        print_layers("self", &layers, None);
     }
 
     #[test]
     fn print_layers_from_items_smoke() {
         // Construct a flat IPC response with depths and verify it
-        // doesn't panic when reconstructed into layers.
+        // doesn't panic when reconstructed into layers. The dummy
+        // project_root here doesn't have a graph.db — print_layers_from_items
+        // tolerates that and falls back to raw qualified_name printing.
         let items = vec![
             BlastItem {
                 qualified_name: "x::a".into(),
@@ -349,6 +427,6 @@ mod tests {
                 depth: 2,
             },
         ];
-        print_layers_from_items("x", &items, 3);
+        print_layers_from_items("x", &items, 3, std::path::Path::new("."));
     }
 }
