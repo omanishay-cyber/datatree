@@ -342,6 +342,12 @@ fn compose_app_router(
 ) -> Router {
     let health_router = Router::new()
         .route("/health", get(health_full))
+        // 2026-05-07 fix: Kubernetes/Docker conventional alias. Anyone
+        // wiring `livenessProbe: { httpGet: /healthz }` against this
+        // daemon expected the K8s-style spelling and got the SPA HTML
+        // instead. Same handler — just an extra route. (See edge-case
+        // agent F3, 2026-05-07.)
+        .route("/healthz", get(health_full))
         .route("/health/live", get(health_live))
         .route("/metrics", get(metrics))
         .with_state(state);
@@ -479,10 +485,32 @@ fn compose_app_router(
             // on the index path because they don't start with `/api/`.
             let bytes_for_root = cached_index_bytes.clone();
             let bytes_for_fallback = cached_index_bytes.clone();
+            // 2026-05-07 fix (edge-case agent F3): expand the 404 path
+            // list. The prior fallback only caught `/api/*`; an HTTP
+            // probe for `/healthz`, `/mcp/tools`, `/ws/anything`, or
+            // any other system-style path got the SPA HTML and
+            // confused health-monitoring scripts that expected a real
+            // 404. Match every prefix that is unambiguously NOT a
+            // SPA route — anything else (`/projects/x`, `/views/galaxy`,
+            // etc.) falls through to the SPA index for client-side
+            // routing.
+            fn looks_like_system_path(path: &str) -> bool {
+                path.starts_with("/api/")
+                    || path.starts_with("/health/")
+                    || path == "/health"
+                    || path == "/healthz"
+                    || path.starts_with("/healthz/")
+                    || path == "/metrics"
+                    || path.starts_with("/metrics/")
+                    || path.starts_with("/mcp/")
+                    || path == "/mcp"
+                    || path.starts_with("/ws/")
+                    || path == "/ws"
+            }
             let smart_fallback = move |uri: axum::http::Uri| {
                 let bytes = bytes_for_fallback.clone();
                 async move {
-                    if uri.path().starts_with("/api/") {
+                    if looks_like_system_path(uri.path()) {
                         let body = format!(
                             r#"{{"error":"not_found","path":"{}","hint":"no daemon endpoint at this path; either the SPA is calling a removed endpoint or the daemon has not implemented it yet"}}"#,
                             uri.path().replace('"', "\\\"")
