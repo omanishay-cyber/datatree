@@ -1,7 +1,7 @@
 param()
 $ErrorActionPreference = "Continue"
 
-# S6 — SSH disconnect survival
+# S6 -- SSH disconnect survival
 # Logic: capture daemon PID before this script's plink session ends.
 # A subsequent plink session checks if mneme-daemon is alive.
 #

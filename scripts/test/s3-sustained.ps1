@@ -4,7 +4,7 @@ param(
 )
 $ErrorActionPreference = "Continue"
 
-# S3 — Sustained build + concurrent status polls
+# S3 -- Sustained build + concurrent status polls
 # This is THE NEW-036 gate. Daemon must NOT terminate under data load.
 # Acceptance:
 #   - daemon does NOT terminate

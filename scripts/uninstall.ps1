@@ -1,7 +1,7 @@
-# mneme — standalone PowerShell uninstaller (K19 / Phase A recovery)
+# mneme -- standalone PowerShell uninstaller (K19 / Phase A recovery)
 #
 # Self-contained recovery script. Does NOT depend on mneme.exe being
-# functional — usable when the binary is broken, missing flags, or
+# functional -- usable when the binary is broken, missing flags, or
 # bricked by an interrupted install.
 #
 # Run via:

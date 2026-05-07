@@ -1,7 +1,7 @@
 param()
 $ErrorActionPreference = "Continue"
 
-# S4 — Worker crash injection
+# S4 -- Worker crash injection
 # For each worker type (non-supervisor first), kill the PID and measure
 # respawn latency. Acceptance: <200ms respawn for every non-supervisor worker.
 # Supervisor (mneme-daemon) is killed last and does NOT auto-respawn (correct).

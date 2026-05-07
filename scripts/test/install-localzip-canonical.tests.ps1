@@ -7,7 +7,7 @@
 #
 # Plan reference: docs/superpowers/plans/2026-04-29-mneme-12-bug-fix.md task A.
 #
-# WILL RUN ON EC2 — Pester 3.4.0 is also available on the local AWS test instance, so this also runs
+# WILL RUN ON EC2 -- Pester 3.4.0 is also available on the local AWS test instance, so this also runs
 # locally. The test reads files from BOTH the source tree and (when present)
 # the parent bundle dir; on a fresh install layout both are present.
 
@@ -18,7 +18,7 @@ $BundleRoot  = Resolve-Path (Join-Path $SourceRoot '..') -ErrorAction SilentlyCo
 $CanonicalZip = 'mneme-v0.3.2-windows-x64.zip'
 $WrongZipV030 = 'mneme-v0.3.0-windows-x64.zip'
 
-Describe 'Bug A — install docs reference canonical v0.3.2 zip filename' {
+Describe 'Bug A -- install docs reference canonical v0.3.2 zip filename' {
 
     Context 'INSTALL.md (in source tree, committable)' {
         $installMd = Join-Path $SourceRoot 'INSTALL.md'

@@ -5,8 +5,8 @@
 # (without invoking the executable) and well-formed real-Python output.
 #
 # Runs in two modes:
-#   1. Pester 5+ available — uses Describe/It/Should -Be (preferred).
-#   2. No Pester — falls back to pure-PowerShell asserts. Either way the
+#   1. Pester 5+ available -- uses Describe/It/Should -Be (preferred).
+#   2. No Pester -- falls back to pure-PowerShell asserts. Either way the
 #      script exits 0 on pass, 1 on fail (CI-friendly).
 #
 # Usage (from repo root):
@@ -53,7 +53,7 @@ $funcSrc = $src.Substring($startIdx, $endIdx - $startIdx + 1)
 Invoke-Expression $funcSrc
 
 # ---------------------------------------------------------------------------
-# Test cases. Each is (name, scriptblock, expected) — scriptblock returns
+# Test cases. Each is (name, scriptblock, expected) -- scriptblock returns
 # $true / $false. The test runner just compares.
 # ---------------------------------------------------------------------------
 
@@ -89,7 +89,7 @@ $tests += @{
 # invoking the executable. We create a temp file at a path that matches
 # `*\WindowsApps\*` and assert detection short-circuits on path inspection
 # alone. The temp file is not an executable, so if invocation were
-# attempted, it would throw — proving the path-check fired first.
+# attempted, it would throw -- proving the path-check fired first.
 $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('mneme-py-detect-' + [Guid]::NewGuid().ToString('N'))
 $fakeStubDir = Join-Path $tmpRoot 'WindowsApps'
 New-Item -ItemType Directory -Force -Path $fakeStubDir | Out-Null
@@ -109,7 +109,7 @@ $tests += @{
     Expected = $false
 }
 
-# Case 6: real Python — only run if a real python is present on this machine.
+# Case 6: real Python -- only run if a real python is present on this machine.
 # We probe via Get-Command -All and skip the WindowsApps entries. If a real
 # one exists, we expect $true.
 $realPy = $null
@@ -129,7 +129,7 @@ if ($realPy) {
         Expected = $true
     }
 } else {
-    Write-Host "    skip: no real Python on this machine — skipping happy-path test" -ForegroundColor Yellow
+    Write-Host "    skip: no real Python on this machine -- skipping happy-path test" -ForegroundColor Yellow
 }
 
 # ---------------------------------------------------------------------------
@@ -165,11 +165,11 @@ if ($pesterMod) {
                 Write-Host ("    [PASS] " + $t.Name) -ForegroundColor Green
                 $pass++
             } else {
-                Write-Host ("    [FAIL] " + $t.Name + " — expected $($t.Expected), got $actual") -ForegroundColor Red
+                Write-Host ("    [FAIL] " + $t.Name + " -- expected $($t.Expected), got $actual") -ForegroundColor Red
                 $fail++
             }
         } catch {
-            Write-Host ("    [FAIL] " + $t.Name + " — threw: $($_.Exception.Message)") -ForegroundColor Red
+            Write-Host ("    [FAIL] " + $t.Name + " -- threw: $($_.Exception.Message)") -ForegroundColor Red
             $fail++
         }
     }

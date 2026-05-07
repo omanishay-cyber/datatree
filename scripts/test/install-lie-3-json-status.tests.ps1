@@ -8,7 +8,7 @@
 #   from `$LASTEXITCODE -eq 0`. The hook-registration count was never
 #   inspected, so the banner could (and on Bug-B repro, did) lie about a
 #   half-installed state where the MCP entry landed but persistent-memory
-#   hooks did not — degrading mneme to a query-only surface without
+#   hooks did not -- degrading mneme to a query-only surface without
 #   surfacing that fact.
 #
 # Post-fix:
@@ -21,12 +21,12 @@
 #
 # This test mocks `mneme.exe` with a stub script that emits a JSON line
 # claiming `hooks_registered: 0` and verifies install.ps1's banner does
-# NOT report "complete" — i.e. the install banner is now telling the
+# NOT report "complete" -- i.e. the install banner is now telling the
 # truth.
 #
 # Runs in two modes:
-#   1. Pester 5+ — Describe/It/Should -Be (preferred).
-#   2. No Pester — pure-PowerShell asserts. Exit 0 on pass, 1 on fail.
+#   1. Pester 5+ -- Describe/It/Should -Be (preferred).
+#   2. No Pester -- pure-PowerShell asserts. Exit 0 on pass, 1 on fail.
 #
 # Usage (from repo root):
 #   pwsh -File scripts/test/install-lie-3-json-status.tests.ps1
@@ -155,7 +155,7 @@ $tests = @(
     @{
         name = 'falls back without claiming complete when JSON is missing'
         run  = {
-            # Stub that exits 0 but emits NO JSON line — the regression
+            # Stub that exits 0 but emits NO JSON line -- the regression
             # surface for callers built before LIE-3 (or a bug emitting
             # nothing). install.ps1 must NOT print the "complete" line.
             $stub = Get-MnemeStubScript -ExitCode 0 -JsonLine 'no-json-here'

@@ -2,7 +2,7 @@
 #
 # Tests for the generic `Invoke-NativeProbe` helper introduced in install.ps1
 # to fix B-006 follow-on (G7 `cargo tauri --version` aborting under
-# $ErrorActionPreference='Stop' when tauri-cli isn't installed yet — same
+# $ErrorActionPreference='Stop' when tauri-cli isn't installed yet -- same
 # class of bug as G3 Python stub but for any native exe in G1-G10).
 #
 # `Invoke-NativeProbe` MUST:
@@ -14,8 +14,8 @@
 #   4. Return $true-shaped Success for an existing exe that exits 0.
 #
 # Runs in two modes:
-#   1. Pester 5+ — Describe/It/Should -Be (preferred).
-#   2. No Pester — pure-PowerShell asserts. Exit 0 on pass, 1 on fail.
+#   1. Pester 5+ -- Describe/It/Should -Be (preferred).
+#   2. No Pester -- pure-PowerShell asserts. Exit 0 on pass, 1 on fail.
 #
 # Usage (from repo root):
 #   pwsh -File scripts/test/install-native-probe.tests.ps1
@@ -64,11 +64,11 @@ Invoke-Expression $funcSrc
 
 $cmdExe = (Get-Command cmd.exe -ErrorAction SilentlyContinue).Source
 if (-not $cmdExe) {
-    Write-Host "FAIL: cmd.exe not found on PATH — cannot run probe fixtures" -ForegroundColor Red
+    Write-Host "FAIL: cmd.exe not found on PATH -- cannot run probe fixtures" -ForegroundColor Red
     exit 1
 }
 
-# Build a tiny .bat that exits 0 and prints "ok 1.2.3" — emulates a clean
+# Build a tiny .bat that exits 0 and prints "ok 1.2.3" -- emulates a clean
 # `--version` probe.
 $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('mneme-probe-tests-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmpRoot | Out-Null

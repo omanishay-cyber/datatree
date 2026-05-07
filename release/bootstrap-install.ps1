@@ -164,17 +164,17 @@ try {
     try {
         # VM-2026-05-05 fix: Invoke-WebRequest on PowerShell 5.1
         # returns `Content` as a byte[] for any response whose
-        # Content-Type isn't `text/*` — and GitHub serves release
+        # Content-Type isn't `text/*` -- and GitHub serves release
         # assets as `application/octet-stream`. Piping a byte[] into
         # ConvertFrom-Json silently produces $null, which made the
         # foreach below iterate 0 entries even though the JSON was
         # fetched successfully. The bug surfaced as "loaded SHA-256
         # manifest: 0 pinned files" + every subsequent download
-        # WARN'd about no pinned hash → integrity check skipped.
+        # WARN'd about no pinned hash -> integrity check skipped.
         #
         # Two-tier fix: prefer Invoke-RestMethod (auto-decodes JSON
         # regardless of Content-Type), fall back to IWR + explicit
-        # byte→string decode for environments that hate IRM.
+        # byte->string decode for environments that hate IRM.
         $manifest = $null
         try {
             $manifest = Invoke-RestMethod -Uri $manifestUrl -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
@@ -253,7 +253,7 @@ function Get-Asset {
     if ($cmd) { $curlExe = $cmd.Source }
 
     # Build the source list: primary always, fallback only if distinct.
-    # HF-only architecture (2026-05-04) — bootstrap callers pass
+    # HF-only architecture (2026-05-04) -- bootstrap callers pass
     # explicit URLs; auto-fallback derivation removed.
     $sources = @(
         @{ Url = $PrimaryUrl; Label = 'primary' }
@@ -378,20 +378,20 @@ Section "Stop existing mneme processes (if any)"
 # AND can fire opportunistically; if it fires DURING this script's
 # kill+extract window (race window: typically 30-60s), the task
 # spawns a fresh daemon from the OLD binary path and re-locks files
-# under ~/.mneme/bin/* — the extract then fails or produces a
+# under ~/.mneme/bin/* -- the extract then fails or produces a
 # corrupt/inconsistent install.
 #
 # VM-2026-05-05 fix: the prior `2>$null | Out-Null` did NOT swallow
 # PowerShell's NativeCommandError when schtasks emits to stderr on
-# either (a) "task doesn't exist" (fresh install — exit 1 + stderr
-# message) or (b) "Access is denied" (non-admin user — exit 1 +
+# either (a) "task doesn't exist" (fresh install -- exit 1 + stderr
+# message) or (b) "Access is denied" (non-admin user -- exit 1 +
 # stderr message). With `$ErrorActionPreference = 'Stop'` set
 # upstream, that NativeCommandError halts the entire installer.
 #
 # Wrap in try/catch + explicit `$ErrorActionPreference = 'Continue'`
 # inside the block so neither error path can propagate. We also
 # silently accept the no-op (task missing OR no admin to delete it)
-# — the inner installer (scripts/install.ps1) will (a) try to
+# -- the inner installer (scripts/install.ps1) will (a) try to
 # register the task and (b) skip registration gracefully if no admin.
 try {
     $oldEAP = $ErrorActionPreference
@@ -558,7 +558,7 @@ if ($NoModels) {
         }
     )
 
-    # Bug #228 — proper skip-if-present: check the FINAL model root
+    # Bug #228 -- proper skip-if-present: check the FINAL model root
     # (`~/.mneme/models/<file>`) BEFORE staging any download to TEMP.
     # The original Get-Asset-internal check only saw the TEMP staging
     # path which is fresh on every run, so it never short-circuited
@@ -604,7 +604,7 @@ if ($NoModels) {
             }
         }
     }
-    OK "downloaded $modelDownloads / $($assets.Count) model assets ($(($modelFailures | Measure-Object).Count) failed, $modelSkips skipped — already on disk)"
+    OK "downloaded $modelDownloads / $($assets.Count) model assets ($(($modelFailures | Measure-Object).Count) failed, $modelSkips skipped -- already on disk)"
 
     # NOTE (Wave 6 follow-up, 2026-05-02): phi-3 ships asymmetrically
     # -- one 2.4 GB file on HF (the fast primary path), and two ~1.14
