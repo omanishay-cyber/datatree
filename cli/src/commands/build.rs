@@ -3202,13 +3202,26 @@ async fn run_resolve_calls_pass(
         Err(_) => return stats,
     };
 
-    // 1. Build the by-name index of every Function node. The brain
+    // 1. Build the by-name index of every callable definition. The brain
     //    resolver consumes this — pure-logic, no SQL, fully tested in
     //    `brain/src/tests.rs::call_resolver_tests`.
+    //
+    //    BENCH-FIX-4 (2026-05-07): broadened from `kind = 'function'` to
+    //    `kind IN ('function', 'class', 'method')`. Constructor calls
+    //    (`new Foo()` in TS, `Foo()` class instantiation in Python,
+    //    `Foo::new()` in Rust impl-blocks) emit a `calls` edge where the
+    //    callee text is the class name; without classes in the index they
+    //    silently never resolve. Same story for methods (`obj.bar()`):
+    //    the callee text is `bar`, and prior to this fix only
+    //    free-function `bar`s were candidates. The VM debug agent found
+    //    3 of 3 intra-corpus call edges classified `external` on a tiny
+    //    test repo for exactly this reason. `build_function_index` keys
+    //    by name regardless of kind — safe to broaden.
     let function_rows: Vec<(String, String, String)> = {
         let mut stmt = match conn.prepare(
             "SELECT name, qualified_name, file_path FROM nodes \
-             WHERE kind = 'function' AND name IS NOT NULL AND name != '' \
+             WHERE kind IN ('function', 'class', 'method') \
+             AND name IS NOT NULL AND name != '' \
              AND file_path IS NOT NULL",
         ) {
             Ok(s) => s,
