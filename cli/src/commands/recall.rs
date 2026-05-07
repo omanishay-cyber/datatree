@@ -22,7 +22,7 @@ use tracing::info;
 
 use crate::commands::build::{embedding_model_present, make_client};
 use crate::commands::ipc_helpers::{
-    graph_db_path, resolve_project_root, try_ipc_dispatch, IpcDispatch,
+    graph_db_path, resolve_project_root, semantic_db_path, try_ipc_dispatch, IpcDispatch,
 };
 use crate::error::{CliError, CliResult};
 use crate::ipc::{IpcRequest, IpcResponse};
@@ -123,13 +123,17 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
         limit: args.limit as usize,
         filter_type: args.kind.clone(),
     };
+    // BENCH-FIX-1 (2026-05-07): capture IPC hits instead of printing inside
+    // the closure, so we can intercept empty results and run the semantic
+    // fallback before the CLI returns. Without this, a running supervisor
+    // shadows the fallback because `IpcDispatch::Done` returns immediately.
+    let mut ipc_hits: Option<Vec<Hit>> = None;
     let outcome = try_ipc_dispatch(
         &client,
         req,
         |resp| match resp {
             IpcResponse::RecallResults { hits } => {
-                info!(source = "supervisor", count = hits.len(), "recall served");
-                print_hits(&hits, &args.query);
+                ipc_hits = Some(hits);
                 Some(Ok(()))
             }
             _ => None,
@@ -149,6 +153,39 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
     )
     .await?;
     if outcome == IpcDispatch::Done {
+        let hits = ipc_hits.unwrap_or_default();
+        if !hits.is_empty() {
+            info!(source = "supervisor", count = hits.len(), "recall served");
+            print_hits(&hits, &args.query);
+            return Ok(());
+        }
+        // BENCH-FIX-1: supervisor returned 0 hits (keyword-only path inside
+        // the daemon also can't match multi-word NL queries). Try the
+        // semantic embedding fallback before declaring "no results". Same
+        // gating as the direct-DB path below: only when an embedding
+        // model is installed (so we're not embedding via the noisy
+        // hashing-trick fallback).
+        if embedding_model_present() {
+            info!(
+                source = "supervisor-empty->semantic",
+                "recall: keyword path empty, trying semantic fallback"
+            );
+            match recall_semantic(&project_root, &args.query, args.limit as usize).await {
+                Ok(v) => {
+                    if !v.is_empty() {
+                        info!(count = v.len(), "recall: semantic fallback returned hits");
+                    }
+                    print_hits(&v, &args.query);
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "recall: semantic fallback failed");
+                    // Fall through to surface the empty supervisor result.
+                }
+            }
+        }
+        info!(source = "supervisor", count = 0, "recall served");
+        print_hits(&hits, &args.query);
         return Ok(());
     }
 
@@ -176,8 +213,198 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
         recall_like(&conn, &args.query, limit)?
     };
 
+    // BENCH-FIX-1 (2026-05-07): semantic-embedding fallback. Multi-word
+    // natural-language queries ("where is DbLayer defined", "drift
+    // detection") tokenize across `name` / `qualified_name` and never
+    // match in FTS5 or LIKE — that's the reported 7-of-10-empty bench
+    // result. Symbol-anchored embeddings (Item #117) ARE populated in
+    // semantic.db but were never read on the recall path. Now they are.
+    //
+    // Only triggers when:
+    //   1. Keyword paths returned nothing (so we're not displacing fast hits)
+    //   2. An embedding model is installed (otherwise we'd embed via the
+    //      hashing-trick fallback and the cosine scores would be noise)
+    //   3. semantic.db exists in this project's shard
+    //
+    // Failures are logged but never surface — the user gets the original
+    // empty result rather than an unrelated embedder error.
+    let hits = if hits.is_empty() && embedding_model_present() {
+        // Drop the read-only `conn` against graph.db before re-opening
+        // it inside `recall_semantic`. Read connections don't take a
+        // file lock on WAL-mode SQLite, but dropping is cleaner and
+        // keeps the FD count predictable.
+        drop(conn);
+        match recall_semantic(&project_root, &args.query, limit).await {
+            Ok(v) => {
+                if !v.is_empty() {
+                    info!(count = v.len(), "recall: semantic fallback returned hits");
+                }
+                v
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "recall: semantic fallback failed");
+                Vec::new()
+            }
+        }
+    } else {
+        hits
+    };
+
     print_hits(&hits, &args.query);
     Ok(())
+}
+
+/// BENCH-FIX-1 (2026-05-07): semantic recall via BGE embeddings.
+///
+/// Strategy:
+///   1. Embed the user's query with the same model the build pass used
+///      (so query vectors live in the same space as stored vectors).
+///   2. Brute-force cosine similarity against every row of
+///      `semantic.db::embeddings`. SQLite has no native vector index;
+///      typical project shards stay under ~50k embeddings so a linear
+///      scan is fine for v0.4.1. Future versions can swap in a
+///      segment-tree / HNSW index without changing this surface.
+///   3. Take top-`limit` by score, JOIN against `graph.db::nodes` to
+///      build human-readable [`Hit`] rows.
+///
+/// All failures are CliError — the caller decides whether to surface
+/// or swallow them.
+async fn recall_semantic(
+    project_root: &std::path::Path,
+    query: &str,
+    limit: usize,
+) -> CliResult<Vec<Hit>> {
+    let semantic_db = semantic_db_path(project_root)?;
+    if !semantic_db.exists() {
+        return Ok(Vec::new());
+    }
+    let graph_db = graph_db_path(project_root)?;
+    if !graph_db.exists() {
+        return Ok(Vec::new());
+    }
+
+    // Embed the query — BGE is CPU-bound, run on the blocking pool so
+    // the tokio runtime doesn't stall.
+    let query_owned = query.to_string();
+    let qvec: Vec<f32> = tokio::task::spawn_blocking(move || -> CliResult<Vec<f32>> {
+        let embedder = brain::Embedder::from_default_path()
+            .map_err(|e| CliError::Other(format!("embedder init: {e}")))?;
+        if !embedder.is_ready() {
+            return Err(CliError::Other(
+                "embedder not ready (model file missing or ORT unavailable)".into(),
+            ));
+        }
+        embedder
+            .embed(&query_owned)
+            .map_err(|e| CliError::Other(format!("embed query: {e}")))
+    })
+    .await
+    .map_err(|e| CliError::Other(format!("embed: spawn_blocking join: {e}")))??;
+
+    if qvec.len() != brain::EMBEDDING_DIM {
+        return Err(CliError::Other(format!(
+            "embedded query has dim {}, expected {}",
+            qvec.len(),
+            brain::EMBEDDING_DIM
+        )));
+    }
+
+    // Scan semantic.db, decode each f32 LE BLOB, score by cosine.
+    let sem_conn = Connection::open_with_flags(
+        &semantic_db,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| CliError::Other(format!("open {}: {e}", semantic_db.display())))?;
+
+    let mut stmt = sem_conn
+        .prepare("SELECT node_id, vector FROM embeddings WHERE node_id IS NOT NULL")
+        .map_err(|e| CliError::Other(format!("prep semantic scan: {e}")))?;
+
+    let mut top: Vec<(i64, f32)> = Vec::new();
+    {
+        // Scope `rows` and `stmt` so their borrows on `sem_conn` are
+        // released before we open the graph.db connection below. Two
+        // simultaneous read-only SQLite handles would also be fine,
+        // but minimising file-descriptor lifetime is the cleaner habit.
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| CliError::Other(format!("exec semantic scan: {e}")))?;
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| CliError::Other(format!("row read: {e}")))?
+        {
+            let node_id: i64 = row
+                .get(0)
+                .map_err(|e| CliError::Other(format!("col 0: {e}")))?;
+            let blob: Vec<u8> = row
+                .get(1)
+                .map_err(|e| CliError::Other(format!("col 1: {e}")))?;
+            let Some(vec) = decode_le_f32_blob(&blob, qvec.len()) else {
+                continue; // dim mismatch / truncated row — skip
+            };
+            let score = brain::cosine_similarity(&qvec, &vec);
+            if score.is_finite() {
+                top.push((node_id, score));
+            }
+        }
+    }
+
+    // Top-K selection. Sort descending; truncate to `limit`. For typical
+    // limits (10-50) over O(50k) embeddings this is microseconds.
+    top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    top.truncate(limit);
+    if top.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // JOIN against graph.db nodes for display. Single-row lookups in a
+    // loop — `id` is the primary key so each is O(log N). For limit=10
+    // this is 10 indexed lookups; faster than building an IN clause and
+    // re-sorting.
+    let graph_conn = Connection::open_with_flags(
+        &graph_db,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| CliError::Other(format!("open {}: {e}", graph_db.display())))?;
+
+    let mut hits: Vec<Hit> = Vec::with_capacity(top.len());
+    for (node_id, _score) in &top {
+        let row: Result<Hit, _> = graph_conn.query_row(
+            "SELECT kind, name, qualified_name, file_path, line_start \
+             FROM nodes WHERE id = ?1",
+            rusqlite::params![node_id],
+            |row| {
+                Ok(Hit {
+                    kind: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                    name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    qualified_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    file_path: row.get::<_, Option<String>>(3)?,
+                    line_start: row.get::<_, Option<i64>>(4)?,
+                })
+            },
+        );
+        if let Ok(h) = row {
+            hits.push(h);
+        }
+        // Missing nodes (semantic.db row references a node deleted from
+        // graph.db) are silently skipped; this is benign drift.
+    }
+    Ok(hits)
+}
+
+/// Decode a little-endian f32 BLOB to `Vec<f32>`, returning `None` if the
+/// byte length doesn't match `expected_dim * 4`. The build pipeline writes
+/// vectors via `encode_le_f32_hex` + `unhex()`; this is the inverse.
+fn decode_le_f32_blob(blob: &[u8], expected_dim: usize) -> Option<Vec<f32>> {
+    if blob.len() != expected_dim * 4 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(expected_dim);
+    for chunk in blob.chunks_exact(4) {
+        // chunks_exact(4) guarantees len 4; safe to construct array.
+        out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    }
+    Some(out)
 }
 
 fn has_nodes_fts(conn: &Connection) -> CliResult<bool> {
@@ -316,6 +543,41 @@ mod tests {
         assert_eq!(fts5_sanitize("foo.bar"), "foo bar");
         assert_eq!(fts5_sanitize("hello, world!"), "hello world");
         assert_eq!(fts5_sanitize("   "), "");
+    }
+
+    /// BENCH-FIX-1 (2026-05-07): round-trip f32 → little-endian bytes →
+    /// decoded f32 must reproduce the original values bit-for-bit. The
+    /// build pipeline writes vectors via `f.to_le_bytes()`; this asserts
+    /// the inverse decoder matches.
+    #[test]
+    fn decode_le_f32_blob_round_trip() {
+        let v: Vec<f32> = vec![1.0, -2.5, 3.14159, 0.0, f32::MIN, f32::MAX];
+        let mut bytes = Vec::with_capacity(v.len() * 4);
+        for f in &v {
+            bytes.extend_from_slice(&f.to_le_bytes());
+        }
+        let decoded = decode_le_f32_blob(&bytes, v.len()).expect("matching dim should decode");
+        assert_eq!(decoded.len(), v.len());
+        for (a, b) in v.iter().zip(decoded.iter()) {
+            assert_eq!(a.to_bits(), b.to_bits(), "f32 bits must round-trip");
+        }
+    }
+
+    /// BENCH-FIX-1: dim mismatch (truncated row, schema drift, wrong model
+    /// width) returns None instead of panicking on chunks_exact assumptions.
+    #[test]
+    fn decode_le_f32_blob_rejects_dim_mismatch() {
+        let v: Vec<f32> = vec![1.0, 2.0, 3.0];
+        let mut bytes = Vec::new();
+        for f in &v {
+            bytes.extend_from_slice(&f.to_le_bytes());
+        }
+        // Caller expects 4 floats but blob only contains 3.
+        assert!(decode_le_f32_blob(&bytes, 4).is_none());
+        // Caller expects 2 floats — also a mismatch (we don't truncate).
+        assert!(decode_le_f32_blob(&bytes, 2).is_none());
+        // Empty blob, 0 expected: edge case — accept as valid empty.
+        assert_eq!(decode_le_f32_blob(&[], 0), Some(Vec::new()));
     }
 
     #[test]

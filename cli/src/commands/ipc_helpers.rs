@@ -40,7 +40,7 @@ use std::time::Duration;
 
 use crate::error::{CliError, CliResult};
 use crate::ipc::{IpcClient, IpcRequest, IpcResponse};
-use common::{ids::ProjectId, paths::PathManager};
+use common::{ids::ProjectId, layer::DbLayer, paths::PathManager};
 
 /// B-001: per-round-trip timeout for build-pipeline IPC. The default
 /// `IpcClient` budget is 120s; that's appropriate for hooks but lets a
@@ -125,6 +125,19 @@ pub(crate) fn graph_db_path(root: &Path) -> CliResult<PathBuf> {
     })?;
     let paths = PathManager::default_root();
     Ok(paths.project_root(&id).join("graph.db"))
+}
+
+/// BENCH-FIX-1 (2026-05-07): map a resolved project root to its `semantic.db`
+/// path. Symmetric with [`graph_db_path`]; used by `mneme recall` when the
+/// FTS5+LIKE keyword paths return nothing and the embedding model is
+/// installed. Without this helper, multi-word natural-language queries
+/// ("where is DbLayer defined") never reach the populated embeddings table.
+pub(crate) fn semantic_db_path(root: &Path) -> CliResult<PathBuf> {
+    let id = ProjectId::from_path(root).map_err(|e| {
+        CliError::Other(format!("cannot hash project path {}: {e}", root.display()))
+    })?;
+    let paths = PathManager::default_root();
+    Ok(paths.shard_db(&id, DbLayer::Semantic))
 }
 
 // ---------------------------------------------------------------------------
