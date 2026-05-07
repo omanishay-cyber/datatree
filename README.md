@@ -2,9 +2,8 @@
 
 <a href="https://omanishay-cyber.github.io/mneme/">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/hero-dark.svg"/>
-    <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.svg"/>
-    <img src="docs/hero-light.svg" alt="mneme — the persistent memory layer for AI coding" width="100%"/>
+    <source srcset="docs/hero-banner.gif" type="image/gif"/>
+    <img src="docs/hero-banner.png" alt="Mneme Genesis — the persistent memory layer for AI coding" width="100%"/>
   </picture>
 </a>
 
