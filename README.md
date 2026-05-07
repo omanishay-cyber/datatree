@@ -1,10 +1,7 @@
 <div align="center">
 
 <a href="https://omanishay-cyber.github.io/mneme/">
-  <picture>
-    <source srcset="docs/hero-banner.gif" type="image/gif"/>
-    <img src="docs/hero-banner.png" alt="Mneme Genesis — the persistent memory layer for AI coding" width="100%"/>
-  </picture>
+  <img src="docs/hero-banner.gif" alt="Mneme Genesis — the persistent memory layer for AI coding" width="100%"/>
 </a>
 
 <br/>
