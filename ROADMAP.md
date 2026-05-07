@@ -103,46 +103,24 @@ the README/INSTALL/ROADMAP drift on this status.
 
 ---
 
-## In progress - v0.4 (target 2026-05-22)
+## In progress - v0.4.1 + v0.5
 
-Driven primarily by user feedback once Stage 1 testers surface. The list
-below is the *starting* set; Stage 1 DM responses will reorder.
+**v0.4.1 (next patch — target 2026-05-13):**
+- **Symbol-resolver wiring through `extractor.rs`.** v0.4.0 ships the resolver libraries (`parsers/src/resolver.rs::{RustResolver, TypeScriptResolver, PythonResolver}`) and uses them on the embed side, but the graph-query side (`find_references`, `blast_radius`, `call_graph`) still uses syntactic matching. This wires resolver output into extractor so graph queries match canonical symbols. Lifts the recall benchmark from 2/10 → 6/10 expected parity with CRG.
+- **Graph diff (commit-to-commit).** Wraps the existing snapshot tool with delta compute. Closes the last "doesn't have YET" gap vs CRG.
+- **Standalone `mneme-vision.exe` Tauri shell.** v0.4.0 serves the SPA via the daemon HTTP fallback at `http://127.0.0.1:7777`. The standalone Tauri shell with native window chrome and direct `#[tauri::command]` invocations is in-progress.
+- **Bench rebench against v0.4.0 binaries.** Re-run `bench_retrieval bench-all` against the v0.4.0 release; publish the new numbers in `BENCHMARKS.md` and the GH Pages bench tables (currently labeled "v0.3.2 baseline").
 
-**Committed:**
-- **Vision app shippable in v0.4 binary release.** Closes
-  `docs-and-memory/phase-a-issues.md §A1-A12`. Concretely: commit
-  `vision/tauri/build.rs` + `vision/tauri/icons/`, fix the workspace
-  membership, remove the hardcoded `url` from `tauri.conf.json`, and
-  either spawn `bun server.ts` from Tauri's `main.rs` on startup OR
-  reimplement the 17 `/api/graph/*` endpoints as `#[tauri::command]`
-  invocations so the Tauri shell has a production data layer. Ship
-  `mneme-vision.exe` in the `~/.mneme/bin/` payload.
-  (A5 macos-private-api cfg gate: already DONE in v0.3.2 home cycle -
-  `vision/tauri/Cargo.toml:13` declares `features = []`. A12 vision/dist
-  artifact: already DONE - `~/.mneme/static/vision/` ships index.html +
-  37 assets and the daemon serves them via `supervisor/src/health.rs::resolve_static_dir()`.)
-- **Supervisor IPC verbs** for `Recall` / `Blast` / `GodNodes` / `History`.
-  CLI tries IPC first, falls back to direct-DB. Enables query caching +
-  metrics + audit logs.
-- **Worker `WorkerCompleteJob` IPC.** Replaces stdout line-tailing with a
-  proper structured message. Supervisor telemetry exposes
-  `last_job_duration_ms` + `last_job_status` per worker.
-- **Cross-platform doctor tests.** Linux + macOS path discovery validated
-  with integration tests.
-- **Reproducible benchmarks** - `BENCHMARKS-results.md` with raw
-  `bench_retrieval` stdout + hardware spec + rustc version. Reproducible
-  by any reader.
-- **Marketplace listings** - submissions to `awesome-mcp-servers`,
-  Cursor gallery, smithery, mcp.so.
-- **CLAUDE.md / AGENTS.md template updates** - ship the codewords block
-  via the install manifest so every downstream platform gets them.
-- **install.sh / uninstall parity** with the Windows one-liner.
+**v0.5 (target 2026-06):**
+- **Reproducible benchmarks** — `BENCHMARKS-results.md` with raw `bench_retrieval` stdout + hardware spec + rustc version. Reproducible by any reader.
+- **Marketplace listings** — submissions to `awesome-mcp-servers`, Cursor gallery, smithery, mcp.so.
+- **Multilingual Whisper polish** — v0.4.0 ships transcription, v0.5 adds the language-routing rules CRG/Graphify pioneered.
+- **Hosted browser demo / playground** — Tier 1.5.G.
 
-**Stretch:**
-- Homebrew / Scoop / Winget formulas.
+**Stretch (post-v0.5):**
+- Homebrew / Scoop / Winget formula auto-bump on release.
 - `mneme doctor --web` serving the SLA dashboard.
-- Full branded VS Code extension (.vsix) with sidebar tree view, inline
-  hover context, status bar indicator.
+- Full branded VS Code extension (.vsix) with sidebar tree view, inline hover context, status bar indicator.
 - `mneme selftest` with a 10-artifact acceptance gate per release.
 
 ---
