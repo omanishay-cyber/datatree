@@ -117,7 +117,9 @@ pub async fn run(args: StatusArgs, socket_override: Option<PathBuf>) -> CliResul
 
     // 9. Optional rich per-project numbers via supervisor (skipped on --quick)
     if !args.quick {
-        let _ = render_supervisor_detail(&args, socket_override).await;
+        if let Err(e) = render_supervisor_detail(&args, socket_override).await {
+            eprintln!("  [warn] supervisor detail unavailable: {e}");
+        }
     }
 
     Ok(())

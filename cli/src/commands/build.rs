@@ -8439,6 +8439,7 @@ mod empty_shard_tests {
     /// `SELECT COUNT(*)` on `table`.
     fn count_rows(paths: &PathManager, project_id: &ProjectId, layer: DbLayer, table: &str) -> i64 {
         let path = paths.shard_db(project_id, layer);
+        // ERR-2 (2026-05-07): test-only — kept .expect since panic is acceptable in test failure
         let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
             .expect("open shard ro");
         conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| {
@@ -8449,6 +8450,8 @@ mod empty_shard_tests {
 
     /// Seed graph.db with one file + a couple of nodes + an edge so the
     /// architecture / wiki / federated passes have something to chew on.
+    // ERR-3 (2026-05-07): test-only — `let _ = ...await;` swallows are intentional;
+    // the asserting test downstream will fail if the seed didn't land.
     async fn seed_graph(store: &Store, project_id: &ProjectId) {
         // Node A
         let _ = store

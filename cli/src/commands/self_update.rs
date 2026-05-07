@@ -510,7 +510,7 @@ fn compare_prerelease(a: &str, b: &str) -> std::cmp::Ordering {
             }
             (Some(_), None) => return Ordering::Greater,
             (None, Some(_)) => return Ordering::Less,
-            (None, None) => unreachable!(),
+            (None, None) => return std::cmp::Ordering::Equal,
         }
     }
     Ordering::Equal
@@ -1715,7 +1715,20 @@ fn swap_one_binary(staged: &Path, current: &Path, verbose: bool) -> CliResult<Bi
 
     if let Err(e) = fs::copy(staged, current) {
         // Restore the backup so we don't leave the user with no binary.
-        let _ = fs::rename(&backup, current);
+        if let Err(rollback_err) = fs::rename(&backup, current) {
+            eprintln!(
+                "self-update: CRITICAL: rollback failed for {}. Backup binary is at {}. \
+                 Manually rename it to restore mneme. (copy error: {e}; rollback error: {rollback_err})",
+                current.display(),
+                backup.display()
+            );
+            return Err(CliError::Other(format!(
+                "CRITICAL: rollback failed for {}. Backup binary is at {}. \
+                 Manually rename it to restore mneme. (copy error: {e}; rollback error: {rollback_err})",
+                current.display(),
+                backup.display()
+            )));
+        }
         return Err(CliError::io(current.to_path_buf(), e));
     }
     // Item #84: keep the `.old` backup for now — `replace_binaries_

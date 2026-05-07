@@ -470,8 +470,26 @@ pub fn mark_notice_seen(run_dir: &Path, version: &str) {
     };
     let target = update_notice_seen_path(run_dir);
     let tmp = run_dir.join("update_notice_seen.json.tmp");
-    let _ = std::fs::write(&tmp, json.as_bytes());
-    let _ = std::fs::rename(&tmp, &target);
+    // ERR-7 (2026-05-07): formerly silent `let _ =` — a tmp-write or
+    // rename failure (disk full, perm error) silently un-persisted the
+    // notice cache, causing the update banner to fire on every launch.
+    // Now logged at warn so the cause is visible in the daemon log.
+    if let Err(e) = std::fs::write(&tmp, json.as_bytes()) {
+        warn!(
+            error = %e,
+            path = %tmp.display(),
+            "update notice: tmp write failed; banner may re-fire"
+        );
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp, &target) {
+        warn!(
+            error = %e,
+            tmp = %tmp.display(),
+            target = %target.display(),
+            "update notice: rename failed; banner may re-fire"
+        );
+    }
 }
 
 /// Returns `true` if the CLI should show the on-launch banner for

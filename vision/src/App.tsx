@@ -219,7 +219,7 @@ function DaemonBanner({ health }: { health: DaemonHealthPayload | null }): JSX.E
   return (
     <div className="vz-daemon-banner" data-state="missing" role="alert">
       <span className="vz-daemon-dot" aria-hidden="true" />
-      daemon missing — run <code>mneme-daemon start</code>
+      daemon missing — run <code>mneme daemon start</code>
     </div>
   );
 }

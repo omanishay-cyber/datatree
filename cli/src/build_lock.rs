@@ -39,6 +39,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use fs2::FileExt;
+use tracing::warn;
 
 use crate::error::{CliError, CliResult};
 
@@ -107,10 +108,21 @@ impl BuildLock {
                     );
                     // Truncate existing content first — every fresh
                     // acquire overwrites the previous holder's stamp.
-                    let _ = file.set_len(0);
+                    // ERR-1 (2026-05-07): formerly `let _ =` swallowed
+                    // every error; now logged at warn so a stamp-write
+                    // failure leaves a trail in the daemon log instead
+                    // of silently producing a blank lock file (which
+                    // makes contention errors say "no holder info").
+                    if let Err(e) = file.set_len(0) {
+                        warn!(error = %e, path = %lock_path.display(), "build lock: truncate failed");
+                    }
                     let mut writer = &file;
-                    let _ = writer.write_all(stamp.as_bytes());
-                    let _ = writer.flush();
+                    if let Err(e) = writer.write_all(stamp.as_bytes()) {
+                        warn!(error = %e, path = %lock_path.display(), "build lock: stamp write failed");
+                    }
+                    if let Err(e) = writer.flush() {
+                        warn!(error = %e, path = %lock_path.display(), "build lock: stamp flush failed");
+                    }
                     return Ok(Self {
                         path: lock_path,
                         file: Some(file),
