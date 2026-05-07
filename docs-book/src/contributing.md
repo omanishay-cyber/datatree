@@ -1,6 +1,12 @@
 # Contributing
 
-Mneme is Apache-2.0 licensed. PRs welcome on [GitHub](https://github.com/omanishay-cyber/mneme).
+Mneme is under the **Mneme Personal-Use License** — source-available, not
+open-source. Contributions are still welcome on
+[GitHub](https://github.com/omanishay-cyber/mneme), but please read this
+first: by submitting a PR you assign copyright on your contribution to
+the project (per LICENSE §2(b)). This keeps the codebase under a single
+owner so the license model stays coherent. If that's a deal-breaker for
+you, that's fair — just open an issue or email instead.
 
 ## Build from source
 

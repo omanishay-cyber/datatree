@@ -188,7 +188,7 @@ It depends. Building *a tool whose primary value proposition is mneme* (another 
 
 ### What if I find a bug and want to send a fix?
 
-PRs welcome. See [CONTRIBUTING.md](../CONTRIBUTING.md). By submitting a PR you're agreeing your contribution is licensed under the [Apache-2.0](../LICENSE).
+PRs welcome. See [CONTRIBUTING.md](../CONTRIBUTING.md). By submitting a PR you assign copyright on your contribution to the project (per [LICENSE](../LICENSE) §2(b)).
 
 ---
 

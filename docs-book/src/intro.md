@@ -55,8 +55,8 @@
 
 <div class="mneme-marquee" aria-hidden="true">
   <div class="mneme-marquee-track">
-    <span>Local-only</span><span>50 MCP tools</span><span>3 resolvers</span><span>14 graph views</span><span>22 storage layers</span><span>Apache-2.0</span><span>No telemetry</span><span>Sub-second rebuild</span><span>Symbol-anchored embeddings</span>
-    <span>Local-only</span><span>50 MCP tools</span><span>3 resolvers</span><span>14 graph views</span><span>22 storage layers</span><span>Apache-2.0</span><span>No telemetry</span><span>Sub-second rebuild</span><span>Symbol-anchored embeddings</span>
+    <span>Local-only</span><span>50 MCP tools</span><span>3 resolvers</span><span>14 graph views</span><span>22 storage layers</span><span>Personal-Use License</span><span>No telemetry</span><span>Sub-second rebuild</span><span>Symbol-anchored embeddings</span>
+    <span>Local-only</span><span>50 MCP tools</span><span>3 resolvers</span><span>14 graph views</span><span>22 storage layers</span><span>Personal-Use License</span><span>No telemetry</span><span>Sub-second rebuild</span><span>Symbol-anchored embeddings</span>
   </div>
 </div>
 
@@ -243,7 +243,7 @@ Run <code>mneme update</code>. Genesis ships an apply-with-rollback updater: it 
 
 <div class="mneme-final-cta">
   <h2>Ready to give your AI a memory?</h2>
-  <p>Install once, run forever. The graph stays fresh as you edit. Apache-2.0, no signup, no telemetry.</p>
+  <p>Install once, run forever. The graph stays fresh as you edit. Free for personal use, no signup, no telemetry.</p>
   <a class="mneme-cta mneme-cta-primary mneme-cta-large" href="./install/index.html">Install in one line<span class="arrow">&nbsp;→</span></a>
   <p class="final-cta-meta">or <a href="./releases/v0.4.0.html">read the Genesis release notes</a></p>
 </div>
@@ -254,7 +254,7 @@ Run <code>mneme update</code>. Genesis ships an apply-with-rollback updater: it 
   </div>
   <div class="footer-links">
     <a href="https://github.com/omanishay-cyber/mneme">GitHub</a>
-    <a href="https://github.com/omanishay-cyber/mneme/blob/main/LICENSE">Apache-2.0</a>
+    <a href="https://github.com/omanishay-cyber/mneme/blob/main/LICENSE">Personal-Use License</a>
     <a href="./releases/changelog.html">Changelog</a>
     <a href="./contributing.html">Contributing</a>
   </div>

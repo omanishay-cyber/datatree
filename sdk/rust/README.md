@@ -81,4 +81,4 @@ daemon. The full tree-sitter grammar set is linked directly into your binary.
 
 ## License
 
-Apache-2.0 — same as the mneme project.
+Mneme Personal-Use License — same as the mneme project. Source-available, not open-source.

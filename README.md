@@ -8,7 +8,7 @@
 
 # Claude remembers your code. Even when you don't.
 
-<sub>The persistent memory layer for AI coding. 100% local. Apache-2.0.</sub>
+<sub>The persistent memory layer for AI coding. 100% local. Personal-Use License.</sub>
 
 </div>
 
@@ -52,7 +52,7 @@ Stop re-explaining your codebase to Claude every chat. Mneme keeps what Claude l
     </td>
     <td width="33%" valign="top" align="center">
       <h3>🔒 100% local</h3>
-      <sub>No telemetry. No API keys. Models run on CPU. Apache-2.0.</sub>
+      <sub>No telemetry. No API keys. Models run on CPU. Personal-Use License.</sub>
     </td>
     <td width="33%" valign="top" align="center">
       <h3>🛡️ 50 MCP tools</h3>
@@ -156,7 +156,7 @@ Compared against the two closest projects in the AI-code-context space:
 | Live push updates (SSE + WebSocket) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![Missing](https://img.shields.io/badge/Missing-9a9a9a?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
 | HF Hub model mirror (~5× faster) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) | ![NA](https://img.shields.io/badge/n%2Fa-3a3a40?style=flat-square) |
 | 100% local, no telemetry | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) | ![Partial](https://img.shields.io/badge/Partial-d97706?style=flat-square) | ![Shipped](https://img.shields.io/badge/Shipped-16a37c?style=flat-square) |
-| License | ![Apache-2.0](https://img.shields.io/badge/Apache--2.0-16a37c?style=flat-square) | ![MIT](https://img.shields.io/badge/MIT-4191E1?style=flat-square) | ![MIT](https://img.shields.io/badge/MIT-4191E1?style=flat-square) | ![MIT](https://img.shields.io/badge/MIT-4191E1?style=flat-square) |
+| License | ![Personal-Use License](https://img.shields.io/badge/Personal--Use--License-d97706?style=flat-square) | ![MIT](https://img.shields.io/badge/MIT-4191E1?style=flat-square) | ![MIT](https://img.shields.io/badge/MIT-4191E1?style=flat-square) | ![MIT](https://img.shields.io/badge/MIT-4191E1?style=flat-square) |
 
 ### ❌ What mneme doesn't have YET
 
@@ -829,21 +829,35 @@ They sleep until relevant, then activate automatically.
 ## 🙌 Contributing
 
 Bug reports, feature requests, and PRs are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-This project is **Apache-2.0** licensed (see [LICENSE](LICENSE)). In plain English:
-
-- ✅ Use it - at work, at home, however you like
-- ✅ Modify it for yourself or for a product you ship
-- ✅ Redistribute (including commercially, bundled into your own product)
-- ✅ Sublicense - include in products under other compatible licenses
-- ✅ Patent grant - Apache-2.0 gives you an explicit patent license
-- Just keep the copyright notice and don't claim Mneme endorses your fork.
+By submitting a contribution you assign copyright on that contribution to the
+project (per LICENSE §2(b)), so the codebase stays under a single owner.
 
 ## 📄 License
 
-[Apache-2.0](LICENSE) - permissive open-source. Commercial use, redistribution, and hosted derivatives all permitted.
+Mneme is licensed under the **[Mneme Personal-Use License](LICENSE)** —
+source-available, NOT open-source. This protects years of work from being
+re-skinned and resold, while keeping Mneme genuinely free to USE on your
+own machine for your own work.
 
-Copyright © 2026 **Anish Trivedi & Kruti Trivedi**.
+In plain English:
+
+- ✅ **Use it freely** — install on any device you own, index your own code,
+  use it for personal projects, internal company engineering work, learning,
+  research. No fee, no telemetry, no nag screens.
+- ✅ **See the source** — every line is in this repo. Audit it, debug it,
+  understand it.
+- ❌ **No redistribution** — you cannot share, re-host, mirror, or republish
+  Mneme to anyone outside your organization.
+- ❌ **No modification or rebrand** — you cannot fork it, change the name,
+  or build a derivative product on top of it.
+- ❌ **No commercial resale** — you cannot bundle Mneme into a product or
+  service you charge others for. (Internal commercial use within your own
+  org is fine — see §1 of the LICENSE.)
+
+For a commercial license, redistribution rights, OEM bundling, or any
+permission this license doesn't cover: **omanishay@gmail.com**.
+
+Copyright © 2026 **Anish Trivedi & Kruti Trivedi**. All rights reserved.
 
 ---
 

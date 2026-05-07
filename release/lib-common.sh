@@ -20,7 +20,7 @@
 #   Network downloads : download_with_retry, download_dual_source
 #   Integrity         : verify_sha256
 #
-# Apache-2.0. (c) 2026 Anish Trivedi & Kruti Trivedi.
+# Mneme Personal-Use License v1.0. (c) 2026 Anish Trivedi & Kruti Trivedi.
 
 # Guard against double-sourcing -- the file is idempotent if sourced
 # twice but the colour-init block would re-detect a TTY each time.

@@ -35,7 +35,7 @@
 #                    (Bug G-14 -- only use for hand-cut beta zips that
 #                    aren't yet listed in $ExpectedHashes)
 #
-# Apache-2.0. (c) 2026 Anish Trivedi & Kruti Trivedi.
+# Mneme Personal-Use License v1.0. (c) 2026 Anish Trivedi & Kruti Trivedi.
 
 # NOTE: this script is invoked via `iex (irm <url>)`. Invoke-Expression
 # evaluates the input as STATEMENTS in the calling scope -- NOT as a

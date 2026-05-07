@@ -30,7 +30,7 @@
 #   6. Create GitHub release: gh release create v<to> --generate-notes
 #   7. Re-trigger workflow: gh workflow run multi-arch-release.yml -f tag=v<to>
 #
-# Authors: Anish Trivedi & Kruti Trivedi. Apache-2.0.
+# Authors: Anish Trivedi & Kruti Trivedi. Mneme Personal-Use License v1.0.
 
 set -euo pipefail
 

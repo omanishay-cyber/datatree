@@ -59,6 +59,6 @@ _(GIF placeholder)_ Build with progress streaming to the output panel.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+Mneme Personal-Use License. Source-available, not open-source. See [LICENSE](LICENSE).
 
 This extension's source lives in the main mneme repo under `vscode/`.

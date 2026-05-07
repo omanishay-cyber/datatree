@@ -5,7 +5,7 @@
 
 [book]
 title = "Mneme"
-description = "Local-only memory layer for AI coding. 50 MCP tools, 14 graph views, 22 storage layers, three real symbol resolvers. Apache-2.0."
+description = "Local-only memory layer for AI coding. 50 MCP tools, 14 graph views, 22 storage layers, three real symbol resolvers. Personal-Use License."
 authors = ["Anish Trivedi", "Kruti Trivedi"]
 language = "en"
 src = "src"

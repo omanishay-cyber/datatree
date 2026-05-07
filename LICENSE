@@ -1,201 +1,236 @@
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
+MNEME PERSONAL-USE LICENSE
+===========================
 
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+Version 1.0 — Effective 2026-05-06
 
-   1. Definitions.
+Copyright © 2026 Anish Trivedi & Kruti Trivedi. All rights reserved.
 
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
+This software (collectively "Mneme", "Mneme Genesis", and any future codenamed
+release of the same product line maintained by the copyright holders, including
+all source code, binaries, models, scripts, documentation, and design assets)
+is licensed, NOT sold. By downloading, installing, or using Mneme, you agree
+to the terms below. If you do not agree, you may not use Mneme.
 
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
 
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
+1. GRANT OF LICENSE
+-------------------
 
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
+Subject to your compliance with every term of this license, the copyright
+holders grant you a non-exclusive, non-transferable, non-sublicensable,
+revocable, royalty-free license to:
 
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
+  (a) Download Mneme from official distribution channels published by the
+      copyright holders (the GitHub release page at
+      https://github.com/omanishay-cyber/mneme, the official package
+      manifests, or the Hugging Face Hub mirror).
+  (b) Install Mneme on devices that you own or control.
+  (c) Use Mneme to index, recall, audit, and operate on source code that
+      you own or have explicit permission to use, for personal, internal,
+      educational, or non-commercial purposes.
 
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
+This grant covers personal individual use AND internal use within an
+organization for that organization's own engineering work, provided no fee
+is charged or value is received specifically for access to or use of Mneme
+itself (see RESTRICTIONS §2).
 
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
 
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
+2. RESTRICTIONS — what you MAY NOT do
+--------------------------------------
 
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
+You may not, and may not permit any other person to:
 
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
+  (a) REDISTRIBUTE Mneme or any portion of it, in original or modified form,
+      to any third party. This includes but is not limited to: re-uploading
+      to any package registry, hosting on any download mirror, sharing
+      binaries by direct transfer, including Mneme inside another product
+      that is then distributed, or making Mneme available as a service to
+      anyone outside your own organization.
 
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
+  (b) MODIFY, adapt, translate, port, or create derivative works based on
+      Mneme. You may not change the source code, binaries, models, or any
+      other component, even for personal use, except for the express
+      purpose of submitting a contribution back to the official repository
+      (in which case you assign copyright in that contribution to the
+      copyright holders by submitting it).
 
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
+  (c) REVERSE-ENGINEER, decompile, disassemble, or otherwise attempt to
+      derive the source code or internal structure of any compiled binary
+      shipped as part of Mneme, except to the extent such restriction is
+      forbidden by applicable law.
 
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
+  (d) RE-BRAND, RE-NAME, FORK, or release any product based on Mneme under
+      any other name, codename, mark, or identifier. This restriction
+      explicitly forbids creating "your own version of Mneme" and applies
+      to the source code, binaries, design assets, documentation, and
+      website content alike.
 
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
+  (e) USE THE MNEME NAME, the codenames "Mneme Genesis" / "Mneme Echo" /
+      etc., the Mneme logo, or any associated trademark or trade dress
+      for any product, service, project, organization, or marketing
+      purpose not authorized in writing by the copyright holders.
 
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
+  (f) USE Mneme COMMERCIALLY in any way that involves charging a fee for
+      access to or use of Mneme itself, building a paid product whose
+      value depends materially on Mneme, or offering Mneme as part of a
+      service for which a third party pays. Internal commercial use by
+      an organization for its own engineering work on its own codebases
+      is permitted under the GRANT (§1) and is not a "commercial use"
+      restricted by this clause.
 
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
+  (g) REMOVE, ALTER, or OBSCURE any copyright notice, trademark notice,
+      author attribution, license terms, version identifier, or telemetry
+      opt-in disclosure that ships with Mneme.
 
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
+  (h) USE Mneme in any way that violates applicable law, infringes the
+      rights of any third party, or operates outside the boundaries of
+      this license.
 
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
 
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
+3. OWNERSHIP — all rights reserved
+-----------------------------------
 
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for describing the origin of the Work and
-      reproducing the content of the NOTICE file.
+Mneme is the exclusive intellectual property of Anish Trivedi & Kruti
+Trivedi. All copyrights, trademarks, trade secrets, design rights, and
+other intellectual property rights in Mneme are reserved by the copyright
+holders. Nothing in this license transfers ownership of any part of Mneme
+to you. This license grants you a USE right only.
 
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
+The Mneme name, the codename ladder (Genesis, Echo, Prism, Pulse, Flux,
+Cipher, Zenith, Catalyst, Oracle, Eternal, and any subsequent codenames
+maintained by the copyright holders), and the visual identity (the M
+glyph, the spark dot, brand color palette including but not limited to
+#16a37c, #41E1B5, #4191E1, #22D3EE) are trademarks of Anish Trivedi &
+Kruti Trivedi and may not be used by any other party without written
+authorization.
 
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
 
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
+4. THIRD-PARTY COMPONENTS
+-------------------------
 
-   END OF TERMS AND CONDITIONS
+Mneme bundles, links to, or downloads at install time various third-party
+open-source components (Rust crates, Bun-installed npm packages, ONNX
+runtime, GGUF models from BAAI / Qwen team / Microsoft, etc.). Each of
+those components is licensed under its own terms — typically permissive
+licenses such as Apache-2.0, MIT, BSD, or model-specific terms. Those
+components are NOT covered by this Mneme Personal-Use License; their own
+licenses govern. The list of third-party components and their licenses
+is available in the source repository.
 
-   APPENDIX: How to apply the Apache License to your work.
+This license applies only to the parts of Mneme authored by the copyright
+holders. It does not extend, override, or restrict the licenses of any
+third-party component.
 
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "[]"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
 
-   Copyright 2026 Anish Trivedi & Kruti Trivedi
+5. PRIVACY AND TELEMETRY
+------------------------
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+Mneme is designed to run entirely on your local machine. The official
+distribution does not transmit your source code, your queries, or your
+recall data to any external service. The only network calls Mneme makes
+on your behalf are: (a) downloading model files from the official Hugging
+Face mirror or GitHub Releases at install time, (b) checking for updates
+from the GitHub Releases API when you explicitly run `mneme self-update
+--check-only` or its equivalent, and (c) any explicit network operation
+you opt into (e.g. `mneme models install --from-url`).
 
-       http://www.apache.org/licenses/LICENSE-2.0
+If you modify Mneme to add network egress (which §2(b) forbids), you do
+so entirely at your own risk and your modification is not Mneme.
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-   implied. See the License for the specific language governing
-   permissions and limitations under the License.
+
+6. NO WARRANTY
+---------------
+
+MNEME IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT. THE COPYRIGHT
+HOLDERS DO NOT WARRANT THAT MNEME WILL BE ERROR-FREE, UNINTERRUPTED, OR
+SECURE.
+
+
+7. LIMITATION OF LIABILITY
+--------------------------
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL THE
+COPYRIGHT HOLDERS BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL,
+CONSEQUENTIAL, OR EXEMPLARY DAMAGES, OR FOR ANY LOSS OF PROFITS, REVENUE,
+DATA, OR USE, ARISING OUT OF OR IN CONNECTION WITH THIS LICENSE OR THE
+USE OF MNEME, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+
+8. TERMINATION
+---------------
+
+This license terminates automatically and immediately upon any breach by
+you of any term in §2 (RESTRICTIONS) or §3 (OWNERSHIP). On termination,
+you must:
+
+  (a) Cease all use of Mneme.
+  (b) Delete all copies of Mneme in your possession or under your control,
+      including local installations, backups, and any extracted data files
+      that are part of Mneme (model files, binaries, scripts, plugin files
+      under `~/.mneme/`, `~/.cache/mnemeos/`, and any equivalent paths on
+      your operating system).
+
+The termination remedy is in addition to all other rights and remedies
+available to the copyright holders under law or equity.
+
+
+9. COMMERCIAL LICENSING AND OTHER PERMISSIONS
+---------------------------------------------
+
+If you wish to:
+  - Use Mneme commercially in ways §2(f) restricts,
+  - Redistribute Mneme as part of your own product,
+  - Fork Mneme or build a derivative product under a different name,
+  - License Mneme to your customers,
+  - Embed Mneme inside hardware you sell,
+
+you must obtain a separate written license from the copyright holders.
+Send inquiries to: omanishay@gmail.com
+
+
+10. GOVERNING LAW
+------------------
+
+This license is governed by the laws of the State of New Jersey, USA,
+without regard to its conflict-of-laws principles. Any dispute arising
+from or relating to this license shall be brought exclusively in the
+state or federal courts located in New Jersey, and you consent to the
+jurisdiction of those courts.
+
+
+11. ENTIRE AGREEMENT
+---------------------
+
+This license constitutes the entire agreement between you and the
+copyright holders concerning Mneme and supersedes any prior or
+contemporaneous communications, proposals, or agreements (oral or
+written) on the same subject.
+
+
+12. SEVERABILITY
+----------------
+
+If any provision of this license is held to be unenforceable, the
+remaining provisions remain in full force and effect, and the
+unenforceable provision shall be interpreted to give the maximum
+permissible effect to the parties' intent.
+
+
+----------------------------------------------------------------------
+WHY THIS LICENSE EXISTS — a plain-English summary, NOT a license term
+----------------------------------------------------------------------
+
+Mneme is many years of work compressed into one product. The maintainer
+wants you to be able to USE it freely on your own machine, on your own
+code, for your own work — that part is genuinely free. What the
+maintainer is protecting against is somebody downloading Mneme, changing
+the name on the wordmark, slapping their own logo on it, and reselling
+it as a competing product. That's the line.
+
+If you want to do something this license doesn't cover and you think it
+should, just ask. omanishay@gmail.com.
+
+----------------------------------------------------------------------
+END OF LICENSE
+----------------------------------------------------------------------

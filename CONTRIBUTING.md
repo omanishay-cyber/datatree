@@ -15,7 +15,7 @@ Thanks for the interest. Rules first, details below.
    cd mcp && bun test
    ```
 5. No new native DLL deps for the Rust side without discussion. Mneme stays Windows-friendly and statically linkable.
-6. By submitting a PR you agree your contribution is licensed under [Apache-2.0](LICENSE).
+6. By submitting a PR you assign copyright on your contribution to the project (per [LICENSE](LICENSE) §2(b)). Mneme is under the Mneme Personal-Use License — source-available, not open-source. Read the LICENSE before contributing; if the copyright assignment is a deal-breaker, please open an issue or email instead.
 
 ## What we welcome
 

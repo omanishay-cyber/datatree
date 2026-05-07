@@ -444,6 +444,9 @@ mneme uninstall --all --purge-state
 
 ## License
 
-Apache-2.0. Copyright 2026 Anish Trivedi & Kruti Trivedi.
+Mneme Personal-Use License. Copyright 2026 Anish Trivedi & Kruti Trivedi. All rights reserved.
 
-Sole copyright holder. Permissive: use, modify, distribute, sublicense, including commercially. Requires attribution + NOTICE preservation.
+Source-available, not open-source. Free for personal use and internal
+company engineering work on machines you own. No redistribution, no
+modification or rebranding, no commercial resale. See [LICENSE](LICENSE)
+for full terms. For commercial licensing: omanishay@gmail.com.

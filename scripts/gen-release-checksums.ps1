@@ -39,7 +39,7 @@
 # uppercase to match `Get-FileHash` output and PowerShell's case-folding
 # expectations in `bootstrap-install.ps1::Get-Asset`.
 #
-# Apache-2.0. (c) 2026 Anish Trivedi & Kruti Trivedi.
+# Mneme Personal-Use License v1.0. (c) 2026 Anish Trivedi & Kruti Trivedi.
 
 [CmdletBinding(DefaultParameterSetName = 'StageDir')]
 param(

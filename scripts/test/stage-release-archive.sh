@@ -31,7 +31,7 @@
 #   --stage-dir <path>     Intermediate staging directory (default: ./mneme-stage)
 #   --force                Overwrite existing stage-dir / output without prompting
 #
-# Authors: Anish Trivedi & Kruti Trivedi. Apache-2.0.
+# Authors: Anish Trivedi & Kruti Trivedi. Mneme Personal-Use License v1.0.
 
 set -euo pipefail
 

@@ -9,7 +9,7 @@ If you're a user *consuming* mneme as an MCP plugin, see [README.md](README.md) 
 ## Project context
 
 - **Owners / copyright holders**: Anish Trivedi & Kruti Trivedi.
-- **License**: Apache-2.0. See [LICENSE](LICENSE). Permissive: use, modify, distribute, sublicense, including commercially. Requires attribution + NOTICE file preservation.
+- **License**: Mneme Personal-Use License v1.0. See [LICENSE](LICENSE). Source-available, NOT open-source. Free for personal use and internal company engineering work on machines users own. No redistribution, no modification or rebrand, no commercial resale. Contributions assign copyright to the project (LICENSE §2(b)).
 - **Status**: alpha - actively being iterated.
 - **Architecture**: multi-process (Rust supervisor + Bun TS MCP + Bun TS Vision app + Python multimodal sidecar). Architecture overview in [`docs/architecture.md`](docs/architecture.md).
 

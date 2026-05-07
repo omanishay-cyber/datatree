@@ -18,7 +18,7 @@
 #   VERSION.txt               - "0.3.2" + git commit if present
 #
 # Authors: Anish Trivedi & Kruti Trivedi.
-# Apache-2.0.
+# Mneme Personal-Use License v1.0.
 
 [CmdletBinding()]
 param(

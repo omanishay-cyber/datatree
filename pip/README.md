@@ -99,4 +99,7 @@ memory layer for AI coding work, not just a memo viewer.
 
 ## License
 
-Apache-2.0. Maintained by Anish Trivedi & Kruti Trivedi.
+Mneme Personal-Use License. Source-available, not open-source. Free to
+use on machines you own; no redistribution or modification. See
+[LICENSE](https://github.com/omanishay-cyber/mneme/blob/main/LICENSE).
+Maintained by Anish Trivedi & Kruti Trivedi.

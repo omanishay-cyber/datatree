@@ -9,8 +9,8 @@ PublisherSupportUrl: https://github.com/omanishay-cyber/mneme/issues
 Author: Anish Trivedi & Kruti Trivedi
 PackageName: Mneme
 PackageUrl: https://omanishay-cyber.github.io/mneme/
-License: Apache-2.0
-LicenseUrl: https://github.com/omanishay-cyber/mneme/blob/master/LICENSE
+License: Custom: Mneme Personal-Use License
+LicenseUrl: https://github.com/omanishay-cyber/mneme/blob/main/LICENSE
 Copyright: Copyright (c) 2026 Anish Trivedi & Kruti Trivedi
 CopyrightUrl: https://github.com/omanishay-cyber/mneme/blob/master/LICENSE
 ShortDescription: Local persistent code-graph and AI-superbrain MCP server

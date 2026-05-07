@@ -41,7 +41,7 @@
 #   MNEME_SKIP_HASH_CHECK=1     skip SHA-256 verification (beta zips only)
 #   MNEME_NO_SYSTEMD=1          skip systemd unit setup (containers, no-systemd hosts)
 #
-# Apache-2.0. (c) 2026 Anish Trivedi & Kruti Trivedi.
+# Mneme Personal-Use License v1.0. (c) 2026 Anish Trivedi & Kruti Trivedi.
 
 set -euo pipefail
 

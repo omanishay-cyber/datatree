@@ -346,6 +346,9 @@ If you must install Bun / Node offline, bundle them into `~/.bun/bin/bun.exe`
 
 ## License
 
-Mneme is Apache-2.0. Use it, modify it, redistribute it. Just keep the
-copyright and NOTICE file. Some commercial restrictions apply - see
-[`LICENSE`](../LICENSE) and [`docs/faq.md`](faq.md#license--commercial-use).
+Mneme is under the Mneme Personal-Use License. Source-available, not
+open-source. Free to use on machines you own, for personal projects or
+internal company engineering work. No redistribution, no modification or
+rebrand, no commercial resale. See [`LICENSE`](../LICENSE) and
+[`docs/faq.md`](faq.md#license--commercial-use). For commercial licensing:
+omanishay@gmail.com.

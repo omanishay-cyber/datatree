@@ -68,4 +68,4 @@ The "Edit this page" button on every doc points at the correct `docs-book/src/` 
 
 ## License
 
-Same as the parent repo — Apache-2.0.
+Same as the parent repo — Mneme Personal-Use License.
