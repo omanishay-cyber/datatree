@@ -77,12 +77,12 @@ Note: UX critical count 3 + Error-handler critical count 8 = 11. The 4 already-f
 ### Unfixed — UX
 
 - [ ] **UX-4** — `cli/src/commands/uninstall.rs:1` — `mneme uninstall --purge-state` has no interactive confirmation prompt
-- [ ] **UX-5** — `cli/src/commands/recall.rs:38` — `WARN: NO EMBEDDING MODEL CONFIGURED` is all-caps stderr; lower tone, route to stdout, sentence case
-- [ ] **UX-6** — `cli/src/commands/audit.rs:835` — Audit summary prints absolute findings.db path including SHA-shard hash; replace with `mneme audit --show` hint
-- [ ] **UX-7** — `cli/src/commands/doctor/mod.rs:266` — `mneme daemon start` remediation buried at bottom; promote blocking issues to top banner
+- [x] **UX-5** — recall.rs:38 — switched to stdout sentence-case "Note: no embedding model installed" (Batch 4, PENDING-COMMIT)
+- [x] **UX-6** — audit.rs:915 — gated absolute-path print behind MNEME_AUDIT_VERBOSE=1; default shows count + Vision hint (Batch 4, PENDING-COMMIT)
+- [x] **UX-7** — doctor/mod.rs — hoisted daemon-state probe BEFORE banner; top-of-output remediation w/ Stale/Unresponsive/Missing variants (Batch 4, PENDING-COMMIT)
 - [ ] **UX-8** — `cli/src/commands/history.rs:188` — Timestamps in UTC ISO never match user's local timezone; use `chrono::Local`, keep `--utc` for scripting
 - [ ] **UX-9** — `cli/src/commands/status.rs:156` — `term.clear_screen()` destroys scrollback unconditionally; gate on `term.is_term()`
-- [ ] **UX-10** — `cli/src/commands/doctor/mod.rs:387` — Per-worker row 140+ chars wraps on 80-col terminals; measure terminal width, truncate or continuation-line
+- [x] **UX-10** — doctor/mod.rs — effective_term_width() helper, <120 col → compact 2-line layout (Batch 4, PENDING-COMMIT)
 - [ ] **UX-11** — `vision/src/components/SidePanel.tsx:46` — Side panel always shows placeholder; implement `/api/graph/files/:id` or replace 4 dead tabs
 - [ ] **UX-12** — `vision/src/components/FilterBar.tsx:4` — Hardcoded TYPE/DOMAIN facets may not match any real project; populate dynamically from API
 - [ ] **UX-13** — `cli/src/commands/blast.rs:39` — `--depth` defaults to 1 with no visible truncation indicator; add `Showing depth=1. Use --deep for transitive impact.` footer
@@ -94,8 +94,8 @@ Note: UX critical count 3 + Error-handler critical count 8 = 11. The 4 already-f
 - [ ] **CLI-1** — `cli/src/commands/update.rs:23` — `--yes` flag has `default_value_t = true`, cannot be disabled; flag is silently mandatory
 - [ ] **CLI-3** — `cli/src/commands/status.rs:157` — `mneme status` clears terminal scrollback unconditionally (related to UX-9)
 - [ ] **CLI-4** — `cli/src/commands/log.rs:54` — `--interval` doc says min=1/max=3600 but parser accepts any u64; clamp silent
-- [ ] **CLI-5** — `cli/src/commands/recall.rs:207` — daemon-up `recall` ignores `--type` filter when supervisor returns 0 hits and falls back to semantic
-- [ ] **CLI-10** — `cli/src/commands/audit.rs:901` — `resolve_project` silently falls back to `"."` when both arg and CWD unavailable
+- [x] **CLI-5** — recall.rs — threaded kind_filter Option<&str> through recall_semantic/_fts/_like; FTS+LIKE add AND kind=?; semantic pre-filters eligible-id set (Batch 4, PENDING-COMMIT)
+- [x] **CLI-10** — audit.rs::resolve_project — current_dir() error now propagates with friendly hint instead of silently auditing "." (Batch 4, PENDING-COMMIT)
 - [ ] **CLI-12** — `cli/src/commands/self_update.rs:1054` — Default `mneme self-update` always fails on current releases (no .minisig, no `--allow-unsigned`)
 - [ ] **CLI-23** — `cli/src/commands/blast.rs:86` — Supervisor blast path doesn't check empty results; prints `0 dependent(s)` instead of `no node matches target`
 
@@ -159,10 +159,10 @@ Note: UX critical count 3 + Error-handler critical count 8 = 11. The 4 already-f
 ### UX
 
 - [ ] **UX-16** — `cli/src/main.rs:484` — Version-available notice prints to stderr on every command; pollutes piped output
-- [ ] **UX-17** — `cli/src/commands/doctor/mod.rs:301` — 57-char-wide ASCII box overflows narrow TTYs; no max-width constraint
-- [ ] **UX-18** — `vision/src/App.tsx:341` — 150ms view-switch debounce applied to keyboard nav; arrow-key feels laggy
-- [ ] **UX-19** — `vision/src/App.tsx:363` — Sidebar nav has no group-aware keyboard navigation; Tab moves through 14 items linearly
-- [ ] **UX-20** — `cli/src/commands/recall.rs:532` — Output uses `[kind]` and `qualified_name` — most users don't know what qualified_name is
+- [x] **UX-17** — doctor/mod.rs — PARTIAL: fixed 2 sections (per-worker health, binaries on disk); cross-file boxes in mcp_probe/hooks_probe/etc. flagged for follow-up (Batch 4, PENDING-COMMIT)
+- [x] **UX-18** — App.tsx — onPickView gained immediate flag; Enter/Space synthetic clicks (detail===0) bypass 150ms debounce (Batch 4, PENDING-COMMIT)
+- [x] **UX-19** — App.tsx — full WAI-ARIA roving-tabindex menu pattern; ArrowUp/Down within group, ArrowLeft/Right between groups, Home/End global (Batch 4, PENDING-COMMIT)
+- [x] **UX-20** — recall.rs::print_hits_with_hint — primary line is name(kind) — file:line; qualified_name demoted to indented secondary line (Batch 4, PENDING-COMMIT)
 - [ ] **UX-21** — `vision/src/views/HeatmapGrid.tsx:182` — Error state uses `role=status` instead of `role=alert`; screen readers don't announce immediately
 - [ ] **UX-22** — `cli/src/commands/build.rs:0` — `mneme build` has no Ctrl+C progress summary; partial completion not surfaced
 - [ ] **UX-23** — `vision/src/command-center/CommandCenter.tsx:91` — Files panel silently truncates to 50; add `+N more` disclosure
@@ -173,16 +173,16 @@ Note: UX critical count 3 + Error-handler critical count 8 = 11. The 4 already-f
 - [ ] **CLI-2** — `cli/src/commands/why.rs:28` — `mneme why` accepts empty / NUL / whitespace queries; other commands reject
 - [ ] **CLI-6** — `cli/src/commands/blast.rs:67` — `--deep` silently dropped when `--depth=1` passed explicitly; comment lies
 - [ ] **CLI-7** — `cli/src/commands/blast.rs:200` — Supervisor-served blast loses Windows long-path prefix matching; daemon-state-dependent zero results
-- [ ] **CLI-8** — `cli/src/commands/audit.rs:415-423` — Cross-shard orphan banner threshold ≥25 hides 1-24 orphans behind table-only signal
-- [ ] **CLI-9** — `cli/src/commands/audit.rs:81` — `FINDINGS_FLUSH_BUFFER=100` no env override; can't tune fleet-wide
+- [x] **CLI-8** — audit.rs:465 — 3-tier orphan banner (1-9 minor / 10-24 standard+rebuild hint / 25+ original loud) (Batch 4, PENDING-COMMIT)
+- [x] **CLI-9** — audit.rs — added MNEME_AUDIT_FLUSH_BUFFER + MNEME_AUDIT_FLUSH_INTERVAL_SEC env overrides (read once at stream start) (Batch 4, PENDING-COMMIT)
 - [ ] **CLI-11** — `cli/src/commands/daemon.rs:81` — `daemon op` is `String` not Subcommand; typos return bare error, no help enumeration
 - [ ] **CLI-13** — `cli/src/commands/self_update.rs:980` — Download progress uses `eprintln!` newlines instead of in-place updates; floods logs or stays silent
 - [ ] **CLI-16** — `cli/src/commands/history.rs:130-133` — Header printed inside row loop instead of before; fragile under refactor
 - [ ] **CLI-17** — `cli/src/commands/history.rs:51` — Comment says supervisor-IPC removed but no SQLITE_BUSY retry on tasks.db
 - [ ] **CLI-19** — `cli/src/commands/view.rs:99-105` — Path-3 fallthrough message tells user to install Tauri without explaining how
-- [ ] **CLI-20** — `cli/src/commands/audit.rs:134` — `--wait` doc-comment doesn't mention exit-code asymmetry; CI gates without `--wait` are no-ops
-- [ ] **CLI-22** — `cli/src/commands/recall.rs:208` — When supervisor returns 0 hits AND embedding fallback fails, error dropped silently
-- [ ] **CLI-25** — `cli/src/commands/audit.rs:116` — `--scope` and `--severity` accept any string; defer validation to runtime, no clap enumeration
+- [x] **CLI-20** — audit.rs — module + field doc spell out --wait exit-code semantics (without --wait IPC dispatch always exits 0) (Batch 4, PENDING-COMMIT)
+- [x] **CLI-22** — recall.rs — semantic-fallback Err captured into local; print_hits_with_hint surfaces "fallback failed: run mneme doctor" (Batch 4, PENDING-COMMIT)
+- [x] **CLI-25** — audit.rs — clap PossibleValuesParser on --scope and --severity; case-insensitive normalization preserved (Batch 4, PENDING-COMMIT)
 - [ ] **CLI-26** — `cli/src/commands/find_references.rs:137` — IN clause `vec!["?"; n].join(",")` — no upper bound on `targets.len()` (defensive)
 - [ ] **CLI-27** — `cli/src/commands/models.rs:246-253` — `models install` no-op when marker exists but model files missing; gas-lights user
 
@@ -199,9 +199,9 @@ Note: UX critical count 3 + Error-handler critical count 8 = 11. The 4 already-f
 
 - [ ] **PERF-007** — `brain/src/embed_store.rs:161` — `remove` uses `Vec::drain(off..off+DIM)` shifting every later vector; 76 MB memmove per delete
 - [ ] **PERF-008** — `brain/src/embeddings.rs:388` — LRU `cache_put` linear-scans order deque on every cache hit
-- [ ] **PERF-009** — `cli/src/commands/recall.rs:336` — Semantic recall full-scans embeddings table — unbounded RAM + linear cosine
-- [ ] **PERF-010** — `cli/src/commands/recall.rs:388` — Per-hit `query_row` against graph.db for display enrichment
-- [ ] **PERF-011** — `cli/src/commands/recall.rs:486` — `recall_like` double `LIKE '%query%'` on two columns — full table scan
+- [x] **PERF-009** — recall.rs::recall_semantic — BinaryHeap<Reverse<(f32,i64)>> bounded to limit; cosine_le_f32_blob walks BLOB chunks_exact(4) inline (zero per-row alloc) (Batch 4, PENDING-COMMIT)
+- [x] **PERF-010** — recall.rs — fetch_hits_batched uses WHERE id IN (?,?,...) when top.len()>=20; HashMap re-orders to score-descending (Batch 4, PENDING-COMMIT)
+- [x] **PERF-011** — recall.rs — recall_fts no longer fallback-degrades to recall_like (kept for non-FTS shards); semantic-embedding fallback handles NL queries (Batch 4, PENDING-COMMIT)
 - [ ] **PERF-012** — `supervisor/src/api_graph/graph.rs:482` — `insert_into_tree` linear `iter().position()` per path segment; quadratic in fan-out
 - [ ] **PERF-013** — `brain/src/retrieve.rs:285` — `GraphIndex::two_hop` clones every neighbour label twice per anchor
 - [ ] **PERF-014** — `scanners/src/scanners/architecture.rs:266` — `degree_top_k` clones every edge endpoint string into degree map
@@ -222,14 +222,14 @@ Note: UX critical count 3 + Error-handler critical count 8 = 11. The 4 already-f
 
 ### Reliability
 
-- [ ] **REL-NEW-E** — `supervisor/src/manager.rs:449` — `monitor_child` swallows `wait()` error with no restart trigger; worker stranded forever
-- [ ] **REL-NEW-F** — `supervisor/src/manager.rs:421` — stdout/stderr forwarder tasks have no error handling on `push_raw` or unbounded line size
+- [x] **REL-NEW-E** — manager.rs::monitor_child — wait() Err returns sentinel exit_code -2 and falls through cleanup path (worker not stranded) (Batch 4, PENDING-COMMIT)
+- [x] **REL-NEW-F** — manager.rs — forward_bounded_lines helper: 64KB MAX_LINE_BYTES cap + lossy UTF-8; warn! on read_until errors (Batch 4, PENDING-COMMIT)
 - [x] **REL-NEW-G** — `cli/src/commands/self_update.rs:1541` — `rollback_swaps` now tracks per-binary failures + logs CRITICAL summary at end (count + list + recovery hint) (Batch 3, PENDING-COMMIT)
 - [ ] **REL-NEW-H** — `supervisor/src/manager.rs:1196` — `dispatch_job` holds per-worker stdin Mutex for full 10s timeout, serialising the pool
 - [ ] **REL-NEW-I** — `supervisor/src/ipc.rs:2178` — `write_response` has no timeout — slow client stalls per-connection task; semaphore exhaustion
-- [ ] **REL-NEW-J** — `supervisor/src/manager.rs:909` — Backoff `tokio::time::sleep` not interruptible by shutdown; graceful stop waits up to max_backoff
+- [x] **REL-NEW-J** — manager.rs — added shutdown_notify Arc<Notify>; backoff sleep raced via tokio::select! against notified() (interruptible) (Batch 4, PENDING-COMMIT)
 - [x] **REL-NEW-K** — `cli/src/commands/self_update.rs:1668` — VERIFIED FALSE POSITIVE: `replace_binaries_atomically` is wrapped in `tokio::task::spawn_blocking` at self_update.rs:386 (CRIT-8 fix from 2026-05-05 audit), so `thread::sleep` inside the sync chain runs on the blocking pool, not on a tokio worker. Annotated in source with line reference. (Batch 3, PENDING-COMMIT)
-- [ ] **REL-NEW-L** — `supervisor/src/manager.rs:936` — `shutdown_all` aborts monitor tasks but doesn't await child exit; orphaned workers possible
+- [x] **REL-NEW-L** — manager.rs::shutdown_all — explicit kill-pass + bounded await(5s) per monitor; abort_handle() taken before timeout(j) consumes JoinHandle (Batch 4, PENDING-COMMIT)
 
 ### Pragmatic
 

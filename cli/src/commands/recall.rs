@@ -35,11 +35,13 @@ use common::query::RecallHit;
 static EMBED_WARNED: OnceLock<()> = OnceLock::new();
 
 /// Print the K3 warning once per process. Idempotent.
+// UX-5 (2026-05-07 audit): downgrade tone + channel — was ALL-CAPS WARN on stderr
+// reading like a panic; now sentence-case advisory on stdout reserved-for-info.
 fn warn_no_embedding_model_once() {
     if !embedding_model_present() && EMBED_WARNED.set(()).is_ok() {
-        eprintln!(
-            "WARN: NO EMBEDDING MODEL CONFIGURED — semantic recall will degrade to keyword-only. \
-             Run `mneme models install qwen-embed-0.5b` to enable."
+        println!(
+            "Note: no embedding model installed -- recall is keyword-only. \
+             Run `mneme models install qwen-embed-0.5b` for semantic search."
         );
     }
 }
@@ -182,12 +184,25 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
         // gating as the direct-DB path below: only when an embedding
         // model is installed (so we're not embedding via the noisy
         // hashing-trick fallback).
+        // CLI-5 (2026-05-07 audit): pass args.kind to recall_semantic so
+        // --type filter is honoured on supervisor-empty -> semantic path.
+        // CLI-22 (2026-05-07 audit): capture the semantic-fallback error
+        // so the empty-result print can surface a one-line hint instead
+        // of silently swallowing it.
+        let mut semantic_fallback_err: Option<String> = None;
         if embedding_model_present() {
             info!(
                 source = "supervisor-empty->semantic",
                 "recall: keyword path empty, trying semantic fallback"
             );
-            match recall_semantic(&project_root, &args.query, args.limit as usize).await {
+            match recall_semantic(
+                &project_root,
+                &args.query,
+                args.limit as usize,
+                args.kind.as_deref(),
+            )
+            .await
+            {
                 Ok(v) => {
                     if !v.is_empty() {
                         info!(count = v.len(), "recall: semantic fallback returned hits");
@@ -197,12 +212,14 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "recall: semantic fallback failed");
-                    // Fall through to surface the empty supervisor result.
+                    semantic_fallback_err = Some(e.to_string());
+                    // Fall through to surface the empty supervisor result
+                    // with a hint pointing at the failure.
                 }
             }
         }
         info!(source = "supervisor", count = 0, "recall served");
-        print_hits(&hits, &args.query);
+        print_hits_with_hint(&hits, &args.query, semantic_fallback_err.as_deref());
         return Ok(());
     }
 
@@ -224,10 +241,16 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
 
     // Prefer FTS5 if the virtual table exists; otherwise fall back to LIKE.
     let limit = args.limit as usize;
+    let kind_filter = args.kind.as_deref();
+    // CLI-5 / PERF-011 (2026-05-07 audit): thread `--type` through FTS / LIKE.
+    // PERF-011: when FTS5 is available, accept zero hits and let the semantic
+    // fallback take over — DON'T silently degrade to a full-table LIKE scan
+    // that the user never asked for. `recall_like` is reserved for shards
+    // predating the FTS5 virtual table.
     let hits = if has_nodes_fts(&conn)? {
-        recall_fts(&conn, &args.query, limit)?
+        recall_fts(&conn, &args.query, limit, kind_filter)?
     } else {
-        recall_like(&conn, &args.query, limit)?
+        recall_like(&conn, &args.query, limit, kind_filter)?
     };
 
     // BENCH-FIX-1 (2026-05-07): semantic-embedding fallback. Multi-word
@@ -243,15 +266,17 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
     //      hashing-trick fallback and the cosine scores would be noise)
     //   3. semantic.db exists in this project's shard
     //
-    // Failures are logged but never surface — the user gets the original
-    // empty result rather than an unrelated embedder error.
+    // CLI-22 (2026-05-07 audit): capture the semantic-fallback error so the
+    // empty-result print can surface a one-line hint pointing at it instead
+    // of silently swallowing it.
+    let mut semantic_fallback_err: Option<String> = None;
     let hits = if hits.is_empty() && embedding_model_present() {
         // Drop the read-only `conn` against graph.db before re-opening
         // it inside `recall_semantic`. Read connections don't take a
         // file lock on WAL-mode SQLite, but dropping is cleaner and
         // keeps the FD count predictable.
         drop(conn);
-        match recall_semantic(&project_root, &args.query, limit).await {
+        match recall_semantic(&project_root, &args.query, limit, kind_filter).await {
             Ok(v) => {
                 if !v.is_empty() {
                     info!(count = v.len(), "recall: semantic fallback returned hits");
@@ -260,6 +285,7 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
             }
             Err(e) => {
                 tracing::warn!(error = %e, "recall: semantic fallback failed");
+                semantic_fallback_err = Some(e.to_string());
                 Vec::new()
             }
         }
@@ -267,7 +293,7 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
         hits
     };
 
-    print_hits(&hits, &args.query);
+    print_hits_with_hint(&hits, &args.query, semantic_fallback_err.as_deref());
     Ok(())
 }
 
@@ -286,10 +312,19 @@ pub async fn run(args: RecallArgs, socket_override: Option<PathBuf>) -> CliResul
 ///
 /// All failures are CliError — the caller decides whether to surface
 /// or swallow them.
+// CLI-5 (2026-05-07 audit): accept `kind_filter` so `--type` is honoured
+// on the semantic path (was previously ignored, returning concept hits when
+// the user asked for `--type decision`).
+// PERF-009 (2026-05-07 audit): replaced unbounded `Vec<(id, score)>` and
+// per-row `Vec<f32>` materialisation with a bounded BinaryHeap of size
+// `limit` and an inline cosine that walks the BLOB without allocating.
+// PERF-010 (2026-05-07 audit): batched the per-hit graph.db `query_row`
+// loop into a single `WHERE id IN (...)` query when top-K >= 20.
 async fn recall_semantic(
     project_root: &std::path::Path,
     query: &str,
     limit: usize,
+    kind_filter: Option<&str>,
 ) -> CliResult<Vec<Hit>> {
     let semantic_db = semantic_db_path(project_root)?;
     if !semantic_db.exists() {
@@ -297,6 +332,9 @@ async fn recall_semantic(
     }
     let graph_db = graph_db_path(project_root)?;
     if !graph_db.exists() {
+        return Ok(Vec::new());
+    }
+    if limit == 0 {
         return Ok(Vec::new());
     }
 
@@ -326,7 +364,42 @@ async fn recall_semantic(
         )));
     }
 
-    // Scan semantic.db, decode each f32 LE BLOB, score by cosine.
+    // CLI-5: when --type is supplied, pre-fetch the set of node_ids whose
+    // kind matches the filter so the cosine scan can skip ineligible rows.
+    // Returning None here means "no kind filter"; Some(set) means "score
+    // only nodes in this set". An empty set short-circuits to no hits.
+    let kind_set: Option<std::collections::HashSet<i64>> = if let Some(k) = kind_filter {
+        let graph_pre = Connection::open_with_flags(
+            &graph_db,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(|e| CliError::Other(format!("open {}: {e}", graph_db.display())))?;
+        let mut s = std::collections::HashSet::new();
+        let mut stmt = graph_pre
+            .prepare("SELECT id FROM nodes WHERE kind = ?1")
+            .map_err(|e| CliError::Other(format!("prep kind filter: {e}")))?;
+        let mut rows = stmt
+            .query(rusqlite::params![k])
+            .map_err(|e| CliError::Other(format!("exec kind filter: {e}")))?;
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| CliError::Other(format!("row read kind: {e}")))?
+        {
+            let id: i64 = row
+                .get(0)
+                .map_err(|e| CliError::Other(format!("col 0 kind: {e}")))?;
+            s.insert(id);
+        }
+        if s.is_empty() {
+            return Ok(Vec::new());
+        }
+        Some(s)
+    } else {
+        None
+    };
+
+    // Scan semantic.db, score each row by cosine — bounded heap of size
+    // `limit` keeps memory at O(limit * 16B) regardless of corpus size.
     let sem_conn = Connection::open_with_flags(
         &semantic_db,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -337,12 +410,13 @@ async fn recall_semantic(
         .prepare("SELECT node_id, vector FROM embeddings WHERE node_id IS NOT NULL")
         .map_err(|e| CliError::Other(format!("prep semantic scan: {e}")))?;
 
-    let mut top: Vec<(i64, f32)> = Vec::new();
+    // PERF-009: BinaryHeap<Reverse<...>> = min-heap. We push up to `limit`
+    // elements, then pop-min when a better score arrives. Score wrapped in
+    // OrderedF32 so partial_cmp doesn't panic on NaN (filtered out anyway).
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
+    let mut heap: BinaryHeap<Reverse<(OrderedF32, i64)>> = BinaryHeap::with_capacity(limit + 1);
     {
-        // Scope `rows` and `stmt` so their borrows on `sem_conn` are
-        // released before we open the graph.db connection below. Two
-        // simultaneous read-only SQLite handles would also be fine,
-        // but minimising file-descriptor lifetime is the cleaner habit.
         let mut rows = stmt
             .query([])
             .map_err(|e| CliError::Other(format!("exec semantic scan: {e}")))?;
@@ -353,39 +427,77 @@ async fn recall_semantic(
             let node_id: i64 = row
                 .get(0)
                 .map_err(|e| CliError::Other(format!("col 0: {e}")))?;
-            let blob: Vec<u8> = row
-                .get(1)
-                .map_err(|e| CliError::Other(format!("col 1: {e}")))?;
-            let Some(vec) = decode_le_f32_blob(&blob, qvec.len()) else {
+            // CLI-5: skip rows whose kind doesn't match --type before paying
+            // the BLOB-decode + cosine cost.
+            if let Some(set) = &kind_set {
+                if !set.contains(&node_id) {
+                    continue;
+                }
+            }
+            // PERF-009: borrow the BLOB and compute cosine inline against
+            // its little-endian f32 view — avoids the per-row Vec<f32>
+            // allocation that drove ~75 MB peak on a 50k-shard.
+            let blob: &[u8] = row
+                .get_ref(1)
+                .map_err(|e| CliError::Other(format!("col 1 ref: {e}")))?
+                .as_blob()
+                .map_err(|e| CliError::Other(format!("col 1 blob: {e}")))?;
+            let Some(score) = cosine_le_f32_blob(&qvec, blob) else {
                 continue; // dim mismatch / truncated row — skip
             };
-            let score = brain::cosine_similarity(&qvec, &vec);
-            if score.is_finite() {
-                top.push((node_id, score));
+            if !score.is_finite() {
+                continue;
+            }
+            let item = Reverse((OrderedF32(score), node_id));
+            if heap.len() < limit {
+                heap.push(item);
+            } else if let Some(Reverse((cur_min, _))) = heap.peek() {
+                // Push only if the new score beats the current worst.
+                if OrderedF32(score) > *cur_min {
+                    heap.pop();
+                    heap.push(item);
+                }
             }
         }
     }
 
-    // Top-K selection. Sort descending; truncate to `limit`. For typical
-    // limits (10-50) over O(50k) embeddings this is microseconds.
-    top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    top.truncate(limit);
-    if top.is_empty() {
+    if heap.is_empty() {
         return Ok(Vec::new());
     }
 
-    // JOIN against graph.db nodes for display. Single-row lookups in a
-    // loop — `id` is the primary key so each is O(log N). For limit=10
-    // this is 10 indexed lookups; faster than building an IN clause and
-    // re-sorting.
+    // Drain heap into a score-descending Vec<(node_id, score)>.
+    let mut top: Vec<(i64, f32)> = heap
+        .into_sorted_vec()
+        .into_iter()
+        .map(|Reverse((s, id))| (id, s.0))
+        .collect();
+    // into_sorted_vec on a min-heap of Reverse(...) yields ascending Reverse,
+    // i.e. descending score. Confirm with a final sort to be defensive.
+    top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    // PERF-010: batch the per-hit graph.db lookup. For top.len() >= 20 a
+    // single `WHERE id IN (...)` query is faster than N round trips. Below
+    // that, keep the per-row form (10 round trips of indexed lookups is
+    // already in the microsecond range and avoids the SQL-build overhead).
     let graph_conn = Connection::open_with_flags(
         &graph_db,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(|e| CliError::Other(format!("open {}: {e}", graph_db.display())))?;
 
+    let hits = if top.len() >= 20 {
+        fetch_hits_batched(&graph_conn, &top)?
+    } else {
+        fetch_hits_per_row(&graph_conn, &top)?
+    };
+    Ok(hits)
+}
+
+/// PERF-010: per-row graph.db lookup — used when `top` is small enough that
+/// the SQL-build overhead of an IN clause outweighs N indexed point queries.
+fn fetch_hits_per_row(graph_conn: &Connection, top: &[(i64, f32)]) -> CliResult<Vec<Hit>> {
     let mut hits: Vec<Hit> = Vec::with_capacity(top.len());
-    for (node_id, _score) in &top {
+    for (node_id, _score) in top {
         let row: Result<Hit, _> = graph_conn.query_row(
             "SELECT kind, name, qualified_name, file_path, line_start \
              FROM nodes WHERE id = ?1",
@@ -403,15 +515,112 @@ async fn recall_semantic(
         if let Ok(h) = row {
             hits.push(h);
         }
-        // Missing nodes (semantic.db row references a node deleted from
-        // graph.db) are silently skipped; this is benign drift.
     }
     Ok(hits)
+}
+
+/// PERF-010: batched graph.db lookup via `WHERE id IN (?,?,...)`. Re-orders
+/// the result to match the score-sorted `top` ordering before returning.
+fn fetch_hits_batched(graph_conn: &Connection, top: &[(i64, f32)]) -> CliResult<Vec<Hit>> {
+    use std::collections::HashMap;
+    // Build a `?,?,...` placeholder string of the right arity. ids are i64
+    // so they can also be inlined safely without an injection risk, but
+    // parameter binding is the discipline.
+    let placeholders = std::iter::repeat("?")
+        .take(top.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT id, kind, name, qualified_name, file_path, line_start \
+         FROM nodes WHERE id IN ({placeholders})"
+    );
+    let mut stmt = graph_conn
+        .prepare(&sql)
+        .map_err(|e| CliError::Other(format!("prep batched node fetch: {e}")))?;
+    let params: Vec<&dyn rusqlite::ToSql> = top
+        .iter()
+        .map(|(id, _)| id as &dyn rusqlite::ToSql)
+        .collect();
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(params), |row| {
+            let id: i64 = row.get(0)?;
+            Ok((
+                id,
+                Hit {
+                    kind: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    qualified_name: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                    file_path: row.get::<_, Option<String>>(4)?,
+                    line_start: row.get::<_, Option<i64>>(5)?,
+                },
+            ))
+        })
+        .map_err(|e| CliError::Other(format!("exec batched node fetch: {e}")))?;
+    let mut by_id: HashMap<i64, Hit> = HashMap::with_capacity(top.len());
+    for r in rows {
+        let (id, h) = r.map_err(|e| CliError::Other(format!("row map: {e}")))?;
+        by_id.insert(id, h);
+    }
+    // Re-sort to match score-descending top ordering. Missing nodes
+    // (semantic.db row references a node deleted from graph.db) are
+    // silently skipped — benign drift.
+    let mut hits: Vec<Hit> = Vec::with_capacity(top.len());
+    for (id, _score) in top {
+        if let Some(h) = by_id.remove(id) {
+            hits.push(h);
+        }
+    }
+    Ok(hits)
+}
+
+/// PERF-009: total-order f32 wrapper for use inside BinaryHeap. NaN scores
+/// are filtered out at the call site (via `score.is_finite()`), so within
+/// the heap a strict ordering by bit-pattern would be defensive overkill —
+/// `partial_cmp` is enough. We treat tied/incomparable scores as equal.
+#[derive(Clone, Copy, PartialEq, PartialOrd)]
+struct OrderedF32(f32);
+impl Eq for OrderedF32 {}
+impl Ord for OrderedF32 {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0
+            .partial_cmp(&other.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
+
+/// PERF-009: cosine similarity between a query vector and a little-endian
+/// f32 BLOB, computed in a single pass without allocating an intermediate
+/// `Vec<f32>`. Returns `None` if `blob.len() != qvec.len() * 4` (dim
+/// mismatch / truncated row).
+fn cosine_le_f32_blob(qvec: &[f32], blob: &[u8]) -> Option<f32> {
+    if blob.len() != qvec.len() * 4 {
+        return None;
+    }
+    let mut dot: f32 = 0.0;
+    let mut norm_b: f32 = 0.0;
+    let mut norm_a: f32 = 0.0;
+    for (i, chunk) in blob.chunks_exact(4).enumerate() {
+        // SAFETY: chunks_exact(4) yields exactly 4-byte slices.
+        let bf = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        let af = qvec[i];
+        dot += af * bf;
+        norm_a += af * af;
+        norm_b += bf * bf;
+    }
+    let denom = norm_a.sqrt() * norm_b.sqrt();
+    if denom == 0.0 {
+        return Some(0.0);
+    }
+    Some(dot / denom)
 }
 
 /// Decode a little-endian f32 BLOB to `Vec<f32>`, returning `None` if the
 /// byte length doesn't match `expected_dim * 4`. The build pipeline writes
 /// vectors via `encode_le_f32_hex` + `unhex()`; this is the inverse.
+// PERF-009 (2026-05-07 audit): superseded by `cosine_le_f32_blob` for the
+// hot path (computes cosine inline without a Vec<f32>). Retained for tests
+// that still pin the round-trip contract.
+#[allow(dead_code)]
 fn decode_le_f32_blob(blob: &[u8], expected_dim: usize) -> Option<Vec<f32>> {
     if blob.len() != expected_dim * 4 {
         return None;
@@ -433,37 +642,70 @@ fn has_nodes_fts(conn: &Connection) -> CliResult<bool> {
 }
 
 /// FTS5 path — fast, ranked by MATCH relevance.
-fn recall_fts(conn: &Connection, raw: &str, limit: usize) -> CliResult<Vec<Hit>> {
+// CLI-5 (2026-05-07 audit): accept `kind_filter` so `--type` is honoured
+// on the direct-DB FTS5 path (was previously ignored).
+// PERF-011 (2026-05-07 audit): if FTS5 returns zero hits we no longer
+// silently degrade to a full-table LIKE scan — accept the empty result
+// and let the caller's semantic-embedding path try next. `recall_like`
+// is reserved for shards predating the FTS5 virtual table. The
+// sanitized-empty fallback is also dropped: an all-punctuation query
+// (e.g. `"::"`) yields no useful keyword match anyway.
+fn recall_fts(
+    conn: &Connection,
+    raw: &str,
+    limit: usize,
+    kind_filter: Option<&str>,
+) -> CliResult<Vec<Hit>> {
     // FTS5 is sensitive to punctuation/reserved chars. Sanitize the query
-    // by keeping only word characters + spaces; if nothing survives, fall
-    // back to LIKE. This mirrors mcp/src/store.ts::fts5Sanitize().
+    // by keeping only word characters + spaces. If nothing survives, return
+    // empty — the semantic fallback in `run` will pick up.
     let sanitized = fts5_sanitize(raw);
     if sanitized.is_empty() {
-        return recall_like(conn, raw, limit);
+        return Ok(Vec::new());
     }
 
-    let sql = "
-        SELECT n.kind, n.name, n.qualified_name, n.file_path, n.line_start
-        FROM nodes_fts
-        JOIN nodes n ON n.rowid = nodes_fts.rowid
-        WHERE nodes_fts MATCH ?1
-        ORDER BY rank
-        LIMIT ?2
-    ";
+    // CLI-5: optional `AND n.kind = ?3` clause.
+    let (sql, has_kind) = match kind_filter {
+        Some(_) => (
+            "SELECT n.kind, n.name, n.qualified_name, n.file_path, n.line_start
+             FROM nodes_fts
+             JOIN nodes n ON n.rowid = nodes_fts.rowid
+             WHERE nodes_fts MATCH ?1 AND n.kind = ?3
+             ORDER BY rank
+             LIMIT ?2",
+            true,
+        ),
+        None => (
+            "SELECT n.kind, n.name, n.qualified_name, n.file_path, n.line_start
+             FROM nodes_fts
+             JOIN nodes n ON n.rowid = nodes_fts.rowid
+             WHERE nodes_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2",
+            false,
+        ),
+    };
     let mut stmt = conn
         .prepare(sql)
         .map_err(|e| CliError::Other(format!("prep fts recall: {e}")))?;
-    let rows = stmt
-        .query_map(rusqlite::params![sanitized, limit as i64], |row| {
-            Ok(Hit {
-                kind: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
-                name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                qualified_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                file_path: row.get::<_, Option<String>>(3)?,
-                line_start: row.get::<_, Option<i64>>(4)?,
-            })
+    let row_mapper = |row: &rusqlite::Row<'_>| {
+        Ok(Hit {
+            kind: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+            name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+            qualified_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            file_path: row.get::<_, Option<String>>(3)?,
+            line_start: row.get::<_, Option<i64>>(4)?,
         })
-        .map_err(|e| CliError::Other(format!("exec fts recall: {e}")))?;
+    };
+    let rows = if has_kind {
+        stmt.query_map(
+            rusqlite::params![sanitized, limit as i64, kind_filter.unwrap()],
+            row_mapper,
+        )
+    } else {
+        stmt.query_map(rusqlite::params![sanitized, limit as i64], row_mapper)
+    }
+    .map_err(|e| CliError::Other(format!("exec fts recall: {e}")))?;
 
     let mut hits = Vec::new();
     for r in rows {
@@ -472,39 +714,59 @@ fn recall_fts(conn: &Connection, raw: &str, limit: usize) -> CliResult<Vec<Hit>>
             Err(e) => return Err(CliError::Other(format!("row map: {e}"))),
         }
     }
-    // If FTS5 returned zero (sanitized query too aggressive, no match),
-    // fall back to LIKE so users don't see empty results when a simple
-    // substring would match.
-    if hits.is_empty() {
-        return recall_like(conn, raw, limit);
-    }
     Ok(hits)
 }
 
-/// LIKE fallback — slow but always works.
-fn recall_like(conn: &Connection, query: &str, limit: usize) -> CliResult<Vec<Hit>> {
+/// LIKE fallback — slow but always works. Reserved for shards predating
+/// the FTS5 virtual table (PERF-011, 2026-05-07 audit).
+// CLI-5 (2026-05-07 audit): accept `kind_filter` so `--type` is honoured.
+fn recall_like(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+    kind_filter: Option<&str>,
+) -> CliResult<Vec<Hit>> {
     let pattern = format!("%{}%", query.replace('%', r"\%").replace('_', r"\_"));
-    let sql = "
-        SELECT kind, name, qualified_name, file_path, line_start
-        FROM nodes
-        WHERE name LIKE ?1 ESCAPE '\\' OR qualified_name LIKE ?1 ESCAPE '\\'
-        ORDER BY LENGTH(qualified_name) ASC
-        LIMIT ?2
-    ";
+    let (sql, has_kind) = match kind_filter {
+        Some(_) => (
+            "SELECT kind, name, qualified_name, file_path, line_start
+             FROM nodes
+             WHERE (name LIKE ?1 ESCAPE '\\' OR qualified_name LIKE ?1 ESCAPE '\\')
+               AND kind = ?3
+             ORDER BY LENGTH(qualified_name) ASC
+             LIMIT ?2",
+            true,
+        ),
+        None => (
+            "SELECT kind, name, qualified_name, file_path, line_start
+             FROM nodes
+             WHERE name LIKE ?1 ESCAPE '\\' OR qualified_name LIKE ?1 ESCAPE '\\'
+             ORDER BY LENGTH(qualified_name) ASC
+             LIMIT ?2",
+            false,
+        ),
+    };
     let mut stmt = conn
         .prepare(sql)
         .map_err(|e| CliError::Other(format!("prep like recall: {e}")))?;
-    let rows = stmt
-        .query_map(rusqlite::params![pattern, limit as i64], |row| {
-            Ok(Hit {
-                kind: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
-                name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                qualified_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                file_path: row.get::<_, Option<String>>(3)?,
-                line_start: row.get::<_, Option<i64>>(4)?,
-            })
+    let row_mapper = |row: &rusqlite::Row<'_>| {
+        Ok(Hit {
+            kind: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+            name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+            qualified_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            file_path: row.get::<_, Option<String>>(3)?,
+            line_start: row.get::<_, Option<i64>>(4)?,
         })
-        .map_err(|e| CliError::Other(format!("exec like recall: {e}")))?;
+    };
+    let rows = if has_kind {
+        stmt.query_map(
+            rusqlite::params![pattern, limit as i64, kind_filter.unwrap()],
+            row_mapper,
+        )
+    } else {
+        stmt.query_map(rusqlite::params![pattern, limit as i64], row_mapper)
+    }
+    .map_err(|e| CliError::Other(format!("exec like recall: {e}")))?;
     let mut hits = Vec::new();
     for h in rows.flatten() {
         hits.push(h);
@@ -530,8 +792,29 @@ fn fts5_sanitize(q: &str) -> String {
 }
 
 fn print_hits(hits: &[Hit], query: &str) {
+    print_hits_with_hint(hits, query, None);
+}
+
+// UX-20 (2026-05-07 audit): reordered output to lead with the human-readable
+// name + file:line (the universal identifier editors open) and demote
+// `qualified_name` to secondary context. The kind moves to a parenthesised
+// suffix so it reads as English: `authenticate_user (function)` instead of
+// `[function] src/auth/handlers::authenticate_user`.
+// CLI-22 (2026-05-07 audit): when results are empty AND the semantic
+// fallback errored, surface a one-line hint pointing the user at
+// `mneme doctor` instead of swallowing the error.
+fn print_hits_with_hint(hits: &[Hit], query: &str, semantic_err: Option<&str>) {
     if hits.is_empty() {
         println!("no results for `{query}`");
+        if let Some(err) = semantic_err {
+            // Trim multi-line errors to a single line for the hint; the
+            // full error is already in the warn-level tracing log.
+            let short = err.lines().next().unwrap_or(err).trim();
+            println!(
+                "note: semantic recall fallback failed ({short}). \
+                 Run `mneme doctor` to diagnose."
+            );
+        }
         return;
     }
     println!("{} hit(s) for `{}`:", hits.len(), query);
@@ -545,11 +828,25 @@ fn print_hits(hits: &[Hit], query: &str) {
             (Some(f), _) => super::display_path(f).to_string(),
             _ => "-".into(),
         };
-        println!("  [{}] {}", h.kind, h.qualified_name);
-        if h.name != h.qualified_name {
-            println!("      name: {}", h.name);
+        // Primary line: name + kind suffix + location. `name` may be empty
+        // for anonymous nodes; fall back to qualified_name in that case so
+        // the row is never blank.
+        let primary_name = if h.name.is_empty() {
+            h.qualified_name.as_str()
+        } else {
+            h.name.as_str()
+        };
+        if h.kind.is_empty() {
+            println!("  {} -- {}", primary_name, loc);
+        } else {
+            println!("  {} ({}) -- {}", primary_name, h.kind, loc);
         }
-        println!("      {}", loc);
+        // Secondary line: qualified_name only when it adds info beyond the
+        // primary name (e.g. shows the module path). Kept for the developer
+        // who DOES think in qualified names; not the lead-in.
+        if !h.qualified_name.is_empty() && h.qualified_name != h.name {
+            println!("      {}", h.qualified_name);
+        }
         println!();
     }
 }
