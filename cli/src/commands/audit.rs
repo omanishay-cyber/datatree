@@ -18,7 +18,17 @@
 //!   - 0  : no critical findings (or no findings at all)
 //!   - 1  : at least one `critical` finding present (after `--severity` filter)
 //!   - 5  : subprocess failed to spawn / crashed / wrote malformed output
+//!
+//! CLI-20 (2026-05-07 audit): the exit-code contract above only holds in
+//! the synchronous `--wait` path (or when the supervisor is unreachable
+//! and we fall back to the direct subprocess). On the default IPC path
+//! the supervisor accepts the audit and processes findings asynchronously
+//! into `findings.db` — the CLI returns 0 as soon as the dispatch is
+//! acknowledged, NOT when findings are persisted. CI gates and pre-push
+//! hooks that pipeline `mneme audit && deploy` must pass `--wait` to get
+//! a deterministic exit code per audit run.
 
+use clap::builder::PossibleValuesParser;
 use clap::Args;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -84,12 +94,47 @@ fn audit_line_budget() -> Duration {
 /// in memory and bulk-inserted at end-of-stream; if the subprocess died
 /// (timeout, panic, kill) all findings were lost. Our AWS test fleet hit this:
 /// 37,423 partial findings → 0 persisted on a wall-clock kill.
+///
+/// CLI-9 (2026-05-07 audit): default value, overridable via
+/// `MNEME_AUDIT_FLUSH_BUFFER`. See [`audit_flush_buffer`].
 const FINDINGS_FLUSH_BUFFER: usize = 100;
 
 /// B12: time-based flush cadence. Even if the buffer never fills (e.g.
 /// long stretch of zero-finding files), we flush every 5 s so a kill
 /// at any time leaves at most 5 s of work unpersisted.
+///
+/// CLI-9 (2026-05-07 audit): default value, overridable via
+/// `MNEME_AUDIT_FLUSH_INTERVAL_SEC`. See [`audit_flush_interval`].
 const FINDINGS_FLUSH_INTERVAL: Duration = Duration::from_secs(5);
+
+// CLI-9 (2026-05-07 audit): expose the B12 flush cadence to power users
+// via env vars, parallel to MNEME_AUDIT_LINE_TIMEOUT_SEC. Operators on
+// huge single-project scans (one of our fleet hits ~50k findings on a
+// single repo) want a smaller buffer so a worker kill at finding #99
+// doesn't drop 99 rows; conversely, fleets of tiny repos benefit from a
+// larger buffer to amortise the SQLite txn overhead.
+//
+// Zero / junk values fall back — we never want a fully-disabled flush
+// (would defeat the data-loss fix), and a zero interval would burn CPU
+// in the streaming loop.
+
+/// Read `MNEME_AUDIT_FLUSH_BUFFER` (positive integer count of findings)
+/// or fall back to [`FINDINGS_FLUSH_BUFFER`].
+fn audit_flush_buffer() -> usize {
+    match std::env::var("MNEME_AUDIT_FLUSH_BUFFER")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+    {
+        Some(n) if n > 0 => n,
+        _ => FINDINGS_FLUSH_BUFFER,
+    }
+}
+
+/// Read `MNEME_AUDIT_FLUSH_INTERVAL_SEC` (positive integer seconds) or
+/// fall back to [`FINDINGS_FLUSH_INTERVAL`].
+fn audit_flush_interval() -> Duration {
+    parse_env_secs_or("MNEME_AUDIT_FLUSH_INTERVAL_SEC", FINDINGS_FLUSH_INTERVAL)
+}
 
 /// Helper: parse an env var as a positive integer count of seconds, return
 /// the fallback on absent / unparseable / zero. We reject zero on purpose
@@ -108,13 +153,21 @@ fn parse_env_secs_or(name: &str, fallback: Duration) -> Duration {
 pub struct AuditArgs {
     /// Scope filter: `full` (every scannable file) or `diff` (only files
     /// changed in the last 24h — fast pre-commit check).
-    #[arg(long, default_value = "full")]
+    ///
+    /// CLI-25 (2026-05-07 audit): `value_parser` advertises the accepted
+    /// values in `--help`. `normalise_scope` still runs to handle
+    /// case-insensitive synonyms (`ALL` → `full`).
+    #[arg(long, default_value = "full", value_parser = PossibleValuesParser::new(["full", "diff", "all"]))]
     pub scope: String,
 
     /// Lower-bound severity filter. Findings less severe than this are
     /// dropped before printing. Order: `critical` > `error` > `warn` >
     /// `info`. Defaults to `info` (no filter).
-    #[arg(long, default_value = "info")]
+    ///
+    /// CLI-25 (2026-05-07 audit): `value_parser` advertises the accepted
+    /// values in `--help`. `parse_severity` still runs to handle
+    /// case-insensitive synonyms (`ERR` → `error`, `crit` → `critical`).
+    #[arg(long, default_value = "info", value_parser = PossibleValuesParser::new(["critical", "crit", "error", "err", "warn", "warning", "info"]))]
     pub severity: String,
 
     /// Wait for the audit to complete and print findings inline before
@@ -126,6 +179,13 @@ pub struct AuditArgs {
     /// until every finding is persisted, then renders them. Useful for
     /// pre-commit hooks, CI gates, and `git push`-style scripts that
     /// need a deterministic exit code per audit run.
+    ///
+    /// CLI-20 (2026-05-07 audit): exit-code semantics depend on this
+    /// flag. WITHOUT `--wait`, the IPC dispatch path always exits 0 on
+    /// successful queue (findings are async — they won't be in
+    /// `findings.db` yet when the CLI returns). To gate CI on findings,
+    /// you MUST pass `--wait` so the documented `0`/`1`/`5` exit codes
+    /// reflect actual scan results.
     ///
     /// BUG-NEW-C fix (2026-05-05). The direct-subprocess path already
     /// existed as a fallback when the supervisor is unreachable; we
@@ -402,24 +462,39 @@ pub(crate) async fn run_direct_subprocess_with_registry(
     // at this point, so a cross-shard error should never hide real findings.
     let cross_shard_findings = run_cross_shard_audit(&project_id, &paths, severity_floor).await;
     let orphan_count = cross_shard_findings.len();
-    // 2026-05-07 fix (edge-case agent W5): the prior code printed
-    // a top-level "cross-shard integrity: N orphan row(s) found"
-    // message for ANY orphan count, including the 1-6 range that's
-    // typically transient drift (a file deleted mid-build, then the
-    // referrer hasn't been re-scanned yet). Users saw this scary
-    // message on otherwise-clean incrementals and assumed mneme was
-    // broken. The orphans are still added to `kept` and surface in
-    // the standard findings table — they're just no longer
-    // separately flagged with a free-floating header. For
-    // operationally-significant drift (>= 25 orphans) we keep the
-    // dedicated header so it doesn't get lost in a long findings
-    // table.
-    if orphan_count >= 25 {
-        println!(
-            "cross-shard integrity: {} orphan row(s) found (rule: cross_shard_orphan.*) — \
-             consider `mneme rebuild` to clear",
-            orphan_count
-        );
+    // CLI-8 (2026-05-07 audit): prior behaviour rendered the orphan
+    // header ONLY when `orphan_count >= 25`. The cliff was a UX trap:
+    // an operator running `mneme audit` weekly would see 10 orphans
+    // (silent), 23 orphans (silent), then 25 orphans (alarming
+    // free-floating message), and assume the problem appeared at the
+    // cliff when in fact drift had been climbing for weeks.
+    //
+    // We keep the W5 fix's intent — don't shout about transient drift
+    // — but make ANY non-zero orphan count visible so operators can
+    // trend-watch. Wording scales with severity:
+    //   * 1-9   : single-line note ("minor drift").
+    //   * 10-24 : single-line note with explicit remediation hint.
+    //   * 25+   : the original loud header.
+    // Orphans are also still added to `kept` and surface in the
+    // standard findings table — that part of the W5 fix stands.
+    if orphan_count > 0 {
+        let banner = if orphan_count >= 25 {
+            format!(
+                "cross-shard integrity: {orphan_count} orphan row(s) found (rule: \
+                 cross_shard_orphan.*) — consider `mneme rebuild` to clear"
+            )
+        } else if orphan_count >= 10 {
+            format!(
+                "cross-shard integrity: {orphan_count} orphan row(s) (rule: \
+                 cross_shard_orphan.*) — `mneme rebuild` clears them"
+            )
+        } else {
+            format!(
+                "cross-shard integrity: {orphan_count} orphan row(s) (minor drift; \
+                 rule: cross_shard_orphan.*)"
+            )
+        };
+        println!("{banner}");
     }
     kept.extend(cross_shard_findings);
 
@@ -571,7 +646,12 @@ async fn stream_scanner_output(
     let mut reader = BufReader::new(stdout).lines();
 
     let mut outcome = StreamOutcome::default();
-    let mut buffer: Vec<Finding> = Vec::with_capacity(FINDINGS_FLUSH_BUFFER);
+    // CLI-9 (2026-05-07 audit): flush cadence is now env-tunable. Read
+    // once at stream start so a mid-stream env mutation cannot change
+    // the contract for an in-flight scan.
+    let flush_buffer_cap = audit_flush_buffer();
+    let flush_interval = audit_flush_interval();
+    let mut buffer: Vec<Finding> = Vec::with_capacity(flush_buffer_cap);
     let mut last_flush = Instant::now();
 
     loop {
@@ -590,15 +670,15 @@ async fn stream_scanner_output(
                             buffer.push(f.clone());
                         }
                     }
-                    if buffer.len() >= FINDINGS_FLUSH_BUFFER {
+                    if buffer.len() >= flush_buffer_cap {
                         flush_findings(writer.as_deref_mut(), &mut buffer, &mut outcome.persisted);
                         last_flush = Instant::now();
                     }
                 }
                 // B12: time-based flush even when buffer is small. Files
                 // with no findings produce no buffer growth, but a kill
-                // could still arrive — flush every 5 s.
-                if last_flush.elapsed() >= FINDINGS_FLUSH_INTERVAL && !buffer.is_empty() {
+                // could still arrive — flush every `flush_interval`.
+                if last_flush.elapsed() >= flush_interval && !buffer.is_empty() {
                     flush_findings(writer.as_deref_mut(), &mut buffer, &mut outcome.persisted);
                     last_flush = Instant::now();
                 }
@@ -832,11 +912,28 @@ fn print_summary(
             s.scanned, s.duration_ms, s.errors
         );
     }
-    println!(
-        "{} findings persisted to {}",
-        persisted,
-        findings_db.display()
-    );
+    // UX-6 (2026-05-07 audit): pre-fix this line printed the absolute
+    // path to `findings.db` (e.g. `C:\Users\Anish\.mneme\projects\
+    // <hash>\findings.db`). The hash-derived shard path is an internal
+    // implementation detail that means nothing to most users — they see
+    // it and wonder what they're supposed to do with it. We now print
+    // a human-readable summary by default and gate the raw path behind
+    // `MNEME_AUDIT_VERBOSE=1` for power users / scripting / debugging.
+    if std::env::var("MNEME_AUDIT_VERBOSE")
+        .ok()
+        .filter(|v| !v.is_empty() && v != "0")
+        .is_some()
+    {
+        println!(
+            "{persisted} findings persisted to {}",
+            findings_db.display()
+        );
+    } else {
+        println!(
+            "{persisted} findings saved (open the Vision app or run with \
+             MNEME_AUDIT_VERBOSE=1 to print the shard path)"
+        );
+    }
 }
 
 /// Final stdout line emitted by the scanner subprocess in orchestrator mode.
@@ -898,8 +995,33 @@ fn resolve_scanners_binary() -> CliResult<PathBuf> {
 
 /// Resolve `project` to an absolute, canonicalised path. Falls back to
 /// CWD if the user passed nothing.
+///
+/// CLI-10 (2026-05-07 audit): if the user passed no `project` arg AND
+/// `current_dir()` fails (e.g. CWD was deleted by a concurrent rebase /
+/// branch checkout — common in long-running daemons and git hooks),
+/// surface a hard error instead of silently auditing whatever `"."`
+/// happens to mean. Pre-fix the canonicalize-or-raw chain swallowed
+/// both failures and produced findings against a half-resolved relative
+/// path, which the supervisor and scanners-worker interpret with
+/// different roots — operators saw findings persisted to wrong shards
+/// and could not reproduce the inconsistency.
+///
+/// We also surface `canonicalize` errors when we DO have an absolute
+/// path to canonicalise — the only legitimate case for falling back is
+/// "user passed a relative path that does not yet exist" (rare; mostly
+/// a developer-typo case), and even then `canonicalize` of a missing
+/// path yields ENOENT, which is exactly the user-friendly error the
+/// caller wants. Keeping the raw fallback for the user-supplied case
+/// preserves the v0.3.x contract.
 fn resolve_project(arg: Option<PathBuf>) -> CliResult<PathBuf> {
-    let raw = arg.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let raw = match arg {
+        Some(p) => p,
+        None => std::env::current_dir().map_err(|e| {
+            CliError::Other(format!(
+                "cannot resolve current directory ({e}); pass --project / a project arg explicitly"
+            ))
+        })?,
+    };
     let canonical = std::fs::canonicalize(&raw).unwrap_or(raw);
     Ok(canonical)
 }

@@ -45,6 +45,70 @@ use crate::commands::build::make_client;
 use crate::error::CliResult;
 use crate::ipc::{IpcRequest, IpcResponse};
 
+// UX-10 + UX-17 (2026-05-07 audit): terminal-width helpers. The
+// `console` crate (already a workspace dep — see cli/Cargo.toml line 76)
+// exposes `Term::size()` returning `(rows, cols)`. We clamp to a sane
+// range so non-TTY contexts (CI logs, piped output) get a stable
+// 80-column assumption rather than `console`'s "no size" default of 0.
+//
+// Honors the `COLUMNS` env var first to match `print_banner()`'s
+// existing convention in render.rs, then falls back to TTY query, then
+// to 80.
+
+/// Effective terminal width in columns, clamped to `[40, 240]`.
+/// Used by per-worker row formatting (UX-10) and box-border rendering
+/// (UX-17).
+fn effective_term_width() -> usize {
+    if let Ok(cols) = std::env::var("COLUMNS") {
+        if let Ok(n) = cols.parse::<usize>() {
+            return n.clamp(40, 240);
+        }
+    }
+    let (_rows, cols) = console::Term::stdout().size();
+    let cols = cols as usize;
+    if cols == 0 {
+        80
+    } else {
+        cols.clamp(40, 240)
+    }
+}
+
+/// UX-17: a "narrow" terminal can't fit our 59-char-wide doctor boxes
+/// without wrapping. Threshold is 60 — the box plus a 1-char safety
+/// margin. On narrow terminals we render section headers as plain
+/// `── label ──` separators instead of full boxes.
+fn term_is_narrow() -> bool {
+    effective_term_width() < 60
+}
+
+/// UX-17: render a section header. On wide terminals: the existing
+/// 59-char box (top + title + separator). On narrow terminals: a single
+/// line `── title ──`. Caller is responsible for the matching footer
+/// via `print_section_footer()`.
+fn print_section_header(title: &str) {
+    if term_is_narrow() {
+        println!("── {title} ──");
+    } else {
+        let inner = 57;
+        let title_padded = format!(" {title:<width$}", width = inner - 1);
+        println!("┌{}┐", "─".repeat(inner));
+        println!("│{title_padded}│");
+        println!("├{}┤", "─".repeat(inner));
+    }
+}
+
+/// UX-17: render a section footer matching `print_section_header()`.
+/// Narrow terminals get a blank line; wide terminals get the box bottom.
+fn print_section_footer() {
+    if term_is_narrow() {
+        // Blank separator between sections — matches the visual
+        // breathing room a closed box would have provided.
+        println!();
+    } else {
+        println!("└{}┘", "─".repeat(57));
+    }
+}
+
 // ── module-level constants ────────────────────────────────────────────────────
 
 /// Bug M10 (D-window class): canonical Windows process-creation flags
@@ -176,15 +240,76 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         return Ok(());
     }
 
+    // UX-7 (2026-05-07 audit): hoist daemon-state computation to BEFORE
+    // print_banner() so we can emit a remediation banner at the top of
+    // output (rather than buried 30+ lines down). Filesystem PID check
+    // is cheap; we only do the 3s IPC ping when the PID looks alive,
+    // and we cache the result in `is_up` so we don't double-probe later.
+    let state = crate::state_dir();
+    let pid_state_pre: Option<DaemonPidState> = if args.offline {
+        None
+    } else {
+        Some(check_daemon_pid_liveness(&state))
+    };
+    let client_pre = if args.offline {
+        None
+    } else {
+        Some(make_client(socket_override.clone()).with_no_autospawn())
+    };
+    let is_up_pre: Option<bool> = match (&client_pre, &pid_state_pre) {
+        (Some(c), Some(DaemonPidState::AliveProbeFresh)) => {
+            match tokio::time::timeout(std::time::Duration::from_secs(3), c.is_running()).await {
+                Ok(up) => Some(up),
+                Err(_) => {
+                    warn!(
+                        "doctor: daemon PID is alive but supervisor did not answer Ping in 3s — treating as down"
+                    );
+                    Some(false)
+                }
+            }
+        }
+        (Some(_), Some(DaemonPidState::Stale)) => {
+            warn!("doctor: stale ~/.mneme/run/daemon.pid (process not alive) — supervisor is down");
+            Some(false)
+        }
+        (Some(_), Some(DaemonPidState::Missing)) => Some(false),
+        _ => None,
+    };
+
     print_banner();
     println!();
     println!("  {:<16}{}", "timestamp:", utc_now_readable());
+
+    // UX-7: emit remediation banner at the top, BEFORE the health box,
+    // so users don't have to scroll past 30+ lines to find the fix.
+    // The message is tailored to the failure mode:
+    //   - Stale       → daemon process is gone; PID file is stale
+    //   - AliveProbeFresh → process is alive but unresponsive (restart)
+    //   - Missing     → never started; just start it
+    if let (Some(false), Some(pid_state)) = (is_up_pre, pid_state_pre) {
+        let (headline, fix) = match pid_state {
+            DaemonPidState::Stale => (
+                "daemon is DOWN (stale PID file — process exited without cleanup)",
+                "mneme daemon start  (the stale ~/.mneme/run/daemon.pid will be replaced)",
+            ),
+            DaemonPidState::AliveProbeFresh => (
+                "daemon is UNRESPONSIVE (process alive, did not answer Ping in 3s)",
+                "mneme daemon restart  (or kill the stuck PID and `mneme daemon start`)",
+            ),
+            DaemonPidState::Missing => ("daemon is NOT RUNNING", "mneme daemon start"),
+        };
+        let banner = console::style(format!("⚠  {headline}")).yellow().bold();
+        let action = console::style(format!("   fix:  {fix}")).cyan();
+        println!();
+        println!("{banner}");
+        println!("{action}");
+    }
+
     println!("┌─────────────────────────────────────────────────────────┐");
     println!("│ mneme doctor · health check                             │");
     println!("├─────────────────────────────────────────────────────────┤");
 
     let runtime = crate::runtime_dir();
-    let state = crate::state_dir();
     line("runtime dir", &runtime.display().to_string());
     line("state   dir", &state.display().to_string());
     let rt_ok = is_writable(&runtime);
@@ -205,35 +330,14 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         return Ok(());
     }
 
-    // B-017 v2 (concurrency-audit F6 fix, 2026-04-30): doctor MUST NOT
-    // auto-spawn a daemon. The outer 3s timeout below would interrupt
-    // the auto-spawn-then-retry path mid-poll, leaving an orphaned
-    // `mneme daemon start` process.
-    let client = make_client(socket_override).with_no_autospawn();
-    // B-017/B-018: doctor must never hang. Two safeguards:
-    //   1. If daemon.pid is stale, skip IPC entirely — a wedged stale
-    //      named pipe can accept connects and then block read_exact.
-    //   2. Even when the PID looks alive, cap the liveness probe at 3s.
-    let pid_state = check_daemon_pid_liveness(&state);
-    let is_up = match pid_state {
-        DaemonPidState::AliveProbeFresh => {
-            match tokio::time::timeout(std::time::Duration::from_secs(3), client.is_running()).await
-            {
-                Ok(up) => up,
-                Err(_) => {
-                    warn!(
-                        "doctor: daemon PID is alive but supervisor did not answer Ping in 3s — treating as down"
-                    );
-                    false
-                }
-            }
-        }
-        DaemonPidState::Stale => {
-            warn!("doctor: stale ~/.mneme/run/daemon.pid (process not alive) — supervisor is down");
-            false
-        }
-        DaemonPidState::Missing => false,
-    };
+    // UX-7 (2026-05-07 audit): daemon state already computed above the
+    // banner so the remediation appears at the top of output.
+    // `expect()` is safe here: control flow above ensures these are
+    // populated whenever `args.offline` is false (and the offline path
+    // returned earlier).
+    let client = client_pre.expect("client populated when not offline");
+    let pid_state = pid_state_pre.expect("pid_state populated when not offline");
+    let is_up = is_up_pre.expect("is_up populated when not offline");
     let supervisor_label = match (is_up, pid_state) {
         (true, _) => "running ✓",
         (false, DaemonPidState::Stale) => "NOT RUNNING ✗ (stale PID file)",
@@ -263,7 +367,22 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         }
         render_update_channel_box();
         println!();
-        println!("start the daemon with:  mneme daemon start");
+        // UX-7 (2026-05-07 audit): tailor the trailing remediation hint
+        // to the actual daemon failure mode (matches the top-of-output
+        // banner emitted before the health box). Keep this trailing
+        // line as a defense-in-depth — long output may have pushed the
+        // top banner off-screen.
+        match pid_state {
+            DaemonPidState::Stale => {
+                println!("daemon is DOWN (stale PID file). fix:  mneme daemon start");
+            }
+            DaemonPidState::AliveProbeFresh => {
+                println!("daemon is UNRESPONSIVE (3s ping timeout). fix:  mneme daemon restart");
+            }
+            DaemonPidState::Missing => {
+                println!("start the daemon with:  mneme daemon start");
+            }
+        }
         return Ok(());
     }
 
@@ -299,9 +418,9 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
         println!("└─────────────────────────────────────────────────────────┘");
         println!();
 
-        println!("┌─────────────────────────────────────────────────────────┐");
-        println!("│ per-worker health                                       │");
-        println!("├─────────────────────────────────────────────────────────┤");
+        // UX-17 (2026-05-07 audit): on terminals < 60 cols the 59-char
+        // box overflows; swap to a plain `── label ──` separator.
+        print_section_header("per-worker health");
         for child in children {
             let name = child.get("name").and_then(|v| v.as_str()).unwrap_or("?");
             let status = child.get("status").and_then(|v| v.as_str()).unwrap_or("?");
@@ -381,19 +500,63 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
             } else {
                 String::new()
             };
-            line(
-                &format!("{mark} {name}"),
-                &format!(
+            // UX-10 (2026-05-07 audit): the full status line is 140+
+            // chars and wraps to garbage on 80-col terminals. On
+            // standard-width terminals we emit a compact one-line
+            // summary (status / pid / uptime / restarts) and surface
+            // the verbose detail (dropped / 24h / degraded_for / queue
+            // / latency) only when the terminal is wide enough to fit
+            // it without wrapping (>=120 cols).
+            let term_w = effective_term_width();
+            let dropped_suffix_compact = if dropped > 0 {
+                format!("  dropped={dropped}")
+            } else {
+                String::new()
+            };
+            let value = if term_w >= 120 {
+                // Wide terminal: full single-line detail (legacy layout).
+                format!(
                     "status={status:<9}  pid={pid:<6}  uptime={uptime_str:<6}  restarts={restarts}  dropped={dropped}{restart_24h_suffix}{degraded_suffix}{queue_suffix}{latency_suffix}"
-                ),
-            );
+                )
+            } else {
+                // Compact terminal: drop noisy zero-valued fields.
+                format!(
+                    "status={status:<9}  pid={pid:<6}  uptime={uptime_str:<6}  restarts={restarts}{dropped_suffix_compact}{degraded_suffix}"
+                )
+            };
+            line(&format!("{mark} {name}"), &value);
+            // UX-10: emit the verbose detail on indented continuation
+            // lines when the terminal is too narrow for a single-line
+            // dump but the data is non-empty.
+            if term_w < 120 {
+                let mut continuation = String::new();
+                if !restart_24h_suffix.is_empty() {
+                    continuation.push_str(restart_24h_suffix.trim_start());
+                }
+                if !queue_suffix.is_empty() {
+                    if !continuation.is_empty() {
+                        continuation.push_str("  ");
+                    }
+                    continuation.push_str(queue_suffix.trim_start());
+                }
+                if !latency_suffix.is_empty() {
+                    if !continuation.is_empty() {
+                        continuation.push_str("  ");
+                    }
+                    continuation.push_str(latency_suffix.trim_start());
+                }
+                if !continuation.is_empty() {
+                    line("    ", &continuation);
+                }
+            }
         }
-        println!("└─────────────────────────────────────────────────────────┘");
+        // UX-17: footer matches header (full box on wide terms, blank
+        // separator on narrow terms).
+        print_section_footer();
 
         println!();
-        println!("┌─────────────────────────────────────────────────────────┐");
-        println!("│ binaries on disk                                        │");
-        println!("├─────────────────────────────────────────────────────────┤");
+        // UX-17: same narrow-aware swap for "binaries on disk".
+        print_section_header("binaries on disk");
         let bin_dir = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|p| p.to_path_buf()));
@@ -412,7 +575,8 @@ pub async fn run(args: DoctorArgs, socket_override: Option<PathBuf>) -> CliResul
                 line(&format!("{mark} {b}"), &size);
             }
         }
-        println!("└─────────────────────────────────────────────────────────┘");
+        // UX-17: narrow-aware footer for "binaries on disk".
+        print_section_footer();
 
         render_mcp_bridge_box();
         render_hooks_registered_box();

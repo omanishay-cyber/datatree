@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex, Notify, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
@@ -148,6 +148,15 @@ pub struct ChildManager {
     handles: RwLock<HashMap<String, Arc<Mutex<ChildHandle>>>>,
     monitors: Mutex<HashMap<String, JoinHandle<()>>>,
     shutdown_flag: Mutex<bool>,
+    /// REL-NEW-J (2026-05-07 audit): wake-up signal for sleepers blocked
+    /// on backoff inside `respawn_one`. Without this, a Stop arriving
+    /// mid-backoff would let the per-handle `tokio::time::sleep` run to
+    /// completion before `respawn_one` checked `shutdown_flag` — a graceful
+    /// stop could lag by up to `max_backoff` per in-flight respawn (and
+    /// minutes when several were stacked under aggressive policy). Using
+    /// `Notify::notify_waiters` in `shutdown_all` releases all current
+    /// sleepers immediately so the supervisor exits promptly.
+    shutdown_notify: Arc<Notify>,
     /// Sender used by each monitor task to queue a restart request. The
     /// receive end lives inside a separate task started by
     /// [`Self::start_restart_loop`] — this indirection is what breaks the
@@ -201,6 +210,7 @@ impl ChildManager {
             handles: RwLock::new(HashMap::new()),
             monitors: Mutex::new(HashMap::new()),
             shutdown_flag: Mutex::new(false),
+            shutdown_notify: Arc::new(Notify::new()),
             restart_tx,
             restart_rx: Mutex::new(Some(restart_rx)),
             job_queue: RwLock::new(None),
@@ -418,14 +428,25 @@ impl ChildManager {
             h.abort_io_tasks();
         }
 
+        // REL-NEW-F (2026-05-07 audit): bounded-line forwarder. The
+        // previous `BufReader::new(stdout).lines()` form had two
+        // problems: (1) `lines()` reads until `\n` with NO size cap —
+        // a worker emitting a multi-megabyte log line (panic backtrace,
+        // huge serde dump, malicious worker) allocated unboundedly
+        // inside the forwarder task, spiking RSS; (2) `next_line()`
+        // returning `Err` exited the loop SILENTLY — a corrupted
+        // stdout (mid-stream UTF-8 break) killed the forwarder while
+        // the worker kept emitting log lines straight to /dev/null,
+        // and `mneme daemon logs` returned an empty/stale tail with
+        // no operator-visible signal. Fix: read raw bytes via
+        // `read_until(b'\n', …)` with a 64 KB cap; truncate + warn
+        // when exceeded; warn (don't silently drop) on read error.
+        const MAX_LINE_BYTES: usize = 64 * 1024;
         if let Some(stdout) = child.stdout.take() {
             let ring = self.log_ring.clone();
             let n = name.clone();
             let task = tokio::spawn(async move {
-                let mut lines = BufReader::new(stdout).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    ring.push_raw(&n, &line);
-                }
+                forward_bounded_lines(stdout, ring, n, "stdout", MAX_LINE_BYTES).await;
             });
             let mut h = handle.lock().await;
             h.stdout_task = Some(task);
@@ -434,10 +455,7 @@ impl ChildManager {
             let ring = self.log_ring.clone();
             let n = name.clone();
             let task = tokio::spawn(async move {
-                let mut lines = BufReader::new(stderr).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    ring.push_raw(&n, &line);
-                }
+                forward_bounded_lines(stderr, ring, n, "stderr", MAX_LINE_BYTES).await;
             });
             let mut h = handle.lock().await;
             h.stderr_task = Some(task);
@@ -446,14 +464,31 @@ impl ChildManager {
         // Block until the OS reports exit. Then explicitly drop the child
         // before any further awaits so its non-Send pieces (stdin/stdout
         // handles) don't poison the surrounding future.
-        let exit_status = match child.wait().await {
-            Ok(s) => s,
+        //
+        // REL-NEW-E (2026-05-07 audit): treat `wait()` failures as a
+        // synthetic exit (sentinel code -2) instead of bailing early.
+        // Previously a `wait()` error logged and `return`ed without
+        // queueing a restart, leaving the handle in `ChildStatus::Running`
+        // with a stale PID forever (kill_child no-ops because the PID is
+        // dead, the monitor task is gone, and no further restart fires).
+        // Falling through to the existing exit-handling block below
+        // makes the recovery path identical to a real exit: the handle
+        // is cleared, jobs are requeued, and a RestartRequest goes onto
+        // the channel so the worker comes back. Most relevant on Windows
+        // where wait() can fail under transient handle-close races
+        // (AV/kernel hiccup) — Unix is documented as much rarer but the
+        // path is identical so we converge both.
+        let exit_code = match child.wait().await {
+            Ok(s) => s.code().unwrap_or(-1),
             Err(e) => {
-                error!(child = %name, error = %e, "wait() failed");
-                return;
+                error!(
+                    child = %name,
+                    error = %e,
+                    "wait() failed; treating as synthetic exit (code=-2) and triggering restart"
+                );
+                -2
             }
         };
-        let exit_code = exit_status.code().unwrap_or(-1);
         drop(child);
 
         {
@@ -906,7 +941,23 @@ impl ChildManager {
             exit_code = req.exit_code,
             "restart scheduled (jittered)"
         );
-        tokio::time::sleep(jittered).await;
+        // REL-NEW-J (2026-05-07 audit): the backoff sleep is now
+        // cancellable by `shutdown_all` via `shutdown_notify`. The
+        // previous form (`tokio::time::sleep(jittered).await;`) ran
+        // to completion regardless of shutdown — graceful stop could
+        // wait up to `max_backoff` per in-flight respawn. With the
+        // `select!` below, a Stop releases every sleeper immediately
+        // and we return Ok without spawning. The `shutdown_flag`
+        // re-check after the select catches the (rare) race where the
+        // sleep finishes at the same instant the notify fires.
+        let notify = self.shutdown_notify.clone();
+        tokio::select! {
+            _ = tokio::time::sleep(jittered) => {}
+            _ = notify.notified() => {
+                debug!(child = %req.name, "backoff sleep aborted by shutdown");
+                return Ok(());
+            }
+        }
 
         if *self.shutdown_flag.lock().await {
             return Ok(());
@@ -922,29 +973,96 @@ impl ChildManager {
     /// Stop every child in parallel. Used during graceful shutdown.
     pub async fn shutdown_all(self: &Arc<Self>) -> Result<(), SupervisorError> {
         *self.shutdown_flag.lock().await = true;
+        // REL-NEW-J (2026-05-07 audit): wake any respawn_one tasks
+        // currently parked on the backoff sleep so they short-circuit
+        // their respawn attempt and return immediately.
+        self.shutdown_notify.notify_waiters();
 
-        let monitors: Vec<JoinHandle<()>> = {
+        let monitors: Vec<(String, JoinHandle<()>)> = {
             let mut mons = self.monitors.lock().await;
-            mons.drain().map(|(_, j)| j).collect()
+            mons.drain().collect()
         };
 
-        // Sending the kill signal: tokio's `Command::kill_on_drop(true)` is in
-        // place, but we explicitly mark every child as Stopped here AND
-        // abort any in-flight stdout/stderr forwarder tasks (I-5 / NEW-008)
-        // so the process tree can drain cleanly.
-        {
+        // Mark every child as Stopped and abort the IO forwarder tasks
+        // (I-5 / NEW-008) so the process tree can drain cleanly. We
+        // also collect every live PID so we can issue an explicit
+        // kill BEFORE aborting the monitor (REL-NEW-L below).
+        let pids: Vec<(String, u32)> = {
             let guard = self.handles.read().await;
-            for (_, h) in guard.iter() {
+            let mut out = Vec::with_capacity(guard.len());
+            for (name, h) in guard.iter() {
                 let mut handle = h.lock().await;
                 handle.status = ChildStatus::Stopped;
                 handle.abort_io_tasks();
+                if let Some(pid) = handle.pid {
+                    out.push((name.clone(), pid));
+                }
+            }
+            out
+        };
+
+        // REL-NEW-L (2026-05-07 audit): explicit kill+await pass before
+        // abort. The previous shutdown path relied solely on
+        // `Command::kill_on_drop(true)` to terminate workers, then
+        // synchronously aborted each monitor task without awaiting it.
+        // Two failure modes:
+        //   (1) `kill_on_drop` fires when the `Child` value is dropped,
+        //       but the `Child` lives inside the just-aborted monitor
+        //       task — abort cancels the current await synchronously
+        //       and does NOT guarantee the stack-allocated Child runs
+        //       its Drop in time on every runtime configuration.
+        //   (2) Specifically on Windows there's a documented race where
+        //       the kill signal can be lost if abort() interleaves with
+        //       runtime shutdown.
+        // Result: orphan workers keep running after the supervisor
+        // exits, holding open files (parser DBs, embed cache locks),
+        // and the next supervisor boot fails with "database locked"
+        // until Task Manager intervention.
+        //
+        // Fix: kill every live PID by hand FIRST so wait() in the
+        // monitor returns promptly; await each monitor with a 5 s
+        // timeout (the wait should complete near-immediately because
+        // the child is dead); only fall back to abort() if the timeout
+        // elapses. Orphaning becomes the explicit last-resort fallback
+        // rather than the default.
+        for (name, pid) in &pids {
+            if let Err(e) = kill_pid(*pid) {
+                // Worker may have already exited between snapshot and
+                // kill — log at debug, not warn, since it's expected
+                // under the race we're trying to close.
+                debug!(child = %name, pid, error = %e, "kill_pid during shutdown failed (likely already exited)");
             }
         }
 
-        for j in monitors {
-            // Detach: the per-child monitor will exit cleanly when its child
-            // stream closes. We don't await — that could deadlock.
-            j.abort();
+        const MONITOR_AWAIT_TIMEOUT: Duration = Duration::from_secs(5);
+        for (name, j) in monitors {
+            // Grab an AbortHandle BEFORE consuming `j` into the timeout
+            // future. If the timeout elapses, the JoinHandle is dropped
+            // (which only detaches, not aborts), so we need the abort
+            // handle in hand to force-cancel the monitor.
+            let abort = j.abort_handle();
+            match tokio::time::timeout(MONITOR_AWAIT_TIMEOUT, j).await {
+                Ok(Ok(())) => {
+                    debug!(child = %name, "monitor exited cleanly during shutdown");
+                }
+                Ok(Err(join_err)) => {
+                    // Task panicked or was already aborted — neither is
+                    // fatal here, but operators should see the trace.
+                    if join_err.is_panic() {
+                        error!(child = %name, "monitor task panicked during shutdown");
+                    } else {
+                        debug!(child = %name, "monitor task already cancelled");
+                    }
+                }
+                Err(_elapsed) => {
+                    warn!(
+                        child = %name,
+                        timeout_secs = MONITOR_AWAIT_TIMEOUT.as_secs(),
+                        "monitor did not exit after kill+wait; aborting (orphan possible)"
+                    );
+                    abort.abort();
+                }
+            }
         }
         Ok(())
     }
@@ -1880,6 +1998,60 @@ fn sample_rss_bytes(pids: &[u32]) -> std::collections::HashMap<u32, u64> {
         }
     }
     out
+}
+
+/// REL-NEW-F (2026-05-07 audit): bounded-line forwarder for a worker's
+/// stdout/stderr pipe. Reads bytes via `read_until(b'\n', …)` with a
+/// per-line cap of `max_line_bytes` (truncate-and-warn on overflow) and
+/// converts to UTF-8 lossily so a mid-stream encoding glitch can't kill
+/// the forwarder. Errors from `read_until` are logged at `warn!` level
+/// before the loop exits — no more silent log loss.
+///
+/// `stream_name` is the literal `"stdout"` / `"stderr"` for diagnostics.
+async fn forward_bounded_lines<R>(
+    reader: R,
+    ring: Arc<LogRing>,
+    child_name: String,
+    stream_name: &'static str,
+    max_line_bytes: usize,
+) where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    let mut buf = BufReader::with_capacity(8 * 1024, reader);
+    let mut line_buf: Vec<u8> = Vec::with_capacity(1024);
+    loop {
+        line_buf.clear();
+        match buf.read_until(b'\n', &mut line_buf).await {
+            Ok(0) => return, // EOF
+            Ok(_n) => {
+                // Strip trailing newline (and optional CR).
+                while matches!(line_buf.last(), Some(&b'\n') | Some(&b'\r')) {
+                    line_buf.pop();
+                }
+                let truncated = line_buf.len() > max_line_bytes;
+                if truncated {
+                    line_buf.truncate(max_line_bytes);
+                    warn!(
+                        child = %child_name,
+                        stream = stream_name,
+                        cap_bytes = max_line_bytes,
+                        "log line exceeded cap; truncated"
+                    );
+                }
+                let line = String::from_utf8_lossy(&line_buf);
+                ring.push_raw(&child_name, &line);
+            }
+            Err(e) => {
+                warn!(
+                    child = %child_name,
+                    stream = stream_name,
+                    error = %e,
+                    "log forwarder read failed; stream forwarder exiting"
+                );
+                return;
+            }
+        }
+    }
 }
 
 #[cfg(unix)]

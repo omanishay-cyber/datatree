@@ -337,16 +337,121 @@ export function App(): JSX.Element {
   // mounts. The ref tracks the last pick so we only honour the
   // latest in any 150ms burst — same pattern Linear / Notion use for
   // their chrome-tab switchers.
+  //
+  // UX-18 (2026-05-07 audit): the 150ms debounce was applied
+  // unconditionally, including to keyboard navigation (Arrow / Home /
+  // End). Keyboard users are deliberate (no triple-tap risk) and
+  // expect immediate visual feedback as focus moves; the cumulative
+  // 150ms-per-press lag made arrow-tabbing through 14 nav items feel
+  // sluggish. Pointer activations still need the debounce to guard
+  // WebGL context churn, so split the path: `immediate=true` (passed
+  // by keyboard handlers) bypasses the timer and updates synchronously.
   const pickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onPickView = (id: ViewId): void => {
+  const onPickView = (id: ViewId, immediate: boolean = false): void => {
     if (pickTimerRef.current !== null) {
       clearTimeout(pickTimerRef.current);
+      pickTimerRef.current = null;
+    }
+    if (immediate) {
+      setActiveView(id);
+      return;
     }
     pickTimerRef.current = setTimeout(() => {
       setActiveView(id);
       pickTimerRef.current = null;
     }, 150);
   };
+
+  // UX-19 (2026-05-07 audit): sidebar nav was 14 plain <button>s with
+  // no composite-widget keyboard semantics. Tab walked through every
+  // item one-at-a-time and there was no way to jump groups. Convert
+  // to a roving-tabindex menu pattern (per group: role="menu" +
+  // role="menuitem"), so that:
+  //   - Tab enters the nav once and Tab again leaves it (focus skips
+  //     to the next focusable region, not through 14 buttons).
+  //   - ArrowDown / ArrowUp move focus within the current group (wrap).
+  //   - ArrowRight / ArrowLeft jump between groups (first item of the
+  //     next/previous group), matching the audit fix sketch.
+  //   - Home / End jump to the very first / very last nav item across
+  //     all groups.
+  //   - aria-current="page" marks the active view for assistive tech.
+  // Activation (Enter / Space) is handled implicitly by <button>; we
+  // route those through `onPickView(id, true)` so keyboard users
+  // bypass the 150ms pointer debounce (UX-18 above).
+  const navItemRefs = useRef<Map<ViewId, HTMLButtonElement>>(new Map());
+  const flatNavOrder = useMemo<ViewId[]>(
+    () => Object.values(grouped).flat().map((v) => v.id),
+    [grouped],
+  );
+  const groupOrder = useMemo<ViewId[][]>(
+    () => Object.values(grouped).map((items) => items.map((v) => v.id)),
+    [grouped],
+  );
+
+  const focusNavItem = (id: ViewId): void => {
+    const el = navItemRefs.current.get(id);
+    if (el) el.focus();
+  };
+
+  const onNavKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    currentId: ViewId,
+  ): void => {
+    const groupIndex = groupOrder.findIndex((g) => g.includes(currentId));
+    if (groupIndex === -1) return;
+    const group = groupOrder[groupIndex];
+    if (!group) return;
+    const itemIndex = group.indexOf(currentId);
+
+    switch (event.key) {
+      case "ArrowDown": {
+        event.preventDefault();
+        const next = group[(itemIndex + 1) % group.length];
+        if (next) focusNavItem(next);
+        break;
+      }
+      case "ArrowUp": {
+        event.preventDefault();
+        const prev = group[(itemIndex - 1 + group.length) % group.length];
+        if (prev) focusNavItem(prev);
+        break;
+      }
+      case "ArrowRight": {
+        event.preventDefault();
+        const nextGroup = groupOrder[(groupIndex + 1) % groupOrder.length];
+        if (nextGroup && nextGroup[0]) focusNavItem(nextGroup[0]);
+        break;
+      }
+      case "ArrowLeft": {
+        event.preventDefault();
+        const prevGroup =
+          groupOrder[(groupIndex - 1 + groupOrder.length) % groupOrder.length];
+        if (prevGroup && prevGroup[0]) focusNavItem(prevGroup[0]);
+        break;
+      }
+      case "Home": {
+        event.preventDefault();
+        const first = flatNavOrder[0];
+        if (first) focusNavItem(first);
+        break;
+      }
+      case "End": {
+        event.preventDefault();
+        const last = flatNavOrder[flatNavOrder.length - 1];
+        if (last) focusNavItem(last);
+        break;
+      }
+      default:
+        break;
+    }
+  };
+
+  // Roving tabindex: exactly one nav item is in the tab order at a
+  // time. Prefer the active view; fall back to the first item so the
+  // group is reachable even when the active view lives elsewhere
+  // (e.g. command-center returning).
+  const rovingTabId: ViewId | undefined =
+    flatNavOrder.find((id) => id === activeView) ?? flatNavOrder[0];
 
   return (
     <div className="vz-app">
@@ -358,19 +463,46 @@ export function App(): JSX.Element {
         {Object.entries(grouped).map(([group, items]) => (
           <div key={group}>
             <NavGroupHeader label={group} />
-            <ul className="vz-nav-list">
-              {items.map((v) => (
-                <li key={v.id}>
-                  <button
-                    type="button"
-                    className={`vz-nav-item ${v.id === activeView ? "is-active" : ""}`}
-                    onClick={() => onPickView(v.id)}
-                    title={v.description}
-                  >
-                    {v.label}
-                  </button>
-                </li>
-              ))}
+            {/* UX-19 (2026-05-07 audit): role="menu" + role="menuitem"
+                with roving tabindex turns this <ul> into a composite
+                widget. Arrow keys navigate within/between groups,
+                Home/End jump to first/last, Tab leaves the nav. */}
+            <ul className="vz-nav-list" role="menu" aria-label={`${group} views`}>
+              {items.map((v) => {
+                const isActive = v.id === activeView;
+                const inTabOrder = v.id === rovingTabId;
+                return (
+                  <li key={v.id} role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      ref={(el) => {
+                        if (el) navItemRefs.current.set(v.id, el);
+                        else navItemRefs.current.delete(v.id);
+                      }}
+                      className={`vz-nav-item ${isActive ? "is-active" : ""}`}
+                      // UX-18: keyboard activation bypasses the 150ms
+                      // pointer debounce — Enter/Space fire immediately.
+                      onClick={(e) =>
+                        onPickView(v.id, e.detail === 0 /* keyboard-synth click */)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onPickView(v.id, true);
+                          return;
+                        }
+                        onNavKeyDown(e, v.id);
+                      }}
+                      tabIndex={inTabOrder ? 0 : -1}
+                      aria-current={isActive ? "page" : undefined}
+                      title={v.description}
+                    >
+                      {v.label}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}
